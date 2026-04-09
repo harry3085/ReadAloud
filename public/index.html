@@ -256,7 +256,7 @@
     <div style="margin-top:20px;text-align:center;font-size:14px;color:var(--gray);">
       계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
     </div>
-    <button id="installBtn" onclick="installApp()" style="display:none;margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">
+    <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">
       📱 홈화면에 추가
     </button>
     <div class="version">version : 3.0.0</div>
@@ -618,7 +618,7 @@
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button class="add-btn gray" onclick="closeModal('studentDetailModal')" style="flex:1;">닫기</button>
         <button class="add-btn" onclick="startEditStudent()" style="flex:1;">수정</button>
-        <button class="add-btn red" id="studentDeleteBtn" style="flex:1;">삭제</button>
+        <button class="add-btn red" id="studentDeleteBtn" onclick="deleteCurrentStudent()" style="flex:1;">삭제</button>
       </div>
     </div>
   </div>
@@ -1307,7 +1307,10 @@ window.startEditStudent=()=>{
   document.getElementById('studentFormSection')?.scrollIntoView({behavior:'smooth'});
 };
 
-window.deleteStudent=async(uid,name)=>{
+window.deleteCurrentStudent=()=>{
+  if(!_editingStudentId||!_editingStudentData){alert('삭제할 학생 정보가 없습니다.');return;}
+  deleteStudent(_editingStudentId, _editingStudentData.name);
+};
   if(!confirm(`"${name}" 학생을 삭제할까요?\n\nFirestore 계정 삭제 + 로그인 차단이 됩니다.\n(Firebase Auth 계정은 콘솔에서 별도 삭제 가능)`))return;
   try{
     // Firestore 삭제
@@ -1754,49 +1757,45 @@ window.goHome=()=>{show('home');clearTimers();};
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;
 
-// beforeinstallprompt는 페이지 로드 초기에 발생 — 놓치지 않도록 즉시 등록
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();
   _deferredPrompt=e;
-  // 로그인 화면이 표시되면 버튼 보이기
-  const btn=document.getElementById('installBtn');
-  if(btn) btn.style.display='block';
 });
 
 window.installApp=async()=>{
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
-  if(isStandalone){showToast('이미 홈화면에 추가되어 있어요!');return;}
+  const isAndroid=/android/i.test(navigator.userAgent);
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+
+  if(isStandalone){
+    showToast('이미 앱으로 실행 중이에요!');
+    return;
+  }
+  // Android 크롬 - 설치 프롬프트 사용
+  if(_deferredPrompt){
+    _deferredPrompt.prompt();
+    const {outcome}=await _deferredPrompt.userChoice;
+    _deferredPrompt=null;
+    if(outcome==='accepted') showToast('홈화면에 추가됐어요! 🎉');
+    return;
+  }
+  // iOS Safari
   if(isIOS){
-    alert('iOS에서 홈화면에 추가하는 방법:\n\n1. Safari 하단의 공유 버튼(□↑)을 누르세요\n2. "홈 화면에 추가"를 선택하세요\n3. "추가"를 누르면 완료!');
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 탭 (□↑)\n② "홈 화면에 추가" 선택\n③ 오른쪽 위 "추가" 탭\n\n※ 반드시 Safari에서 열어주세요');
     return;
   }
-  if(!_deferredPrompt){
-    alert('홈화면 추가를 지원하지 않는 브라우저예요.\n크롬 브라우저에서 사용해주세요.');
+  // Android 기타 브라우저
+  if(isAndroid){
+    alert('📱 홈화면 추가 방법 (Android)\n\n① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는\n   "앱 설치" 선택\n\n※ 크롬 브라우저를 권장해요');
     return;
   }
-  _deferredPrompt.prompt();
-  const {outcome}=await _deferredPrompt.userChoice;
-  _deferredPrompt=null;
-  if(outcome==='accepted') showToast('홈화면에 추가됐어요! 🎉');
+  // PC
+  alert('📱 모바일에서 접속 후\n홈화면에 추가해주세요!');
 };
 
 window.addEventListener('appinstalled',()=>{
-  const btn=document.getElementById('installBtn');
-  if(btn) btn.style.display='none';
-  showToast('홈화면에 추가됐어요! 🎉');
+  showToast('앱이 설치됐어요! 🎉');
 });
-
-// 초기 로드 시 버튼 표시 여부 결정
-(()=>{
-  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
-  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
-  const btn=document.getElementById('installBtn');
-  if(!btn)return;
-  // iOS Safari이고 standalone 아니면 항상 표시
-  if(isIOS&&!isStandalone){btn.style.display='block';return;}
-  // Android/크롬은 beforeinstallprompt 이벤트 대기 (위에서 처리)
-})();
 
 
 // ── 내 정보 변경 ─────────────────────────────────────────
