@@ -19,12 +19,12 @@
     .loading-title{font-size:24px;font-weight:800;color:var(--text);margin-bottom:8px;}
     .loading-spinner{width:36px;height:36px;border:3px solid #ddd;border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;margin-top:24px;}
     @keyframes spin{to{transform:rotate(360deg);}}
-    #login{align-items:center;justify-content:center;padding:40px 32px;position:relative;}
+    #login{align-items:center;justify-content:flex-start;padding:20px 32px;position:relative;overflow-y:auto;}
     .logo-area{text-align:center;margin-bottom:40px;}
     .app-icon{width:72px;height:72px;border-radius:18px;object-fit:cover;display:inline-block;margin-bottom:10px;}
     .logo-title{font-size:26px;font-weight:800;color:var(--text);}
     .logo-sub{font-size:14px;color:var(--gray);margin-top:4px;}
-    .login-input{width:100%;background:white;border:none;border-radius:14px;padding:16px 20px;font-size:16px;color:var(--text);outline:none;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+    .login-input{width:100%;background:white;border:none;border-radius:14px;padding:16px 20px;font-size:16px;color:var(--text);outline:none;margin-bottom:0;box-shadow:0 2px 8px rgba(0,0,0,.06);}
     .login-input::placeholder{color:#bbb;}
     .login-btn{width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:18px;font-size:17px;font-weight:600;cursor:pointer;margin-top:8px;}
     .save-id{display:flex;align-items:center;gap:8px;margin-top:18px;font-size:14px;color:var(--gray);}
@@ -243,20 +243,23 @@
 
   <!-- LOGIN -->
   <div id="login" class="screen">
-    <div class="logo-area">
+    <div class="logo-area" style="margin-bottom:24px;margin-top:32px;">
       <img class="app-icon" src="/icons/icon-192.png" alt="큰소리 영어" onerror="this.style.display='none'">
       <div class="logo-title">큰소리 영어</div>
-      <div class="logo-sub">따라만 해도 기억되는 영단어 학습</div>
+      <div class="logo-sub">큰소리로 말하는 영어 학습</div>
     </div>
-    <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username">
-    <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password">
-    <div class="login-error" id="loginError"></div>
+    <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username" style="margin-bottom:12px;">
+    <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password" style="margin-bottom:6px;">
+    <div class="login-error" id="loginError" style="min-height:18px;font-size:13px;margin-bottom:4px;"></div>
     <button class="login-btn" onclick="doLogin()">로그인</button>
-    <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
-    <div style="margin-top:20px;text-align:center;font-size:14px;color:var(--gray);">
+    <div style="display:flex;gap:16px;margin-top:14px;justify-content:center;">
+      <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
+      <label class="save-id"><input type="checkbox" id="savePwCheck"> 비밀번호 저장</label>
+    </div>
+    <div style="margin-top:14px;text-align:center;font-size:14px;color:var(--gray);">
       계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
     </div>
-    <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">
+    <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:18px;font-size:15px;font-weight:600;cursor:pointer;">
       📱 홈화면에 추가
     </button>
     <div class="version">version : 3.0.0</div>
@@ -747,8 +750,12 @@ window.doLogin = async () => {
   const err = document.getElementById('loginError');
   err.textContent = '';
   if(!uid||!pw){err.textContent='아이디와 비밀번호를 입력하세요.';return;}
+  // 아이디 저장
   if(document.getElementById('saveIdCheck').checked) localStorage.setItem('savedId',uid);
   else localStorage.removeItem('savedId');
+  // 비밀번호 저장 (경고 표시 후 저장)
+  if(document.getElementById('savePwCheck').checked) localStorage.setItem('savedPw', btoa(pw));
+  else localStorage.removeItem('savedPw');
   try {
     const snap = await getDocs(query(collection(db,'users'), where('username','==',uid)));
     if(snap.empty){err.textContent='존재하지 않는 아이디입니다.';return;}
@@ -756,6 +763,8 @@ window.doLogin = async () => {
     await signInWithEmailAndPassword(auth, profile.email, pw);
     userProfile = {...profile, uid: snap.docs[0].id};
     currentUser = auth.currentUser;
+    // 로그인 시각 기록 (1일 자동 로그아웃용)
+    localStorage.setItem('lastLoginAt', Date.now().toString());
     if(profile.role==='admin'){await loadAdminData();show('admin');}
     else{document.getElementById('greetName').textContent=profile.name+' 님';await loadHomeData();show('home');}
   } catch(e){
@@ -766,7 +775,15 @@ window.doLogin = async () => {
 
 // ── 로그아웃 ──────────────────────────────────────────────
 window.confirmLogout = ()=>{document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');document.getElementById('logoutModal').classList.remove('hidden');};
-window.doLogout = async()=>{closeModal('logoutModal');await signOut(auth);currentUser=null;userProfile=null;clearTimers();show('login');};
+window.doLogout = async()=>{
+  closeModal('logoutModal');
+  await signOut(auth);
+  currentUser=null; userProfile=null; clearTimers();
+  // 로그아웃 시 저장된 비밀번호와 로그인 시각 삭제
+  localStorage.removeItem('savedPw');
+  localStorage.removeItem('lastLoginAt');
+  show('login');
+};
 window.goHome = ()=>{show('home');clearTimers();};
 
 // ── 홈 데이터 ─────────────────────────────────────────────
@@ -1766,9 +1783,17 @@ window.addEventListener('popstate',e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
 
-  // 관리자 화면: 뒤로가기 눌려도 admin 유지
+  // 관리자 화면: 뒤로가기 → 종료 안내
   if(curId==='admin'){
     history.pushState({screen:'admin_block'},'',location.pathname);
+    if(_exitToast){
+      clearTimeout(_exitToast);
+      _exitToast=null;
+      history.go(-2); // 실제 앱 종료
+      return;
+    }
+    showToast('한 번 더 누르면 앱이 종료돼요');
+    _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
     return;
   }
 
@@ -1779,16 +1804,13 @@ window.addEventListener('popstate',e=>{
   }
 
   // 스택 비었을 때 = 홈 또는 로그인에서 뒤로가기
-  // "한 번 더 누르면 종료" 안내
   if(_exitToast){
-    // 두 번째 뒤로가기 → 실제 종료 (히스토리 뒤로가기)
     clearTimeout(_exitToast);
     _exitToast=null;
-    history.go(-1); // 실제 앱 종료
+    history.go(-1);
     return;
   }
-  // 첫 번째 뒤로가기 → 안내 토스트
-  history.pushState({screen:curId},'',location.pathname); // 히스토리 유지
+  history.pushState({screen:curId},'',location.pathname);
   showToast('한 번 더 누르면 앱이 종료돼요');
   _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
@@ -1878,31 +1900,54 @@ window.saveMyInfo=async()=>{
 };
 
 // ── 초기화 + 자동 로그인 ──────────────────────────────────
-const savedId=localStorage.getItem('savedId');
-if(savedId) document.getElementById('usernameInput').value=savedId;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000; // 1일 = 86400000ms
+
+const savedId = localStorage.getItem('savedId');
+const savedPwB64 = localStorage.getItem('savedPw');
+if(savedId) document.getElementById('usernameInput').value = savedId;
+if(savedPwB64){
+  try{
+    document.getElementById('passwordInput').value = atob(savedPwB64);
+    document.getElementById('savePwCheck').checked = true;
+  }catch(e){}
+}
+if(savedId) document.getElementById('saveIdCheck').checked = true;
 
 // 히스토리 초기 설정
 history.replaceState({screen:'loading'},'',location.pathname);
 history.pushState({screen:'login'},'',location.pathname);
 
-// Firebase Auth 상태 감지 → 로그아웃 안 했으면 자동 로그인
+// Firebase Auth 상태 감지 → 1일 이내면 자동 로그인, 초과면 로그아웃
 onAuthStateChanged(auth, async user=>{
   if(user){
-    // 이미 로그인된 세션 있음 → Firestore에서 프로필 복원
+    // 1일 경과 체크
+    const lastLogin = parseInt(localStorage.getItem('lastLoginAt')||'0');
+    const elapsed = Date.now() - lastLogin;
+    if(lastLogin > 0 && elapsed > ONE_DAY_MS){
+      // 1일 초과 → 자동 로그아웃
+      await signOut(auth);
+      localStorage.removeItem('savedPw');
+      localStorage.removeItem('lastLoginAt');
+      showToast('보안을 위해 자동 로그아웃됐어요. 다시 로그인해주세요.');
+      setTimeout(()=>_originalShow('login'), 1200);
+      return;
+    }
+    // 1일 이내 → 자동 로그인
     try{
-      const snap=await getDoc(doc(db,'users',user.uid));
+      const snap = await getDoc(doc(db,'users',user.uid));
       if(snap.exists()){
-        userProfile={...snap.data(), uid:user.uid};
-        currentUser=user;
+        userProfile = {...snap.data(), uid:user.uid};
+        currentUser = user;
+        // 활동 시각 갱신
+        localStorage.setItem('lastLoginAt', Date.now().toString());
         if(userProfile.role==='admin'){
           await loadAdminData();
           _originalShow('admin');
-          // 관리자 히스토리 블록 설정
           history.replaceState({screen:'admin'},'',location.pathname);
           history.pushState({screen:'admin_block'},'',location.pathname);
         } else {
-          const greetEl=document.getElementById('greetName');
-          if(greetEl) greetEl.textContent=(userProfile.name||'학생')+' 님';
+          const greetEl = document.getElementById('greetName');
+          if(greetEl) greetEl.textContent = (userProfile.name||'학생')+' 님';
           await loadHomeData();
           _originalShow('home');
         }
