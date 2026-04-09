@@ -415,14 +415,6 @@
 
       <!-- 단어 관리 -->
       <div id="adminWords" class="admin-section">
-        <div class="section-title">그룹 관리</div>
-        <div class="admin-form">
-          <div style="display:flex;gap:8px;margin-bottom:10px;">
-            <input class="form-input" id="newGroupName" placeholder="새 그룹명 (예: 1반)" style="flex:1;">
-            <button class="add-btn sm" onclick="addGroup()">추가</button>
-          </div>
-          <div id="groupTagArea" style="display:flex;flex-wrap:wrap;gap:8px;min-height:32px;"></div>
-        </div>
         <div class="section-title">단원 관리</div>
         <div class="admin-form">
           <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -439,12 +431,12 @@
               <input class="form-input" id="newKor" placeholder="한글 뜻" style="flex:1;" onkeydown="if(event.key==='Enter'){addWord();}">
               <button class="add-btn sm" onclick="addWord()">추가</button>
             </div>
-            <div style="border-top:1px solid #f0f0f0;padding-top:12px;margin-top:4px;">
-              <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">📋 엑셀에서 복사 후 붙여넣기 (탭 구분)</div>
-              <textarea class="form-input" id="pasteArea" placeholder="엑셀에서 두 열(영어, 한글) 선택 후 Ctrl+C, 여기에 Ctrl+V" rows="4" style="resize:none;font-size:13px;margin-bottom:8px;"></textarea>
+            <div style="border-top:1px solid #f0f0f0;padding-top:12px;">
+              <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">📋 엑셀에서 두 열 복사 후 붙여넣기</div>
+              <textarea class="form-input" id="pasteArea" placeholder="엑셀에서 영어·한글 두 열 선택 → Ctrl+C → 여기 Ctrl+V" rows="4" style="resize:none;font-size:13px;margin-bottom:8px;"></textarea>
               <div style="display:flex;gap:8px;">
                 <button class="add-btn sm" onclick="importFromPaste()" style="flex:1;">📋 붙여넣기 적용</button>
-                <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#eee;border-radius:10px;font-size:13px;color:#666;cursor:pointer;">
+                <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#eee;border-radius:10px;font-size:13px;color:#666;cursor:pointer;padding:8px;">
                   📊 엑셀 파일
                   <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="importExcel(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
                 </div>
@@ -452,20 +444,31 @@
             </div>
           </div>
           <div class="section-title">단어 목록 <span id="wordCount" style="color:var(--teal);font-weight:700;"></span></div>
-          <div class="admin-form"><table class="word-table"><thead><tr><th>영어</th><th>한글</th><th style="width:80px;"></th></tr></thead><tbody id="wordTableBody"></tbody></table></div>
+          <div class="admin-form"><table class="word-table"><thead><tr><th>영어</th><th>한글</th><th style="width:76px;"></th></tr></thead><tbody id="wordTableBody"></tbody></table></div>
         </div>
       </div>
 
       <!-- 학생 관리 -->
       <div id="adminUsers" class="admin-section" style="display:none;">
-        <div class="section-title">그룹별 보기</div>
-        <div id="userGroupFilter" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:0 0 4px;"></div>
-        <div class="section-title" id="studentFormTitle">학생 추가</div>
+        <!-- 그룹 관리 -->
+        <div class="section-title">그룹 관리</div>
         <div class="admin-form">
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input class="form-input" id="newGroupName" placeholder="새 그룹명 (예: 1반, 초급반)" style="flex:1;">
+            <button class="add-btn sm" onclick="addGroup()">추가</button>
+          </div>
+          <div id="groupTagArea" style="display:flex;flex-wrap:wrap;gap:8px;min-height:28px;"></div>
+        </div>
+        <!-- 그룹별 필터 -->
+        <div class="section-title">그룹별 보기</div>
+        <div id="userGroupFilter" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
+        <!-- 학생 추가/수정 폼 -->
+        <div class="section-title" id="studentFormTitle">학생 추가</div>
+        <div class="admin-form" id="studentFormSection">
           <div class="form-row"><label class="form-label">아이디 (영문/숫자)</label><input class="form-input" id="newUserId" placeholder="아이디"></div>
           <div class="form-row"><label class="form-label">이름</label><input class="form-input" id="newUserName" placeholder="학생 이름"></div>
           <div class="form-row"><label class="form-label">그룹</label><select class="form-input" id="newUserGroup"></select></div>
-          <div class="form-row"><label class="form-label">비밀번호 (6자 이상)</label><input class="form-input" id="newUserPw" placeholder="비밀번호" type="password"></div>
+          <div class="form-row"><label class="form-label">비밀번호 (6자 이상)</label><input class="form-input" id="newUserPw" placeholder="수정 시 비워두면 유지" type="password"></div>
           <div class="form-row"><label class="form-label">부모님 성함</label><input class="form-input" id="newUserParentName" placeholder="선택사항"></div>
           <div class="form-row"><label class="form-label">부모님 연락처</label><input class="form-input" id="newUserParentPhone" placeholder="010-0000-0000"></div>
           <div class="form-row"><label class="form-label">메모</label><textarea class="form-input" id="newUserMemo" placeholder="특이사항, 수강 정보 등" rows="2" style="resize:none;"></textarea></div>
@@ -479,24 +482,28 @@
         <div id="studentCardList"></div>
       </div>
 
-            <!-- 공지 관리 -->
+      <!-- 공지 관리 -->
       <div id="adminNotice" class="admin-section" style="display:none;">
-        <div class="section-title">공지 작성</div>
+        <div class="section-title" id="noticeFormTitle">공지 작성</div>
         <div class="admin-form">
+          <input type="hidden" id="editingNoticeId">
           <div class="form-row"><label class="form-label">제목</label><input class="form-input" id="noticeTitle" placeholder="공지 제목"></div>
           <div class="form-row"><label class="form-label">내용</label><textarea class="form-input" id="noticeContent" placeholder="공지 내용" rows="4" style="resize:none;"></textarea></div>
           <div class="form-row"><label class="form-label">대상</label><select class="form-input" id="noticeTarget"></select></div>
-          <button class="add-btn" onclick="addNotice()">+ 공지 등록</button>
+          <div style="display:flex;gap:8px;">
+            <button class="add-btn" id="noticeSaveBtn" onclick="saveNotice()" style="flex:1;">+ 공지 등록</button>
+            <button class="add-btn gray sm" id="noticeCancelBtn" onclick="cancelEditNotice()" style="display:none;flex:0 0 auto;padding:12px 16px;">취소</button>
+          </div>
         </div>
-        <div class="section-title">공지 목록</div>
-        <div class="admin-form"><table class="word-table"><thead><tr><th>제목</th><th>대상</th><th></th></tr></thead><tbody id="noticeTableBody"></tbody></table></div>
+        <div class="section-title">공지 목록 <span style="font-size:12px;color:var(--gray);font-weight:400;">(클릭하면 수정)</span></div>
+        <div id="noticeCardList"></div>
       </div>
 
-      <!-- 숙제 파일 -->
-      <div id="adminFiles" class="admin-section" style="display:none;">
-        <div class="section-title">숙제 파일 업로드</div>
+      <!-- 숙제 관리 -->
+      <div id="adminHomework" class="admin-section" style="display:none;">
+        <div class="section-title">숙제 업로드</div>
         <div class="admin-form">
-          <div class="form-row"><label class="form-label">파일명 (표시용)</label><input class="form-input" id="newFileName" placeholder="예: 1단원 받아쓰기.pdf"></div>
+          <div class="form-row"><label class="form-label">숙제명</label><input class="form-input" id="newFileName" placeholder="예: 1단원 받아쓰기"></div>
           <div class="form-row"><label class="form-label">대상 그룹</label><select class="form-input" id="newFileGroup"></select></div>
           <div class="form-row"><label class="form-label">파일 선택</label>
             <div class="upload-area">
@@ -508,15 +515,57 @@
           </div>
           <button class="add-btn" onclick="uploadHwFile()">📤 업로드 & 등록</button>
         </div>
-        <div class="section-title">등록된 파일</div>
-        <div class="admin-form"><table class="word-table"><thead><tr><th>파일명</th><th>그룹</th><th></th></tr></thead><tbody id="fileTableBody"></tbody></table></div>
+        <div class="section-title">등록된 숙제</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>숙제명</th><th>그룹</th><th></th></tr></thead><tbody id="fileTableBody"></tbody></table></div>
+      </div>
+
+      <!-- 결제 관리 -->
+      <div id="adminPayment" class="admin-section" style="display:none;">
+        <div class="section-title">결제 등록</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">학생 선택</label><select class="form-input" id="paymentStudent"></select></div>
+          <div class="form-row"><label class="form-label">항목</label><input class="form-input" id="paymentTitle" placeholder="예: 4월 수강료, 교재비"></div>
+          <div class="form-row"><label class="form-label">금액 (원)</label><input class="form-input" id="paymentAmount" type="number" placeholder="예: 150000"></div>
+          <div class="form-row"><label class="form-label">납부 기한</label><input class="form-input" id="paymentDue" type="date"></div>
+          <div class="form-row"><label class="form-label">상태</label>
+            <select class="form-input" id="paymentStatus">
+              <option value="unpaid">미납</option>
+              <option value="paid">납부완료</option>
+              <option value="pending">확인중</option>
+            </select>
+          </div>
+          <div class="form-row"><label class="form-label">메모</label><input class="form-input" id="paymentMemo" placeholder="선택사항"></div>
+          <button class="add-btn" onclick="addPayment()">+ 결제 등록</button>
+        </div>
+        <div class="section-title">결제 현황</div>
+        <div id="paymentList"></div>
       </div>
 
       <!-- 진도 현황 -->
       <div id="adminStats" class="admin-section" style="display:none;">
         <div class="section-title">학생 진도 현황</div>
         <div class="stats-filter" id="statsGroupFilter"></div>
-        <div id="statsContent" style="padding:0 16px 16px;"></div>
+        <div id="statsContent" style="padding:0 0 16px;"></div>
+      </div>
+
+      <!-- 푸시 알림 -->
+      <div id="adminPush" class="admin-section" style="display:none;">
+        <div class="section-title">알림 발송</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">대상</label><select class="form-input" id="pushTarget"></select></div>
+          <div class="form-row"><label class="form-label">제목</label><input class="form-input" id="pushTitle" placeholder="알림 제목"></div>
+          <div class="form-row"><label class="form-label">내용</label><textarea class="form-input" id="pushBody" placeholder="알림 내용" rows="3" style="resize:none;"></textarea></div>
+          <button class="add-btn" onclick="sendPushNotification()">🔔 알림 발송</button>
+        </div>
+        <div class="section-title">예약 알림</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">대상</label><select class="form-input" id="schedPushTarget"></select></div>
+          <div class="form-row"><label class="form-label">제목</label><input class="form-input" id="schedPushTitle" placeholder="예: 내일 단어시험이 있어요!"></div>
+          <div class="form-row"><label class="form-label">발송 일시</label><input class="form-input" id="schedPushTime" type="datetime-local"></div>
+          <button class="add-btn" onclick="scheduleNotification()">📅 예약 등록</button>
+        </div>
+        <div class="section-title">예약 목록</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>제목</th><th>대상</th><th>발송시간</th><th></th></tr></thead><tbody id="schedTableBody"></tbody></table></div>
       </div>
 
     </div>
@@ -915,42 +964,68 @@ window.goComingSoon=type=>{
 // ══════════════════════════════════════════════════════════
 // 관리자 기능
 // ══════════════════════════════════════════════════════════
+let selectedUserGroupFilter = 'all';
+
 async function loadAdminData(){
   await loadGroups();
   await loadAdminUnits();
 }
 
-// ── 그룹 관리 ─────────────────────────────────────────────
+// ── 그룹 관리 (학생탭) ────────────────────────────────────
 async function loadGroups(){
   const snap=await getDocs(collection(db,'groups'));
   allGroups=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderGroupTags();
+  renderUserGroupFilter();
+  renderAllGroupSelects();
 }
+
 function renderGroupTags(){
-  const el=document.getElementById('groupTagList');
-  if(!el)return;
+  const el=document.getElementById('groupTagArea'); if(!el)return;
   el.innerHTML=allGroups.map(g=>`
-    <span class="group-tag">${g.name}<span class="del" onclick="deleteGroup('${g.id}','${g.name}')">✕</span></span>`).join('');
+    <span style="display:inline-flex;align-items:center;gap:5px;background:#e0f5f5;color:var(--teal);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;">
+      ${g.name}
+      <span onclick="deleteGroup('${g.id}','${g.name}')" style="cursor:pointer;color:#aaa;font-size:11px;line-height:1;">✕</span>
+    </span>`).join('')||'<span style="font-size:13px;color:#bbb;">그룹이 없습니다</span>';
 }
-function renderGroupSelects(){
+
+function renderUserGroupFilter(){
+  const el=document.getElementById('userGroupFilter'); if(!el)return;
+  const cur=selectedUserGroupFilter;
+  const chip=(label,val)=>`<span onclick="filterByUserGroup('${val}')" style="display:inline-flex;cursor:pointer;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:${cur===val?'var(--teal)':'#f0f0f0'};color:${cur===val?'white':'var(--gray)'};">${label}</span>`;
+  el.innerHTML=chip('전체','all')+allGroups.map(g=>chip(g.name,g.name)).join('');
+}
+
+function renderAllGroupSelects(){
+  // 공지/알림 대상
   const opts='<option value="all">전체</option>'+allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');
-  const studentOpts=allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');
-  ['noticeTarget'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
-  ['newFileGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="전체">전체</option>'+allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');});
-  ['newUserGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=studentOpts||'<option value="">그룹 없음</option>';});
+  // 숙제 그룹
+  const hwOpts='<option value="전체">전체</option>'+allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');
+  // 학생 그룹
+  const stuOpts=allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('')||'<option value="">그룹 없음</option>';
+  ['noticeTarget','pushTarget','schedPushTarget'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
+  ['newFileGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=hwOpts;});
+  ['newUserGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=stuOpts;});
   renderStatsGroupFilter();
 }
+
+window.filterByUserGroup=async val=>{
+  selectedUserGroupFilter=val;
+  renderUserGroupFilter();
+  await loadAdminUsers();
+};
+
 window.addGroup=async()=>{
-  const name=document.getElementById('newGroupName').value.trim();if(!name)return;
+  const name=document.getElementById('newGroupName').value.trim(); if(!name)return;
   if(allGroups.find(g=>g.name===name)){showToast('이미 있는 그룹이에요.');return;}
   await addDoc(collection(db,'groups'),{name,createdAt:serverTimestamp()});
   document.getElementById('newGroupName').value='';
-  showToast('그룹 추가됐어요!');await loadGroups();renderGroupSelects();
+  showToast('그룹 추가됐어요!'); await loadGroups();
 };
 window.deleteGroup=async(id,name)=>{
   if(!confirm(`"${name}" 그룹을 삭제할까요?`))return;
   await deleteDoc(doc(db,'groups',id));
-  showToast('Firestore 계정 삭제됨. Auth 계정은 Firebase 콘솔에서 별도 삭제 필요.');await loadGroups();renderGroupSelects();
+  showToast('삭제됐어요.'); await loadGroups();
 };
 
 // ── 단원/단어 관리 ─────────────────────────────────────────
@@ -1069,7 +1144,7 @@ window.importFromPaste=async()=>{
 // ── 엑셀 임포트 ───────────────────────────────────────────
 window.importExcel=async e=>{
   const file=e.target.files[0];if(!file)return;
-  const unitId=document.getElementById('selectUnit').value||lastSelectedUnitId;
+  const unitId=lastSelectedUnitId;
   if(!unitId){alert('먼저 단원을 선택하세요.');e.target.value='';return;}
   try{
     const data=await file.arrayBuffer();
@@ -1089,21 +1164,24 @@ window.importExcel=async e=>{
 
 // ── 학생 관리 ─────────────────────────────────────────────
 async function loadAdminUsers(){
-  const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
+  const clrs=['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
+  const q2 = selectedUserGroupFilter==='all'
+    ? query(collection(db,'users'),where('role','==','student'))
+    : query(collection(db,'users'),where('role','==','student'),where('group','==',selectedUserGroupFilter));
+  const snap=await getDocs(q2);
   const students=snap.docs.map(d=>({uid:d.id,...d.data()}));
-  const colors=['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
   document.getElementById('studentCardList').innerHTML=students.map((u,i)=>`
     <div class="student-card" onclick="viewStudent('${u.uid}')">
       <div class="student-header">
-        <div class="student-avatar" style="background:${colors[i%colors.length]}">${u.name?.[0]||'?'}</div>
+        <div class="student-avatar" style="background:${clrs[i%clrs.length]}">${u.name?.[0]||'?'}</div>
         <div class="student-info">
           <div class="student-name">${u.name} <span style="font-size:12px;color:var(--gray);font-weight:400;">(${u.username})</span></div>
           <div class="student-meta">${u.group||''} ${u.parentPhone?'· 📞 '+u.parentPhone:''}</div>
         </div>
         <span style="color:#ddd;font-size:18px;">›</span>
       </div>
-      ${u.memo?`<div style="font-size:13px;color:var(--gray);margin-top:10px;padding-top:10px;border-top:1px solid #f5f5f5;">${u.memo}</div>`:''}
-    </div>`).join('')||'<div class="empty-msg">등록된 학생이 없습니다</div>';
+      ${u.memo?`<div style="font-size:13px;color:var(--gray);margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;">${u.memo}</div>`:''}
+    </div>`).join('')||'<div class="empty-msg">학생이 없습니다</div>';
 }
 
 // 학생 추가/수정 통합 함수
@@ -1196,27 +1274,64 @@ window.deleteStudent=async(uid,name)=>{
   closeModal('studentDetailModal');showToast('삭제됐어요.');await loadAdminUsers();
 };
 
-// ── 공지 관리 ─────────────────────────────────────────────
+// ── 공지 관리 (클릭 수정 지원) ───────────────────────────
+let _editingNoticeId=null;
 async function loadAdminNotices(){
   const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
   const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
-  document.getElementById('noticeTableBody').innerHTML=notices.map(n=>`<tr>
-    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${n.title}</td>
-    <td><span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span></td>
-    <td><button class="del-btn" onclick="delNotice('${n.id}')">✕</button></td>
-  </tr>`).join('');
+  const el=document.getElementById('noticeCardList'); if(!el)return;
+  el.innerHTML=notices.map(n=>`
+    <div onclick="startEditNotice('${n.id}')" style="background:white;border-radius:14px;padding:14px 18px;margin-bottom:8px;cursor:pointer;box-shadow:0 1px 6px rgba(0,0,0,.05);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:15px;font-weight:600;color:var(--text);">${n.title}</span>
+        <button onclick="event.stopPropagation();delNotice('${n.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:16px;padding:2px 6px;">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+        <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
+        <span style="font-size:12px;color:var(--gray);">${n.date||''}</span>
+      </div>
+      <div style="font-size:13px;color:var(--gray);line-height:1.5;">${(n.content||'').length>80?(n.content||'').slice(0,80)+'…':(n.content||'')}</div>
+    </div>`).join('')||'<div class="empty-msg">공지가 없습니다</div>';
 }
-window.addNotice=async()=>{
+window.startEditNotice=async id=>{
+  const snap=await getDoc(doc(db,'notices',id));
+  const n=snap.data();if(!n)return;
+  _editingNoticeId=id;
+  document.getElementById('editingNoticeId').value=id;
+  document.getElementById('noticeTitle').value=n.title;
+  document.getElementById('noticeContent').value=n.content;
+  document.getElementById('noticeTarget').value=n.target;
+  document.getElementById('noticeFormTitle').textContent='공지 수정';
+  document.getElementById('noticeSaveBtn').textContent='수정 저장';
+  document.getElementById('noticeCancelBtn').style.display='';
+  document.getElementById('adminNotice').scrollTop=0;
+};
+window.cancelEditNotice=()=>{
+  _editingNoticeId=null;
+  document.getElementById('editingNoticeId').value='';
+  ['noticeTitle','noticeContent'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('noticeFormTitle').textContent='공지 작성';
+  document.getElementById('noticeSaveBtn').textContent='+ 공지 등록';
+  document.getElementById('noticeCancelBtn').style.display='none';
+};
+window.saveNotice=async()=>{
   const title=document.getElementById('noticeTitle').value.trim();
   const content=document.getElementById('noticeContent').value.trim();
   const target=document.getElementById('noticeTarget').value;
   if(!title||!content){alert('제목과 내용을 입력하세요.');return;}
   const today=new Date().toISOString().slice(0,10);
-  await addDoc(collection(db,'notices'),{title,content,target,date:today,createdAt:serverTimestamp()});
-  document.getElementById('noticeTitle').value='';document.getElementById('noticeContent').value='';
-  showToast('공지가 등록됐어요!');await loadAdminNotices();
+  const editId=document.getElementById('editingNoticeId').value;
+  if(editId){
+    await updateDoc(doc(db,'notices',editId),{title,content,target,date:today});
+    showToast('공지가 수정됐어요!');
+  } else {
+    await addDoc(collection(db,'notices'),{title,content,target,date:today,createdAt:serverTimestamp()});
+    showToast('공지가 등록됐어요!');
+  }
+  cancelEditNotice(); await loadAdminNotices();
 };
-window.delNotice=async id=>{await deleteDoc(doc(db,'notices',id));showToast('삭제됐어요.');await loadAdminNotices();};
+window.addNotice=window.saveNotice;
+window.delNotice=async id=>{if(!confirm('공지를 삭제할까요?'))return;await deleteDoc(doc(db,'notices',id));showToast('삭제됐어요.');await loadAdminNotices();};
 
 // ── 숙제 파일 (Firebase Storage 직접 업로드) ───────────────
 window.onHwFileSelected=e=>{
@@ -1317,18 +1432,99 @@ window.loadStats=async(group,btn)=>{
   }).join('');
 };
 
+// ── 결제 관리 ─────────────────────────────────────────────
+async function renderPaymentStudentSelect(){
+  const el=document.getElementById('paymentStudent');if(!el)return;
+  const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
+  el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="${d.id}">${u.name||'?'} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
+}
+window.addPayment=async()=>{
+  const uid=document.getElementById('paymentStudent').value;
+  const title=document.getElementById('paymentTitle').value.trim();
+  const amount=parseInt(document.getElementById('paymentAmount').value)||0;
+  const due=document.getElementById('paymentDue').value;
+  const status=document.getElementById('paymentStatus').value;
+  const memo=document.getElementById('paymentMemo').value.trim();
+  if(!title||!amount){alert('항목과 금액을 입력하세요.');return;}
+  const uSnap=await getDoc(doc(db,'users',uid));
+  const uData=uSnap.data()||{};
+  await addDoc(collection(db,'payments'),{uid,userName:uData.name||'',group:uData.group||'',title,amount,due,status,memo,createdAt:serverTimestamp()});
+  ['paymentTitle','paymentAmount','paymentDue','paymentMemo'].forEach(id=>document.getElementById(id).value='');
+  showToast('✅ 결제 내역이 등록됐어요!');await loadPayments();
+};
+async function loadPayments(){
+  const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
+  const payments=snap.docs.map(d=>({id:d.id,...d.data()}));
+  const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
+  const scls={paid:'paid',unpaid:'unpaid',pending:'pending'};
+  const el=document.getElementById('paymentList');if(!el)return;
+  el.innerHTML=payments.map(p=>`
+    <div style="background:white;border-radius:16px;padding:16px 18px;margin-bottom:8px;box-shadow:0 1px 6px rgba(0,0,0,.05);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;">
+        <div>
+          <div style="font-size:15px;font-weight:600;">${p.userName} — ${p.title}</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:2px;">${p.group||''} ${p.due?'· 기한: '+p.due:''} ${p.memo?'· '+p.memo:''}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:16px;font-weight:800;color:var(--teal);">${(p.amount||0).toLocaleString()}원</div>
+          <span style="display:inline-flex;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${p.status==='paid'?'#e0f5f0':p.status==='pending'?'#fff3e0':'#fde8e8'};color:${p.status==='paid'?'#2a9f9f':p.status==='pending'?'#e6820a':'#e05050'};">${slabel[p.status]||'미납'}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="updatePaymentStatus('${p.id}','paid')" style="flex:1;background:#e0f5f0;color:#2a9f9f;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='paid'?'disabled':''}>납부완료</button>
+        <button onclick="updatePaymentStatus('${p.id}','unpaid')" style="flex:1;background:#f0f0f0;color:#888;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='unpaid'?'disabled':''}>미납</button>
+        <button onclick="delPayment('${p.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;padding:4px 8px;font-size:16px;">✕</button>
+      </div>
+    </div>`).join('')||'<div class="empty-msg">결제 내역이 없습니다</div>';
+}
+window.updatePaymentStatus=async(id,status)=>{await updateDoc(doc(db,'payments',id),{status});showToast('상태 변경됐어요.');await loadPayments();};
+window.delPayment=async id=>{if(!confirm('삭제할까요?'))return;await deleteDoc(doc(db,'payments',id));showToast('삭제됐어요.');await loadPayments();};
+
+// ── 푸시 알림 관리 ────────────────────────────────────────
+window.sendPushNotification=async()=>{
+  const target=document.getElementById('pushTarget').value;
+  const title=document.getElementById('pushTitle').value.trim();
+  const body=document.getElementById('pushBody').value.trim();
+  if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
+  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,createdAt:serverTimestamp()});
+  document.getElementById('pushTitle').value='';document.getElementById('pushBody').value='';
+  showToast('✅ 알림 발송 요청됐어요!\n(FCM 서버 설정 후 실제 발송)');
+};
+window.scheduleNotification=async()=>{
+  const target=document.getElementById('schedPushTarget').value;
+  const title=document.getElementById('schedPushTitle').value.trim();
+  const time=document.getElementById('schedPushTime').value;
+  if(!title||!time){alert('제목과 발송 시간을 입력하세요.');return;}
+  await addDoc(collection(db,'scheduledPush'),{target,title,scheduledAt:time,sent:false,createdAt:serverTimestamp()});
+  document.getElementById('schedPushTitle').value='';document.getElementById('schedPushTime').value='';
+  showToast('✅ 예약됐어요!');await loadScheduledPush();
+};
+async function loadScheduledPush(){
+  const el=document.getElementById('schedTableBody');if(!el)return;
+  try{
+    const snap=await getDocs(query(collection(db,'scheduledPush'),orderBy('scheduledAt','desc')));
+    el.innerHTML=snap.docs.map(d=>{const s={id:d.id,...d.data()};return `<tr>
+      <td style="font-size:13px;">${s.title}</td>
+      <td><span class="notice-tag${s.target==='all'?' all':''}">${s.target==='all'?'전체':s.target}</span></td>
+      <td style="font-size:12px;color:var(--gray);">${(s.scheduledAt||'').replace('T',' ')}</td>
+      <td><button class="del-btn" onclick="delSchedPush('${s.id}')">✕</button></td>
+    </tr>`;}).join('')||'<tr><td colspan="4" style="text-align:center;color:#bbb;padding:12px;">예약된 알림 없음</td></tr>';
+  }catch(e){el.innerHTML='<tr><td colspan="4" style="text-align:center;color:#bbb;padding:12px;">불러오기 실패</td></tr>';}
+}
+window.delSchedPush=async id=>{await deleteDoc(doc(db,'scheduledPush',id));showToast('삭제됐어요.');await loadScheduledPush()};
+
 // ── 탭 전환 ──────────────────────────────────────────────
 window.switchAdminTab=tab=>{
   const tabs=['words','users','notice','homework','payment','stats','push'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   const map={words:'adminWords',users:'adminUsers',notice:'adminNotice',homework:'adminHomework',payment:'adminPayment',stats:'adminStats',push:'adminPush'};
   Object.entries(map).forEach(([k,v])=>{const el=document.getElementById(v);if(el)el.style.display=k===tab?'':'none';});
-  if(tab==='users')loadAdminUsers();
-  else if(tab==='notice')loadAdminNotices();
-  else if(tab==='homework')loadAdminFiles();
-  else if(tab==='payment'){renderPaymentStudentSelect();loadPayments();}
-  else if(tab==='stats'){renderStatsGroupFilter();loadStats('all',document.querySelector('.filter-btn'));}
-  else if(tab==='push')loadScheduledPush();
+  if(tab==='users'){renderGroupTags();renderUserGroupFilter();renderAllGroupSelects();loadAdminUsers();}
+  else if(tab==='notice'){renderAllGroupSelects();loadAdminNotices();}
+  else if(tab==='homework'){renderAllGroupSelects();loadAdminFiles();}
+  else if(tab==='payment'){renderAllGroupSelects();renderPaymentStudentSelect();loadPayments();}
+  else if(tab==='stats'){renderStatsGroupFilter();loadStats('all',document.querySelector('#statsGroupFilter .filter-btn'));}
+  else if(tab==='push'){renderAllGroupSelects();loadScheduledPush();}
 };
 
 // ── 초기화 ───────────────────────────────────────────────
