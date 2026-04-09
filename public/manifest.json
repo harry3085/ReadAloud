@@ -1,0 +1,25 @@
+{
+  "name": "큰소리 영어",
+  "short_name": "큰소리영어",
+  "description": "따라만 해도 기억되는 영단어 학습",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e8f4f4",
+  "theme_color": "#3BBFBF",
+  "orientation": "portrait",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#3BBFBF">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="큰소리 영어">
+  <title>큰소리 영어</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-tap-highlight-color:transparent;}
+    :root{--teal:#3BBFBF;--teal-dark:#2a9f9f;--bg:#e8f4f4;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#5aabcf;--purple:#8b7dd8;--green:#4bc27d;}
+    html,body{height:100%;overflow:hidden;}
+    #app{height:100vh;overflow:hidden;position:relative;}
+    .screen{display:none;height:100vh;background:var(--bg);flex-direction:column;overflow:hidden;}
+    .screen.active{display:flex;}
+    .scroll-content{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
+
+    /* LOADING */
+    #loading{align-items:center;justify-content:center;background:var(--bg);}
+    .loading-icon{width:80px;height:80px;border-radius:20px;object-fit:cover;margin-bottom:16px;}
+    .loading-title{font-size:24px;font-weight:800;color:var(--text);margin-bottom:8px;}
+    .loading-spinner{width:36px;height:36px;border:3px solid #ddd;border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;margin-top:24px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* LOGIN */
+    #login{align-items:center;justify-content:center;padding:40px 32px;position:relative;}
+    .logo-area{text-align:center;margin-bottom:40px;}
+    .app-icon{width:72px;height:72px;border-radius:18px;object-fit:cover;display:inline-block;margin-bottom:10px;}
+    .logo-title{font-size:26px;font-weight:800;color:var(--text);}
+    .logo-sub{font-size:14px;color:var(--gray);margin-top:4px;}
+    .login-input{width:100%;background:white;border:none;border-radius:14px;padding:16px 20px;font-size:16px;color:var(--text);outline:none;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+    .login-input::placeholder{color:#bbb;}
+    .login-btn{width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:18px;font-size:17px;font-weight:600;cursor:pointer;margin-top:8px;}
+    .save-id{display:flex;align-items:center;gap:8px;margin-top:18px;font-size:14px;color:var(--gray);}
+    .save-id input{accent-color:var(--teal);}
+    .version{position:absolute;bottom:24px;font-size:13px;color:#aaa;font-weight:500;}
+    .login-error{color:var(--red);font-size:13px;text-align:center;margin-top:8px;min-height:20px;}
+
+    /* HEADER */
+    .home-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--bg);position:relative;flex-shrink:0;}
+    .home-logo{display:flex;align-items:center;gap:10px;}
+    .header-icon{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;}
+    .home-logo-text{font-size:17px;font-weight:800;color:var(--text);}
+    .menu-btn{font-size:22px;color:var(--gray);cursor:pointer;background:none;border:none;padding:4px 8px;}
+    .dropdown{position:absolute;top:56px;right:16px;background:white;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;z-index:200;display:none;min-width:160px;}
+    .dropdown.open{display:block;}
+    .dropdown-item{display:flex;align-items:center;gap:10px;padding:14px 18px;font-size:15px;color:var(--text);cursor:pointer;border-bottom:1px solid #f5f5f5;}
+    .dropdown-item:last-child{border-bottom:none;}
+    .dropdown-item:hover{background:#f9f9f9;}
+    .dropdown-item.danger{color:var(--red);}
+    .dropdown-item svg{width:18px;height:18px;flex-shrink:0;}
+
+    /* HOME GRID */
+    .home-greeting{text-align:center;padding:4px 0 16px;flex-shrink:0;}
+    .home-greeting .name{font-size:17px;font-weight:600;color:var(--text);}
+    .home-greeting .sub{font-size:14px;color:var(--gray);margin-top:2px;}
+    .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 12px;flex-shrink:0;}
+    .menu-card{border-radius:22px;padding:20px 16px 14px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;min-height:130px;transition:transform .15s;position:relative;overflow:hidden;}
+    .menu-card:active{transform:scale(0.97);}
+    .card-label{font-size:12px;font-weight:500;color:rgba(255,255,255,0.7);margin-bottom:3px;}
+    .card-name{font-size:18px;font-weight:700;color:white;line-height:1.25;}
+    .card-icon-big{font-size:32px;opacity:0.22;align-self:flex-end;margin-top:6px;}
+    .coming-soon{font-size:10px;color:rgba(255,255,255,.65);background:rgba(255,255,255,.2);border-radius:20px;padding:2px 8px;margin-top:5px;display:inline-block;}
+    .c-teal{background:linear-gradient(140deg,#3BBFBF,#2a9f9f);}
+    .c-blue{background:linear-gradient(140deg,#5aabcf,#3d8fb0);}
+    .c-purple{background:linear-gradient(140deg,#8b7dd8,#6b5cb8);}
+    .c-green{background:linear-gradient(140deg,#4bc27d,#2da860);}
+
+    /* NOTICE */
+    .notice-section{padding:0 16px 8px;}
+    .notice-card{background:white;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:10px;}
+    .notice-card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;}
+    .notice-card-title{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px;}
+    .notice-card-title .icon{width:26px;height:26px;border-radius:8px;background:#e8f4f4;display:flex;align-items:center;justify-content:center;font-size:14px;}
+    .notice-more{font-size:12px;color:var(--teal);font-weight:600;cursor:pointer;background:none;border:none;}
+    .notice-item{padding:10px 18px;border-top:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:flex-start;gap:10px;}
+    .notice-item:hover{background:#fafafa;}
+    .notice-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);margin-top:6px;flex-shrink:0;}
+    .notice-item-text{flex:1;}
+    .notice-item-title{font-size:14px;color:var(--text);font-weight:500;line-height:1.4;}
+    .notice-item-meta{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:8px;}
+    .notice-tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;background:#e8f4f4;color:var(--teal);}
+    .notice-tag.all{background:#fff3e0;color:#e6820a;}
+    .hw-file-item{padding:12px 18px;border-top:1px solid #f5f5f5;display:flex;align-items:center;gap:12px;}
+    .file-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+    .file-icon.pdf{background:#ffe5e5;}
+    .file-icon.docx{background:#e5eeff;}
+    .file-icon.img{background:#e5fff0;}
+    .file-info{flex:1;}
+    .file-name{font-size:14px;font-weight:500;color:var(--text);}
+    .file-meta{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:6px;align-items:center;}
+    .file-size{font-size:11px;color:#bbb;}
+    .download-btn{background:var(--teal);color:white;border:none;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;}
+    .empty-msg{padding:20px;text-align:center;color:#bbb;font-size:14px;}
+
+    /* PAGE HEADER */
+    .page-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:var(--bg);border-bottom:1px solid #ddd;flex-shrink:0;}
+    .back-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--gray);}
+    .page-title{font-size:17px;font-weight:600;color:var(--text);}
+
+    /* UNIT LIST */
+    .unit-list{padding:16px;display:flex;flex-direction:column;gap:12px;}
+    .unit-card{background:white;border-radius:16px;padding:18px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.05);transition:transform .15s;}
+    .unit-card:active{transform:scale(0.98);}
+    .unit-name{font-size:16px;font-weight:600;color:var(--text);}
+    .unit-count{font-size:13px;color:var(--gray);margin-top:4px;}
+    .unit-arrow{color:var(--teal);font-size:20px;}
+    .unit-progress{height:4px;background:#eee;border-radius:2px;margin-top:10px;}
+    .unit-progress-bar{height:4px;background:var(--teal);border-radius:2px;}
+
+    /* MODE SELECT */
+    .mode-select{padding:16px;display:flex;flex-direction:column;gap:12px;}
+    .mode-btn{background:white;border:none;border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06);text-align:left;transition:transform .15s;}
+    .mode-btn:active{transform:scale(0.98);}
+    .mode-icon{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+    .mode-name{font-size:16px;font-weight:700;color:var(--text);}
+    .mode-desc{font-size:13px;color:var(--gray);margin-top:2px;}
+
+    /* QUIZ */
+    .quiz-header{display:flex;align-items:center;justify-content:center;padding:14px 20px;position:relative;flex-shrink:0;}
+    .quit-btn{position:absolute;left:20px;background:none;border:none;font-size:20px;color:var(--gray);cursor:pointer;}
+    .progress-pill{background:var(--teal);color:white;border-radius:20px;padding:8px 20px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+    .quiz-instruction{text-align:center;color:var(--gray);font-size:15px;padding:12px 20px 6px;flex-shrink:0;}
+    .word-card{margin:8px 16px;background:white;border-radius:20px;padding:32px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08);min-height:110px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .word-card .word{font-size:24px;font-weight:700;color:var(--text);}
+    .choices{padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
+    .choice-btn{background:white;border:none;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06);font-size:15px;color:var(--text);text-align:left;transition:all .2s;flex-shrink:0;}
+    .choice-btn.correct{background:#d4f5e9;border:2px solid #3BBFBF;}
+    .choice-btn.wrong{background:#fde8e8;border:2px solid #e05050;}
+    .choice-num{background:#e0f5f5;color:var(--teal);border-radius:10px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+    .choice-num.correct{background:var(--teal);color:white;}
+    .choice-num.wrong{background:var(--red);color:white;}
+    .quiz-footer{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;flex-shrink:0;}
+    .timer-circle{width:44px;height:44px;position:relative;}
+    .timer-circle svg{transform:rotate(-90deg);}
+    .timer-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal);}
+    .footer-btn{background:none;border:none;color:var(--gray);font-size:24px;cursor:pointer;}
+    .skip-btn{background:none;border:none;color:var(--gray);font-size:15px;font-weight:600;cursor:pointer;}
+
+    /* SPELLING */
+    .spell-input-wrap{margin:8px 16px;flex-shrink:0;}
+    .spell-real-input{width:100%;padding:14px 16px;font-size:20px;font-weight:600;border:2px solid #ddd;border-radius:14px;outline:none;text-align:center;color:var(--text);background:white;letter-spacing:4px;}
+    .spell-real-input:focus{border-color:var(--teal);}
+    .spell-hint{text-align:center;font-size:13px;color:#aaa;margin-top:8px;}
+    .spell-boxes{display:flex;gap:6px;padding:12px 16px;flex-wrap:wrap;justify-content:center;flex-shrink:0;}
+    .spell-box{width:38px;height:46px;background:#eee;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text);}
+    .spell-box.active{background:white;border:2px solid var(--teal);}
+    .spell-box.filled{background:white;border:2px solid #ddd;}
+
+    /* RESULT */
+    #result{align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
+    .result-score{font-size:64px;font-weight:800;color:var(--teal);}
+    .result-label{font-size:16px;color:var(--gray);margin-top:4px;margin-bottom:24px;}
+    .result-stats{display:flex;gap:24px;justify-content:center;margin-bottom:32px;}
+    .result-stat-num{font-size:28px;font-weight:700;color:var(--text);}
+    .result-stat-label{font-size:13px;color:var(--gray);}
+    .result-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:16px 40px;font-size:16px;font-weight:600;cursor:pointer;width:100%;}
+    .result-btn.outline{background:none;color:var(--teal);border:2px solid var(--teal);margin-top:10px;}
+
+    /* RANKING */
+    .ranking-header-info{background:white;margin:16px;border-radius:18px;padding:16px 20px;box-shadow:0 2px 10px rgba(0,0,0,.06);flex-shrink:0;}
+    .ranking-group-name{font-size:13px;color:var(--gray);margin-bottom:2px;}
+    .ranking-group-title{font-size:17px;font-weight:700;color:var(--text);}
+    .ranking-tabs{display:flex;background:#f0f0f0;border-radius:12px;margin:0 16px 16px;padding:4px;flex-shrink:0;}
+    .ranking-tab{flex:1;padding:9px;text-align:center;font-size:14px;font-weight:500;color:var(--gray);cursor:pointer;border-radius:9px;}
+    .ranking-tab.active{background:white;color:var(--teal);font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+    .rank-list{padding:0 16px;display:flex;flex-direction:column;gap:10px;}
+    .rank-item{background:white;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+    .rank-item.me{border:2px solid var(--teal);background:#f5fefe;}
+    .rank-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;background:#f0f0f0;color:var(--gray);}
+    .rank-num.gold{background:#ffd700;color:#a07000;}
+    .rank-num.silver{background:#c0c0c0;color:#606060;}
+    .rank-num.bronze{background:#cd7f32;color:#6b3800;}
+    .rank-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;flex-shrink:0;}
+    .rank-info{flex:1;}
+    .rank-name{font-size:15px;font-weight:600;color:var(--text);}
+    .rank-name span{font-size:12px;color:var(--teal);font-weight:500;margin-left:4px;}
+    .rank-sub{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:8px;align-items:center;}
+    .rank-score{font-size:18px;font-weight:800;color:var(--teal);}
+    .rank-bar{height:4px;background:#eee;border-radius:2px;margin-top:6px;}
+    .rank-bar-fill{height:4px;background:var(--teal);border-radius:2px;}
+    .hw-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;}
+    .hw-done{background:#e0f5f0;color:#2a9f9f;}
+    .hw-none{background:#f0f0f0;color:#aaa;}
+    .hw-order{font-size:11px;color:var(--teal);font-weight:600;}
+    .hw-order.late{color:#aaa;}
+    .section-head{font-size:13px;font-weight:600;color:var(--gray);padding:4px 16px 8px;}
+
+    /* NOTICE FULL */
+    .notice-full-item{background:white;border-radius:16px;padding:18px 20px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+    .notice-full-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+    .notice-full-meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--gray);}
+    .notice-content{font-size:14px;color:var(--gray);margin-top:10px;line-height:1.6;}
+
+    /* COMING SOON */
+    .coming-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
+    .coming-circle{font-size:64px;margin-bottom:24px;}
+    .coming-title{font-size:22px;font-weight:700;color:var(--text);margin-bottom:8px;}
+    .coming-sub{font-size:14px;color:var(--gray);line-height:1.6;}
+    .coming-badge{background:#f0f0f0;color:#aaa;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;display:inline-block;margin-top:16px;}
+
+    /* ADMIN */
+    .admin-section{padding:16px;}
+    .section-title{font-size:15px;font-weight:600;color:var(--gray);margin-bottom:12px;padding-left:4px;}
+    .admin-form{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05);margin-bottom:14px;}
+    .form-row{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+    .form-label{font-size:13px;color:var(--gray);font-weight:500;}
+    .form-input{border:1.5px solid #e0e0e0;border-radius:10px;padding:10px 14px;font-size:15px;outline:none;color:var(--text);width:100%;font-family:inherit;}
+    .form-input:focus{border-color:var(--teal);}
+    .add-btn{background:var(--teal);color:white;border:none;border-radius:10px;padding:12px 20px;font-size:15px;font-weight:600;cursor:pointer;width:100%;}
+    .add-btn.gray{background:#eee;color:#666;}
+    .word-table{width:100%;border-collapse:collapse;}
+    .word-table th{font-size:13px;color:var(--gray);padding:8px 12px;text-align:left;border-bottom:1px solid #eee;}
+    .word-table td{font-size:14px;padding:10px 12px;border-bottom:1px solid #f5f5f5;color:var(--text);}
+    .del-btn{background:none;border:none;color:#e05050;font-size:16px;cursor:pointer;}
+    .tab-bar{display:flex;background:#f0f0f0;border-radius:12px;margin:16px;padding:4px;flex-shrink:0;}
+    .tab{flex:1;padding:9px;text-align:center;font-size:13px;font-weight:500;color:var(--gray);cursor:pointer;border-radius:9px;}
+    .tab.active{background:white;color:var(--teal);font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+
+    /* MODAL */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px;}
+    .modal-overlay.hidden{display:none;}
+    .modal{background:white;border-radius:24px;padding:28px 24px 24px;width:100%;max-width:340px;}
+    .modal-title{text-align:center;font-size:18px;font-weight:700;color:var(--teal);margin-bottom:20px;}
+    .modal-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px;}
+    .stat-box{background:#f5fafa;border-radius:14px;padding:14px 8px;text-align:center;}
+    .stat-emoji{font-size:26px;margin-bottom:6px;}
+    .stat-label{font-size:11px;font-weight:700;color:var(--teal);margin-bottom:6px;}
+    .stat-label.red{color:#e06060;}
+    .stat-value{font-size:13px;font-weight:600;color:var(--text);}
+    .start-btn{width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:600;cursor:pointer;}
+    .confirm-modal{background:white;border-radius:20px;padding:28px 24px 20px;width:100%;max-width:300px;text-align:center;}
+    .confirm-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;}
+    .confirm-sub{font-size:14px;color:var(--gray);margin-bottom:24px;}
+    .confirm-btns{display:flex;gap:10px;}
+    .confirm-cancel{flex:1;background:#f0f0f0;color:var(--gray);border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;}
+    .confirm-ok{flex:1;background:var(--red);color:white;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;}
+
+    /* Toast */
+    #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:#333;color:white;padding:10px 20px;border-radius:20px;font-size:14px;opacity:0;transition:all .3s;z-index:500;pointer-events:none;white-space:nowrap;}
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOADING -->
+  <div id="loading" class="screen active">
+    <img class="loading-icon" src="/icons/icon-192.png" alt="큰소리 영어" onerror="this.style.display='none'">
+    <div class="loading-title">큰소리 영어</div>
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login" class="screen">
+    <div class="logo-area">
+      <img class="app-icon" src="/icons/icon-192.png" alt="큰소리 영어" onerror="this.style.fontSize='48px';this.outerHTML='<div style=\'font-size:56px;margin-bottom:10px\'>📢</div>'">
+      <div class="logo-title">큰소리 영어</div>
+      <div class="logo-sub">따라만 해도 기억되는 영단어 학습</div>
+    </div>
+    <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username">
+    <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password">
+    <div class="login-error" id="loginError"></div>
+    <button class="login-btn" onclick="doLogin()">로그인</button>
+    <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
+    <div class="version">version : 1.0.0</div>
+  </div>
+
+  <!-- STUDENT HOME -->
+  <div id="home" class="screen">
+    <div class="home-header">
+      <div class="home-logo">
+        <img class="header-icon" src="/icons/icon-192.png" alt="" onerror="this.style.display='none'">
+        <span class="home-logo-text">큰소리 영어</span>
+      </div>
+      <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
+      <div class="dropdown" id="dd1">
+        <div class="dropdown-item danger" onclick="confirmLogout()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          로그아웃
+        </div>
+      </div>
+    </div>
+    <div class="scroll-content">
+      <div class="home-greeting">
+        <div class="name" id="greetName">학생 님</div>
+        <div class="sub">오늘은 어떻게 공부해 볼까요?</div>
+      </div>
+      <div class="menu-grid">
+        <div class="menu-card c-teal" onclick="goUnits()">
+          <div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div>
+          <div class="card-icon-big">📝</div>
+        </div>
+        <div class="menu-card c-blue" onclick="goComingSoon('pronunciation')">
+          <div><div class="card-label">AI 발음 분석</div><div class="card-name">발음<br>평가</div><div class="coming-soon">Coming Soon</div></div>
+          <div class="card-icon-big">🎤</div>
+        </div>
+        <div class="menu-card c-purple" onclick="goComingSoon('recording')">
+          <div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div><div class="coming-soon">Coming Soon</div></div>
+          <div class="card-icon-big">🎙</div>
+        </div>
+        <div class="menu-card c-green" onclick="goRanking()">
+          <div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div>
+          <div class="card-icon-big">🏆</div>
+        </div>
+      </div>
+      <div class="notice-section">
+        <div class="notice-card">
+          <div class="notice-card-header">
+            <div class="notice-card-title"><div class="icon">📢</div>Notice</div>
+            <button class="notice-more" onclick="goNoticeList()">더보기 ›</button>
+          </div>
+          <div id="noticePreview"><div class="empty-msg">공지사항이 없습니다</div></div>
+        </div>
+        <div class="notice-card">
+          <div class="notice-card-header">
+            <div class="notice-card-title"><div class="icon">📁</div>숙제 파일</div>
+          </div>
+          <div id="hwFileList"><div class="empty-msg">등록된 파일이 없습니다</div></div>
+        </div>
+      </div>
+      <div style="height:20px;"></div>
+    </div>
+  </div>
+
+  <!-- UNIT LIST -->
+  <div id="units" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="goHome()">‹</button>
+      <span class="page-title">단어 테스트</span>
+      <span></span>
+    </div>
+    <div class="scroll-content">
+      <div class="unit-list" id="unitList"><div class="empty-msg" style="padding:40px;">단원이 없습니다.<br>관리자에게 문의하세요.</div></div>
+    </div>
+  </div>
+
+  <!-- MODE SELECT -->
+  <div id="modeSelect" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="show('units')">‹</button>
+      <span class="page-title" id="modeUnitName">단원 선택</span>
+      <span></span>
+    </div>
+    <div style="padding:16px 16px 8px;font-size:14px;color:var(--gray);">테스트 방식을 선택하세요</div>
+    <div class="mode-select">
+      <button class="mode-btn" onclick="startSession('spelling')">
+        <div class="mode-icon" style="background:#e0f5f5;">✏️</div>
+        <div><div class="mode-name">스펠링 테스트</div><div class="mode-desc">한글을 보고 영어 단어를 타이핑해요</div></div>
+      </button>
+      <button class="mode-btn" onclick="startSession('meaning')">
+        <div class="mode-icon" style="background:#e5eeff;">📖</div>
+        <div><div class="mode-name">뜻 맞추기</div><div class="mode-desc">영어를 보고 한글 뜻을 4지선다로 골라요</div></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- QUIZ (뜻맞추기) -->
+  <div id="quiz" class="screen">
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="goHome()">✕</button>
+      <div class="progress-pill">📖 <span id="quizProgress">1/10</span></div>
+    </div>
+    <div class="quiz-instruction">뜻과 일치하는 한글을 고르세요.</div>
+    <div class="word-card"><div class="word" id="quizWord"></div></div>
+    <div class="choices" id="choicesArea"></div>
+    <div class="quiz-footer">
+      <div class="timer-circle">
+        <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc" stroke-linecap="round"/></svg>
+        <div class="timer-text" id="timerText">10</div>
+      </div>
+      <button class="footer-btn">🎧</button>
+      <button class="footer-btn">⏭</button>
+      <button class="skip-btn" onclick="nextQuestion()">SKIP</button>
+    </div>
+  </div>
+
+  <!-- SPELLING -->
+  <div id="spelling" class="screen">
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="goHome()">✕</button>
+      <div class="progress-pill">✏️ <span id="spellProgress">1/10</span></div>
+    </div>
+    <div class="quiz-instruction">뜻에 알맞는 영어 단어를 입력하세요.</div>
+    <div class="word-card"><div class="word" id="spellWord"></div></div>
+    <div class="spell-input-wrap">
+      <input class="spell-real-input" type="text" id="spellInput" placeholder="영어로 입력 후 Enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="spell-hint" id="spellHint"></div>
+    </div>
+    <div class="spell-boxes" id="spellBoxes"></div>
+    <div class="quiz-footer">
+      <div class="timer-circle">
+        <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg>
+        <div class="timer-text" id="timerText2">30</div>
+      </div>
+      <button class="footer-btn">⏭</button>
+      <button class="skip-btn" onclick="nextSpell()">SKIP</button>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result" class="screen">
+    <div style="font-size:56px;margin-bottom:8px;">🎉</div>
+    <div class="result-score" id="resultScore">85점</div>
+    <div class="result-label" id="resultLabel">학습 완료!</div>
+    <div class="result-stats">
+      <div class="result-stat"><div class="result-stat-num" id="resultCorrect">8</div><div class="result-stat-label">정답</div></div>
+      <div class="result-stat"><div class="result-stat-num" id="resultWrong">2</div><div class="result-stat-label">오답</div></div>
+      <div class="result-stat"><div class="result-stat-num" id="resultTotal">10</div><div class="result-stat-label">총 문제</div></div>
+    </div>
+    <button class="result-btn" onclick="goHome()">홈으로</button>
+    <button class="result-btn outline" onclick="retrySession()" style="margin-top:10px;">다시 풀기</button>
+  </div>
+
+  <!-- RANKING -->
+  <div id="ranking" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="goHome()">‹</button>
+      <span class="page-title">랭킹</span>
+      <span></span>
+    </div>
+    <div class="ranking-header-info">
+      <div class="ranking-group-name">소속 그룹</div>
+      <div class="ranking-group-title" id="rankingGroupTitle">🏫 그룹</div>
+    </div>
+    <div class="ranking-tabs">
+      <div class="ranking-tab active" onclick="switchRankTab('score')">점수 순위</div>
+      <div class="ranking-tab" onclick="switchRankTab('hw')">숙제 제출</div>
+    </div>
+    <div class="scroll-content">
+      <div id="rankScoreList" class="rank-list" style="padding-bottom:16px;"></div>
+      <div id="rankHwList" class="rank-list" style="display:none;padding-bottom:16px;"></div>
+    </div>
+  </div>
+
+  <!-- NOTICE LIST -->
+  <div id="noticeScreen" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="goHome()">‹</button>
+      <span class="page-title">공지사항</span>
+      <span></span>
+    </div>
+    <div class="scroll-content">
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;" id="noticeFullList"></div>
+    </div>
+  </div>
+
+  <!-- COMING SOON -->
+  <div id="comingSoon" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="goHome()">‹</button>
+      <span class="page-title" id="comingTitle">준비 중</span>
+      <span></span>
+    </div>
+    <div class="coming-screen">
+      <div class="coming-circle" id="comingEmoji">🎤</div>
+      <div class="coming-title" id="comingName">발음 평가</div>
+      <div class="coming-sub" id="comingDesc">준비 중입니다.</div>
+      <div class="coming-badge">🔧 준비 중이에요</div>
+    </div>
+  </div>
+
+  <!-- ADMIN -->
+  <div id="admin" class="screen">
+    <div class="home-header">
+      <div class="home-logo">
+        <img class="header-icon" src="/icons/icon-192.png" alt="" onerror="this.style.display='none'">
+        <span class="home-logo-text">관리자</span>
+      </div>
+      <button class="menu-btn" onclick="toggleDropdown('dd2')">⋮</button>
+      <div class="dropdown" id="dd2">
+        <div class="dropdown-item danger" onclick="confirmLogout()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          로그아웃
+        </div>
+      </div>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAdminTab('words')">단어</div>
+      <div class="tab" onclick="switchAdminTab('users')">학생</div>
+      <div class="tab" onclick="switchAdminTab('notice')">공지</div>
+      <div class="tab" onclick="switchAdminTab('files')">숙제파일</div>
+    </div>
+    <div class="scroll-content">
+      <!-- 단어 관리 -->
+      <div id="adminWords" class="admin-section">
+        <div class="section-title">단원 추가</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">단원명</label><input class="form-input" id="newUnit" placeholder="예: 1단원, Chapter 1"></div>
+          <button class="add-btn gray" style="margin-bottom:10px;" onclick="addUnit()">+ 단원 추가</button>
+          <select class="form-input" id="selectUnit"><option value="">단원을 선택하세요</option></select>
+        </div>
+        <div class="section-title">단어 추가</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">영어</label><input class="form-input" id="newEng" placeholder="예: apple"></div>
+          <div class="form-row"><label class="form-label">한글 뜻</label><input class="form-input" id="newKor" placeholder="예: 사과"></div>
+          <button class="add-btn" onclick="addWord()">+ 단어 추가</button>
+        </div>
+        <div class="section-title">단어 목록</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>영어</th><th>한글</th><th></th></tr></thead><tbody id="wordTableBody"></tbody></table></div>
+      </div>
+      <!-- 학생 관리 -->
+      <div id="adminUsers" class="admin-section" style="display:none;">
+        <div class="section-title">학생 계정 추가</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">아이디</label><input class="form-input" id="newUserId" placeholder="아이디 (영문/숫자)"></div>
+          <div class="form-row"><label class="form-label">이름</label><input class="form-input" id="newUserName" placeholder="학생 이름"></div>
+          <div class="form-row"><label class="form-label">그룹</label>
+            <select class="form-input" id="newUserGroup"><option value="1반">1반</option><option value="2반">2반</option><option value="3반">3반</option></select>
+          </div>
+          <div class="form-row"><label class="form-label">비밀번호</label><input class="form-input" id="newUserPw" placeholder="비밀번호 (6자 이상)" type="password"></div>
+          <button class="add-btn" onclick="addUser()">+ 학생 추가</button>
+        </div>
+        <div class="section-title">학생 목록</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>아이디</th><th>이름</th><th>그룹</th><th></th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+      </div>
+      <!-- 공지 관리 -->
+      <div id="adminNotice" class="admin-section" style="display:none;">
+        <div class="section-title">공지 작성</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">제목</label><input class="form-input" id="noticeTitle" placeholder="공지 제목"></div>
+          <div class="form-row"><label class="form-label">내용</label><textarea class="form-input" id="noticeContent" placeholder="공지 내용" rows="3" style="resize:none;"></textarea></div>
+          <div class="form-row"><label class="form-label">대상</label>
+            <select class="form-input" id="noticeTarget"><option value="all">전체</option><option value="1반">1반</option><option value="2반">2반</option><option value="3반">3반</option></select>
+          </div>
+          <button class="add-btn" onclick="addNotice()">+ 공지 등록</button>
+        </div>
+        <div class="section-title">공지 목록</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>제목</th><th>대상</th><th></th></tr></thead><tbody id="noticeTableBody"></tbody></table></div>
+      </div>
+      <!-- 숙제 파일 관리 -->
+      <div id="adminFiles" class="admin-section" style="display:none;">
+        <div class="section-title">숙제 파일 등록</div>
+        <div class="admin-form">
+          <div class="form-row"><label class="form-label">파일명</label><input class="form-input" id="newFileName" placeholder="예: 1단원 받아쓰기.pdf"></div>
+          <div class="form-row"><label class="form-label">파일 URL (Storage 링크)</label><input class="form-input" id="newFileUrl" placeholder="https://..."></div>
+          <div class="form-row"><label class="form-label">대상 그룹</label>
+            <select class="form-input" id="newFileGroup"><option value="전체">전체</option><option value="1반">1반</option><option value="2반">2반</option><option value="3반">3반</option></select>
+          </div>
+          <div class="form-row"><label class="form-label">파일 종류</label>
+            <select class="form-input" id="newFileType"><option value="pdf">PDF</option><option value="docx">Word</option><option value="img">이미지</option></select>
+          </div>
+          <button class="add-btn" onclick="addHwFile()">+ 파일 등록</button>
+        </div>
+        <div class="section-title">등록된 파일</div>
+        <div class="admin-form"><table class="word-table"><thead><tr><th>파일명</th><th>그룹</th><th></th></tr></thead><tbody id="fileTableBody"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <div class="modal-overlay hidden" id="infoModal">
+    <div class="modal">
+      <div class="modal-title" id="infoModalTitle">Information</div>
+      <div class="modal-stats">
+        <div class="stat-box"><div class="stat-emoji">🅰️</div><div class="stat-label">WORD</div><div class="stat-value" id="modalWordCount">10개</div></div>
+        <div class="stat-box"><div class="stat-emoji">🕐</div><div class="stat-label">TIME</div><div class="stat-value" id="modalTime">30초</div></div>
+        <div class="stat-box"><div class="stat-emoji">⭐</div><div class="stat-label red">POINT</div><div class="stat-value" id="modalPoint">100점</div></div>
+      </div>
+      <button class="start-btn" onclick="doStart()">시작</button>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="logoutModal">
+    <div class="confirm-modal">
+      <div class="confirm-title">로그아웃</div>
+      <div class="confirm-sub">정말 로그아웃 하시겠어요?</div>
+      <div class="confirm-btns">
+        <button class="confirm-cancel" onclick="closeLogoutModal()">취소</button>
+        <button class="confirm-ok" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
+  authDomain: "readaloud-51113.firebaseapp.com",
+  projectId: "readaloud-51113",
+  storageBucket: "readaloud-51113.firebasestorage.app",
+  messagingSenderId: "944153888350",
+  appId: "1:944153888350:web:47091c0771d20be8ea56cf",
+  measurementId: "G-4S23WNCJNJ"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ── 전역 상태 ──────────────────────────────────────────────
+let currentUser = null;    // Firebase Auth user
+let userProfile = null;    // Firestore users/{uid}
+let currentUnitId = null;
+let currentUnitWords = [];
+let lastMode = 'meaning';
+let currentQ = 0, questions = [], timerInterval = null, timeLeft = 10;
+let spellQ = 0, spellQuestions = [], spellTimer = null, spellTimeLeft = 30;
+let correct = 0, wrong = 0;
+
+// ── 화면 전환 ──────────────────────────────────────────────
+window.show = function(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+};
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── 드롭다운 ──────────────────────────────────────────────
+window.toggleDropdown = function(id) {
+  ['dd1','dd2'].forEach(d => { if(d!==id) document.getElementById(d)?.classList.remove('open'); });
+  document.getElementById(id).classList.toggle('open');
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('.home-header')) {
+    document.getElementById('dd1')?.classList.remove('open');
+    document.getElementById('dd2')?.classList.remove('open');
+  }
+});
+
+// ── 로그인 ─────────────────────────────────────────────────
+window.doLogin = async function() {
+  const uid = document.getElementById('usernameInput').value.trim();
+  const pw = document.getElementById('passwordInput').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!uid || !pw) { errEl.textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+
+  // 아이디 저장
+  if (document.getElementById('saveIdCheck').checked) localStorage.setItem('savedId', uid);
+  else localStorage.removeItem('savedId');
+
+  try {
+    // Firestore에서 uid → email 매핑 조회
+    const snap = await getDocs(query(collection(db, 'users'), where('username', '==', uid)));
+    if (snap.empty) { errEl.textContent = '존재하지 않는 아이디입니다.'; return; }
+    const profile = snap.docs[0].data();
+    const email = profile.email;
+
+    // Firebase Auth 로그인
+    await signInWithEmailAndPassword(auth, email, pw);
+    userProfile = { ...profile, uid: snap.docs[0].id };
+    currentUser = auth.currentUser;
+
+    if (profile.role === 'admin') {
+      loadAdminData();
+      show('admin');
+    } else {
+      document.getElementById('greetName').textContent = profile.name + ' 님';
+      loadHomeData();
+      show('home');
+    }
+  } catch(e) {
+    errEl.textContent = '아이디 또는 비밀번호가 틀렸습니다.';
+  }
+};
+
+// ── 로그아웃 ───────────────────────────────────────────────
+window.confirmLogout = function() {
+  document.getElementById('dd1')?.classList.remove('open');
+  document.getElementById('dd2')?.classList.remove('open');
+  document.getElementById('logoutModal').classList.remove('hidden');
+};
+window.closeLogoutModal = function() { document.getElementById('logoutModal').classList.add('hidden'); };
+window.doLogout = async function() {
+  closeLogoutModal();
+  await signOut(auth);
+  currentUser = null; userProfile = null;
+  clearTimers();
+  show('login');
+};
+window.goHome = function() { show('home'); clearTimers(); };
+
+// ── 홈 데이터 로드 ─────────────────────────────────────────
+async function loadHomeData() {
+  await Promise.all([loadNoticePreview(), loadHwFiles()]);
+}
+
+async function loadNoticePreview() {
+  const group = userProfile?.group || '';
+  const snap = await getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc')));
+  const notices = snap.docs.map(d => ({id: d.id, ...d.data()}))
+    .filter(n => n.target === 'all' || n.target === group)
+    .slice(0, 3);
+  const el = document.getElementById('noticePreview');
+  if (!notices.length) { el.innerHTML = '<div class="empty-msg">공지사항이 없습니다</div>'; return; }
+  el.innerHTML = notices.map(n => `
+    <div class="notice-item">
+      <div class="notice-dot"></div>
+      <div class="notice-item-text">
+        <div class="notice-item-title">${n.title}</div>
+        <div class="notice-item-meta">
+          <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
+          <span>${n.date||''}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function loadHwFiles() {
+  const group = userProfile?.group || '';
+  const snap = await getDocs(query(collection(db, 'hwFiles'), orderBy('createdAt', 'desc')));
+  const files = snap.docs.map(d => ({id: d.id, ...d.data()}))
+    .filter(f => f.group === '전체' || f.group === group);
+  const icons = {pdf:'📄', docx:'📝', img:'🖼'};
+  const iconCls = {pdf:'pdf', docx:'docx', img:'img'};
+  const el = document.getElementById('hwFileList');
+  if (!files.length) { el.innerHTML = '<div class="empty-msg">등록된 파일이 없습니다</div>'; return; }
+  el.innerHTML = files.map(f => `
+    <div class="hw-file-item">
+      <div class="file-icon ${iconCls[f.type]||'pdf'}">${icons[f.type]||'📄'}</div>
+      <div class="file-info">
+        <div class="file-name">${f.name}</div>
+        <div class="file-meta">
+          <span class="notice-tag${f.group==='전체'?' all':''}">${f.group}</span>
+          <span>${f.date||''}</span>
+        </div>
+      </div>
+      <button class="download-btn" onclick="window.open('${f.url||'#'}','_blank')">다운로드</button>
+    </div>`).join('');
+}
+
+// ── 공지 전체 목록 ─────────────────────────────────────────
+window.goNoticeList = async function() {
+  const group = userProfile?.group || '';
+  const snap = await getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc')));
+  const notices = snap.docs.map(d => ({id: d.id, ...d.data()}))
+    .filter(n => n.target === 'all' || n.target === group);
+  const el = document.getElementById('noticeFullList');
+  el.innerHTML = notices.map(n => `
+    <div class="notice-full-item">
+      <div class="notice-full-title">${n.title}</div>
+      <div class="notice-full-meta">
+        <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
+        <span>${n.date||''}</span>
+      </div>
+      <div class="notice-content">${n.content}</div>
+    </div>`).join('') || '<div class="empty-msg">공지사항이 없습니다</div>';
+  show('noticeScreen');
+};
+
+// ── 단원 목록 ─────────────────────────────────────────────
+window.goUnits = async function() {
+  const snap = await getDocs(collection(db, 'units'));
+  const units = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  const el = document.getElementById('unitList');
+  if (!units.length) { el.innerHTML = '<div class="empty-msg" style="padding:40px;">단원이 없습니다.<br>관리자에게 문의하세요.</div>'; show('units'); return; }
+  el.innerHTML = units.map(u => `
+    <div class="unit-card" onclick="selectUnit('${u.id}','${u.name}',${u.words?.length||0})">
+      <div style="flex:1">
+        <div class="unit-name">${u.name}</div>
+        <div class="unit-count">단어 ${u.words?.length||0}개</div>
+        <div class="unit-progress"><div class="unit-progress-bar" style="width:${Math.round(Math.random()*60+20)}%"></div></div>
+      </div>
+      <span class="unit-arrow">›</span>
+    </div>`).join('');
+  show('units');
+};
+
+window.selectUnit = async function(unitId, unitName, wordCount) {
+  currentUnitId = unitId;
+  document.getElementById('modeUnitName').textContent = unitName;
+  // 단어 로드
+  const snap = await getDoc(doc(db, 'units', unitId));
+  currentUnitWords = snap.data()?.words || [];
+  show('modeSelect');
+};
+
+// ── 테스트 시작 ───────────────────────────────────────────
+window.startSession = function(mode) {
+  lastMode = mode;
+  document.getElementById('infoModalTitle').textContent = mode==='spelling' ? '스펠링 테스트' : '뜻 맞추기';
+  document.getElementById('modalWordCount').textContent = currentUnitWords.length + '개';
+  document.getElementById('modalTime').textContent = mode==='spelling' ? '각 30초' : '각 10초';
+  document.getElementById('modalPoint').textContent = currentUnitWords.length * 10 + '점';
+  document.getElementById('infoModal').classList.remove('hidden');
+};
+
+window.doStart = function() {
+  document.getElementById('infoModal').classList.add('hidden');
+  correct = 0; wrong = 0;
+  if (lastMode === 'meaning') {
+    questions = shuffle([...currentUnitWords]); currentQ = 0;
+    showQuizQuestion(); show('quiz');
+  } else {
+    spellQuestions = shuffle([...currentUnitWords]); spellQ = 0;
+    showSpellQuestion(); show('spelling');
+  }
+};
+
+// ── 뜻 맞추기 ─────────────────────────────────────────────
+function showQuizQuestion() {
+  clearTimers();
+  if (currentQ >= questions.length) { showResult(); return; }
+  const q = questions[currentQ];
+  document.getElementById('quizProgress').textContent = (currentQ+1)+'/'+questions.length;
+  document.getElementById('quizWord').textContent = q.en;
+  const choices = shuffle([q, ...shuffle(currentUnitWords.filter(w=>w.en!==q.en)).slice(0,3)]);
+  document.getElementById('choicesArea').innerHTML = choices.map((c,i) => `
+    <button class="choice-btn" id="choice${i}" onclick="answerQuiz(${i},${choices[i].en===q.en})">
+      <span class="choice-num" id="cn${i}">${i+1}</span><span>${c.ko}</span>
+    </button>`).join('');
+  startTimer();
+}
+window.answerQuiz = function(idx, ok) {
+  clearTimers();
+  if (ok) { document.getElementById('choice'+idx).classList.add('correct'); document.getElementById('cn'+idx).classList.add('correct'); correct++; }
+  else {
+    document.getElementById('choice'+idx).classList.add('wrong'); document.getElementById('cn'+idx).classList.add('wrong'); wrong++;
+    document.querySelectorAll('.choice-btn').forEach((b,i) => {
+      if (b.onclick?.toString().includes(',true)')) { b.classList.add('correct'); document.getElementById('cn'+i)?.classList.add('correct'); }
+    });
+  }
+  setTimeout(nextQuestion, 900);
+};
+window.nextQuestion = function() { currentQ++; showQuizQuestion(); };
+function startTimer() {
+  timeLeft = 10; updateTimerUI();
+  timerInterval = setInterval(() => { timeLeft--; updateTimerUI(); if(timeLeft<=0){clearTimers();wrong++;nextQuestion();} }, 1000);
+}
+function updateTimerUI() {
+  document.getElementById('timerText').textContent = timeLeft;
+  document.getElementById('timerArc').style.strokeDashoffset = 113*(1-timeLeft/10);
+}
+
+// ── 스펠링 테스트 ─────────────────────────────────────────
+function showSpellQuestion() {
+  clearTimers();
+  if (spellQ >= spellQuestions.length) { showResult(); return; }
+  const q = spellQuestions[spellQ];
+  document.getElementById('spellProgress').textContent = (spellQ+1)+'/'+spellQuestions.length;
+  document.getElementById('spellWord').textContent = q.ko;
+  document.getElementById('spellInput').value = '';
+  document.getElementById('spellHint').textContent = '총 ' + q.en.length + '글자';
+  renderSpellBoxes('', q.en.length);
+  setTimeout(() => document.getElementById('spellInput').focus(), 100);
+  startSpellTimer();
+}
+function renderSpellBoxes(val, len) {
+  document.getElementById('spellBoxes').innerHTML = Array.from({length:len}, (_,i) => {
+    const ch = val[i]||'';
+    const cls = ch ? 'spell-box filled' : (i===val.length ? 'spell-box active' : 'spell-box');
+    return `<div class="${cls}">${ch}</div>`;
+  }).join('');
+}
+document.getElementById('spellInput').addEventListener('input', function() {
+  const q = spellQuestions[spellQ]; if(!q) return;
+  const val = this.value.toLowerCase().replace(/[^a-z ]/g,'');
+  this.value = val;
+  renderSpellBoxes(val, Math.max(q.en.length, val.length));
+});
+document.getElementById('spellInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const q = spellQuestions[spellQ]; if(!q) return;
+    if (this.value.trim().toLowerCase() === q.en.toLowerCase()) correct++; else wrong++;
+    spellQ++; showSpellQuestion();
+  }
+});
+function startSpellTimer() {
+  spellTimeLeft = 30; updateSpellTimerUI();
+  spellTimer = setInterval(() => { spellTimeLeft--; updateSpellTimerUI(); if(spellTimeLeft<=0){clearTimers();wrong++;nextSpell();} }, 1000);
+}
+function updateSpellTimerUI() {
+  document.getElementById('timerText2').textContent = spellTimeLeft;
+  document.getElementById('timerArc2').style.strokeDashoffset = 113*(1-spellTimeLeft/30);
+}
+window.nextSpell = function() { spellQ++; showSpellQuestion(); };
+function clearTimers() { if(timerInterval)clearInterval(timerInterval); if(spellTimer)clearInterval(spellTimer); }
+
+// ── 결과 저장 ─────────────────────────────────────────────
+async function showResult() {
+  clearTimers();
+  const total = correct + wrong;
+  const score = Math.round((correct / Math.max(total,1)) * 100);
+  document.getElementById('resultScore').textContent = score + '점';
+  document.getElementById('resultLabel').textContent = score >= 80 ? '훌륭해요! 🎊' : score >= 60 ? '잘 했어요!' : '조금 더 연습해요 💪';
+  document.getElementById('resultCorrect').textContent = correct;
+  document.getElementById('resultWrong').textContent = wrong;
+  document.getElementById('resultTotal').textContent = total;
+  show('result');
+
+  // Firestore에 점수 저장
+  if (currentUser && userProfile) {
+    try {
+      const scoreRef = doc(db, 'scores', currentUser.uid + '_' + currentUnitId + '_' + lastMode);
+      await setDoc(scoreRef, {
+        uid: currentUser.uid,
+        name: userProfile.name,
+        group: userProfile.group,
+        unitId: currentUnitId,
+        mode: lastMode,
+        score,
+        correct,
+        wrong,
+        total,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch(e) { console.log('점수 저장 실패', e); }
+  }
+}
+window.retrySession = function() { correct=0; wrong=0; currentQ=0; spellQ=0; doStart(); };
+
+// ── 랭킹 ─────────────────────────────────────────────────
+window.goRanking = async function() {
+  document.getElementById('rankingGroupTitle').textContent = '🏫 ' + (userProfile?.group || '그룹');
+  await renderRanking('score');
+  show('ranking');
+};
+window.switchRankTab = async function(tab) {
+  document.querySelectorAll('.ranking-tab').forEach((t,i) => t.classList.toggle('active',(tab==='score'&&i===0)||(tab==='hw'&&i===1)));
+  document.getElementById('rankScoreList').style.display = tab==='score' ? '' : 'none';
+  document.getElementById('rankHwList').style.display = tab==='hw' ? '' : 'none';
+  await renderRanking(tab);
+};
+
+async function renderRanking(tab) {
+  const group = userProfile?.group;
+  const meUid = currentUser?.uid;
+  const colors = ['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
+
+  // 같은 그룹 학생
+  const usersSnap = await getDocs(query(collection(db, 'users'), where('group','==',group), where('role','==','student')));
+  const students = usersSnap.docs.map(d => ({uid: d.id, ...d.data()}));
+
+  if (tab === 'score') {
+    // 점수 조회
+    const scoresSnap = await getDocs(query(collection(db, 'scores'), where('group','==',group)));
+    const scoresMap = {};
+    scoresSnap.docs.forEach(d => {
+      const s = d.data();
+      if (!scoresMap[s.uid]) scoresMap[s.uid] = {spell:0, meaning:0};
+      if (s.mode === 'spelling') scoresMap[s.uid].spell = Math.max(scoresMap[s.uid].spell, s.score);
+      if (s.mode === 'meaning') scoresMap[s.uid].meaning = Math.max(scoresMap[s.uid].meaning, s.score);
+    });
+    const sorted = [...students].sort((a,b) => {
+      const sa = (scoresMap[a.uid]?.spell||0)+(scoresMap[a.uid]?.meaning||0);
+      const sb = (scoresMap[b.uid]?.spell||0)+(scoresMap[b.uid]?.meaning||0);
+      return sb-sa;
+    });
+    const maxT = Math.max(...sorted.map(u=>(scoresMap[u.uid]?.spell||0)+(scoresMap[u.uid]?.meaning||0)),1);
+    const nc = ['gold','silver','bronze'];
+    document.getElementById('rankScoreList').innerHTML = sorted.map((u,i) => {
+      const s = scoresMap[u.uid]||{spell:0,meaning:0};
+      const total = s.spell+s.meaning, avg = Math.round(total/2), isMe = u.uid===meUid;
+      return `<div class="rank-item${isMe?' me':''}">
+        <div class="rank-num ${nc[i]||''}">${i+1}</div>
+        <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
+        <div class="rank-info">
+          <div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
+          <div class="rank-sub"><span>스펠링 ${s.spell}</span><span style="color:#ddd">|</span><span>뜻맞추기 ${s.meaning}</span></div>
+          <div class="rank-bar"><div class="rank-bar-fill" style="width:${Math.round((total/(maxT*1.05))*100)}%"></div></div>
+        </div>
+        <div class="rank-score">${avg}<span style="font-size:12px;color:#aaa;font-weight:500;">점</span></div>
+      </div>`;
+    }).join('') || '<div class="empty-msg">아직 점수가 없습니다</div>';
+
+  } else {
+    // 숙제 제출 현황 (hwSubmissions 컬렉션)
+    const hwSnap = await getDocs(query(collection(db, 'hwSubmissions'), where('group','==',group)));
+    const hwMap = {};
+    hwSnap.docs.forEach(d => { const s=d.data(); hwMap[s.uid]={done:true, order:s.order, submittedAt:s.submittedAt}; });
+    const submitted = students.filter(u=>hwMap[u.uid]?.done).sort((a,b)=>(hwMap[a.uid]?.order||99)-(hwMap[b.uid]?.order||99));
+    const notSub = students.filter(u=>!hwMap[u.uid]?.done);
+    let h = '<div class="section-head">✅ 제출 완료 ('+submitted.length+'명)</div>';
+    h += submitted.map((u,i)=>{
+      const isMe=u.uid===meUid, o=hwMap[u.uid]?.order||'-';
+      return `<div class="rank-item${isMe?' me':''}">
+        <div class="rank-num gold">${o}</div>
+        <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
+        <div class="rank-info"><div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div><div class="rank-sub"><span class="hw-badge hw-done">제출완료</span></div></div>
+        <div class="hw-order">${o}번째</div>
+      </div>`;
+    }).join('');
+    h += '<div class="section-head" style="margin-top:16px;">⏳ 미제출 ('+notSub.length+'명)</div>';
+    h += notSub.map(u=>{
+      const isMe=u.uid===meUid;
+      return `<div class="rank-item${isMe?' me':''}">
+        <div class="rank-num" style="color:#ccc">-</div>
+        <div class="rank-avatar" style="background:#ccc">${u.name[0]}</div>
+        <div class="rank-info"><div class="rank-name" style="color:#aaa">${u.name}${isMe?'<span>(나)</span>':''}</div><div class="rank-sub"><span class="hw-badge hw-none">미제출</span></div></div>
+        <div class="hw-order late">-</div>
+      </div>`;
+    }).join('');
+    document.getElementById('rankHwList').innerHTML = h;
+  }
+}
+
+// ── Coming Soon ───────────────────────────────────────────
+window.goComingSoon = function(type) {
+  const info = {
+    pronunciation: {title:'발음 평가', emoji:'🎤', name:'발음 평가', desc:'AI가 발음을 분석해 점수를 알려주는\n기능을 준비하고 있어요.'},
+    recording:     {title:'녹음 숙제', emoji:'🎙', name:'녹음 숙제', desc:'선생님이 내주신 단어를 직접 읽고\n녹음해서 제출하는 기능이에요.'},
+  };
+  const i = info[type];
+  document.getElementById('comingTitle').textContent = i.title;
+  document.getElementById('comingEmoji').textContent = i.emoji;
+  document.getElementById('comingName').textContent = i.name;
+  document.getElementById('comingDesc').textContent = i.desc;
+  show('comingSoon');
+};
+
+// ── 관리자: 데이터 로드 ───────────────────────────────────
+async function loadAdminData() {
+  await Promise.all([loadAdminUnits(), loadAdminUsers(), loadAdminNotices(), loadAdminFiles()]);
+}
+
+// 단원/단어
+let adminUnits = [];
+async function loadAdminUnits() {
+  const snap = await getDocs(collection(db, 'units'));
+  adminUnits = snap.docs.map(d => ({id:d.id,...d.data()}));
+  renderUnitSelect(); renderWordTable();
+}
+function renderUnitSelect() {
+  document.getElementById('selectUnit').innerHTML = '<option value="">단원을 선택하세요</option>' +
+    adminUnits.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+}
+function renderWordTable() {
+  document.getElementById('wordTableBody').innerHTML = adminUnits.flatMap(u =>
+    (u.words||[]).map((w,wi)=>`<tr>
+      <td><small style="color:#aaa;font-size:11px">${u.name}</small><br><b>${w.en}</b></td>
+      <td>${w.ko}</td>
+      <td><button class="del-btn" onclick="delWord('${u.id}',${wi})">✕</button></td>
+    </tr>`)
+  ).join('');
+}
+window.addUnit = async function() {
+  const name = document.getElementById('newUnit').value.trim(); if(!name) return;
+  await addDoc(collection(db,'units'), {name, words:[], createdAt:serverTimestamp()});
+  document.getElementById('newUnit').value='';
+  showToast('단원이 추가됐어요!');
+  await loadAdminUnits();
+};
+window.addWord = async function() {
+  const unitId = document.getElementById('selectUnit').value;
+  const en = document.getElementById('newEng').value.trim();
+  const ko = document.getElementById('newKor').value.trim();
+  if(!unitId||!en||!ko){alert('단원과 단어를 모두 입력하세요.');return;}
+  const unit = adminUnits.find(u=>u.id===unitId);
+  const words = [...(unit.words||[]), {en,ko}];
+  await setDoc(doc(db,'units',unitId), {words}, {merge:true});
+  document.getElementById('newEng').value=''; document.getElementById('newKor').value='';
+  showToast('단어가 추가됐어요!');
+  await loadAdminUnits();
+};
+window.delWord = async function(unitId, wi) {
+  const unit = adminUnits.find(u=>u.id===unitId);
+  const words = [...(unit.words||[])]; words.splice(wi,1);
+  await setDoc(doc(db,'units',unitId),{words},{merge:true});
+  await loadAdminUnits();
+};
+
+// 학생 관리
+let adminUsers = [];
+async function loadAdminUsers() {
+  const snap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+  adminUsers = snap.docs.map(d=>({uid:d.id,...d.data()}));
+  renderUserTable();
+}
+function renderUserTable() {
+  document.getElementById('userTableBody').innerHTML = adminUsers.map(u=>`<tr>
+    <td>${u.username}</td><td>${u.name}</td><td>${u.group}</td>
+    <td><button class="del-btn" onclick="delUser('${u.uid}','${u.email}')">✕</button></td>
+  </tr>`).join('');
+}
+window.addUser = async function() {
+  const username = document.getElementById('newUserId').value.trim();
+  const name = document.getElementById('newUserName').value.trim();
+  const pw = document.getElementById('newUserPw').value.trim();
+  const group = document.getElementById('newUserGroup').value;
+  if(!username||!name||!pw){alert('모두 입력하세요.');return;}
+  if(pw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
+  const email = username+'@kunsori.app';
+  try {
+    // 관리자 세션은 유지하면서 별도 계정 생성 (Admin SDK 없이는 한계 있음)
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    await setDoc(doc(db,'users',cred.user.uid), {username, name, email, group, role:'student', createdAt:serverTimestamp()});
+    // 다시 관리자로 로그인
+    await signInWithEmailAndPassword(auth, userProfile.email, ''); // 실제론 admin pw 필요
+    document.getElementById('newUserId').value=''; document.getElementById('newUserName').value=''; document.getElementById('newUserPw').value='';
+    showToast('학생 계정이 추가됐어요! 다시 로그인하세요.');
+    await loadAdminUsers();
+  } catch(e) {
+    alert('계정 생성 실패: ' + e.message);
+  }
+};
+window.delUser = async function(uid) {
+  if(!confirm('정말 삭제하시겠어요?')) return;
+  await deleteDoc(doc(db,'users',uid));
+  showToast('삭제됐어요.');
+  await loadAdminUsers();
+};
+
+// 공지
+async function loadAdminNotices() {
+  const snap = await getDocs(query(collection(db,'notices'), orderBy('createdAt','desc')));
+  const notices = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('noticeTableBody').innerHTML = notices.map((n,i)=>`<tr>
+    <td>${n.title}</td>
+    <td><span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span></td>
+    <td><button class="del-btn" onclick="delNotice('${n.id}')">✕</button></td>
+  </tr>`).join('');
+}
+window.addNotice = async function() {
+  const title=document.getElementById('noticeTitle').value.trim();
+  const content=document.getElementById('noticeContent').value.trim();
+  const target=document.getElementById('noticeTarget').value;
+  if(!title||!content){alert('제목과 내용을 입력하세요.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  await addDoc(collection(db,'notices'),{title,content,target,date:today,createdAt:serverTimestamp()});
+  document.getElementById('noticeTitle').value=''; document.getElementById('noticeContent').value='';
+  showToast('공지가 등록됐어요!');
+  await loadAdminNotices();
+};
+window.delNotice = async function(id) {
+  await deleteDoc(doc(db,'notices',id));
+  showToast('삭제됐어요.');
+  await loadAdminNotices();
+};
+
+// 숙제 파일
+async function loadAdminFiles() {
+  const snap = await getDocs(query(collection(db,'hwFiles'), orderBy('createdAt','desc')));
+  const files = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('fileTableBody').innerHTML = files.map(f=>`<tr>
+    <td style="font-size:13px">${f.name}</td>
+    <td><span class="notice-tag${f.group==='전체'?' all':''}">${f.group}</span></td>
+    <td><button class="del-btn" onclick="delFile('${f.id}')">✕</button></td>
+  </tr>`).join('');
+}
+window.addHwFile = async function() {
+  const name=document.getElementById('newFileName').value.trim();
+  const url=document.getElementById('newFileUrl').value.trim();
+  const group=document.getElementById('newFileGroup').value;
+  const type=document.getElementById('newFileType').value;
+  if(!name){alert('파일명을 입력하세요.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  await addDoc(collection(db,'hwFiles'),{name,url,group,type,date:today,createdAt:serverTimestamp()});
+  document.getElementById('newFileName').value=''; document.getElementById('newFileUrl').value='';
+  showToast('파일이 등록됐어요!');
+  await loadAdminFiles();
+};
+window.delFile = async function(id) {
+  await deleteDoc(doc(db,'hwFiles',id));
+  showToast('삭제됐어요.');
+  await loadAdminFiles();
+};
+
+// 탭 전환
+window.switchAdminTab = function(tab) {
+  const tabs=['words','users','notice','files'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
+  tabs.forEach(t=>document.getElementById('admin'+t.charAt(0).toUpperCase()+t.slice(1)).style.display=t===tab?'':'none');
+  if(tab==='users') loadAdminUsers();
+  if(tab==='notice') loadAdminNotices();
+  if(tab==='files') loadAdminFiles();
+};
+
+// 관리자 초기 로드
+async function loadAdminData() {
+  await loadAdminUnits();
+  renderUserTable();
+  document.getElementById('noticeTableBody').innerHTML='';
+  document.getElementById('fileTableBody').innerHTML='';
+}
+
+// ── 유틸 ─────────────────────────────────────────────────
+function shuffle(arr) {
+  const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a;
+}
+
+// ── 초기화 ───────────────────────────────────────────────
+// 저장된 아이디 복원
+const savedId = localStorage.getItem('savedId');
+if (savedId) document.getElementById('usernameInput').value = savedId;
+
+// 로딩 후 로그인 화면
+setTimeout(() => show('login'), 1200);
+</script>
+
+<!-- Service Worker 등록 -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
