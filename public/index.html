@@ -667,7 +667,8 @@ window.doLogin = async function() {
       show('home');
     }
   } catch(e) {
-    errEl.textContent = '아이디 또는 비밀번호가 틀렸습니다.';
+    console.error('로그인 에러:', e.code, e.message);
+    errEl.textContent = '오류: ' + (e.code || e.message);
   }
 };
 
