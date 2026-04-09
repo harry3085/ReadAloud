@@ -1308,30 +1308,17 @@ window.startEditStudent=()=>{
 };
 
 window.deleteStudent=async(uid,name)=>{
-  if(!confirm(`"${name}" 학생 계정을 삭제할까요?`))return;
+  if(!confirm(`"${name}" 학생을 삭제할까요?\n\nFirestore 계정 삭제 + 로그인 차단이 됩니다.\n(Firebase Auth 계정은 콘솔에서 별도 삭제 가능)`))return;
   try{
-    // 해당 학생 이메일 가져오기
-    const uSnap=await getDoc(doc(db,'users',uid));
-    const email=uSnap.data()?.email;
-    const pw=prompt('확인을 위해 해당 학생의 비밀번호를 입력하세요\n(모르면 취소 후 Firebase 콘솔에서 삭제)');
-    if(pw===null)return;
-    // 보조앱으로 로그인 후 Auth 계정 삭제
-    const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const {getAuth:ga,signInWithEmailAndPassword:si,deleteUser:du}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e2){secApp=ia(firebaseConfig,'sec');}
-    const auth2=ga(secApp);
-    try{
-      const cred=await si(auth2,email,pw);
-      await du(cred.user);
-    }catch(authErr){
-      // Auth 삭제 실패해도 Firestore는 삭제
-      console.warn('Auth 삭제 실패:',authErr.message);
-    }
+    // Firestore 삭제
     await deleteDoc(doc(db,'users',uid));
     closeModal('studentDetailModal');
-    showToast('✅ 학생 계정이 삭제됐어요!');
+    showToast(`✅ "${name}" 계정이 삭제됐어요!`);
     await loadAdminUsers();
-  }catch(e){alert('삭제 실패: '+e.message);}
+  }catch(e){
+    console.error(e);
+    alert('삭제 실패: '+e.message);
+  }
 };
 
 // ── 공지 관리 (클릭 수정 지원) ───────────────────────────
@@ -1724,57 +1711,92 @@ window.speakCurrentWord=()=>{
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
 const screenStack=[];
 const _originalShow=window.show;
-// admin 화면들은 뒤로가기 스택에서 제외 (탭 전환이 있어서)
 const NO_STACK_SCREENS=new Set(['loading','login','admin']);
+
 window.show=id=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
   if(id==='login'||id==='loading'){
     screenStack.length=0;
-  } else if(curId&&curId!==id&&!NO_STACK_SCREENS.has(curId)&&!NO_STACK_SCREENS.has(id)){
+    // 히스토리도 완전히 리셋
+    history.replaceState({screen:'login'},'',location.pathname);
+  } else if(id==='admin'){
+    // 관리자 화면 진입 시 스택 리셋 + 히스토리 교체
+    screenStack.length=0;
+    history.replaceState({screen:'admin'},'',location.pathname);
+  } else if(curId&&curId!==id&&!NO_STACK_SCREENS.has(curId)){
     screenStack.push(curId);
-    history.pushState({screenId:id},'',location.pathname);
+    history.pushState({screen:id},'',location.pathname);
   }
   _originalShow(id);
 };
+
 window.addEventListener('popstate',e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
-  // 관리자 화면에서 뒤로가기 → 아무것도 안 함 (탭 내부 이동이므로)
-  if(curId==='admin'){history.pushState({},'',location.pathname);return;}
+  // 관리자 화면: 뒤로가기 눌려도 admin 유지 (앱 종료 방지)
+  if(curId==='admin'){
+    history.pushState({screen:'admin'},'',location.pathname);
+    return;
+  }
   if(screenStack.length>0){
     const prev=screenStack.pop();
     _originalShow(prev);
   } else {
-    _originalShow('login');
+    // 스택 없으면 로그인으로 (앱 종료 대신)
+    if(curId!=='login') _originalShow('login');
+    else history.pushState({screen:'login'},'',location.pathname);
   }
 });
-window.goHome=()=>{show('home');clearTimers();};
 
+window.goHome=()=>{show('home');clearTimers();};
 
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;
+
+// beforeinstallprompt는 페이지 로드 초기에 발생 — 놓치지 않도록 즉시 등록
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();
   _deferredPrompt=e;
+  // 로그인 화면이 표시되면 버튼 보이기
   const btn=document.getElementById('installBtn');
-  if(btn)btn.style.display='block';
+  if(btn) btn.style.display='block';
 });
+
 window.installApp=async()=>{
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
+  if(isStandalone){showToast('이미 홈화면에 추가되어 있어요!');return;}
+  if(isIOS){
+    alert('iOS에서 홈화면에 추가하는 방법:\n\n1. Safari 하단의 공유 버튼(□↑)을 누르세요\n2. "홈 화면에 추가"를 선택하세요\n3. "추가"를 누르면 완료!');
+    return;
+  }
   if(!_deferredPrompt){
-    // iOS 안내
-    alert('Safari에서 하단 공유 버튼 → "홈 화면에 추가"를 선택해주세요!');
+    alert('홈화면 추가를 지원하지 않는 브라우저예요.\n크롬 브라우저에서 사용해주세요.');
     return;
   }
   _deferredPrompt.prompt();
-  const result=await _deferredPrompt.userChoice;
+  const {outcome}=await _deferredPrompt.userChoice;
   _deferredPrompt=null;
-  document.getElementById('installBtn').style.display='none';
+  if(outcome==='accepted') showToast('홈화면에 추가됐어요! 🎉');
 };
+
 window.addEventListener('appinstalled',()=>{
-  document.getElementById('installBtn').style.display='none';
+  const btn=document.getElementById('installBtn');
+  if(btn) btn.style.display='none';
   showToast('홈화면에 추가됐어요! 🎉');
 });
+
+// 초기 로드 시 버튼 표시 여부 결정
+(()=>{
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
+  const btn=document.getElementById('installBtn');
+  if(!btn)return;
+  // iOS Safari이고 standalone 아니면 항상 표시
+  if(isIOS&&!isStandalone){btn.style.display='block';return;}
+  // Android/크롬은 beforeinstallprompt 이벤트 대기 (위에서 처리)
+})();
 
 
 // ── 내 정보 변경 ─────────────────────────────────────────
@@ -1790,6 +1812,9 @@ window.goMyInfo=()=>{
 // ── 초기화 ───────────────────────────────────────────────
 const savedId=localStorage.getItem('savedId');
 if(savedId)document.getElementById('usernameInput').value=savedId;
+// 초기 히스토리 상태 설정 (뒤로가기 앱 종료 방지)
+history.replaceState({screen:'loading'},'',location.pathname);
+history.pushState({screen:'login'},'',location.pathname);
 setTimeout(()=>show('login'),1200);
 </script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
