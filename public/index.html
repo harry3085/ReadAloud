@@ -697,7 +697,7 @@
 <!-- Firebase SDK -->
 <script type="module">
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
@@ -1742,18 +1742,19 @@ window.speakCurrentWord=()=>{
 const screenStack=[];
 const _originalShow=window.show;
 const NO_STACK_SCREENS=new Set(['loading','login','admin']);
+let _exitToast=null; // 종료 안내 토스트 타이머
 
 window.show=id=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
   if(id==='login'||id==='loading'){
     screenStack.length=0;
-    // 히스토리도 완전히 리셋
     history.replaceState({screen:'login'},'',location.pathname);
   } else if(id==='admin'){
-    // 관리자 화면 진입 시 스택 리셋 + 히스토리 교체
     screenStack.length=0;
     history.replaceState({screen:'admin'},'',location.pathname);
+    // 관리자 화면에서 뒤로가기 막기용 히스토리 하나 추가
+    history.pushState({screen:'admin_block'},'',location.pathname);
   } else if(curId&&curId!==id&&!NO_STACK_SCREENS.has(curId)){
     screenStack.push(curId);
     history.pushState({screen:id},'',location.pathname);
@@ -1764,19 +1765,32 @@ window.show=id=>{
 window.addEventListener('popstate',e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
-  // 관리자 화면: 뒤로가기 눌려도 admin 유지 (앱 종료 방지)
+
+  // 관리자 화면: 뒤로가기 눌려도 admin 유지
   if(curId==='admin'){
-    history.pushState({screen:'admin'},'',location.pathname);
+    history.pushState({screen:'admin_block'},'',location.pathname);
     return;
   }
+
   if(screenStack.length>0){
     const prev=screenStack.pop();
     _originalShow(prev);
-  } else {
-    // 스택 없으면 로그인으로 (앱 종료 대신)
-    if(curId!=='login') _originalShow('login');
-    else history.pushState({screen:'login'},'',location.pathname);
+    return;
   }
+
+  // 스택 비었을 때 = 홈 또는 로그인에서 뒤로가기
+  // "한 번 더 누르면 종료" 안내
+  if(_exitToast){
+    // 두 번째 뒤로가기 → 실제 종료 (히스토리 뒤로가기)
+    clearTimeout(_exitToast);
+    _exitToast=null;
+    history.go(-1); // 실제 앱 종료
+    return;
+  }
+  // 첫 번째 뒤로가기 → 안내 토스트
+  history.pushState({screen:curId},'',location.pathname); // 히스토리 유지
+  showToast('한 번 더 누르면 앱이 종료돼요');
+  _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
 
 window.goHome=()=>{show('home');clearTimers();};
@@ -1863,13 +1877,44 @@ window.saveMyInfo=async()=>{
   }
 };
 
-// ── 초기화 ───────────────────────────────────────────────
+// ── 초기화 + 자동 로그인 ──────────────────────────────────
 const savedId=localStorage.getItem('savedId');
-if(savedId)document.getElementById('usernameInput').value=savedId;
-// 초기 히스토리 상태 설정 (뒤로가기 앱 종료 방지)
+if(savedId) document.getElementById('usernameInput').value=savedId;
+
+// 히스토리 초기 설정
 history.replaceState({screen:'loading'},'',location.pathname);
 history.pushState({screen:'login'},'',location.pathname);
-setTimeout(()=>show('login'),1200);
+
+// Firebase Auth 상태 감지 → 로그아웃 안 했으면 자동 로그인
+onAuthStateChanged(auth, async user=>{
+  if(user){
+    // 이미 로그인된 세션 있음 → Firestore에서 프로필 복원
+    try{
+      const snap=await getDoc(doc(db,'users',user.uid));
+      if(snap.exists()){
+        userProfile={...snap.data(), uid:user.uid};
+        currentUser=user;
+        if(userProfile.role==='admin'){
+          await loadAdminData();
+          _originalShow('admin');
+          // 관리자 히스토리 블록 설정
+          history.replaceState({screen:'admin'},'',location.pathname);
+          history.pushState({screen:'admin_block'},'',location.pathname);
+        } else {
+          const greetEl=document.getElementById('greetName');
+          if(greetEl) greetEl.textContent=(userProfile.name||'학생')+' 님';
+          await loadHomeData();
+          _originalShow('home');
+        }
+        return;
+      }
+    }catch(e){
+      console.log('자동로그인 실패:', e.message);
+    }
+  }
+  // 로그인 안 된 상태 → 로그인 화면
+  setTimeout(()=>_originalShow('login'), 1200);
+});
 </script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
 </body>
