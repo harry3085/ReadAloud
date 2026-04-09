@@ -174,8 +174,8 @@
     .add-btn.gray{background:#eee;color:#666;} .add-btn.red{background:var(--red);}
     .add-btn.sm{padding:8px 14px;font-size:13px;width:auto;}
     .word-table{width:100%;border-collapse:collapse;}
-    .word-table th{font-size:12px;color:var(--gray);padding:5px 10px;text-align:left;border-bottom:1px solid #eee;}
-    .word-table td{font-size:13px;padding:5px 10px;border-bottom:1px solid #f5f5f5;color:var(--text);vertical-align:middle;}
+    .word-table th{font-size:13px;color:var(--gray);padding:8px 12px;text-align:left;border-bottom:1px solid #eee;}
+    .word-table td{font-size:14px;padding:10px 12px;border-bottom:1px solid #f5f5f5;color:var(--text);vertical-align:middle;}
     .del-btn{background:none;border:none;color:#e05050;font-size:16px;cursor:pointer;}
     .tab-bar{display:flex;background:#f0f0f0;border-radius:12px;margin:12px 16px;padding:4px;flex-shrink:0;}
     .tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;font-weight:500;color:var(--gray);cursor:pointer;border-radius:9px;}
@@ -478,22 +478,11 @@
       <div id="adminWords" class="admin-section">
         <div class="section-title">단원 관리</div>
         <div class="admin-form">
-          <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input class="form-input" id="newUnit" placeholder="새 단원명" style="flex:2;">
-            <select class="form-input" id="newUnitGroup" style="flex:1;"></select>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input class="form-input" id="newUnit" placeholder="새 단원명 (예: 1단원, Chapter 1)" style="flex:1;">
             <button class="add-btn sm" onclick="addUnit()">추가</button>
           </div>
           <div id="unitItemList"></div>
-        </div>
-        <!-- 단원 이름 수정 모달 인라인 -->
-        <div id="unitEditSection" style="display:none;background:white;border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.05);">
-          <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">단원명 수정</div>
-          <div style="display:flex;gap:8px;">
-            <input class="form-input" id="editUnitName" placeholder="새 단원명" style="flex:2;">
-            <select class="form-input" id="editUnitGroup" style="flex:1;"></select>
-            <button class="add-btn sm" onclick="saveUnitEdit()">저장</button>
-            <button class="add-btn sm gray" onclick="cancelUnitEdit()">취소</button>
-          </div>
         </div>
         <div id="wordEditorSection" style="display:none;">
           <div class="section-title">단어 추가 <span id="currentUnitLabel" style="color:var(--teal);font-weight:600;"></span></div>
@@ -1098,12 +1087,6 @@ function renderAllGroupSelects(){
   ['noticeTarget','pushTarget','schedPushTarget'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
   ['newFileGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=hwOpts;});
   ['newUserGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=stuOpts;});
-  // 단원 그룹 셀렉트
-  const unitGroupOpts='<option value="">그룹 없음</option>'+allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');
-  ['newUnitGroup','editUnitGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=unitGroupOpts;});
-  // 단원 그룹 셀렉트
-  const unitGroupOpts='<option value="">그룹 없음</option>'+allGroups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('');
-  ['newUnitGroup','editUnitGroup'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=unitGroupOpts;});
   renderStatsGroupFilter();
 }
 
@@ -1135,21 +1118,14 @@ async function loadAdminUnits(){
 }
 function renderUnitSelect(){
   const el=document.getElementById('unitItemList');if(!el)return;
-  el.innerHTML=adminUnits.map(u=>{
-    const groupBadge=u.group?`<span style="font-size:11px;background:#e0f5f5;color:var(--teal);border-radius:8px;padding:1px 7px;margin-left:6px;">${u.group}</span>`:'';
-    const border=lastSelectedUnitId===u.id?'var(--teal)':'transparent';
-    return `<div onclick="selectAdminUnit('${u.id}','${u.name}')" style="background:white;border-radius:10px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 4px rgba(0,0,0,.05);border:2px solid ${border};margin-bottom:6px;">
-      <div style="flex:1;min-width:0;">
-        <span style="font-size:14px;font-weight:600;color:var(--text);">${u.name}</span>
-        ${groupBadge}
-        <span style="font-size:11px;color:#bbb;margin-left:6px;">단어 ${u.words?.length||0}개</span>
+  el.innerHTML=adminUnits.map(u=>`
+    <div onclick="selectAdminUnit('${u.id}','${u.name}')" style="background:white;border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 6px rgba(0,0,0,.05);border:2px solid ${lastSelectedUnitId===u.id?'var(--teal)':'transparent'};">
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);">${u.name}</div>
+        <div style="font-size:12px;color:var(--gray);">단어 ${u.words?.length||0}개</div>
       </div>
-      <div style="display:flex;gap:2px;flex-shrink:0;" onclick="event.stopPropagation()">
-        <button onclick="openUnitEdit('${u.id}','${u.name}','${u.group||''}')" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:3px 6px;">✏️</button>
-        <button onclick="deleteUnit('${u.id}','${u.name}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:14px;padding:3px 6px;">🗑</button>
-      </div>
-    </div>`;
-  }).join('')||'<div style="text-align:center;color:#bbb;padding:12px;font-size:13px;">단원이 없습니다</div>';
+      <button onclick="event.stopPropagation();deleteUnit('${u.id}','${u.name}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:16px;padding:4px 8px;">🗑</button>
+    </div>`).join('')||'<div style="text-align:center;color:#bbb;padding:12px;font-size:13px;">단원이 없습니다</div>';
 }
 window.selectAdminUnit=(unitId,unitName)=>{
   lastSelectedUnitId=unitId;
@@ -1159,8 +1135,7 @@ window.selectAdminUnit=(unitId,unitName)=>{
 };
 window.addUnit=async()=>{
   const name=document.getElementById('newUnit').value.trim();if(!name)return;
-  const group=document.getElementById('newUnitGroup').value||'';
-  const docRef=await addDoc(collection(db,'units'),{name,group,words:[],createdAt:serverTimestamp()});
+  const docRef=await addDoc(collection(db,'units'),{name,words:[],createdAt:serverTimestamp()});
   document.getElementById('newUnit').value='';
   showToast('단원 추가됐어요!');await loadAdminUnits();
   selectAdminUnit(docRef.id,name);
@@ -1170,30 +1145,6 @@ window.deleteUnit=async(unitId,unitName)=>{
   await deleteDoc(doc(db,'units',unitId));
   if(lastSelectedUnitId===unitId){lastSelectedUnitId=null;document.getElementById('wordEditorSection').style.display='none';}
   showToast('단원이 삭제됐어요.');await loadAdminUnits();
-};
-
-// ── 단원 이름/그룹 수정 ─────────────────────────────────────
-window.openUnitEdit=(unitId,unitName,unitGroup)=>{
-  document.getElementById('editUnitName').value=unitName;
-  document.getElementById('editUnitGroup').value=unitGroup||'';
-  document.getElementById('unitEditSection').style.display='';
-  document.getElementById('unitEditSection').dataset.uid=unitId;
-  document.getElementById('editUnitName').focus();
-};
-window.cancelUnitEdit=()=>{
-  document.getElementById('unitEditSection').style.display='none';
-};
-window.saveUnitEdit=async()=>{
-  const el=document.getElementById('unitEditSection');
-  const unitId=el.dataset.uid;
-  const name=document.getElementById('editUnitName').value.trim();
-  const group=document.getElementById('editUnitGroup').value||'';
-  if(!name){alert('단원명을 입력하세요.');return;}
-  await updateDoc(doc(db,'units',unitId),{name,group});
-  document.getElementById('currentUnitLabel').textContent='— '+name;
-  showToast('단원이 수정됐어요!');
-  cancelUnitEdit();
-  await loadAdminUnits();
 };
 window.addWord=async()=>{
   const unitId=lastSelectedUnitId;
