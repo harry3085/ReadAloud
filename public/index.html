@@ -879,9 +879,16 @@ window.goNoticeList = async()=>{
 // ── 단원/테스트 ───────────────────────────────────────────
 window.goUnits = async()=>{
   const snap=await getDocs(collection(db,'units'));
-  const units=snap.docs.map(d=>({id:d.id,...d.data()}));
+  const allUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
+  // 학생 그룹에 해당하는 단원만 필터
+  // 단원에 group이 없으면(미지정) 전체 공개
+  const myGroup=userProfile?.group||'';
+  const units=allUnits.filter(u=>!u.group||u.group===''||u.group==='그룹 없음'||u.group===myGroup);
   const el=document.getElementById('unitList');
-  if(!units.length){el.innerHTML='<div class="empty-msg" style="padding:40px;">단원이 없습니다.<br>관리자에게 문의하세요.</div>';show('units');return;}
+  if(!units.length){
+    el.innerHTML='<div class="empty-msg" style="padding:40px;">배정된 단원이 없습니다.<br>관리자에게 문의하세요.</div>';
+    show('units');return;
+  }
   el.innerHTML=units.map(u=>`
     <div class="unit-card" onclick="selectUnit('${u.id}','${u.name}')">
       <div style="flex:1"><div class="unit-name">${u.name}</div><div class="unit-count">단어 ${u.words?.length||0}개</div>
