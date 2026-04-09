@@ -1311,6 +1311,8 @@ window.deleteCurrentStudent=()=>{
   if(!_editingStudentId||!_editingStudentData){alert('삭제할 학생 정보가 없습니다.');return;}
   deleteStudent(_editingStudentId, _editingStudentData.name);
 };
+
+window.deleteStudent=async(uid,name)=>{
   if(!confirm(`"${name}" 학생을 삭제할까요?\n\nFirestore 계정 삭제 + 로그인 차단이 됩니다.\n(Firebase Auth 계정은 콘솔에서 별도 삭제 가능)`))return;
   try{
     // Firestore 삭제
