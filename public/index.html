@@ -405,54 +405,62 @@
     <div class="tab-bar">
       <div class="tab active" onclick="switchAdminTab('words')">단어</div>
       <div class="tab" onclick="switchAdminTab('users')">학생</div>
-      <div class="tab" onclick="switchAdminTab('groups')">그룹</div>
       <div class="tab" onclick="switchAdminTab('notice')">공지</div>
-      <div class="tab" onclick="switchAdminTab('files')">파일</div>
+      <div class="tab" onclick="switchAdminTab('homework')">숙제</div>
+      <div class="tab" onclick="switchAdminTab('payment')">결제</div>
       <div class="tab" onclick="switchAdminTab('stats')">진도</div>
+      <div class="tab" onclick="switchAdminTab('push')">알림</div>
     </div>
     <div class="scroll-content">
 
       <!-- 단어 관리 -->
       <div id="adminWords" class="admin-section">
+        <div class="section-title">그룹 관리</div>
+        <div class="admin-form">
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input class="form-input" id="newGroupName" placeholder="새 그룹명 (예: 1반)" style="flex:1;">
+            <button class="add-btn sm" onclick="addGroup()">추가</button>
+          </div>
+          <div id="groupTagArea" style="display:flex;flex-wrap:wrap;gap:8px;min-height:32px;"></div>
+        </div>
         <div class="section-title">단원 관리</div>
         <div class="admin-form">
-          <div class="form-row"><label class="form-label">새 단원명</label>
-            <div style="display:flex;gap:8px;">
-              <input class="form-input" id="newUnit" placeholder="예: 1단원, Chapter 1" style="flex:1;">
-              <button class="add-btn sm" onclick="addUnit()">추가</button>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input class="form-input" id="newUnit" placeholder="새 단원명 (예: 1단원, Chapter 1)" style="flex:1;">
+            <button class="add-btn sm" onclick="addUnit()">추가</button>
+          </div>
+          <div id="unitItemList"></div>
+        </div>
+        <div id="wordEditorSection" style="display:none;">
+          <div class="section-title">단어 추가 <span id="currentUnitLabel" style="color:var(--teal);font-weight:600;"></span></div>
+          <div class="admin-form">
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+              <input class="form-input" id="newEng" placeholder="영어" style="flex:1;" onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('newKor').focus();}">
+              <input class="form-input" id="newKor" placeholder="한글 뜻" style="flex:1;" onkeydown="if(event.key==='Enter'){addWord();}">
+              <button class="add-btn sm" onclick="addWord()">추가</button>
+            </div>
+            <div style="border-top:1px solid #f0f0f0;padding-top:12px;margin-top:4px;">
+              <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">📋 엑셀에서 복사 후 붙여넣기 (탭 구분)</div>
+              <textarea class="form-input" id="pasteArea" placeholder="엑셀에서 두 열(영어, 한글) 선택 후 Ctrl+C, 여기에 Ctrl+V" rows="4" style="resize:none;font-size:13px;margin-bottom:8px;"></textarea>
+              <div style="display:flex;gap:8px;">
+                <button class="add-btn sm" onclick="importFromPaste()" style="flex:1;">📋 붙여넣기 적용</button>
+                <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#eee;border-radius:10px;font-size:13px;color:#666;cursor:pointer;">
+                  📊 엑셀 파일
+                  <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="importExcel(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+                </div>
+              </div>
             </div>
           </div>
-          <div class="form-row"><label class="form-label">작업할 단원 선택</label>
-            <select class="form-input" id="selectUnit" onchange="onUnitChange()"><option value="">단원을 선택하세요</option></select>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="add-btn gray sm" onclick="deleteUnit()">선택 단원 삭제</button>
-          </div>
+          <div class="section-title">단어 목록 <span id="wordCount" style="color:var(--teal);font-weight:700;"></span></div>
+          <div class="admin-form"><table class="word-table"><thead><tr><th>영어</th><th>한글</th><th style="width:80px;"></th></tr></thead><tbody id="wordTableBody"></tbody></table></div>
         </div>
-        <div class="section-title">단어 추가</div>
-        <div class="admin-form">
-          <div style="display:flex;gap:8px;margin-bottom:14px;">
-            <div style="flex:1;"><label class="form-label">영어</label><input class="form-input" id="newEng" placeholder="apple" style="margin-top:4px;"></div>
-            <div style="flex:1;"><label class="form-label">한글 뜻</label><input class="form-input" id="newKor" placeholder="사과" style="margin-top:4px;"></div>
-          </div>
-          <button class="add-btn" onclick="addWord()">+ 단어 추가</button>
-        </div>
-        <div class="section-title">엑셀로 단어 일괄 등록</div>
-        <div class="admin-form">
-          <p style="font-size:13px;color:var(--gray);margin-bottom:12px;">A열: 영어, B열: 한글뜻 형식의 엑셀(.xlsx) 파일을 업로드하세요.</p>
-          <div class="upload-area">
-            <div>📊 엑셀 파일 선택</div>
-            <div style="font-size:12px;color:#bbb;margin-top:4px;">.xlsx 파일만 가능</div>
-            <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="importExcel(event)">
-          </div>
-        </div>
-        <div class="section-title">단어 목록 <span id="wordCount" style="color:var(--teal);font-weight:700;"></span></div>
-        <div class="admin-form"><table class="word-table"><thead><tr><th>영어</th><th>한글</th><th></th></tr></thead><tbody id="wordTableBody"></tbody></table></div>
       </div>
 
       <!-- 학생 관리 -->
       <div id="adminUsers" class="admin-section" style="display:none;">
-        <div class="section-title">학생 계정 추가</div>
+        <div class="section-title">그룹별 보기</div>
+        <div id="userGroupFilter" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:0 0 4px;"></div>
+        <div class="section-title" id="studentFormTitle">학생 추가</div>
         <div class="admin-form">
           <div class="form-row"><label class="form-label">아이디 (영문/숫자)</label><input class="form-input" id="newUserId" placeholder="아이디"></div>
           <div class="form-row"><label class="form-label">이름</label><input class="form-input" id="newUserName" placeholder="학생 이름"></div>
@@ -461,30 +469,17 @@
           <div class="form-row"><label class="form-label">부모님 성함</label><input class="form-input" id="newUserParentName" placeholder="선택사항"></div>
           <div class="form-row"><label class="form-label">부모님 연락처</label><input class="form-input" id="newUserParentPhone" placeholder="010-0000-0000"></div>
           <div class="form-row"><label class="form-label">메모</label><textarea class="form-input" id="newUserMemo" placeholder="특이사항, 수강 정보 등" rows="2" style="resize:none;"></textarea></div>
-          <button class="add-btn" onclick="addUser()">+ 학생 추가</button>
+          <input type="hidden" id="editingUserId">
+          <div style="display:flex;gap:8px;">
+            <button class="add-btn" id="userSaveBtn" onclick="saveUser()" style="flex:1;">+ 학생 추가</button>
+            <button class="add-btn gray sm" id="userCancelBtn" onclick="cancelEditUser()" style="display:none;flex:0 0 auto;padding:12px 16px;">취소</button>
+          </div>
         </div>
         <div class="section-title">학생 목록</div>
         <div id="studentCardList"></div>
       </div>
 
-      <!-- 그룹 관리 -->
-      <div id="adminGroups" class="admin-section" style="display:none;">
-        <div class="section-title">그룹 추가</div>
-        <div class="admin-form">
-          <div class="form-row"><label class="form-label">그룹명</label>
-            <div style="display:flex;gap:8px;">
-              <input class="form-input" id="newGroupName" placeholder="예: 1반, 초급반" style="flex:1;">
-              <button class="add-btn sm" onclick="addGroup()">추가</button>
-            </div>
-          </div>
-        </div>
-        <div class="section-title">현재 그룹</div>
-        <div class="admin-form">
-          <div id="groupTagList" style="display:flex;flex-wrap:wrap;gap:8px;min-height:40px;"></div>
-        </div>
-      </div>
-
-      <!-- 공지 관리 -->
+            <!-- 공지 관리 -->
       <div id="adminNotice" class="admin-section" style="display:none;">
         <div class="section-title">공지 작성</div>
         <div class="admin-form">
@@ -534,7 +529,23 @@
       <div id="studentDetailContent"></div>
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button class="add-btn gray" onclick="closeModal('studentDetailModal')" style="flex:1;">닫기</button>
-        <button class="add-btn red" id="studentDeleteBtn" style="flex:1;">계정 삭제</button>
+        <button class="add-btn" onclick="startEditStudent()" style="flex:1;">수정</button>
+        <button class="add-btn red" id="studentDeleteBtn" style="flex:1;">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 단어 수정 모달 -->
+  <div class="modal-overlay hidden" id="wordEditModal">
+    <div class="modal">
+      <div class="modal-title">단어 수정</div>
+      <input type="hidden" id="editWordUnitId">
+      <input type="hidden" id="editWordIdx">
+      <div class="form-row" style="margin-bottom:14px;"><label class="form-label">영어</label><input class="form-input" id="editWordEn" style="margin-top:4px;"></div>
+      <div class="form-row" style="margin-bottom:16px;"><label class="form-label">한글 뜻</label><input class="form-input" id="editWordKo" style="margin-top:4px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="add-btn gray" onclick="closeModal('wordEditModal')" style="flex:1;">취소</button>
+        <button class="add-btn" onclick="saveWordEdit()" style="flex:1;">저장</button>
       </div>
     </div>
   </div>
@@ -905,8 +916,8 @@ window.goComingSoon=type=>{
 // 관리자 기능
 // ══════════════════════════════════════════════════════════
 async function loadAdminData(){
-  await Promise.all([loadGroups(),loadAdminUnits()]);
-  renderGroupSelects();
+  await loadGroups();
+  await loadAdminUnits();
 }
 
 // ── 그룹 관리 ─────────────────────────────────────────────
@@ -939,48 +950,81 @@ window.addGroup=async()=>{
 window.deleteGroup=async(id,name)=>{
   if(!confirm(`"${name}" 그룹을 삭제할까요?`))return;
   await deleteDoc(doc(db,'groups',id));
-  showToast('삭제됐어요.');await loadGroups();renderGroupSelects();
+  showToast('Firestore 계정 삭제됨. Auth 계정은 Firebase 콘솔에서 별도 삭제 필요.');await loadGroups();renderGroupSelects();
 };
 
 // ── 단원/단어 관리 ─────────────────────────────────────────
 async function loadAdminUnits(){
   const snap=await getDocs(collection(db,'units'));
   adminUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
-  renderUnitSelect();renderWordTable();
+  renderUnitSelect();
+  if(lastSelectedUnitId)renderWordTable();
 }
 function renderUnitSelect(){
-  const sel=document.getElementById('selectUnit');if(!sel)return;
-  const prev=lastSelectedUnitId||sel.value;
-  sel.innerHTML='<option value="">단원을 선택하세요</option>'+adminUnits.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
-  if(prev)sel.value=prev;
+  const el=document.getElementById('unitItemList');if(!el)return;
+  el.innerHTML=adminUnits.map(u=>`
+    <div onclick="selectAdminUnit('${u.id}','${u.name}')" style="background:white;border-radius:12px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 6px rgba(0,0,0,.05);border:2px solid ${lastSelectedUnitId===u.id?'var(--teal)':'transparent'};">
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);">${u.name}</div>
+        <div style="font-size:12px;color:var(--gray);">단어 ${u.words?.length||0}개</div>
+      </div>
+      <button onclick="event.stopPropagation();deleteUnit('${u.id}','${u.name}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:16px;padding:4px 8px;">🗑</button>
+    </div>`).join('')||'<div style="text-align:center;color:#bbb;padding:12px;font-size:13px;">단원이 없습니다</div>';
 }
-window.onUnitChange=()=>{lastSelectedUnitId=document.getElementById('selectUnit').value;renderWordTable();};
+window.selectAdminUnit=(unitId,unitName)=>{
+  lastSelectedUnitId=unitId;
+  document.getElementById('currentUnitLabel').textContent='— '+unitName;
+  document.getElementById('wordEditorSection').style.display='';
+  renderUnitSelect();renderWordTable();
+};
 window.addUnit=async()=>{
   const name=document.getElementById('newUnit').value.trim();if(!name)return;
   const docRef=await addDoc(collection(db,'units'),{name,words:[],createdAt:serverTimestamp()});
-  document.getElementById('newUnit').value='';lastSelectedUnitId=docRef.id;
+  document.getElementById('newUnit').value='';
   showToast('단원 추가됐어요!');await loadAdminUnits();
+  selectAdminUnit(docRef.id,name);
 };
-window.deleteUnit=async()=>{
-  const unitId=document.getElementById('selectUnit').value;if(!unitId){alert('삭제할 단원을 선택하세요.');return;}
-  const unit=adminUnits.find(u=>u.id===unitId);
-  if(!confirm(`"${unit?.name}" 단원을 삭제할까요? 단어 ${unit?.words?.length||0}개가 모두 삭제됩니다.`))return;
+window.deleteUnit=async(unitId,unitName)=>{
+  if(!confirm(`"${unitName}" 단원을 삭제할까요?`))return;
   await deleteDoc(doc(db,'units',unitId));
-  lastSelectedUnitId=null;showToast('단원이 삭제됐어요.');await loadAdminUnits();
+  if(lastSelectedUnitId===unitId){lastSelectedUnitId=null;document.getElementById('wordEditorSection').style.display='none';}
+  showToast('단원이 삭제됐어요.');await loadAdminUnits();
 };
 window.addWord=async()=>{
-  const unitId=document.getElementById('selectUnit').value||lastSelectedUnitId;
+  const unitId=lastSelectedUnitId;
+  if(!unitId){alert('단원을 먼저 선택하세요.');return;}
   const en=document.getElementById('newEng').value.trim();
   const ko=document.getElementById('newKor').value.trim();
-  if(!unitId||!en||!ko){alert('단원과 단어를 모두 입력하세요.');return;}
+  if(!en||!ko){alert('영어와 한글 뜻을 입력하세요.');return;}
   const unit=adminUnits.find(u=>u.id===unitId);
   const words=[...(unit.words||[]),{en,ko}];
   await setDoc(doc(db,'units',unitId),{words},{merge:true});
-  document.getElementById('newEng').value='';
-  lastSelectedUnitId=unitId;
-  showToast('단어 추가됐어요!');await loadAdminUnits();
-  // 포커스를 영어 입력칸으로
+  document.getElementById('newEng').value='';document.getElementById('newKor').value='';
   document.getElementById('newEng').focus();
+  await loadAdminUnits();renderWordTable();
+};
+
+// ── 단어 수정 ─────────────────────────────────────────────
+window.openWordEdit=(unitId,wi)=>{
+  const unit=adminUnits.find(u=>u.id===unitId);if(!unit)return;
+  const w=unit.words[wi];
+  document.getElementById('editWordUnitId').value=unitId;
+  document.getElementById('editWordIdx').value=wi;
+  document.getElementById('editWordEn').value=w.en;
+  document.getElementById('editWordKo').value=w.ko;
+  document.getElementById('wordEditModal').classList.remove('hidden');
+};
+window.saveWordEdit=async()=>{
+  const unitId=document.getElementById('editWordUnitId').value;
+  const wi=parseInt(document.getElementById('editWordIdx').value);
+  const en=document.getElementById('editWordEn').value.trim();
+  const ko=document.getElementById('editWordKo').value.trim();
+  if(!en||!ko)return;
+  const unit=adminUnits.find(u=>u.id===unitId);
+  const words=[...(unit.words||[])];words[wi]={en,ko};
+  await setDoc(doc(db,'units',unitId),{words},{merge:true});
+  closeModal('wordEditModal');showToast('수정됐어요!');
+  await loadAdminUnits();renderWordTable();
 };
 window.delWord=async(unitId,wi)=>{
   const unit=adminUnits.find(u=>u.id===unitId);
@@ -989,17 +1033,39 @@ window.delWord=async(unitId,wi)=>{
   lastSelectedUnitId=unitId;await loadAdminUnits();
 };
 function renderWordTable(){
-  const selId=document.getElementById('selectUnit')?.value||lastSelectedUnitId;
-  const filteredUnits=selId?adminUnits.filter(u=>u.id===selId):adminUnits;
-  const allWords=filteredUnits.flatMap(u=>(u.words||[]).map((w,wi)=>({...w,unitId:u.id,unitName:u.name,wi})));
-  document.getElementById('wordCount').textContent=allWords.length?`(${allWords.length}개)`:'';
-  document.getElementById('wordTableBody').innerHTML=allWords.map(w=>`<tr>
-    <td><small style="color:#aaa;font-size:11px">${w.unitName}</small><br><b>${w.en}</b></td>
+  const unitId=lastSelectedUnitId;if(!unitId)return;
+  const unit=adminUnits.find(u=>u.id===unitId);
+  const words=unit?.words||[];
+  document.getElementById('wordCount').textContent=words.length?`(${words.length}개)`:'';
+  document.getElementById('wordTableBody').innerHTML=words.map((w,wi)=>`<tr>
+    <td><b>${w.en}</b></td>
     <td>${w.ko}</td>
-    <td><button class="del-btn" onclick="delWord('${w.unitId}',${w.wi})">✕</button></td>
-  </tr>`).join('')||`<tr><td colspan="3" style="text-align:center;color:#bbb;padding:20px;">단원을 선택하면 단어 목록이 표시됩니다</td></tr>`;
+    <td style="white-space:nowrap;">
+      <button onclick="openWordEdit('${unitId}',${wi})" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 4px;">✏️</button>
+      <button class="del-btn" onclick="delWord('${unitId}',${wi})">✕</button>
+    </td>
+  </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:#bbb;padding:16px;">단어가 없습니다</td></tr>';
 }
 
+
+// ── 클립보드/붙여넣기 임포트 ─────────────────────────────
+window.importFromPaste=async()=>{
+  const text=document.getElementById('pasteArea').value.trim();
+  if(!text){alert('붙여넣을 내용이 없습니다.');return;}
+  const unitId=lastSelectedUnitId;if(!unitId){alert('단원을 먼저 선택하세요.');return;}
+  const lines=text.split('\n').filter(l=>l.trim());
+  const newWords=[];
+  for(const line of lines){
+    const parts=line.split('\t');
+    if(parts.length>=2){const en=parts[0].trim(),ko=parts[1].trim();if(en&&ko)newWords.push({en,ko});}
+  }
+  if(!newWords.length){alert('인식된 단어가 없습니다.\n탭(Tab)으로 구분된 영어-한글 형식이어야 해요.\n(엑셀에서 두 열을 선택 후 복사하면 됩니다)');return;}
+  const unit=adminUnits.find(u=>u.id===unitId);
+  await setDoc(doc(db,'units',unitId),{words:[...(unit.words||[]),...newWords]},{merge:true});
+  document.getElementById('pasteArea').value='';
+  showToast(`✅ ${newWords.length}개 단어 추가됐어요!`);
+  await loadAdminUnits();renderWordTable();
+};
 // ── 엑셀 임포트 ───────────────────────────────────────────
 window.importExcel=async e=>{
   const file=e.target.files[0];if(!file)return;
@@ -1040,51 +1106,88 @@ async function loadAdminUsers(){
     </div>`).join('')||'<div class="empty-msg">등록된 학생이 없습니다</div>';
 }
 
-window.addUser=async()=>{
-  const username=document.getElementById('newUserId').value.trim();
+// 학생 추가/수정 통합 함수
+window.saveUser=async()=>{
+  const editId=document.getElementById('editingUserId').value;
   const name=document.getElementById('newUserName').value.trim();
-  const pw=document.getElementById('newUserPw').value.trim();
   const group=document.getElementById('newUserGroup').value;
+  const pw=document.getElementById('newUserPw').value.trim();
   const parentName=document.getElementById('newUserParentName').value.trim();
   const parentPhone=document.getElementById('newUserParentPhone').value.trim();
   const memo=document.getElementById('newUserMemo').value.trim();
-  if(!username||!name||!pw){alert('아이디, 이름, 비밀번호는 필수입니다.');return;}
-  if(pw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
-  const email=username+'@kunsori.app';
-  try{
-    // 보조 Firebase 앱으로 계정 생성 (관리자 세션 유지)
-    const {initializeApp:initApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const {getAuth:getAuth2,createUserWithEmailAndPassword:createUser2,signOut:signOut2}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    let secondaryApp;
-    try{const {getApp:ga}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secondaryApp=ga('secondary');}
-    catch(e){const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secondaryApp=ia(firebaseConfig,'secondary');}
-    const auth2=getAuth2(secondaryApp);
-    const cred=await createUser2(auth2,email,pw);
-    await signOut2(auth2);
-    await setDoc(doc(db,'users',cred.user.uid),{username,name,email,group,role:'student',parentName,parentPhone,memo,createdAt:serverTimestamp()});
-    ['newUserId','newUserName','newUserPw','newUserParentName','newUserParentPhone','newUserMemo'].forEach(id=>{document.getElementById(id).value='';});
-    showToast('✅ 학생 계정이 추가됐어요!');await loadAdminUsers();
-  }catch(e){
-    console.error(e);
-    if(e.code==='auth/email-already-in-use')alert('이미 사용중인 아이디예요.');
-    else alert('계정 생성 실패: '+e.message);
+  if(editId){
+    // 수정 모드
+    await updateDoc(doc(db,'users',editId),{name,group,parentName,parentPhone,memo});
+    showToast('✅ 학생 정보가 수정됐어요!');
+    cancelEditUser();await loadAdminUsers();
+  } else {
+    // 신규 추가
+    const username=document.getElementById('newUserId').value.trim();
+    if(!username||!name||!pw){alert('아이디, 이름, 비밀번호는 필수입니다.');return;}
+    if(pw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
+    const email=username+'@kunsori.app';
+    try{
+      // 중복 확인
+      const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
+      if(!dup.empty){alert('이미 사용 중인 아이디입니다.');return;}
+      const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia(firebaseConfig,'sec');}
+      const auth2=ga(secApp);
+      const cred=await cu(auth2,email,pw);
+      await so(auth2);
+      await setDoc(doc(db,'users',cred.user.uid),{username,name,email,group,role:'student',parentName,parentPhone,memo,avatarUrl:'',createdAt:serverTimestamp()});
+      cancelEditUser();showToast('✅ 학생 계정이 추가됐어요!');await loadAdminUsers();
+    }catch(e){
+      console.error(e);
+      if(e.code==='auth/email-already-in-use')alert('이미 Auth에 계정이 있습니다.\nFirebase 콘솔 → Authentication에서 해당 계정 삭제 후 재시도하세요.');
+      else alert('계정 생성 실패: '+e.message);
+    }
   }
 };
+window.cancelEditUser=()=>{
+  document.getElementById('editingUserId').value='';
+  document.getElementById('newUserId').disabled=false;
+  ['newUserId','newUserName','newUserPw','newUserParentName','newUserParentPhone','newUserMemo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('studentFormTitle').textContent='학생 추가';
+  document.getElementById('userSaveBtn').textContent='+ 학생 추가';
+  document.getElementById('userCancelBtn').style.display='none';
+};
+window.addUser=window.saveUser;
 
+let _editingStudentId=null,_editingStudentData=null;
 window.viewStudent=async uid=>{
   const snap=await getDoc(doc(db,'users',uid));
   const u=snap.data();if(!u)return;
+  _editingStudentId=uid;_editingStudentData=u;
   document.getElementById('studentDetailContent').innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">이름</span><span style="font-size:14px;font-weight:600;">${u.name}</span></div>
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">아이디</span><span style="font-size:14px;">${u.username}</span></div>
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">그룹</span><span style="font-size:14px;">${u.group||'-'}</span></div>
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">부모님</span><span style="font-size:14px;">${u.parentName||'-'}</span></div>
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">연락처</span><span style="font-size:14px;">${u.parentPhone||'-'}</span></div>
-      <div style="display:flex;gap:8px;"><span style="font-size:13px;color:var(--gray);width:80px;">메모</span><span style="font-size:14px;">${u.memo||'-'}</span></div>
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;">
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">이름</span><b>${u.name}</b></div>
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">아이디</span>${u.username}</div>
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">그룹</span>${u.group||'-'}</div>
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">부모님</span>${u.parentName||'-'}</div>
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">연락처</span>${u.parentPhone||'-'}</div>
+      <div style="display:flex;gap:8px;"><span style="color:var(--gray);width:80px;font-size:13px;">메모</span>${u.memo||'-'}</div>
     </div>`;
-  document.getElementById('studentDeleteBtn').onclick=()=>deleteStudent(uid,u.name);
   document.getElementById('studentDetailModal').classList.remove('hidden');
+};
+window.startEditStudent=()=>{
+  if(!_editingStudentId||!_editingStudentData)return;
+  closeModal('studentDetailModal');
+  const u=_editingStudentData;
+  document.getElementById('editingUserId').value=_editingStudentId;
+  document.getElementById('newUserId').value=u.username;
+  document.getElementById('newUserId').disabled=true;
+  document.getElementById('newUserName').value=u.name;
+  document.getElementById('newUserGroup').value=u.group||'';
+  document.getElementById('newUserPw').value='';
+  document.getElementById('newUserParentName').value=u.parentName||'';
+  document.getElementById('newUserParentPhone').value=u.parentPhone||'';
+  document.getElementById('newUserMemo').value=u.memo||'';
+  document.getElementById('studentFormTitle').textContent='학생 정보 수정';
+  document.getElementById('userSaveBtn').textContent='수정 저장';
+  document.getElementById('userCancelBtn').style.display='';
+  document.getElementById('studentFormSection')?.scrollIntoView({behavior:'smooth'});
 };
 
 window.deleteStudent=async(uid,name)=>{
@@ -1216,14 +1319,16 @@ window.loadStats=async(group,btn)=>{
 
 // ── 탭 전환 ──────────────────────────────────────────────
 window.switchAdminTab=tab=>{
-  const tabs=['words','users','groups','notice','files','stats'];
+  const tabs=['words','users','notice','homework','payment','stats','push'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
-  tabs.forEach(t=>document.getElementById('admin'+t.charAt(0).toUpperCase()+t.slice(1)).style.display=t===tab?'':'none');
+  const map={words:'adminWords',users:'adminUsers',notice:'adminNotice',homework:'adminHomework',payment:'adminPayment',stats:'adminStats',push:'adminPush'};
+  Object.entries(map).forEach(([k,v])=>{const el=document.getElementById(v);if(el)el.style.display=k===tab?'':'none';});
   if(tab==='users')loadAdminUsers();
-  else if(tab==='groups'){loadGroups();}
   else if(tab==='notice')loadAdminNotices();
-  else if(tab==='files')loadAdminFiles();
+  else if(tab==='homework')loadAdminFiles();
+  else if(tab==='payment'){renderPaymentStudentSelect();loadPayments();}
   else if(tab==='stats'){renderStatsGroupFilter();loadStats('all',document.querySelector('.filter-btn'));}
+  else if(tab==='push')loadScheduledPush();
 };
 
 // ── 초기화 ───────────────────────────────────────────────
