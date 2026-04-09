@@ -147,10 +147,10 @@
     .spell-real-input{width:100%;padding:14px 16px;font-size:20px;font-weight:600;border:2px solid #ddd;border-radius:14px;outline:none;text-align:center;color:var(--text);background:white;letter-spacing:4px;}
     .spell-real-input:focus{border-color:var(--teal);}
     .spell-hint{text-align:center;font-size:13px;color:#aaa;margin-top:8px;}
-    .spell-boxes{display:flex;gap:5px;padding:12px 16px;flex-wrap:nowrap;justify-content:center;flex-shrink:0;overflow-x:auto;}
-    .spell-box{width:38px;height:46px;min-width:38px;background:white;border:2px solid #ddd;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text);flex-shrink:0;}
-    .spell-box.active{background:#e8f9f9;border:2px solid var(--teal);}
-    .spell-box.filled{background:white;border:2px solid var(--teal);color:var(--teal);}
+    .spell-boxes{display:flex;gap:6px;padding:12px 16px;flex-wrap:wrap;justify-content:center;flex-shrink:0;}
+    .spell-box{width:38px;height:46px;background:#eee;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text);}
+    .spell-box.active{background:white;border:2px solid var(--teal);}
+    .spell-box.filled{background:white;border:2px solid #ddd;}
 
     /* RESULT */
     #result{align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
@@ -696,13 +696,13 @@ async function loadHomeData() {
 async function loadNoticePreview() {
   const group = userProfile?.group || '';
   const snap = await getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc')));
-  allNotices = snap.docs.map(d => ({id: d.id, ...d.data()}))
-    .filter(n => n.target === 'all' || n.target === group);
-  const notices = allNotices.slice(0, 3);
+  const notices = snap.docs.map(d => ({id: d.id, ...d.data()}))
+    .filter(n => n.target === 'all' || n.target === group)
+    .slice(0, 3);
   const el = document.getElementById('noticePreview');
   if (!notices.length) { el.innerHTML = '<div class="empty-msg">공지사항이 없습니다</div>'; return; }
   el.innerHTML = notices.map(n => `
-    <div class="notice-item" onclick="viewNotice('${n.id}')">
+    <div class="notice-item">
       <div class="notice-dot"></div>
       <div class="notice-item-text">
         <div class="notice-item-title">${n.title}</div>
@@ -733,7 +733,7 @@ async function loadHwFiles() {
           <span>${f.date||''}</span>
         </div>
       </div>
-      <button class="download-btn" onclick="downloadHwFile('${f.url||''}','${f.name||''}',event)">다운로드</button>
+      <button class="download-btn" onclick="window.open('${f.url||'#'}','_blank')">다운로드</button>
     </div>`).join('');
 }
 
@@ -741,55 +741,19 @@ async function loadHwFiles() {
 window.goNoticeList = async function() {
   const group = userProfile?.group || '';
   const snap = await getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc')));
-  allNotices = snap.docs.map(d => ({id: d.id, ...d.data()}))
+  const notices = snap.docs.map(d => ({id: d.id, ...d.data()}))
     .filter(n => n.target === 'all' || n.target === group);
   const el = document.getElementById('noticeFullList');
-  el.innerHTML = allNotices.map(n => `
-    <div class="notice-full-item" onclick="viewNotice('${n.id}')" style="cursor:pointer;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <div class="notice-full-title" style="margin-bottom:0;">${n.title}</div>
-        <span style="color:var(--teal);font-size:18px;">›</span>
-      </div>
+  el.innerHTML = notices.map(n => `
+    <div class="notice-full-item">
+      <div class="notice-full-title">${n.title}</div>
       <div class="notice-full-meta">
         <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
         <span>${n.date||''}</span>
       </div>
+      <div class="notice-content">${n.content}</div>
     </div>`).join('') || '<div class="empty-msg">공지사항이 없습니다</div>';
-  document.querySelector('#noticeScreen .page-title').textContent = '공지사항';
   show('noticeScreen');
-};
-
-// ── 공지 상세보기 ─────────────────────────────────────────
-let allNotices = [];
-window.viewNotice = function(noticeId) {
-  const n = allNotices.find(n => n.id === noticeId);
-  if (!n) return;
-  const el = document.getElementById('noticeFullList');
-  el.innerHTML = `
-    <div class="notice-full-item" style="margin-bottom:0;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-        <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
-        <span style="font-size:12px;color:var(--gray);">${n.date||''}</span>
-      </div>
-      <div class="notice-full-title" style="font-size:17px;margin-bottom:12px;">${n.title}</div>
-      <div class="notice-content" style="white-space:pre-wrap;">${n.content}</div>
-    </div>`;
-  document.querySelector('#noticeScreen .page-title').textContent = '공지사항';
-  show('noticeScreen');
-};
-
-// ── 숙제 파일 다운로드 ─────────────────────────────────────
-window.downloadHwFile = function(url, name, event) {
-  event.stopPropagation();
-  if (!url || url === '') { alert('파일 URL이 없습니다.'); return; }
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  a.download = name || 'download';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 };
 
 // ── 단원 목록 ─────────────────────────────────────────────
@@ -896,15 +860,11 @@ function renderSpellBoxes(val, len) {
     return `<div class="${cls}">${ch}</div>`;
   }).join('');
 }
-// spellInput input event - only up to word length
-
 document.getElementById('spellInput').addEventListener('input', function() {
   const q = spellQuestions[spellQ]; if(!q) return;
-  let val = this.value.toLowerCase().replace(/[^a-z ]/g,'');
-  // 단어 길이 초과 입력 방지
-  if(val.length > q.en.length) val = val.slice(0, q.en.length);
+  const val = this.value.toLowerCase().replace(/[^a-z ]/g,'');
   this.value = val;
-  renderSpellBoxes(val, q.en.length);
+  renderSpellBoxes(val, Math.max(q.en.length, val.length));
 });
 document.getElementById('spellInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') {
@@ -1129,25 +1089,16 @@ window.addUser = async function() {
   if(pw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
   const email = username+'@kunsori.app';
   try {
-    // 보조 앱으로 학생 계정 생성 (관리자 세션 유지)
-    const {initializeApp, getApp} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const {getAuth: getAuth2, createUserWithEmailAndPassword: createUser2} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    let secondaryApp;
-    try { secondaryApp = getApp('secondary'); }
-    catch(e) { secondaryApp = initializeApp(firebaseConfig, 'secondary'); }
-    const auth2 = getAuth2(secondaryApp);
-    const cred = await createUser2(auth2, email, pw);
-    await auth2.signOut();
-    await setDoc(doc(db,'users',cred.user.uid), {username, name, email, group, role:'student', pw, createdAt:serverTimestamp()});
-    document.getElementById('newUserId').value='';
-    document.getElementById('newUserName').value='';
-    document.getElementById('newUserPw').value='';
-    showToast('✅ 학생 계정 추가됐어요!');
+    // 관리자 세션은 유지하면서 별도 계정 생성 (Admin SDK 없이는 한계 있음)
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    await setDoc(doc(db,'users',cred.user.uid), {username, name, email, group, role:'student', createdAt:serverTimestamp()});
+    // 다시 관리자로 로그인
+    await signInWithEmailAndPassword(auth, userProfile.email, ''); // 실제론 admin pw 필요
+    document.getElementById('newUserId').value=''; document.getElementById('newUserName').value=''; document.getElementById('newUserPw').value='';
+    showToast('학생 계정이 추가됐어요! 다시 로그인하세요.');
     await loadAdminUsers();
   } catch(e) {
-    console.error(e);
-    if(e.code==='auth/email-already-in-use') alert('이미 사용중인 아이디예요.');
-    else alert('계정 생성 실패: ' + e.message);
+    alert('계정 생성 실패: ' + e.message);
   }
 };
 window.delUser = async function(uid) {
