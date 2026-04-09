@@ -256,6 +256,9 @@
     <div style="margin-top:20px;text-align:center;font-size:14px;color:var(--gray);">
       계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
     </div>
+    <button id="installBtn" onclick="installApp()" style="display:none;margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">
+      📱 홈화면에 추가
+    </button>
     <div class="version">version : 3.0.0</div>
   </div>
 
@@ -273,9 +276,12 @@
           <div class="form-row"><label class="form-label">이름 *</label><input class="form-input" id="signupName" placeholder="실명을 입력하세요"></div>
           <div class="form-row"><label class="form-label">비밀번호 * (6자 이상)</label><input class="form-input" id="signupPw" type="password" placeholder="비밀번호"></div>
           <div class="form-row"><label class="form-label">비밀번호 확인 *</label><input class="form-input" id="signupPw2" type="password" placeholder="비밀번호 재입력"></div>
-          <div class="form-row"><label class="form-label">그룹 선택 *</label><select class="form-input" id="signupGroup"><option value="">로딩 중...</option></select></div>
-          <div class="form-row"><label class="form-label">부모님 성함</label><input class="form-input" id="signupParentName" placeholder="선택사항"></div>
-          <div class="form-row"><label class="form-label">부모님 연락처</label><input class="form-input" id="signupParentPhone" placeholder="010-0000-0000" type="tel"></div>
+          <div class="form-row"><label class="form-label">연락처 *</label><input class="form-input" id="signupPhone" placeholder="010-0000-0000" type="tel"></div>
+          <div class="form-row"><label class="form-label">부모님 성함 (선택)</label><input class="form-input" id="signupParentName" placeholder="선택사항"></div>
+          <div class="form-row"><label class="form-label">부모님 연락처 (선택)</label><input class="form-input" id="signupParentPhone" placeholder="010-0000-0000" type="tel"></div>
+          <div style="background:#f5fafa;border-radius:10px;padding:12px;font-size:13px;color:var(--gray);margin-bottom:10px;">
+            ℹ️ 그룹 배정은 관리자가 완료합니다. 가입 후 관리자에게 문의하세요.
+          </div>
           <div class="login-error" id="signupError" style="margin-bottom:8px;"></div>
           <button class="login-btn" onclick="doSignup()">가입하기</button>
         </div>
@@ -293,6 +299,10 @@
       </div>
       <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
       <div class="dropdown" id="dd1">
+        <div class="dropdown-item" onclick="goMyInfo()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          내 정보 변경
+        </div>
         <div class="dropdown-item danger" onclick="confirmLogout()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
           로그아웃
@@ -546,6 +556,7 @@
       <div id="adminPayment" class="admin-section" style="display:none;">
         <div class="section-title">결제 등록</div>
         <div class="admin-form">
+          <input type="hidden" id="editingPaymentId">
           <div class="form-row"><label class="form-label">학생 선택</label><select class="form-input" id="paymentStudent"></select></div>
           <div class="form-row"><label class="form-label">항목</label><input class="form-input" id="paymentTitle" placeholder="예: 4월 수강료, 교재비"></div>
           <div class="form-row"><label class="form-label">금액 (원)</label><input class="form-input" id="paymentAmount" type="number" placeholder="예: 150000"></div>
@@ -558,7 +569,10 @@
             </select>
           </div>
           <div class="form-row"><label class="form-label">메모</label><input class="form-input" id="paymentMemo" placeholder="선택사항"></div>
-          <button class="add-btn" onclick="addPayment()">+ 결제 등록</button>
+          <div style="display:flex;gap:8px;">
+            <button class="add-btn" id="paymentSaveBtn" onclick="savePayment()" style="flex:1;">+ 결제 등록</button>
+            <button class="add-btn gray sm" id="paymentCancelBtn" onclick="cancelEditPayment()" style="display:none;flex:0 0 auto;padding:12px 16px;">취소</button>
+          </div>
         </div>
         <div class="section-title">결제 현황</div>
         <div id="paymentList"></div>
@@ -1294,15 +1308,28 @@ window.startEditStudent=()=>{
 };
 
 window.deleteStudent=async(uid,name)=>{
-  if(!confirm(`"${name}" 학생 계정을 완전히 삭제할까요?\n(Firestore + Firebase Auth 모두 삭제)`))return;
+  if(!confirm(`"${name}" 학생 계정을 삭제할까요?`))return;
   try{
-    // Firestore 삭제
+    // 해당 학생 이메일 가져오기
+    const uSnap=await getDoc(doc(db,'users',uid));
+    const email=uSnap.data()?.email;
+    const pw=prompt('확인을 위해 해당 학생의 비밀번호를 입력하세요\n(모르면 취소 후 Firebase 콘솔에서 삭제)');
+    if(pw===null)return;
+    // 보조앱으로 로그인 후 Auth 계정 삭제
+    const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const {getAuth:ga,signInWithEmailAndPassword:si,deleteUser:du}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e2){secApp=ia(firebaseConfig,'sec');}
+    const auth2=ga(secApp);
+    try{
+      const cred=await si(auth2,email,pw);
+      await du(cred.user);
+    }catch(authErr){
+      // Auth 삭제 실패해도 Firestore는 삭제
+      console.warn('Auth 삭제 실패:',authErr.message);
+    }
     await deleteDoc(doc(db,'users',uid));
-    // 보조 앱으로 해당 계정 로그인 후 삭제 불가 (Admin SDK 필요)
-    // 대신 disabled 표시 후 안내
     closeModal('studentDetailModal');
-    showToast('✅ 학생 정보 삭제 완료!');
-    showToast('⚠️ Firebase Auth 계정은 콘솔에서 삭제하세요');
+    showToast('✅ 학생 계정이 삭제됐어요!');
     await loadAdminUsers();
   }catch(e){alert('삭제 실패: '+e.message);}
 };
@@ -1471,7 +1498,8 @@ async function renderPaymentStudentSelect(){
   const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
   el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="${d.id}">${u.name||'?'} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
 }
-window.addPayment=async()=>{
+window.savePayment=async()=>{
+  const editId=document.getElementById('editingPaymentId').value;
   const uid=document.getElementById('paymentStudent').value;
   const title=document.getElementById('paymentTitle').value.trim();
   const amount=parseInt(document.getElementById('paymentAmount').value)||0;
@@ -1479,11 +1507,42 @@ window.addPayment=async()=>{
   const status=document.getElementById('paymentStatus').value;
   const memo=document.getElementById('paymentMemo').value.trim();
   if(!title||!amount){alert('항목과 금액을 입력하세요.');return;}
-  const uSnap=await getDoc(doc(db,'users',uid));
-  const uData=uSnap.data()||{};
-  await addDoc(collection(db,'payments'),{uid,userName:uData.name||'',group:uData.group||'',title,amount,due,status,memo,createdAt:serverTimestamp()});
+  if(editId){
+    await updateDoc(doc(db,'payments',editId),{title,amount,due,status,memo});
+    showToast('✅ 결제 내역이 수정됐어요!');
+  } else {
+    const uSnap=await getDoc(doc(db,'users',uid));
+    const uData=uSnap.data()||{};
+    await addDoc(collection(db,'payments'),{uid,userName:uData.name||'',group:uData.group||'',title,amount,due,status,memo,createdAt:serverTimestamp()});
+    showToast('✅ 결제 내역이 등록됐어요!');
+  }
+  cancelEditPayment();
+  await loadPayments();
+};
+window.addPayment=window.savePayment;
+window.cancelEditPayment=()=>{
+  document.getElementById('editingPaymentId').value='';
   ['paymentTitle','paymentAmount','paymentDue','paymentMemo'].forEach(id=>document.getElementById(id).value='');
-  showToast('✅ 결제 내역이 등록됐어요!');await loadPayments();
+  document.getElementById('paymentStatus').value='unpaid';
+  document.getElementById('paymentSaveBtn').textContent='+ 결제 등록';
+  document.getElementById('paymentCancelBtn').style.display='none';
+};
+window.startEditPayment=async id=>{
+  const snap=await getDoc(doc(db,'payments',id));
+  const p=snap.data();if(!p)return;
+  document.getElementById('editingPaymentId').value=id;
+  document.getElementById('paymentTitle').value=p.title||'';
+  document.getElementById('paymentAmount').value=p.amount||'';
+  document.getElementById('paymentDue').value=p.due||'';
+  document.getElementById('paymentStatus').value=p.status||'unpaid';
+  document.getElementById('paymentMemo').value=p.memo||'';
+  document.getElementById('paymentSaveBtn').textContent='수정 저장';
+  document.getElementById('paymentCancelBtn').style.display='';
+  // 학생 선택도 맞춰주기
+  const sel=document.getElementById('paymentStudent');
+  if(sel) sel.value=p.uid||'';
+  document.getElementById('adminPayment').scrollTop=0;
+  showToast('수정할 내용을 변경 후 저장하세요.');
 };
 async function loadPayments(){
   const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
@@ -1506,6 +1565,7 @@ async function loadPayments(){
       <div style="display:flex;gap:6px;">
         <button onclick="updatePaymentStatus('${p.id}','paid')" style="flex:1;background:#e0f5f0;color:#2a9f9f;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='paid'?'disabled':''}>납부완료</button>
         <button onclick="updatePaymentStatus('${p.id}','unpaid')" style="flex:1;background:#f0f0f0;color:#888;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='unpaid'?'disabled':''}>미납</button>
+        <button onclick="startEditPayment('${p.id}')" style="background:#e8f4f4;color:var(--teal);border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">수정</button>
         <button onclick="delPayment('${p.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;padding:4px 8px;font-size:16px;">✕</button>
       </div>
     </div>`).join('')||'<div class="empty-msg">결제 내역이 없습니다</div>';
@@ -1607,7 +1667,7 @@ window.goSignup=async()=>{
     const el=document.getElementById('signupGroup');
     el.innerHTML=groups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('')||'<option value="">그룹 없음</option>';
   }catch(e){}
-  ['signupId','signupName','signupPw','signupPw2','signupParentName','signupParentPhone'].forEach(id=>document.getElementById(id).value='');
+  ['signupId','signupName','signupPw','signupPw2','signupPhone','signupParentName','signupParentPhone'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('signupError').textContent='';
   show('signup');
 };
@@ -1618,10 +1678,10 @@ window.doSignup=async()=>{
   const name=document.getElementById('signupName').value.trim();
   const pw=document.getElementById('signupPw').value;
   const pw2=document.getElementById('signupPw2').value;
-  const group=document.getElementById('signupGroup').value;
+  const phone=document.getElementById('signupPhone').value.trim();
   const parentName=document.getElementById('signupParentName').value.trim();
   const parentPhone=document.getElementById('signupParentPhone').value.trim();
-  if(!username||!name||!pw||!group){err.textContent='필수 항목을 모두 입력하세요.';return;}
+  if(!username||!name||!pw||!phone){err.textContent='아이디, 이름, 비밀번호, 연락처는 필수입니다.';return;}
   if(!/^[a-zA-Z0-9]+$/.test(username)){err.textContent='아이디는 영문/숫자만 가능해요.';return;}
   if(pw!==pw2){err.textContent='비밀번호가 일치하지 않습니다.';return;}
   if(pw.length<6){err.textContent='비밀번호는 6자 이상이어야 합니다.';return;}
@@ -1635,8 +1695,9 @@ window.doSignup=async()=>{
     const auth2=ga(secApp);
     const cred=await cu(auth2,email,pw);
     await so(auth2);
-    await setDoc(doc(db,'users',cred.user.uid),{username,name,email,group,role:'student',parentName,parentPhone,avatarUrl:'',createdAt:serverTimestamp()});
-    showToast('✅ 회원가입 완료! 로그인해주세요.');
+    // 그룹은 미정으로 등록 (관리자가 나중에 배정)
+    await setDoc(doc(db,'users',cred.user.uid),{username,name,email,phone,group:'미배정',role:'student',parentName,parentPhone,avatarUrl:'',createdAt:serverTimestamp()});
+    showToast('✅ 가입 완료! 관리자가 그룹을 배정하면 이용 가능합니다.');
     show('login');
     document.getElementById('usernameInput').value=username;
   }catch(e){
@@ -1663,18 +1724,24 @@ window.speakCurrentWord=()=>{
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
 const screenStack=[];
 const _originalShow=window.show;
+// admin 화면들은 뒤로가기 스택에서 제외 (탭 전환이 있어서)
+const NO_STACK_SCREENS=new Set(['loading','login','admin']);
 window.show=id=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
-  // 스택 관리: 로그인/로딩은 스택 리셋
-  if(id==='login'||id==='loading'){screenStack.length=0;}
-  else if(curId&&curId!==id){
+  if(id==='login'||id==='loading'){
+    screenStack.length=0;
+  } else if(curId&&curId!==id&&!NO_STACK_SCREENS.has(curId)&&!NO_STACK_SCREENS.has(id)){
     screenStack.push(curId);
     history.pushState({screenId:id},'',location.pathname);
   }
   _originalShow(id);
 };
 window.addEventListener('popstate',e=>{
+  const cur=document.querySelector('.screen.active');
+  const curId=cur?.id;
+  // 관리자 화면에서 뒤로가기 → 아무것도 안 함 (탭 내부 이동이므로)
+  if(curId==='admin'){history.pushState({},'',location.pathname);return;}
   if(screenStack.length>0){
     const prev=screenStack.pop();
     _originalShow(prev);
@@ -1683,6 +1750,42 @@ window.addEventListener('popstate',e=>{
   }
 });
 window.goHome=()=>{show('home');clearTimers();};
+
+
+// ── PWA 홈화면 추가 ──────────────────────────────────────
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  _deferredPrompt=e;
+  const btn=document.getElementById('installBtn');
+  if(btn)btn.style.display='block';
+});
+window.installApp=async()=>{
+  if(!_deferredPrompt){
+    // iOS 안내
+    alert('Safari에서 하단 공유 버튼 → "홈 화면에 추가"를 선택해주세요!');
+    return;
+  }
+  _deferredPrompt.prompt();
+  const result=await _deferredPrompt.userChoice;
+  _deferredPrompt=null;
+  document.getElementById('installBtn').style.display='none';
+};
+window.addEventListener('appinstalled',()=>{
+  document.getElementById('installBtn').style.display='none';
+  showToast('홈화면에 추가됐어요! 🎉');
+});
+
+
+// ── 내 정보 변경 ─────────────────────────────────────────
+window.goMyInfo=()=>{
+  document.getElementById('dd1').classList.remove('open');
+  document.getElementById('myName').value=userProfile?.name||'';
+  document.getElementById('myParentName').value=userProfile?.parentName||'';
+  document.getElementById('myParentPhone').value=userProfile?.parentPhone||'';
+  document.getElementById('myNewPw').value='';
+  show('myInfo');
+};
 
 // ── 초기화 ───────────────────────────────────────────────
 const savedId=localStorage.getItem('savedId');
