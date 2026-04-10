@@ -714,6 +714,7 @@ import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.
 import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -729,6 +730,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+let messaging = null;
+try { messaging = getMessaging(app); } catch(e) { console.log('FCM 미지원 브라우저'); }
 
 // ── 전역 상태 ──────────────────────────────────────────────
 let currentUser = null, userProfile = null;
@@ -777,7 +780,14 @@ window.doLogin = async () => {
     // 로그인 시각 기록 (1일 자동 로그아웃용)
     localStorage.setItem('lastLoginAt', Date.now().toString());
     if(profile.role==='admin'){await loadAdminData();show('admin');}
-    else{document.getElementById('greetName').textContent=profile.name+' 님';await loadHomeData();show('home');}
+    else{
+      document.getElementById('greetName').textContent=profile.name+' 님';
+      await loadHomeData();
+      show('home');
+      // FCM 토큰 등록 (학생만)
+      setTimeout(registerFCMToken, 2000);
+      setupForegroundMessage();
+    }
   } catch(e){
     console.error(e);
     err.textContent = e.code==='auth/invalid-credential'?'비밀번호가 틀렸습니다.':'오류: '+(e.code||e.message);
@@ -1670,16 +1680,75 @@ window.onPushTypeChange=async()=>{
     el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="uid:${d.id}">${u.name} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
   }
 };
+// ── FCM 토큰 등록 ─────────────────────────────────────────
+// VAPID 키: Firebase 콘솔 → 프로젝트설정 → 클라우드 메시징 → 웹 푸시 인증서
+const VAPID_KEY = 'BGbPEBiwM8RHNH08eDa7xpX-bQB4T_GKoo9_cFYUttHRq8sAdn4157bMKNznq4lw_k1r0Xq6517LBKSyYaEgmG8';
+
+async function registerFCMToken() {
+  if(!messaging || !currentUser) return;
+  try {
+    const permission = await Notification.requestPermission();
+    if(permission !== 'granted') return;
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    if(token) {
+      await updateDoc(doc(db,'users',currentUser.uid), { fcmToken: token });
+      console.log('FCM 토큰 등록 완료');
+    }
+  } catch(e) {
+    console.log('FCM 토큰 등록 실패:', e.message);
+  }
+}
+
+// 포그라운드 알림 수신
+function setupForegroundMessage() {
+  if(!messaging) return;
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    showToast('🔔 ' + (title||'') + ': ' + (body||''));
+  });
+}
+
+// ── 푸시 알림 발송 (Vercel Function 경유) ─────────────────
 window.sendPushNotification=async()=>{
   const isStudent=document.getElementById('pushTypeStudent').checked;
-  const target=isStudent?document.getElementById('pushStudentTarget').value:document.getElementById('pushTarget').value;
+  const target=isStudent
+    ? document.getElementById('pushStudentTarget').value
+    : document.getElementById('pushTarget').value;
   const title=document.getElementById('pushTitle').value.trim();
   const body=document.getElementById('pushBody').value.trim();
   if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
-  const today=new Date().toISOString().slice(0,10);
-  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:today,createdAt:serverTimestamp()});
-  showToast('✅ 알림이 저장됐어요!');
-  await loadSavedPushList();
+
+  const btn = document.querySelector('#adminPush .add-btn');
+  if(btn){ btn.textContent='발송 중...'; btn.disabled=true; }
+
+  try {
+    // 1. Firestore에 저장
+    const today=new Date().toISOString().slice(0,10);
+    await addDoc(collection(db,'pushNotifications'),{
+      target, title, body, sent:false, date:today, createdAt:serverTimestamp()
+    });
+
+    // 2. Vercel Function으로 실제 발송
+    const res = await fetch('/api/sendPush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body, target }),
+    });
+    const result = await res.json();
+
+    if(result.success) {
+      showToast('✅ ' + result.message);
+      // Firestore에 발송 완료 표시
+      await loadSavedPushList();
+    } else {
+      showToast('⚠️ ' + (result.message || result.error));
+    }
+  } catch(e) {
+    console.error(e);
+    showToast('❌ 발송 실패: ' + e.message);
+  } finally {
+    if(btn){ btn.textContent='🔔 발송 & 저장'; btn.disabled=false; }
+  }
 };
 window.reuseNotification=async (id)=>{
   const snap=await getDoc(doc(db,'pushNotifications',id));
@@ -2002,6 +2071,9 @@ onAuthStateChanged(auth, async (user)=>{
           if(greetEl) greetEl.textContent = (userProfile.name||'학생')+' 님';
           await loadHomeData();
           _originalShow('home');
+          // FCM 토큰 등록
+          setTimeout(registerFCMToken, 2000);
+          setupForegroundMessage();
         }
         return;
       }
