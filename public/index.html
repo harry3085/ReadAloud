@@ -639,7 +639,8 @@
           <div class="form-row"><label class="form-label">제목</label><input class="form-input" id="pushTitle" placeholder="알림 제목"></div>
           <div class="form-row"><label class="form-label">내용</label><textarea class="form-input" id="pushBody" placeholder="알림 내용" rows="3" style="resize:none;"></textarea></div>
           <div style="display:flex;gap:8px;">
-            <button class="add-btn" onclick="sendPushNotification()" style="flex:1;">🔔 발송 & 저장</button>
+            <button class="add-btn" onclick="sendPushNotification()" style="flex:1;">🔔 발송</button>
+            <button class="add-btn gray" onclick="savePushOnly()" style="flex:1;">💾 저장만</button>
           </div>
         </div>
         <div class="section-title">저장된 알림 <span style="font-size:12px;color:var(--gray);font-weight:400;">(클릭하면 재활용)</span></div>
@@ -1709,37 +1710,46 @@ function setupForegroundMessage() {
 }
 
 // ── 푸시 알림 발송 (Vercel Function 경유) ─────────────────
-window.sendPushNotification=async()=>{
+function getPushFormData() {
   const isStudent=document.getElementById('pushTypeStudent').checked;
   const target=isStudent
     ? document.getElementById('pushStudentTarget').value
     : document.getElementById('pushTarget').value;
   const title=document.getElementById('pushTitle').value.trim();
   const body=document.getElementById('pushBody').value.trim();
+  return { isStudent, target, title, body };
+}
+
+// 저장만 (발송 안 함)
+window.savePushOnly=async()=>{
+  const { target, title, body } = getPushFormData();
+  if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  await addDoc(collection(db,'pushNotifications'),{
+    target, title, body, sent:false, date:today, createdAt:serverTimestamp()
+  });
+  showToast('💾 알림이 저장됐어요!');
+  await loadSavedPushList();
+};
+
+// 발송만 (저장 안 함)
+window.sendPushNotification=async()=>{
+  const { target, title, body } = getPushFormData();
   if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
 
-  const btn = document.querySelector('#adminPush .add-btn');
-  if(btn){ btn.textContent='발송 중...'; btn.disabled=true; }
+  const btns = document.querySelectorAll('#adminPush .add-btn');
+  btns.forEach(b=>{ b.disabled=true; });
+  btns[0].textContent='발송 중...';
 
   try {
-    // 1. Firestore에 저장
-    const today=new Date().toISOString().slice(0,10);
-    await addDoc(collection(db,'pushNotifications'),{
-      target, title, body, sent:false, date:today, createdAt:serverTimestamp()
-    });
-
-    // 2. Vercel Function으로 실제 발송
     const res = await fetch('/api/sendPush', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, target }),
     });
     const result = await res.json();
-
     if(result.success) {
       showToast('✅ ' + result.message);
-      // Firestore에 발송 완료 표시
-      await loadSavedPushList();
     } else {
       showToast('⚠️ ' + (result.message || result.error));
     }
@@ -1747,7 +1757,8 @@ window.sendPushNotification=async()=>{
     console.error(e);
     showToast('❌ 발송 실패: ' + e.message);
   } finally {
-    if(btn){ btn.textContent='🔔 발송 & 저장'; btn.disabled=false; }
+    btns.forEach(b=>{ b.disabled=false; });
+    btns[0].textContent='🔔 발송';
   }
 };
 window.reuseNotification=async (id)=>{
