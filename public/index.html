@@ -703,6 +703,22 @@
     </div>
   </div>
 
+  <!-- 알림 허용 유도 모달 -->
+  <div class="modal-overlay hidden" id="notifModal">
+    <div class="confirm-modal" style="max-width:320px;">
+      <div style="font-size:48px;margin-bottom:12px;">🔔</div>
+      <div class="confirm-title">알림을 허용해주세요!</div>
+      <div class="confirm-sub" style="line-height:1.6;">
+        시험·숙제·공지 알림을<br>받으려면 알림 허용이 필요해요.<br>
+        <span style="font-size:12px;color:#bbb;">허용하지 않으면 중요한 알림을 놓칠 수 있어요 😢</span>
+      </div>
+      <div class="confirm-btns">
+        <button class="confirm-cancel" onclick="dismissNotifModal()">나중에</button>
+        <button class="confirm-ok" onclick="requestNotifPermission()">알림 허용하기 ✅</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 </div>
 
@@ -1682,22 +1698,57 @@ window.onPushTypeChange=async()=>{
   }
 };
 // ── FCM 토큰 등록 ─────────────────────────────────────────
-// VAPID 키: Firebase 콘솔 → 프로젝트설정 → 클라우드 메시징 → 웹 푸시 인증서
 const VAPID_KEY = 'BGbPEBiwM8RHNH08eDa7xpX-bQB4T_GKoo9_cFYUttHRq8sAdn4157bMKNznq4lw_k1r0Xq6517LBKSyYaEgmG8';
 
-async function registerFCMToken() {
-  if(!messaging || !currentUser) return;
+// 실제 FCM 토큰 발급 및 저장
+async function doRegisterToken() {
+  if(!messaging || !currentUser) return false;
   try {
-    const permission = await Notification.requestPermission();
-    if(permission !== 'granted') return;
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if(token) {
       await updateDoc(doc(db,'users',currentUser.uid), { fcmToken: token });
       console.log('FCM 토큰 등록 완료');
+      return true;
     }
   } catch(e) {
     console.log('FCM 토큰 등록 실패:', e.message);
   }
+  return false;
+}
+
+// 알림 허용 버튼 클릭
+window.requestNotifPermission = async() => {
+  document.getElementById('notifModal').classList.add('hidden');
+  const permission = await Notification.requestPermission();
+  if(permission === 'granted') {
+    const ok = await doRegisterToken();
+    if(ok) showToast('✅ 알림이 설정됐어요! 🎉');
+  }
+};
+
+// 나중에 버튼 → 그냥 닫기 (다음 로그인 때 다시 뜸)
+window.dismissNotifModal = () => {
+  document.getElementById('notifModal').classList.add('hidden');
+};
+
+// 로그인 후 알림 설정 시작 (로그인할 때만 1회 호출)
+async function registerFCMToken() {
+  if(!messaging || !currentUser) return;
+  if(userProfile?.role === 'admin') return; // 관리자는 불필요
+
+  // 이미 허용된 경우 → 바로 토큰 등록 (팝업 없음)
+  if(Notification.permission === 'granted') {
+    await doRegisterToken();
+    return;
+  }
+  // 차단된 경우 → 팝업 띄워도 의미없으므로 스킵
+  if(Notification.permission === 'denied') return;
+
+  // 기본 상태 → 3초 후 팝업 1회 표시
+  setTimeout(() => {
+    if(!currentUser || userProfile?.role === 'admin') return;
+    document.getElementById('notifModal').classList.remove('hidden');
+  }, 3000);
 }
 
 // 포그라운드 알림 수신
