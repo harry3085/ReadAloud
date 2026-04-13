@@ -206,8 +206,8 @@ tbody tr:last-child td{border-bottom:none;}
         <span class="nav-toggle">›</span>
       </div>
       <div class="nav-children nav-sub">
-        <div class="nav-item" onclick="goPage('test-create')" id="nav-test-create">시험 출제</div>
-        <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">시험 목록</div>
+        <div class="nav-item" onclick="goPage_testCreate()" id="nav-test-create">시험 출제</div>
+        <div class="nav-item" onclick="goPage('test-list');loadTestList()" id="nav-test-list">시험 목록</div>
         <div class="nav-item" onclick="goPage('test-print')" id="nav-test-print">시험지 출력</div>
       </div>
     </div>
@@ -479,30 +479,35 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- 시험 출제 -->
   <div class="page" id="page-test-create">
-    <div class="page-header"><div><div class="page-title">시험 출제</div><div class="page-sub">단계별로 시험을 출제합니다</div></div></div>
-    <div id="testCreateContent">
-      <div class="card" style="margin-bottom:16px;">
-        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;">
-          <div class="step-tab active" id="stab1" style="padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid var(--teal);color:var(--teal);margin-bottom:-2px;">① 대상 선택</div>
-          <div class="step-tab" id="stab2" style="padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;color:var(--gray);">② 교재 선택</div>
-          <div class="step-tab" id="stab3" style="padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;color:var(--gray);">③ 문제 구성</div>
-          <div class="step-tab" id="stab4" style="padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;color:var(--gray);">④ 세부 옵션</div>
+    <div class="page-header">
+      <div><div class="page-title">시험 출제</div><div class="page-sub">단계별로 시험을 출제합니다</div></div>
+      <button class="btn btn-secondary" onclick="goPage('test-list')">시험 목록 보기</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;padding:16px 24px;">
+      <div style="display:flex;align-items:center;">
+        <div id="sti-1" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--teal);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">1</div>
+          대상 선택
         </div>
-        <div id="testStep1">
-          <div style="font-size:14px;font-weight:600;margin-bottom:12px;">클래스 / 학생 선택</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <div>
-              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">클래스 선택</div>
-              <div id="testClassList" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;"></div>
-            </div>
-            <div>
-              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">학생 선택</div>
-              <div id="testStudentList" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;font-size:13px;color:var(--gray);display:flex;align-items:center;justify-content:center;min-height:100px;">클래스를 선택하세요</div>
-            </div>
-          </div>
-          <div style="margin-top:16px;text-align:right;"><button class="btn btn-primary" onclick="testNextStep(2)">다음 →</button></div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>
+        <div id="sti-2" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--gray);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:#eee;color:var(--gray);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">2</div>
+          교재 선택
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>
+        <div id="sti-3" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--gray);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:#eee;color:var(--gray);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">3</div>
+          문제 구성
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>
+        <div id="sti-4" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--gray);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:#eee;color:var(--gray);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">4</div>
+          출력 정보
         </div>
       </div>
+    </div>
+    <div class="card" id="testStep1Content">
+      <div style="text-align:center;color:var(--gray);padding:40px;font-size:13px;">메뉴에서 시험 출제를 클릭하세요</div>
     </div>
   </div>
 
@@ -1669,17 +1674,505 @@ window.showToast = (msg) => {
   toastTimer=setTimeout(()=>{t.style.opacity='0';},2500);
 };
 
-window.exportStudentExcel = (status='active') => { showToast('엑셀 내보내기 준비 중...'); };
-window.editStudent = (id) => { showToast('수정 기능 준비 중...'); };
-window.editClass = (id) => { showToast('수정 기능 준비 중...'); };
-window.editNotice = (id) => { showToast('수정 기능 준비 중...'); };
+// ── 시험 목록 ────────────────────────────────────────────
+window.loadTestList = async() => {
+  const el = document.getElementById('testListBody');
+  try{
+    const snap = await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
+    if(snap.empty){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';return;}
+    el.innerHTML = snap.docs.map((d,i)=>{
+      const t = d.data();
+      return `<tr>
+        <td>${i+1}</td>
+        <td style="font-weight:600;">${t.name||'-'}</td>
+        <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
+        <td>${t.bookName||'-'}</td>
+        <td>${t.count||0}문제</td>
+        <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
+        <td>-</td>
+        <td>-</td>
+        <td style="display:flex;gap:4px;">
+          <button class="btn btn-primary btn-sm" onclick="reprintTest('${d.id}')">재출력</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTest('${d.id}')">삭제</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+};
+window.reprintTest = async(id) => {
+  const snap = await getDoc(doc(db,'tests',id));
+  const t = snap.data(); if(!t) return;
+  testData.qType = t.qType||'both';
+  printExamPDF(t.words||[], t.name, t.academy||'큰소리영어', t.date, 'both');
+};
+window.deleteTest = async(id) => {
+  if(!confirm('시험을 삭제할까요?'))return;
+  await deleteDoc(doc(db,'tests',id));
+  showToast('삭제됐어요.'); await loadTestList();
+};
+
+// ── 엑셀 내보내기 ────────────────────────────────────────
+window.exportStudentExcel = async(status='active') => {
+  try{
+    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
+    const students = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!students.length){showToast('내보낼 학생이 없습니다.');return;}
+
+    const statusLabel = {active:'재원생',pause:'휴원생',out:'퇴원생'};
+    let headers, rows;
+    if(status==='active'){
+      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','등록일'];
+      rows = students.map((u,i)=>[
+        i+1, u.group||'', u.username||'', u.name||'', u.birth||'',
+        u.school||'', u.grade||'', u.phone||'',
+        u.parentName||'', u.parentPhone||'',
+        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):''
+      ]);
+    } else {
+      const dateCol = status==='pause'?'휴원일':'퇴원일';
+      headers = ['No','아이디','이름','생일','학교','학년','등록일',dateCol];
+      rows = students.map((u,i)=>[
+        i+1, u.username||'', u.name||'', u.birth||'',
+        u.school||'', u.grade||'',
+        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
+        u.statusDate||''
+      ]);
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+    // 컬럼 너비 설정
+    ws['!cols'] = headers.map(()=>({wch:14}));
+    XLSX.utils.book_append_sheet(wb, ws, statusLabel[status]);
+    const today = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `큰소리영어_${statusLabel[status]}_${today}.xlsx`);
+    showToast(`✅ ${statusLabel[status]} ${students.length}명 엑셀 다운로드 완료!`);
+  }catch(e){ alert('내보내기 실패: '+e.message); }
+};
+
+// ── 클래스 수정 ──────────────────────────────────────────
+window.editClass = async(id) => {
+  const snap = await getDoc(doc(db,'groups',id));
+  const g = snap.data(); if(!g) return;
+  showModal(`
+    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">반 수정</div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
+      <div><div style="color:var(--gray);margin-bottom:4px;">반 이름 *</div>
+      <input id="editClassName" type="text" value="${g.name||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:4px;">담당 선생님</div>
+      <input id="editClassTeacher" type="text" value="${g.teacher||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="updateClass('${id}')" style="flex:1;justify-content:center;">저장</button>
+    </div>
+  `);
+};
+window.updateClass = async(id) => {
+  const name = document.getElementById('editClassName').value.trim();
+  const teacher = document.getElementById('editClassTeacher').value.trim();
+  if(!name){alert('반 이름을 입력하세요.');return;}
+  await updateDoc(doc(db,'groups',id),{name,teacher});
+  closeModal(); showToast('✅ 반 정보가 수정됐어요!'); await loadClasses();
+};
+
+// ── 학생 수정 ────────────────────────────────────────────
+window.editStudent = async(id) => {
+  const snap = await getDoc(doc(db,'users',id));
+  const u = snap.data(); if(!u) return;
+  const classSnap = await getDocs(collection(db,'groups'));
+  const opts = classSnap.docs.map(d=>`<option value="${d.data().name}" ${u.group===d.data().name?'selected':''}>${d.data().name}</option>`).join('');
+  showModal(`
+    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">학생 정보 수정</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
+      <div><div style="color:var(--gray);margin-bottom:3px;">아이디</div>
+      <input type="text" value="${u.username||''}" disabled style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:#f5f5f5;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">이름 *</div>
+      <input id="euName" type="text" value="${u.name||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">반</div>
+      <select id="euGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">생일</div>
+      <input id="euBirth" type="date" value="${u.birth||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">학교</div>
+      <input id="euSchool" type="text" value="${u.school||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">학년</div>
+      <input id="euGrade" type="text" value="${u.grade||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">연락처</div>
+      <input id="euPhone" type="tel" value="${u.phone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">새 비밀번호</div>
+      <input id="euPw" type="password" placeholder="변경 시만 입력" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 성함</div>
+      <input id="euParentName" type="text" value="${u.parentName||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 연락처</div>
+      <input id="euParentPhone" type="tel" value="${u.parentPhone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="updateStudent('${id}')" style="flex:2;justify-content:center;">저장</button>
+    </div>
+  `);
+};
+window.updateStudent = async(id) => {
+  const name = document.getElementById('euName').value.trim();
+  if(!name){alert('이름을 입력하세요.');return;}
+  const data = {
+    name, group:document.getElementById('euGroup').value,
+    birth:document.getElementById('euBirth').value,
+    school:document.getElementById('euSchool').value.trim(),
+    grade:document.getElementById('euGrade').value.trim(),
+    phone:document.getElementById('euPhone').value.trim(),
+    parentName:document.getElementById('euParentName').value.trim(),
+    parentPhone:document.getElementById('euParentPhone').value.trim(),
+  };
+  await updateDoc(doc(db,'users',id), data);
+  closeModal(); showToast('✅ 학생 정보가 수정됐어요!');
+  await loadStudents(currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active');
+};
+
+// ── 공지 수정 ────────────────────────────────────────────
+window.editNotice = async(id) => {
+  const snap = await getDoc(doc(db,'notices',id));
+  const n = snap.data(); if(!n) return;
+  const classSnap = await getDocs(collection(db,'groups'));
+  const opts = '<option value="all" '+(n.target==='all'?'selected':'')+'>전체</option>'
+    + classSnap.docs.map(d=>`<option value="${d.data().name}" ${n.target===d.data().name?'selected':''}>${d.data().name}</option>`).join('');
+  showModal(`
+    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">공지 수정</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">대상</div>
+      <select id="enTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">제목 *</div>
+      <input id="enTitle" type="text" value="${(n.title||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">내용 *</div>
+      <textarea id="enContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:none;outline:none;">${n.content||''}</textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="updateNotice('${id}')" style="flex:1;justify-content:center;">저장</button>
+    </div>
+  `);
+};
+window.updateNotice = async(id) => {
+  const title = document.getElementById('enTitle').value.trim();
+  const content = document.getElementById('enContent').value.trim();
+  const target = document.getElementById('enTarget').value;
+  if(!title||!content){alert('제목과 내용을 입력하세요.');return;}
+  await updateDoc(doc(db,'notices',id),{title,content,target});
+  closeModal(); showToast('✅ 공지가 수정됐어요!'); await loadNotices();
+};
+
+// ── 테스트 출제 ──────────────────────────────────────────
+let testData = { targetType:'class', targetId:'', targetName:'', bookId:'', bookName:'', unitIds:[], words:[], examName:'', mix:true, qType:'both', count:20 };
+
+window.goPage_testCreate = async() => {
+  testData = { targetType:'class', targetId:'', targetName:'', bookId:'', bookName:'', unitIds:[], words:[], examName:'', mix:true, qType:'both', count:20 };
+  goPage('test-create');
+  await renderTestStep1();
+};
+
+async function renderTestStep1(){
+  updateStepUI(1);
+  const snap = await getDocs(collection(db,'groups'));
+  const groups = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('testStep1Content').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">① 시험 대상 선택</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">클래스 선택</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          ${groups.map(g=>`
+            <div onclick="selectTestTarget('class','${g.id}','${g.name}')" id="tg-${g.id}"
+              style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:8px;"
+              onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
+              <span>👥</span> ${g.name}
+            </div>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">또는 개별 학생 선택</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:280px;overflow-y:auto;" id="testStudentListArea">
+          <div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">클래스를 먼저 선택하면<br>학생 목록이 나타납니다</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--gray);">선택: <span id="testTargetLabel" style="color:var(--teal);font-weight:600;">미선택</span></div>
+    <div style="margin-top:16px;text-align:right;">
+      <button class="btn btn-primary" onclick="testStep1Next()">다음 → 교재 선택</button>
+    </div>
+  `;
+}
+window.selectTestTarget = async(type, id, name) => {
+  testData.targetType = type; testData.targetId = id; testData.targetName = name;
+  document.querySelectorAll('[id^="tg-"]').forEach(el=>{ el.classList.remove('selected'); el.style.background=''; el.style.fontWeight=''; el.style.color=''; });
+  const el = document.getElementById('tg-'+id);
+  if(el){ el.style.background='#e0f5f5'; el.style.fontWeight='600'; el.style.color='var(--teal)'; el.classList.add('selected'); }
+  document.getElementById('testTargetLabel').textContent = name;
+  // 해당 반 학생 목록 표시
+  if(type==='class'){
+    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active'),where('group','==',name)));
+    const students = snap.docs.map(d=>({id:d.id,...d.data()}));
+    document.getElementById('testStudentListArea').innerHTML = students.map(u=>`
+      <div onclick="selectTestTarget('student','${u.id}','${u.name}')" id="tg-${u.id}"
+        style="padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:8px;"
+        onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
+        <div style="width:24px;height:24px;border-radius:50%;background:var(--teal);color:white;font-size:11px;display:flex;align-items:center;justify-content:center;">${(u.name||'?').charAt(0)}</div>
+        ${u.name}
+      </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">학생이 없습니다</div>';
+  }
+};
+window.testStep1Next = () => {
+  if(!testData.targetId){showToast('대상을 선택하세요.');return;}
+  renderTestStep2();
+};
+
+async function renderTestStep2(){
+  updateStepUI(2);
+  const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
+  const books = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('testStep1Content').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">② 교재 / Unit 선택</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">교재 선택</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:320px;overflow-y:auto;">
+          ${books.map(b=>`
+            <div onclick="selectTestBook('${b.id}','${b.name}')" id="tb-${b.id}"
+              style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;"
+              onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
+              📘 ${b.name} <span style="color:#bbb;font-size:11px;">단어${b.wordCount||0}개</span>
+            </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">교재가 없습니다</div>'}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">Unit 선택 (복수 선택 가능)</div>
+        <div id="testUnitListArea" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:320px;overflow-y:auto;">
+          <div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">교재를 선택하세요</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--gray);">선택된 단어: <span id="testWordCount" style="color:var(--teal);font-weight:600;">0개</span></div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="renderTestStep1()">← 이전</button>
+      <button class="btn btn-primary" onclick="testStep2Next()">다음 → 문제 구성</button>
+    </div>
+  `;
+}
+window.selectTestBook = async(bookId, bookName) => {
+  testData.bookId = bookId; testData.bookName = bookName; testData.unitIds = []; testData.words = [];
+  document.querySelectorAll('[id^="tb-"]').forEach(el=>{ el.style.background=''; el.style.fontWeight=''; el.style.color=''; el.classList.remove('selected'); });
+  const el = document.getElementById('tb-'+bookId);
+  if(el){ el.style.background='#e0f5f5'; el.style.fontWeight='600'; el.style.color='var(--teal)'; el.classList.add('selected'); }
+  const snap = await getDocs(collection(db,'books',bookId,'units'));
+  const units = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('testUnitListArea').innerHTML = units.map(u=>`
+    <div style="padding:10px 16px;border-bottom:1px solid #f5f5f5;font-size:13px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="uc-${u.id}" onchange="toggleUnit('${u.id}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})">
+      <label for="uc-${u.id}" style="cursor:pointer;flex:1;">${u.name} <span style="color:#bbb;font-size:11px;">${u.words?.length||0}개</span></label>
+    </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">Unit이 없습니다</div>';
+};
+window.toggleUnit = (uid, words) => {
+  const cb = document.getElementById('uc-'+uid);
+  if(cb.checked){ testData.unitIds.push(uid); testData.words.push(...words); }
+  else { testData.unitIds = testData.unitIds.filter(id=>id!==uid); testData.words = testData.words.filter(w=>!words.find(fw=>fw.en===w.en)); }
+  document.getElementById('testWordCount').textContent = testData.words.length+'개';
+};
+window.testStep2Next = () => {
+  if(!testData.bookId){showToast('교재를 선택하세요.');return;}
+  if(!testData.unitIds.length){showToast('Unit을 선택하세요.');return;}
+  if(testData.words.length < 4){showToast('단어가 최소 4개 이상 필요합니다.');return;}
+  renderTestStep3();
+};
+
+function renderTestStep3(){
+  updateStepUI(3);
+  const maxCount = testData.words.length;
+  document.getElementById('testStep1Content').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">③ 문제 구성</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">문제 유형</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <input type="radio" name="qtype" value="both" checked onchange="testData.qType=this.value"> 영→한 + 한→영 혼합
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <input type="radio" name="qtype" value="en2ko" onchange="testData.qType=this.value"> 영→한 (영어 보고 한글 쓰기)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <input type="radio" name="qtype" value="ko2en" onchange="testData.qType=this.value"> 한→영 (한글 보고 영어 쓰기)
+          </label>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">문제 수 및 옵션</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+            <span>문항 수</span>
+            <input type="number" id="testCount" value="${Math.min(20,maxCount)}" min="4" max="${maxCount}"
+              onchange="testData.count=parseInt(this.value)||20"
+              style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;width:70px;font-size:13px;outline:none;">
+            <span style="color:#bbb;">/ 최대 ${maxCount}개</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" checked onchange="testData.mix=this.checked"> 문제 순서 섞기
+          </label>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:24px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="renderTestStep2()">← 이전</button>
+      <button class="btn btn-primary" onclick="renderTestStep4()">다음 → 출력 정보</button>
+    </div>
+  `;
+}
+
+function renderTestStep4(){
+  updateStepUI(4);
+  testData.count = parseInt(document.getElementById('testCount')?.value)||20;
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('testStep1Content').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">④ 출력 정보 입력</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">학원명</div>
+        <input id="ti_academy" type="text" value="큰소리영어" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
+      </div>
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">시험명 *</div>
+        <input id="ti_name" type="text" placeholder="예: 1단원 단어시험" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
+      </div>
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">시험 날짜</div>
+        <input id="ti_date" type="date" value="${today}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
+      </div>
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">출력 유형</div>
+        <select id="ti_ptype" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;">
+          <option value="both">시험지 + 답안지</option>
+          <option value="exam">시험지만</option>
+          <option value="answer">답안지만</option>
+        </select>
+      </div>
+    </div>
+    <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:20px;">
+      <div style="font-weight:600;margin-bottom:6px;">출제 요약</div>
+      <div style="color:var(--gray);line-height:1.8;">
+        대상: <b style="color:var(--text);">${testData.targetName}</b> ·
+        교재: <b style="color:var(--text);">${testData.bookName}</b> ·
+        Unit: <b style="color:var(--text);">${testData.unitIds.length}개</b> ·
+        문항: <b style="color:var(--text);">${testData.count}문제</b> ·
+        유형: <b style="color:var(--text);">${{both:'영→한+한→영',en2ko:'영→한',ko2en:'한→영'}[testData.qType]}</b>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="renderTestStep3()">← 이전</button>
+      <button class="btn btn-primary" onclick="generateAndSaveTest()" style="min-width:140px;justify-content:center;">🖨 시험지 생성</button>
+    </div>
+  `;
+}
+
+function updateStepUI(step){
+  [1,2,3,4].forEach(i=>{
+    const el = document.getElementById('sti-'+i);
+    if(!el) return;
+    const circle = el.querySelector('.step-circle');
+    if(i < step){ el.style.color='var(--teal)'; circle.style.background='var(--teal)'; circle.style.color='white'; circle.innerHTML='✓'; }
+    else if(i === step){ el.style.color='var(--teal)'; circle.style.background='var(--teal)'; circle.style.color='white'; circle.innerHTML=i; }
+    else { el.style.color='var(--gray)'; circle.style.background='#eee'; circle.style.color='var(--gray)'; circle.innerHTML=i; }
+  });
+}
+
+// ── 시험지 생성 & PDF 출력 ────────────────────────────────
+window.generateAndSaveTest = async() => {
+  const examName = document.getElementById('ti_name')?.value.trim();
+  const academy = document.getElementById('ti_academy')?.value.trim()||'큰소리영어';
+  const date = document.getElementById('ti_date')?.value||new Date().toISOString().slice(0,10);
+  const ptype = document.getElementById('ti_ptype')?.value||'both';
+  if(!examName){showToast('시험명을 입력하세요.');return;}
+
+  testData.examName = examName;
+
+  // 문제 생성
+  let words = [...testData.words];
+  if(testData.mix) words = words.sort(()=>Math.random()-0.5);
+  words = words.slice(0, testData.count);
+
+  // Firestore에 시험 저장
+  try{
+    await addDoc(collection(db,'tests'),{
+      name:examName, academy, date,
+      targetType:testData.targetType, targetId:testData.targetId, targetName:testData.targetName,
+      bookId:testData.bookId, bookName:testData.bookName, unitIds:testData.unitIds,
+      qType:testData.qType, count:words.length, mix:testData.mix,
+      words:words.map(w=>({en:w.en,ko:w.ko})),
+      createdAt:serverTimestamp(), createdBy:currentUser.uid
+    });
+    showToast('✅ 시험이 저장됐어요!');
+  }catch(e){ console.log('저장 실패:', e.message); }
+
+  // PDF 출력 창 열기
+  printExamPDF(words, examName, academy, date, ptype);
+};
+
+function printExamPDF(words, examName, academy, date, ptype){
+  // 문제 생성
+  const questions = words.map((w, idx)=>{
+    const isEn2Ko = testData.qType==='en2ko' || (testData.qType==='both' && idx < Math.ceil(words.length/2));
+    const question = isEn2Ko ? w.en : w.ko;
+    const answer = isEn2Ko ? w.ko : w.en;
+    // 오답 보기 생성 (나머지 단어들에서 랜덤 3개)
+    const others = words.filter((_,i)=>i!==idx).sort(()=>Math.random()-0.5).slice(0,3);
+    const wrongAnswers = others.map(o => isEn2Ko ? o.ko : o.en);
+    const choices = [...wrongAnswers, answer].sort(()=>Math.random()-0.5);
+    const answerIdx = choices.indexOf(answer)+1;
+    return { num:idx+1, question, answer, choices, answerIdx, isEn2Ko };
+  });
+
+  const half = Math.ceil(questions.length/2);
+  const leftQs = questions.slice(0, half);
+  const rightQs = questions.slice(half);
+
+  const makeQHTML = (q, showAnswer) => `
+    <div style="margin-bottom:10px;break-inside:avoid;">
+      <div style="font-size:11pt;font-weight:bold;margin-bottom:3px;">${q.num}. ${q.question} ${showAnswer?`<span style="color:#555;font-weight:normal;">(정답: ${q.answerIdx}번)</span>`:''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;padding-left:8px;">
+        ${q.choices.map((c,i)=>`<div style="font-size:10pt;${showAnswer&&(i+1===q.answerIdx)?'font-weight:bold;color:#1a6b1a;':''}">${i+1}. ${c}</div>`).join('')}
+      </div>
+    </div>`;
+
+  const makeExamPage = (isAnswer) => `
+    <div style="page-break-after:always;padding:20px 24px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+      <div style="text-align:center;font-size:16pt;font-weight:bold;margin-bottom:6px;">TEST${isAnswer?' (답안지)':''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px;">
+        <div style="font-size:11pt;">학원명 : <u style="padding:0 4px;">${academy}</u></div>
+        <div style="font-size:10pt;">학교 : _________ &nbsp; 학년 : ___ &nbsp; 반 : ___ &nbsp; 이름 : _____________</div>
+      </div>
+      <div style="font-size:10pt;color:#555;margin-bottom:8px;">시험명 : ${examName} &nbsp;|&nbsp; 날짜 : ${date} &nbsp;|&nbsp; 문항 : ${questions.length}문제</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;border-top:1px solid #ccc;padding-top:8px;">
+        <div>${leftQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+        <div style="border-left:1px solid #ccc;padding-left:16px;">${rightQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+      </div>
+    </div>`;
+
+  let pageHTML = '';
+  if(ptype==='both'||ptype==='exam') pageHTML += makeExamPage(false);
+  if(ptype==='both'||ptype==='answer') pageHTML += makeExamPage(true);
+
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${examName}</title>
+    <style>*{box-sizing:border-box;}body{margin:0;}@media print{@page{margin:8mm;}}</style>
+    </head><body>${pageHTML}
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  win.document.close();
+}
+
+window.generatePDF = () => { showToast('테스트 출제 메뉴에서 시험지를 생성하세요.'); };
+window.testNextStep = (step) => { showToast('단계를 순서대로 진행하세요.'); };
+window.importStudentExcel = () => { showToast('엑셀 등록 준비 중...'); };
+window.previewExcel = (e) => { showToast('파일 미리보기 준비 중...'); };
 window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설정 준비 중...'); };
 window.viewUnit = (bid,uid,name) => { showToast(name+' 상세보기 준비 중...'); };
 window.moveToFolder = (id) => { showToast('폴더 이동 준비 중...'); };
-window.generatePDF = () => { showToast('PDF 생성 준비 중... (다음 단계에서 구현)'); };
-window.testNextStep = (step) => { showToast('다음 단계: '+step+' (구현 중...)'); };
-window.importStudentExcel = () => { showToast('엑셀 등록 준비 중...'); };
-window.previewExcel = (e) => { showToast('파일 미리보기 준비 중...'); };
 </script>
 </body>
 </html>
