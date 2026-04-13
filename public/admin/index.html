@@ -459,17 +459,51 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- 엑셀 등록 -->
   <div class="page" id="page-student-excel">
-    <div class="page-header"><div><div class="page-title">엑셀 등록</div><div class="page-sub">학생을 엑셀로 일괄 등록합니다</div></div></div>
-    <div class="card" style="max-width:600px;">
-      <div class="card-title">📊 엑셀 파일 업로드</div>
-      <div style="border:2px dashed var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--gray);margin-bottom:16px;cursor:pointer;" onclick="document.getElementById('excelUpload').click()">
-        <div style="font-size:32px;margin-bottom:8px;">📂</div>
-        <div style="font-size:14px;">엑셀 파일(.xlsx)을 클릭하거나 드래그하세요</div>
-        <div style="font-size:12px;margin-top:4px;">아이디, 이름, 반, 생일, 학교, 학년 순서로 작성</div>
-        <input type="file" id="excelUpload" accept=".xlsx,.xls" style="display:none" onchange="previewExcel(event)">
+    <div class="page-header">
+      <div><div class="page-title">엑셀 등록</div><div class="page-sub">재원생을 엑셀 파일로 일괄 등록합니다</div></div>
+      <button class="btn btn-secondary" onclick="downloadSampleExcel()">📥 샘플 파일 다운로드</button>
+    </div>
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:16px;">
+      <div class="card">
+        <div class="card-title">📋 작성 방법</div>
+        <div style="font-size:13px;line-height:1.8;color:var(--gray);">
+          <div style="margin-bottom:8px;">열 순서를 반드시 지켜주세요:</div>
+          <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;font-family:monospace;font-size:12px;line-height:2;">
+            A열: 아이디 *<br>
+            B열: 이름 *<br>
+            C열: 반 (예: 1반)<br>
+            D열: 생일 (예: 2015-03-15)<br>
+            E열: 학교<br>
+            F열: 학년 (예: 5)<br>
+            G열: 연락처<br>
+            H열: 부모님 성함<br>
+            I열: 부모님 연락처
+          </div>
+          <div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:12px;">
+            ⚠️ 기본 비밀번호는 <b>123456</b>으로 설정돼요.<br>
+            학생에게 로그인 후 변경하도록 안내하세요.
+          </div>
+        </div>
       </div>
-      <div id="excelPreview"></div>
-      <button class="btn btn-primary" onclick="importStudentExcel()" style="width:100%;justify-content:center;margin-top:12px;">일괄 등록</button>
+      <div class="card">
+        <div class="card-title">📂 파일 업로드</div>
+        <div id="excelDropZone" style="border:2px dashed var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--gray);margin-bottom:16px;cursor:pointer;transition:.2s;"
+          onclick="document.getElementById('excelUpload').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="event.preventDefault();this.style.borderColor='var(--border)';handleExcelDrop(event)">
+          <div style="font-size:40px;margin-bottom:8px;">📊</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px;">클릭하거나 파일을 드래그하세요</div>
+          <div style="font-size:12px;">.xlsx, .xls 파일만 가능합니다</div>
+          <input type="file" id="excelUpload" accept=".xlsx,.xls" style="display:none" onchange="previewExcel(event)">
+        </div>
+        <div id="excelPreview"></div>
+        <div id="excelImportBtnWrap" style="display:none;margin-top:12px;">
+          <button class="btn btn-primary" id="excelImportBtn" onclick="importStudentExcel()" style="width:100%;justify-content:center;font-size:15px;padding:12px;">
+            ✅ 일괄 등록하기
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1037,31 +1071,87 @@ async function loadDashBooks(){
   }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
 }
 
+// ── 페이지네이션 엔진 ─────────────────────────────────────
+const PAGE_SIZE_DEFAULT = 10;
+const _pageState = {}; // { [tableId]: { data, page, pageSize, renderFn } }
+
+function initPagination(tableId, data, renderRowFn, paginationElId, colCount, options={}){
+  const pageSize = options.pageSize || PAGE_SIZE_DEFAULT;
+  _pageState[tableId] = { data, page:1, pageSize, renderRowFn, paginationElId, colCount };
+  renderPage(tableId);
+}
+
+function renderPage(tableId){
+  const s = _pageState[tableId]; if(!s) return;
+  const { data, page, pageSize, renderRowFn, paginationElId, colCount } = s;
+  const total = data.length;
+  const totalPages = Math.max(1, Math.ceil(total/pageSize));
+  const currentPage = Math.min(page, totalPages);
+  s.page = currentPage;
+  const start = (currentPage-1)*pageSize;
+  const pageData = data.slice(start, start+pageSize);
+
+  // 테이블 바디 렌더
+  const el = document.getElementById(tableId);
+  if(el){
+    el.innerHTML = pageData.length
+      ? pageData.map((item,i) => renderRowFn(item, start+i)).join('')
+      : `<tr><td colspan="${colCount}" style="text-align:center;color:#bbb;padding:24px;">데이터가 없습니다</td></tr>`;
+  }
+
+  // 페이지네이션 UI
+  const pgEl = document.getElementById(paginationElId);
+  if(!pgEl) return;
+  const from = total ? start+1 : 0;
+  const to = Math.min(start+pageSize, total);
+
+  pgEl.innerHTML = `
+    <span class="tbl-page-info">총 ${total}개</span>
+    <button class="tbl-page-btn" onclick="gotoPage('${tableId}',1)" ${currentPage<=1?'disabled':''}>«</button>
+    <button class="tbl-page-btn" onclick="gotoPage('${tableId}',${currentPage-1})" ${currentPage<=1?'disabled':''}>‹</button>
+    <span class="tbl-page-info">${currentPage} / ${totalPages}</span>
+    <button class="tbl-page-btn" onclick="gotoPage('${tableId}',${currentPage+1})" ${currentPage>=totalPages?'disabled':''}>›</button>
+    <button class="tbl-page-btn" onclick="gotoPage('${tableId}',${totalPages})" ${currentPage>=totalPages?'disabled':''}>»</button>
+    <select class="tbl-size" onchange="changePageSize('${tableId}',parseInt(this.value))">
+      ${[10,20,50].map(n=>`<option value="${n}" ${pageSize===n?'selected':''}>${n}개</option>`).join('')}
+    </select>
+  `;
+}
+
+window.gotoPage = (tableId, page) => {
+  if(!_pageState[tableId]) return;
+  _pageState[tableId].page = page;
+  renderPage(tableId);
+};
+window.changePageSize = (tableId, size) => {
+  if(!_pageState[tableId]) return;
+  _pageState[tableId].pageSize = size;
+  _pageState[tableId].page = 1;
+  renderPage(tableId);
+};
+// 외부에서 데이터 업데이트 시 호출
+function refreshPagination(tableId, newData){
+  if(!_pageState[tableId]) return;
+  _pageState[tableId].data = newData;
+  _pageState[tableId].page = 1;
+  renderPage(tableId);
+}
+
 // ── 클래스 관리 ──────────────────────────────────────
 async function loadClasses(){
-  const el=document.getElementById('classTableBody');
   try{
     const snap=await getDocs(query(collection(db,'groups'),orderBy('createdAt','asc')));
-    if(snap.empty){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">반이 없습니다. 반을 추가해주세요.</td></tr>';return;}
-    el.innerHTML=snap.docs.map((d,i)=>{
-      const g=d.data();
-      return `<tr>
-        <td><input type="checkbox" value="${d.id}"></td>
-        <td>${i+1}</td>
-        <td style="font-weight:600;">${g.name||'-'}</td>
-        <td>${g.teacher||'-'}</td>
-        <td><input type="checkbox" ${g.hideApp?'checked':''}></td>
-        <td><input type="checkbox" ${g.hideStudy?'checked':''}></td>
-        <td><input type="checkbox" ${g.allBooks?'checked':''}></td>
-        <td><input type="checkbox" ${g.sendScore?'checked':''}></td>
-        <td style="color:var(--gray);font-size:12px;">${g.createdAt?.toDate?g.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-        <td>
-          <button class="btn btn-secondary btn-sm" onclick="editClass('${d.id}')">수정</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteClass('${d.id}','${g.name}')">삭제</button>
-        </td>
-      </tr>`;
-    }).join('');
-  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패</td></tr>';}
+    const data=snap.docs.map(d=>({id:d.id,...d.data()}));
+    initPagination('classTableBody', data, (g,i)=>`<tr>
+      <td><input type="checkbox" value="${g.id}"></td>
+      <td>${i+1}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editClass('${g.id}')">${g.name||'-'}</td>
+      <td>${g.teacher||'-'}</td>
+      <td style="text-align:center;">${g.hideApp?'<span class="badge badge-amber">숨김</span>':'-'}</td>
+      <td style="text-align:center;">${g.allBooks?'<span class="badge badge-blue">허용</span>':'-'}</td>
+      <td style="color:var(--gray);font-size:12px;">${g.createdAt?.toDate?g.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+    </tr>`, 'classPagination', 7);
+  }catch(e){document.getElementById('classTableBody').innerHTML='<tr><td colspan="7" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 
 window.openClassModal = () => {
@@ -1101,24 +1191,20 @@ async function loadStudents(status='active'){
     const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
     allStudents=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderStudentTable(status, allStudents);
-    // 반 필터 옵션
     if(status==='active'){
       const classSnap=await getDocs(collection(db,'groups'));
       const sel=document.getElementById('studentClassFilter');
       if(sel) sel.innerHTML='<option value="">전체 반</option>'+classSnap.docs.map(d=>`<option value="${d.data().name}">${d.data().name}</option>`).join('');
     }
-  }catch(e){el.innerHTML='<tr><td colspan="13" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패</td></tr>';}
+  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 
 function renderStudentTable(status, students){
-  const elMap={'active':'studentTableBody','pause':'pauseTableBody','out':'outTableBody'};
-  const el=document.getElementById(elMap[status]);
-  if(!el||!students.length){
-    if(el)el.innerHTML=`<tr><td colspan="13" style="text-align:center;color:#bbb;padding:20px;">학생이 없습니다</td></tr>`;
-    return;
-  }
+  const tbodyMap={'active':'studentTableBody','pause':'pauseTableBody','out':'outTableBody'};
+  const pgMap={'active':'studentPagination','pause':'pausePagination','out':'outPagination'};
+  const tbodyId=tbodyMap[status], pgId=pgMap[status];
   if(status==='active'){
-    el.innerHTML=students.map((u,i)=>`<tr>
+    initPagination(tbodyId, students, (u,i)=>`<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
       <td><span class="badge badge-teal">${u.group||'-'}</span></td>
@@ -1129,9 +1215,9 @@ function renderStudentTable(status, students){
       <td style="font-size:12px;">${u.grade||'-'}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
       <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-    </tr>`).join('');
+    </tr>`, pgId, 10);
   } else {
-    el.innerHTML=students.map((u,i)=>`<tr>
+    initPagination(tbodyId, students, (u,i)=>`<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
       <td style="font-family:monospace;font-size:12px;">${u.username||'-'}</td>
@@ -1141,7 +1227,7 @@ function renderStudentTable(status, students){
       <td style="font-size:12px;">${u.grade||'-'}</td>
       <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       <td style="color:var(--gray);font-size:12px;">${u.statusDate||'-'}</td>
-    </tr>`).join('');
+    </tr>`, pgId, 9);
   }
 }
 
@@ -1347,14 +1433,14 @@ async function loadBooks(){
     const snap=await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
     allBooks=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(!allBooks.length){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">교재가 없습니다</td></tr>';return;}
-    el.innerHTML=allBooks.map((b,i)=>`<tr>
+    initPagination('bookTableBody', allBooks, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name}')">📘 ${b.name}</td>
       <td style="text-align:center;">${b.unitCount||0}</td>
       <td style="text-align:center;">${b.wordCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-    </tr>`).join('');
+    </tr>`, 'bookPagination', 6);
   }catch(e){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패</td></tr>';}
   await loadFolders();
 }
@@ -1408,13 +1494,13 @@ async function loadFolders(){
     const snap=await getDocs(query(collection(db,'folders'),orderBy('createdAt','desc')));
     allFolders=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(!allFolders.length){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">폴더가 없습니다</td></tr>';return;}
-    el.innerHTML=allFolders.map((f,i)=>`<tr>
+    initPagination('folderTableBody', allFolders, (f,i)=>`<tr>
       <td><input type="checkbox" value="${f.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;cursor:pointer;color:var(--teal);">📁 ${f.name}</td>
       <td style="text-align:center;">${f.bookCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-    </tr>`).join('');
+    </tr>`, 'folderPagination', 5);
     // 폴더 필터 옵션
     const sel=document.getElementById('bookFolderFilter');
     if(sel) sel.innerHTML='<option value="">전체 폴더</option>'+allFolders.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
@@ -1507,7 +1593,7 @@ async function loadPayments(){
     if(!pays.length){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">결제 내역이 없습니다</td></tr>';return;}
     const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
     const sbadge={paid:'badge-green',unpaid:'badge-red',pending:'badge-amber'};
-    el.innerHTML=pays.map((p,i)=>`<tr>
+    initPagination('paymentTableBody', pays, (p,i)=>`<tr>
       <td><input type="checkbox" value="${p.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;">${p.userName||'-'}</td>
@@ -1517,7 +1603,7 @@ async function loadPayments(){
       <td style="font-size:12px;">${p.due||'-'}</td>
       <td><span class="badge ${sbadge[p.status]||'badge-gray'}">${slabel[p.status]||'미납'}</span></td>
       <td style="color:var(--gray);font-size:12px;">${p.memo||'-'}</td>
-    </tr>`).join('');
+    </tr>`, 'paymentPagination', 9);
   }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 window.updatePayStatus = async(id,status) => {
@@ -1905,100 +1991,141 @@ window.deleteSelectedTest = async() => {
 };
 
 // ── 엑셀 등록 (재원생 일괄 등록) ────────────────────
-window.previewExcel = async(e) => {
-  const file = e.target.files[0]; if(!file) return;
+window.downloadSampleExcel = () => {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처'],
+    ['student01','홍길동','1반','2015-03-15','영남초등학교','5','010-1234-5678','홍아버지','010-9876-5432'],
+    ['student02','김철수','2반','2014-07-22','강남초등학교','6','010-2345-6789','',''],
+  ]);
+  ws['!cols'] = [12,8,6,14,16,6,14,10,14].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws, '재원생등록');
+  XLSX.writeFile(wb, '큰소리영어_학생등록_샘플.xlsx');
+  showToast('샘플 파일을 다운로드했어요!');
+};
+
+window.handleExcelDrop = (e) => {
+  const file = e.dataTransfer.files[0];
+  if(!file) return;
+  processExcelFile(file);
+};
+
+window.previewExcel = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  processExcelFile(file);
+};
+
+function processExcelFile(file){
   const reader = new FileReader();
   reader.onload = (ev) => {
-    const wb = XLSX.read(ev.target.result, {type:'binary'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1}).filter(r=>r[0]||r[1]);
-    if(!rows.length){showToast('데이터가 없습니다.');return;}
-    // 미리보기
-    const preview = document.getElementById('excelPreview');
-    preview.innerHTML = `
-      <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">총 ${rows.length-1}명 미리보기</div>
-      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr style="background:#f8f9fa;">${(rows[0]||[]).map(h=>`<th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
-          <tbody>${rows.slice(1,11).map(r=>`<tr>${r.map(c=>`<td style="padding:6px 10px;border-bottom:1px solid #f5f5f5;">${c||''}</td>`).join('')}</tr>`).join('')}
-          ${rows.length>11?`<tr><td colspan="${rows[0].length}" style="padding:8px 10px;text-align:center;color:#bbb;">... 외 ${rows.length-11}행</td></tr>`:''}
-          </tbody>
-        </table>
-      </div>`;
-    // 전역에 저장
-    window._excelRows = rows;
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if(!rows || rows.length < 2){ showToast('데이터가 없습니다.'); return; }
+      const dataRows = rows.slice(1).filter(r=>(r[0]||'').toString().trim()||(r[1]||'').toString().trim());
+      window._excelRows = rows;
+      const headers = rows[0];
+      const validCount = dataRows.filter(r=>(r[0]||'').toString().trim()).length;
+      const invalidCount = dataRows.length - validCount;
+      const preview = document.getElementById('excelPreview');
+      preview.innerHTML = `
+        <div style="display:flex;gap:10px;margin-bottom:10px;font-size:13px;">
+          <span style="background:#d1fae5;color:#059669;padding:4px 10px;border-radius:6px;font-weight:600;">✅ 등록 가능: ${validCount}명</span>
+          ${invalidCount>0?`<span style="background:#fee2e2;color:#dc2626;padding:4px 10px;border-radius:6px;font-weight:600;">❌ 아이디 없음: ${invalidCount}행</span>`:''}
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:#f8f9fa;position:sticky;top:0;">
+              ${headers.map(h=>`<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600;">${h}</th>`).join('')}
+              <th style="padding:7px 10px;border-bottom:1px solid var(--border);">상태</th>
+            </tr></thead>
+            <tbody>${dataRows.map(r=>{
+              const ok=(r[0]||'').toString().trim()&&(r[1]||'').toString().trim();
+              return `<tr style="${ok?'':'background:#fff5f5'}">
+                ${headers.map((_,ci)=>`<td style="padding:6px 10px;border-bottom:1px solid #f5f5f5;">${r[ci]||''}</td>`).join('')}
+                <td style="padding:6px 10px;border-bottom:1px solid #f5f5f5;">${ok?'<span style="color:#059669">✅</span>':'<span style="color:#dc2626">❌ 필수값 없음</span>'}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray);">* 비밀번호는 <b>123456</b>으로 일괄 설정됩니다</div>`;
+      document.getElementById('excelImportBtnWrap').style.display = validCount>0?'':'none';
+    }catch(e){ showToast('파일 읽기 실패: '+e.message); }
   };
   reader.readAsBinaryString(file);
-};
+}
 
 window.importStudentExcel = async() => {
   const rows = window._excelRows;
-  if(!rows||rows.length<2){showToast('먼저 엑셀 파일을 업로드하세요.');return;}
-  // 헤더: 아이디,이름,반,생일,학교,학년,연락처,부모님성함,부모님연락처
-  const headers = rows[0].map(h=>(h||'').toString().trim().toLowerCase());
-  const dataRows = rows.slice(1).filter(r=>r[0]||r[1]);
-  if(!confirm(`${dataRows.length}명을 재원생으로 등록할까요?\n기본 비밀번호: 123456`))return;
-
-  const btn = document.querySelector('#page-student-excel .btn-primary');
-  if(btn){btn.textContent='등록 중...';btn.disabled=true;}
-
+  if(!rows||rows.length<2){ showToast('먼저 엑셀 파일을 업로드하세요.'); return; }
+  const dataRows = rows.slice(1).filter(r=>(r[0]||'').toString().trim());
+  if(!dataRows.length){ showToast('등록할 학생이 없습니다.'); return; }
+  if(!confirm(`${dataRows.length}명을 재원생으로 등록할까요?\n기본 비밀번호: 123456`)) return;
+  const btn = document.getElementById('excelImportBtn');
+  btn.textContent='등록 중... 0/'+dataRows.length; btn.disabled=true;
   let success=0, fail=0, failList=[];
-  for(const row of dataRows){
-    const username = (row[0]||'').toString().trim();
-    const name = (row[1]||'').toString().trim();
-    const group = (row[2]||'').toString().trim();
-    const birth = (row[3]||'').toString().trim();
-    const school = (row[4]||'').toString().trim();
-    const grade = (row[5]||'').toString().trim();
-    const phone = (row[6]||'').toString().trim();
-    const parentName = (row[7]||'').toString().trim();
-    const parentPhone = (row[8]||'').toString().trim();
-    if(!username||!name){failList.push(username||name||'?');fail++;continue;}
-    const email = username+'@kunsori.app';
+  for(let i=0;i<dataRows.length;i++){
+    const row=dataRows[i];
+    const username=(row[0]||'').toString().trim();
+    const name=(row[1]||'').toString().trim();
+    if(!username||!name){failList.push(username||'?');fail++;continue;}
+    const email=username+'@kunsori.app';
     try{
-      const {initializeApp:ia} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-      const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-      let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
+      const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      const {getApp:gapp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      let secApp;try{secApp=gapp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
       const a2=ga(secApp);
       const cred=await cu(a2,email,'123456');
       await so(a2);
       await setDoc(doc(db,'users',cred.user.uid),{
-        username,name,email,group,birth,school,grade,phone,parentName,parentPhone,
-        role:'student',status:'active',createdAt:serverTimestamp()
+        username, name, email,
+        group:(row[2]||'').toString().trim(),
+        birth:(row[3]||'').toString().trim(),
+        school:(row[4]||'').toString().trim(),
+        grade:(row[5]||'').toString().trim(),
+        phone:(row[6]||'').toString().trim(),
+        parentName:(row[7]||'').toString().trim(),
+        parentPhone:(row[8]||'').toString().trim(),
+        role:'student', status:'active', createdAt:serverTimestamp()
       });
       success++;
-    }catch(e){
-      console.log(username,'실패:',e.message);
-      failList.push(username); fail++;
-    }
+    }catch(e){ console.log(username,'실패:',e.message); failList.push(username); fail++; }
+    btn.textContent=`등록 중... ${success+fail}/${dataRows.length}`;
   }
-  if(btn){btn.textContent='일괄 등록';btn.disabled=false;}
-  let msg = `✅ ${success}명 등록 완료!`;
-  if(fail>0) msg += `\n❌ ${fail}명 실패: ${failList.slice(0,5).join(',')}${failList.length>5?'...':''}`;
-  alert(msg);
-  window._excelRows = null;
+  btn.textContent='✅ 일괄 등록하기'; btn.disabled=false;
+  const resultColor = fail===0?'#d1fae5':'#fef3c7';
+  document.getElementById('excelPreview').innerHTML += `
+    <div style="margin-top:12px;padding:14px;border-radius:8px;background:${resultColor};font-size:13px;">
+      <div style="font-weight:600;margin-bottom:6px;">📊 등록 결과</div>
+      <div>✅ 성공: <b>${success}명</b></div>
+      ${fail>0?`<div>❌ 실패: <b>${fail}명</b> (${failList.slice(0,5).join(', ')}${failList.length>5?'...':''})</div>`:''}
+      ${fail>0?`<div style="margin-top:4px;font-size:12px;color:#666;">실패 원인: 중복 아이디이거나 이미 가입된 계정</div>`:''}
+    </div>`;
+  window._excelRows=null;
   document.getElementById('excelUpload').value='';
-  document.getElementById('excelPreview').innerHTML='';
+  document.getElementById('excelImportBtnWrap').style.display='none';
+  if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
     const snap = await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';return;}
-    el.innerHTML = snap.docs.map((d,i)=>{
-      const t = d.data();
-      return `<tr>
-        <td><input type="checkbox" value="${d.id}"></td>
-        <td>${i+1}</td>
-        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="reprintTest('${d.id}')">${t.name||'-'}</td>
-        <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
-        <td style="font-size:12px;">${t.bookName||'-'}</td>
-        <td style="text-align:center;">${t.count||0}문제</td>
-        <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
-        <td style="text-align:center;">-</td>
-        <td style="text-align:center;">-</td>
-      </tr>`;
-    }).join('');
+    const testData2 = snap.docs.map(d=>({id:d.id,...d.data()}));
+    initPagination('testListBody', testData2, (t,i)=>`<tr>
+      <td><input type="checkbox" value="${t.id}"></td>
+      <td>${i+1}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="reprintTest('${t.id}')">${t.name||'-'}</td>
+      <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
+      <td style="font-size:12px;">${t.bookName||'-'}</td>
+      <td style="text-align:center;">${t.count||0}문제</td>
+      <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
+      <td style="text-align:center;">-</td>
+      <td style="text-align:center;">-</td>
+    </tr>`, 'testPagination', 9);
   }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 };
 window.reprintTest = async(id) => {
@@ -2470,8 +2597,6 @@ function printExamPDF(words, examName, academy, date, ptype){
 
 window.generatePDF = () => { showToast('테스트 출제 메뉴에서 시험지를 생성하세요.'); };
 window.testNextStep = (step) => { showToast('단계를 순서대로 진행하세요.'); };
-window.importStudentExcel = () => { showToast('엑셀 등록 준비 중...'); };
-window.previewExcel = (e) => { showToast('파일 미리보기 준비 중...'); };
 window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설정 준비 중...'); };
 window.viewUnit = (bid,uid,name) => { showToast(name+' 상세보기 준비 중...'); };
 window.moveToFolder = (id) => { showToast('폴더 이동 준비 중...'); };
