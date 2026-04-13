@@ -794,10 +794,12 @@ window.doLogin = async () => {
     await signInWithEmailAndPassword(auth, profile.email, pw);
     userProfile = {...profile, uid: snap.docs[0].id};
     currentUser = auth.currentUser;
-    // 로그인 시각 기록 (1일 자동 로그아웃용)
     localStorage.setItem('lastLoginAt', Date.now().toString());
-    if(profile.role==='admin'){await loadAdminData();show('admin');}
-    else{
+    if(profile.role==='admin'){
+      // PC 관리자 앱으로 이동
+      localStorage.setItem('adminProfile', JSON.stringify({...profile, uid: snap.docs[0].id}));
+      window.location.href = '/admin/';
+    } else {
       document.getElementById('greetName').textContent=profile.name+' 님';
       await loadHomeData();
       show('home');
@@ -2124,10 +2126,9 @@ onAuthStateChanged(auth, async (user)=>{
         // 활동 시각 갱신
         localStorage.setItem('lastLoginAt', Date.now().toString());
         if(userProfile.role==='admin'){
-          await loadAdminData();
-          _originalShow('admin');
-          history.replaceState({screen:'admin'},'',location.pathname);
-          history.pushState({screen:'admin_block'},'',location.pathname);
+          localStorage.setItem('adminProfile', JSON.stringify(userProfile));
+          window.location.href = '/admin/';
+          return;
         } else {
           const greetEl = document.getElementById('greetName');
           if(greetEl) greetEl.textContent = (userProfile.name||'학생')+' 님';
