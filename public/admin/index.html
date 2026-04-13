@@ -240,7 +240,7 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
       </div>
       <div class="nav-children nav-sub">
         <div class="nav-item" onclick="goPage('book-mybook')" id="nav-book-mybook">My Book</div>
-        <div class="nav-item" onclick="goPage('book-allbook')" id="nav-book-allbook">All Book 출력</div>
+        <div class="nav-item" onclick="goPage('book-allbook')" id="nav-book-allbook">My Book 출력</div>
       </div>
     </div>
     <div class="nav-group" id="navgroup-test">
@@ -537,21 +537,28 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
   <!-- My Book -->
   <div class="page" id="page-book-mybook">
     <div class="page-header">
-      <div><div class="page-title">My Book</div><div class="page-sub">나만의 교재를 생성합니다</div></div>
+      <div><div class="page-title">My Book</div><div class="page-sub">나만의 교재를 생성하고 폴더로 관리합니다</div></div>
       <button class="btn btn-primary" onclick="openMyBookModal()">+ My Book 생성하기</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+      <!-- 왼쪽: 교재 목록 (폴더 미배정 or 선택된 폴더의 교재) -->
       <div class="card">
-        <div class="card-title">📚 교재 목록
-          <div style="margin-left:auto;display:flex;gap:6px;">
-            <select id="bookFolderFilter" onchange="filterBooks()" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;">
-              <option value="">전체 폴더</option>
-            </select>
-          </div>
+        <div class="card-title">
+          📚 교재 목록
+          <span id="bookListLabel" style="font-size:12px;color:var(--gray);font-weight:400;margin-left:6px;">폴더 미배정</span>
+          <button onclick="showUnassignedBooks()" class="btn btn-secondary btn-sm" style="margin-left:auto;">미배정 보기</button>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th style="width:36px;"><input type="checkbox" id="bookCheckAll" onchange="toggleCheck('bookTableBody',this)"></th><th onclick="sortTable('bookTableBody',0)" class="sortable">No</th><th onclick="sortTable('bookTableBody',1)" class="sortable">교재명</th><th onclick="sortTable('bookTableBody',2)" class="sortable">Unit수</th><th onclick="sortTable('bookTableBody',3)" class="sortable">단어수</th><th onclick="sortTable('bookTableBody',4)" class="sortable">등록일</th></tr></thead>
+            <thead><tr>
+              <th style="width:36px;"><input type="checkbox" id="bookCheckAll" onchange="toggleCheck('bookTableBody',this)"></th>
+              <th onclick="sortTable('bookTableBody',0)" class="sortable">No</th>
+              <th onclick="sortTable('bookTableBody',1)" class="sortable">교재명</th>
+              <th onclick="sortTable('bookTableBody',2)" class="sortable">Unit수</th>
+              <th onclick="sortTable('bookTableBody',3)" class="sortable">단어수</th>
+              <th onclick="sortTable('bookTableBody',4)" class="sortable">등록일</th>
+            </tr></thead>
             <tbody id="bookTableBody"><tr><td colspan="6" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
           <div class="tbl-toolbar">
@@ -566,18 +573,28 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           </div>
         </div>
       </div>
+
+      <!-- 오른쪽: 폴더 목록 -->
       <div class="card">
-        <div class="card-title">📁 폴더 목록
-          <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="openFolderModal()">+ 폴더 생성</button>
+        <div class="card-title">
+          📁 폴더 목록
+          <span id="folderSelectedLabel" style="font-size:12px;color:var(--teal);font-weight:400;margin-left:6px;"></span>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th style="width:36px;"><input type="checkbox" id="folderCheckAll" onchange="toggleCheck('folderTableBody',this)"></th><th>No</th><th>폴더명</th><th>교재수</th><th>등록일</th></tr></thead>
+            <thead><tr>
+              <th style="width:36px;"><input type="checkbox" id="folderCheckAll" onchange="toggleCheck('folderTableBody',this)"></th>
+              <th>No</th>
+              <th>폴더명</th>
+              <th>교재수</th>
+              <th>등록일</th>
+            </tr></thead>
             <tbody id="folderTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
           <div class="tbl-toolbar">
             <div class="tbl-actions">
               <button class="action-btn primary" onclick="openFolderModal()">+ 폴더 생성</button>
+              <button class="action-btn" onclick="excludeFromFolder()">⛔ 제외</button>
               <button class="action-btn danger" onclick="deleteSelectedFolder()">🗑 삭제</button>
             </div>
             <div class="tbl-page" id="folderPagination"></div>
@@ -587,10 +604,10 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
     </div>
   </div>
 
-  <!-- All Book 출력 -->
+  <!-- My Book 출력 -->
   <div class="page" id="page-book-allbook">
     <div class="page-header">
-      <div><div class="page-title">All Book 출력</div><div class="page-sub">교재를 선택하여 워크시트를 출력합니다</div></div>
+      <div><div class="page-title">My Book 출력</div><div class="page-sub">교재를 선택하여 워크시트를 출력합니다</div></div>
       <button class="btn btn-secondary" onclick="loadAllBookTree()">↺ 새로고침</button>
     </div>
     <div style="display:grid;grid-template-columns:260px 1fr 300px;gap:16px;height:calc(100vh - 160px);">
@@ -1053,7 +1070,7 @@ const pageLabels = {
   dashboard:'초기화면', class:'클래스 관리',
   'student-active':'재원생 관리', 'student-pause':'휴원생 관리',
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
-  'book-mybook':'My Book', 'book-allbook':'All Book 출력',
+  'book-mybook':'My Book', 'book-allbook':'My Book 출력',
   'test-create':'시험 출제', 'test-list':'시험 목록', 'test-print':'시험지 출력',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', payment:'결제 관리',
@@ -1579,22 +1596,71 @@ window.saveMyBook = async() => {
   }catch(e){alert('저장 실패: '+e.message);}
 };
 async function loadBooks(){
-  const el=document.getElementById('bookTableBody');
+  // 기본: 폴더 미배정 교재만 표시
+  await showUnassignedBooks();
+  await loadFolders();
+}
+
+// 폴더 미배정 교재만 표시
+window.showUnassignedBooks = async() => {
+  const el = document.getElementById('bookTableBody');
+  const label = document.getElementById('bookListLabel');
+  if(label) label.textContent = '폴더 미배정';
+  window._currentFolderId = null;
+  // 선택된 폴더 하이라이트 해제
+  document.querySelectorAll('.folder-row').forEach(r=>r.style.background='');
   try{
-    const snap=await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
-    allBooks=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!allBooks.length){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">교재가 없습니다</td></tr>';return;}
-    initPagination('bookTableBody', allBooks, (b,i)=>`<tr>
+    const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
+    allBooks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 폴더에 배정되지 않은 교재만
+    const unassigned = allBooks.filter(b=>!b.folderId);
+    if(!unassigned.length){
+      el.innerHTML='<tr><td colspan="6" style="text-align:center;color:#bbb;padding:20px;">폴더 미배정 교재가 없습니다</td></tr>';
+      document.getElementById('bookPagination').innerHTML='';
+      return;
+    }
+    initPagination('bookTableBody', unassigned, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name}')">📘 ${b.name}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${b.name}</td>
       <td style="text-align:center;">${b.unitCount||0}</td>
       <td style="text-align:center;">${b.wordCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'bookPagination', 6);
-  }catch(e){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패</td></tr>';}
-  await loadFolders();
-}
+  }catch(e){ el.innerHTML='<tr><td colspan="6" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
+};
+
+// 폴더 선택 시 해당 폴더 교재 표시
+window.showFolderBooks = async(folderId, folderName) => {
+  const el = document.getElementById('bookTableBody');
+  const label = document.getElementById('bookListLabel');
+  const folderLabel = document.getElementById('folderSelectedLabel');
+  if(label) label.textContent = `📁 ${folderName}`;
+  if(folderLabel) folderLabel.textContent = `선택됨`;
+  window._currentFolderId = folderId;
+  // 폴더 하이라이트
+  document.querySelectorAll('.folder-row').forEach(r=>r.style.background='');
+  const selRow = document.getElementById('folder-row-'+folderId);
+  if(selRow) selRow.style.background='#e0f5f5';
+  try{
+    const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
+    allBooks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const folderBooks = allBooks.filter(b=>b.folderId===folderId);
+    if(!folderBooks.length){
+      el.innerHTML=`<tr><td colspan="6" style="text-align:center;color:#bbb;padding:20px;">"${folderName}" 폴더에 교재가 없습니다</td></tr>`;
+      document.getElementById('bookPagination').innerHTML='';
+      return;
+    }
+    initPagination('bookTableBody', folderBooks, (b,i)=>`<tr>
+      <td><input type="checkbox" value="${b.id}"></td>
+      <td>${i+1}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${b.name}</td>
+      <td style="text-align:center;">${b.unitCount||0}</td>
+      <td style="text-align:center;">${b.wordCount||0}</td>
+      <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+    </tr>`, 'bookPagination', 6);
+  }catch(e){ el.innerHTML='<tr><td colspan="6" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
+};
 window.openBookDetail = async(bookId, bookName) => {
   const unitsSnap=await getDocs(collection(db,'books',bookId,'units'));
   const units=unitsSnap.docs.map(d=>({id:d.id,...d.data()}));
@@ -1640,23 +1706,51 @@ window.deleteBook = async(id,name) => {
   showToast('삭제됐어요.'); await loadBooks();
 };
 async function loadFolders(){
-  const el=document.getElementById('folderTableBody');
+  const el = document.getElementById('folderTableBody');
   try{
-    const snap=await getDocs(query(collection(db,'folders'),orderBy('createdAt','desc')));
-    allFolders=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!allFolders.length){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">폴더가 없습니다</td></tr>';return;}
-    initPagination('folderTableBody', allFolders, (f,i)=>`<tr>
-      <td><input type="checkbox" value="${f.id}"></td>
+    const snap = await getDocs(query(collection(db,'folders'),orderBy('createdAt','desc')));
+    allFolders = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // 폴더별 실제 교재 수 계산
+    const booksSnap = await getDocs(collection(db,'books'));
+    const folderBookCount = {};
+    booksSnap.docs.forEach(d=>{
+      const fid = d.data().folderId;
+      if(fid) folderBookCount[fid] = (folderBookCount[fid]||0)+1;
+    });
+
+    if(!allFolders.length){
+      el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">폴더가 없습니다</td></tr>';
+      return;
+    }
+    initPagination('folderTableBody', allFolders, (f,i)=>`<tr id="folder-row-${f.id}" class="folder-row"
+      onclick="showFolderBooks('${f.id}','${f.name.replace(/'/g,"\\'")}');this.parentElement.querySelectorAll('tr').forEach(r=>r.style.background='');this.style.background='#e0f5f5';"
+      style="cursor:pointer;">
+      <td onclick="event.stopPropagation();"><input type="checkbox" value="${f.id}" onclick="event.stopPropagation();document.getElementById('folderCheckAll').checked=false;"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);">📁 ${f.name}</td>
-      <td style="text-align:center;">${f.bookCount||0}</td>
+      <td style="font-weight:600;color:var(--teal);">📁 ${f.name}</td>
+      <td style="text-align:center;">${folderBookCount[f.id]||0}</td>
       <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'folderPagination', 5);
-    // 폴더 필터 옵션
-    const sel=document.getElementById('bookFolderFilter');
-    if(sel) sel.innerHTML='<option value="">전체 폴더</option>'+allFolders.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
-  }catch(e){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+  }catch(e){ el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
 }
+
+// 폴더에서 교재 제외 (미배정 상태로)
+window.excludeFromFolder = async() => {
+  const ids = getCheckedIds('bookTableBody');
+  if(!ids.length){ showToast('제외할 교재를 선택하세요.'); return; }
+  if(!window._currentFolderId){ showToast('먼저 폴더를 선택하세요.'); return; }
+  if(!confirm(`선택한 ${ids.length}개 교재를 폴더에서 제외할까요?\n미배정 상태로 돌아갑니다.`)) return;
+  for(const id of ids){
+    await updateDoc(doc(db,'books',id),{folderId:null, folderName:null});
+  }
+  showToast(`✅ ${ids.length}개 교재가 폴더에서 제외됐어요.`);
+  // 현재 폴더 다시 로드
+  const folderId = window._currentFolderId;
+  const folder = allFolders.find(f=>f.id===folderId);
+  await loadFolders();
+  if(folder) await showFolderBooks(folderId, folder.name);
+};
 window.openFolderModal = () => {
   showModal(`
     <div style="font-size:17px;font-weight:700;margin-bottom:16px;">폴더 생성</div>
