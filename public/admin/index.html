@@ -660,7 +660,7 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px;">
             출력 내용
             <label style="float:right;font-size:11px;font-weight:400;cursor:pointer;">
-              <input type="checkbox" id="wsNoDup"> 중복단어 제외
+              <input type="checkbox" id="wsNoDup" onchange="saveWsSettings();updateWsPreview()"> 중복단어 제외
             </label>
           </div>
           <div style="display:flex;gap:6px;">
@@ -673,12 +673,12 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">한 쪽당 단어수<br><span style="color:#bbb;">(최대 50개)</span></div>
-              <input type="number" id="wsPerPage" value="20" min="5" max="50" oninput="updateWsPreview()"
+              <input type="number" id="wsPerPage" value="50" min="5" max="50" oninput="saveWsSettings();updateWsPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">한 열당 단어수<br><span style="color:#bbb;">(최대 25개)</span></div>
-              <input type="number" id="wsPerCol" value="10" min="3" max="25" oninput="updateWsPreview()"
+              <input type="number" id="wsPerCol" value="25" min="3" max="25" oninput="saveWsSettings();updateWsPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
           </div>
@@ -828,14 +828,14 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">객관식</div>
-              <input type="number" id="pt_mcEn2Ko" value="5" min="0"
-                oninput="updatePtPreview()"
+              <input type="number" id="pt_mcEn2Ko" value="20" min="0"
+                oninput="savePtSettings();updatePtPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">주관식</div>
-              <input type="number" id="pt_subjEn2Ko" value="5" min="0"
-                oninput="updatePtPreview()"
+              <input type="number" id="pt_subjEn2Ko" value="0" min="0"
+                oninput="savePtSettings();updatePtPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
           </div>
@@ -843,14 +843,14 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">객관식</div>
-              <input type="number" id="pt_mcKo2En" value="5" min="0"
-                oninput="updatePtPreview()"
+              <input type="number" id="pt_mcKo2En" value="0" min="0"
+                oninput="savePtSettings();updatePtPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
             <div>
               <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">주관식</div>
-              <input type="number" id="pt_subjKo2En" value="5" min="0"
-                oninput="updatePtPreview()"
+              <input type="number" id="pt_subjKo2En" value="0" min="0"
+                oninput="savePtSettings();updatePtPreview()"
                 style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
             </div>
           </div>
@@ -3628,11 +3628,80 @@ function getSelectedUnits(prefix){
   return result;
 }
 
+// ── 설정값 localStorage 저장/복원 ────────────────────────
+
+// My Book 출력 설정 저장
+window.saveWsSettings = () => {
+  try{
+    localStorage.setItem('kunsori_ws', JSON.stringify({
+      perPage: document.getElementById('wsPerPage')?.value || '50',
+      perCol:  document.getElementById('wsPerCol')?.value  || '25',
+      div:     _wsSettings.div,
+      content: _wsSettings.content,
+      layout:  _wsSettings.layout,
+      order:   _wsSettings.order,
+      size:    _wsSettings.size,
+      noDup:   document.getElementById('wsNoDup')?.checked || false,
+    }));
+  }catch(e){}
+};
+
+// My Book 출력 설정 복원
+function loadWsSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('kunsori_ws')||'{}');
+    if(saved.perPage){
+      const pp = document.getElementById('wsPerPage');
+      if(pp) pp.value = saved.perPage;
+    }
+    if(saved.perCol){
+      const pc = document.getElementById('wsPerCol');
+      if(pc) pc.value = saved.perCol;
+    }
+    if(saved.noDup !== undefined){
+      const nd = document.getElementById('wsNoDup');
+      if(nd) nd.checked = saved.noDup;
+    }
+    // 버튼 상태 복원 (silent=true: 저장/미리보기 중복 호출 방지)
+    if(saved.div)     setWsOpt('div',     saved.div,     'wsDiv-',     true);
+    if(saved.content) setWsOpt('content', saved.content, 'wsContent-', true);
+    if(saved.layout)  setWsOpt('layout',  saved.layout,  'wsLayout-',  true);
+    if(saved.order)   setWsOpt('order',   saved.order,   'wsOrder-',   true);
+    if(saved.size)    setWsOpt('size',    saved.size,    'wsSize-',    true);
+  }catch(e){}
+}
+
+// 시험지 출력 설정 저장
+window.savePtSettings = () => {
+  try{
+    localStorage.setItem('kunsori_pt', JSON.stringify({
+      mcEn2Ko:  document.getElementById('pt_mcEn2Ko')?.value  || '20',
+      subjEn2Ko:document.getElementById('pt_subjEn2Ko')?.value || '0',
+      mcKo2En:  document.getElementById('pt_mcKo2En')?.value  || '0',
+      subjKo2En:document.getElementById('pt_subjKo2En')?.value || '0',
+    }));
+  }catch(e){}
+};
+
+// 시험지 출력 설정 복원
+function loadPtSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('kunsori_pt')||'{}');
+    const fields = ['mcEn2Ko','subjEn2Ko','mcKo2En','subjKo2En'];
+    fields.forEach(f=>{
+      const el = document.getElementById('pt_'+f);
+      if(el && saved[f] !== undefined) el.value = saved[f];
+    });
+  }catch(e){}
+}
+
 // ── My Book 출력 ─────────────────────────────────────────
 window.loadAllBookTree = async() => {
   const el = document.getElementById('bookTreeArea');
   if(!el) return;
   el.innerHTML='<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
+  // 저장된 설정 복원
+  loadWsSettings();
   try{
     const treeData = await buildFolderBookTree();
     window._wsTreeData = treeData;
@@ -3781,6 +3850,8 @@ window.loadPrintTestList = async() => {
   const el = document.getElementById('printBookTreeArea');
   if(!el) return;
   el.innerHTML='<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
+  // 저장된 설정 복원
+  loadPtSettings();
   try{
     const treeData = await buildFolderBookTree();
     window._ptTreeData = treeData;
@@ -3992,11 +4063,14 @@ let _wsSettings = {
 };
 
 // 옵션 토글 공통
-function setWsOpt(group, value, prefix){
+function setWsOpt(group, value, prefix, silent){
   document.querySelectorAll(`[id^="${prefix}"]`).forEach(b=>b.classList.remove('active'));
   document.getElementById(`${prefix}${value}`)?.classList.add('active');
   _wsSettings[group] = value;
-  window.updateWsPreview();
+  if(!silent){
+    window.saveWsSettings();
+    window.updateWsPreview();
+  }
 }
 window.setWsDiv     = (v) => setWsOpt('div',     v, 'wsDiv-');
 window.setWsContent = (v) => setWsOpt('content', v, 'wsContent-');
