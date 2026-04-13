@@ -2588,61 +2588,6 @@ window.goPage_testCreate = async() => {
   await renderTestStep1();
 };
 
-async function renderTestStep1(){
-  updateStepUI(1);
-  const snap = await getDocs(collection(db,'groups'));
-  const groups = snap.docs.map(d=>({id:d.id,...d.data()}));
-  document.getElementById('testStep1Content').innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">① 시험 대상 선택</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">클래스 선택</div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-          ${groups.map(g=>`
-            <div onclick="selectTestTarget('class','${g.id}','${g.name}')" id="tg-${g.id}"
-              style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:8px;"
-              onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
-              <span>👥</span> ${g.name}
-            </div>`).join('')}
-        </div>
-      </div>
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">또는 개별 학생 선택</div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:280px;overflow-y:auto;" id="testStudentListArea">
-          <div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">클래스를 먼저 선택하면<br>학생 목록이 나타납니다</div>
-        </div>
-      </div>
-    </div>
-    <div style="margin-top:8px;font-size:12px;color:var(--gray);">선택: <span id="testTargetLabel" style="color:var(--teal);font-weight:600;">미선택</span></div>
-    <div style="margin-top:16px;text-align:right;">
-      <button class="btn btn-primary" onclick="testStep1Next()">다음 → 교재 선택</button>
-    </div>
-  `;
-}
-window.selectTestTarget = async(type, id, name) => {
-  testData.targetType = type; testData.targetId = id; testData.targetName = name;
-  document.querySelectorAll('[id^="tg-"]').forEach(el=>{ el.classList.remove('selected'); el.style.background=''; el.style.fontWeight=''; el.style.color=''; });
-  const el = document.getElementById('tg-'+id);
-  if(el){ el.style.background='#e0f5f5'; el.style.fontWeight='600'; el.style.color='var(--teal)'; el.classList.add('selected'); }
-  document.getElementById('testTargetLabel').textContent = name;
-  // 해당 반 학생 목록 표시
-  if(type==='class'){
-    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active'),where('group','==',name)));
-    const students = snap.docs.map(d=>({id:d.id,...d.data()}));
-    document.getElementById('testStudentListArea').innerHTML = students.map(u=>`
-      <div onclick="selectTestTarget('student','${u.id}','${u.name}')" id="tg-${u.id}"
-        style="padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;display:flex;align-items:center;gap:8px;"
-        onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
-        <div style="width:24px;height:24px;border-radius:50%;background:var(--teal);color:white;font-size:11px;display:flex;align-items:center;justify-content:center;">${(u.name||'?').charAt(0)}</div>
-        ${u.name}
-      </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">학생이 없습니다</div>';
-  }
-};
-window.testStep1Next = () => {
-  if(!testData.targetId){showToast('대상을 선택하세요.');return;}
-  renderTestStep2();
-};
-
 async function renderTestStep2(){
   updateStepUI(2);
   const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
