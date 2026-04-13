@@ -2824,7 +2824,8 @@ window.updateSpellPreview = () => {
       <div style="width:12px;height:12px;border-radius:50%;background:var(--blue);flex-shrink:0;"></div>
       <span>스펠링: <b style="color:var(--blue);">${spellCount}문제</b>
         ${ratio>0&&spellCount<Math.round(count*ratio/100)?
-          `<span style="font-size:11px;color:#f59e0b;">(단일단어 부족으로 조정됨)</span>`:''}
+          '<span style="font-size:11px;color:#f59e0b;">(단일단어 부족으로 조정됨)</span>':''}
+      </span>
       </span>
     </div>
     <div style="height:10px;border-radius:5px;overflow:hidden;background:#eee;display:flex;">
@@ -2840,26 +2841,29 @@ window.goStep4FromStep3 = () => {
   testData.spellRatio = parseInt(document.getElementById('spellRatioSlider')?.value)||0;
   renderTestStep4();
 };
+
+window.renderTestStep4 = function(){
   updateStepUI(4);
-  testData.count = parseInt(document.getElementById('testCount')?.value)||20;
-  const today = new Date().toISOString().slice(0,10);
   const qTypeLabel = {both:'영→한 + 한→영', en2ko:'영→한', ko2en:'한→영'}[testData.qType]||'혼합';
   const targetList = (testData.targets||[]).map(t=>`
     <span style="display:inline-flex;align-items:center;gap:4px;background:var(--teal-light);color:var(--teal-dark);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;margin:2px;">
       ${t.type==='class'?'👥':'👤'} ${t.name}
     </span>`).join('') || `<span style="color:var(--teal);font-weight:600;">${testData.targetName}</span>`;
 
+  const singleWords = testData.words.filter(w=>!w.en.trim().includes(' '));
+  const spellCount = testData.spellRatio > 0
+    ? Math.min(Math.round(testData.count * testData.spellRatio / 100), singleWords.length) : 0;
+  const mcCount = testData.count - spellCount;
+
   document.getElementById('testStep1Content').innerHTML = `
     <div style="font-size:14px;font-weight:600;margin-bottom:16px;">④ 출제 확인</div>
 
-    <!-- 시험명 입력 -->
     <div style="margin-bottom:16px;">
       <div style="font-size:13px;color:var(--gray);margin-bottom:6px;font-weight:600;">시험명 * <span style="font-weight:400;">(학생 앱에 표시될 이름)</span></div>
       <input id="ti_name" type="text" placeholder="예: 1단원 단어시험" autofocus
         style="width:100%;border:2px solid var(--teal);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;">
     </div>
 
-    <!-- 출제 요약 카드 -->
     <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:12px;padding:18px 20px;margin-bottom:20px;">
       <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px;">📋 출제 요약</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
@@ -2872,16 +2876,19 @@ window.goStep4FromStep3 = () => {
           <div style="font-weight:600;">📘 ${testData.bookName||'-'}</div>
         </div>
         <div>
-          <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">선택 Unit</div>
-          <div style="font-weight:600;">${testData.unitIds.length}개 Unit</div>
-        </div>
-        <div>
-          <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">문항 수</div>
-          <div style="font-weight:600;">${testData.count}문제</div>
-        </div>
-        <div>
           <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">문제 유형</div>
           <div style="font-weight:600;">${qTypeLabel}</div>
+        </div>
+        <div>
+          <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">문항 구성</div>
+          <div style="font-weight:600;">
+            4지선다 <span style="color:var(--teal);">${mcCount}문제</span>
+            ${spellCount>0?' + 스펠링 <span style="color:var(--blue);">'+spellCount+'문제</span>':''}
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">총 문항</div>
+          <div style="font-weight:600;">${testData.count}문제</div>
         </div>
         <div>
           <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">문제 섞기</div>
@@ -2890,7 +2897,6 @@ window.goStep4FromStep3 = () => {
       </div>
     </div>
 
-    <!-- 안내 메시지 -->
     <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:20px;display:flex;gap:8px;align-items:flex-start;">
       <span style="font-size:18px;">📱</span>
       <div>
