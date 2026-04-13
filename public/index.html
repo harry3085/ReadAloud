@@ -970,23 +970,28 @@ window.selectTest = async(testId, testName)=>{
   const snap = await getDoc(doc(db,'tests',testId));
   const testDoc = snap.data();
   if(!testDoc){ showToast('시험 정보를 불러올 수 없어요.'); return; }
+
   currentUnitWords = testDoc.words || [];
-  currentUnitId = testId; // 기존 변수 재활용
+  currentUnitId = testId;
+  window._currentTestData = testDoc;
   document.getElementById('modeUnitName').textContent = testName;
-  // 시험 유형에 따라 모드 선택 화면 또는 바로 시작
-  if(testDoc.qType === 'en2ko' || testDoc.qType === 'ko2en'){
-    // 단일 유형이면 바로 시작
-    lastMode = testDoc.qType === 'ko2en' ? 'spelling' : 'meaning';
-    // testMode 전역 변수 설정
-    window._currentTestData = testDoc;
+
+  // testType이 지정된 경우 (새 출제 방식) → 직접 시작
+  const hasTestType = currentUnitWords.some(w => w.testType);
+  if(hasTestType){
+    // 정보 모달 표시
+    const mcCount = currentUnitWords.filter(w=>w.testType==='meaning').length;
+    const spCount = currentUnitWords.filter(w=>w.testType==='spelling').length;
     document.getElementById('infoModalTitle').textContent = testName;
     document.getElementById('modalWordCount').textContent = currentUnitWords.length+'개';
-    document.getElementById('modalTime').textContent = lastMode==='spelling'?'각 30초':'각 10초';
-    document.getElementById('modalPoint').textContent = currentUnitWords.length*10+'점';
+    document.getElementById('modalTime').textContent = '4지선다: 각 10초 / 스펠링: 각 30초';
+    document.getElementById('modalPoint').textContent =
+      `4지선다 ${mcCount}문제 + 스펠링 ${spCount}문제`;
     document.getElementById('infoModal').classList.remove('hidden');
+    // 혼합 모드 플래그
+    lastMode = 'mixed';
   } else {
-    // 혼합(both)이면 모드 선택
-    window._currentTestData = testDoc;
+    // 구형 방식 → 모드 선택 화면
     show('modeSelect');
   }
 };
@@ -1010,9 +1015,77 @@ window.startSession = mode=>{
 };
 
 window.doStart = ()=>{
-  closeModal('infoModal');correct=0;wrong=0;
-  if(lastMode==='meaning'){questions=shuffle([...currentUnitWords]);currentQ=0;showQuizQuestion();show('quiz');}
-  else{spellQuestions=shuffle([...currentUnitWords]);spellQ=0;showSpellQuestion();show('spelling');}
+  closeModal('infoModal'); correct=0; wrong=0;
+  if(lastMode==='mixed'){
+    // testType 기반 혼합 모드
+    startMixedTest();
+  } else if(lastMode==='meaning'){
+    questions=shuffle([...currentUnitWords]); currentQ=0; showQuizQuestion(); show('quiz');
+  } else {
+    spellQuestions=shuffle([...currentUnitWords]); spellQ=0; showSpellQuestion(); show('spelling');
+  }
+};
+
+// ── 혼합 시험 진행 (testType 기반) ──────────────────────
+let mixedQueue = []; // {word, testType}
+let mixedIdx = 0;
+
+function startMixedTest(){
+  // testType 순서대로 큐 구성 (이미 섞여 있음)
+  mixedQueue = currentUnitWords.map(w=>({word:w, testType:w.testType||'meaning'}));
+  mixedIdx = 0;
+  correct = 0; wrong = 0;
+  showMixedQuestion();
+}
+
+function showMixedQuestion(){
+  clearTimers();
+  if(mixedIdx >= mixedQueue.length){ showResult(); return; }
+  const {word, testType} = mixedQueue[mixedIdx];
+  if(testType === 'spelling'){
+    // 스펠링 모드로 전환
+    spellQuestions = [word];
+    spellQ = 0;
+    // progress 표시 업데이트
+    document.getElementById('spellProgress').textContent = `${mixedIdx+1}/${mixedQueue.length}`;
+    document.getElementById('spellWord').textContent = word.ko; // 한글 보여주기
+    // hint 초기화
+    const boxes = document.getElementById('spellBoxes');
+    const hint = document.getElementById('spellHint');
+    const input = document.getElementById('spellInput');
+    const letters = word.en.split('');
+    boxes.innerHTML = letters.map((_,i)=>`<div class="spell-box" id="sb${i}">_</div>`).join('');
+    hint.textContent='';
+    input.value='';
+    input.focus();
+    // 스펠링 화면으로 전환
+    show('spelling');
+    startSpellTimer();
+  } else {
+    // 4지선다 모드로 전환
+    document.getElementById('quizProgress').textContent = `${mixedIdx+1}/${mixedQueue.length}`;
+    document.getElementById('quizWord').textContent = word.en;
+    const others = currentUnitWords.filter(w=>w.en!==word.en).sort(()=>Math.random()-0.5).slice(0,3);
+    const choices = shuffle([word, ...others]);
+    document.getElementById('choicesArea').innerHTML = choices.map((c,i)=>`
+      <button class="choice-btn" id="choice${i}" onclick="answerMixed(${i},${choices[i].en===word.en})">
+        <span class="choice-num" id="cn${i}">${i+1}</span>${c.ko}
+      </button>`).join('');
+    show('quiz');
+    startTimer();
+  }
+}
+
+window.answerMixed = (idx, ok) => {
+  clearTimers();
+  if(ok){ document.getElementById('choice'+idx).classList.add('correct'); document.getElementById('cn'+idx).classList.add('correct'); correct++; }
+  else{
+    document.getElementById('choice'+idx).classList.add('wrong'); document.getElementById('cn'+idx).classList.add('wrong'); wrong++;
+    document.querySelectorAll('.choice-btn').forEach((b,i)=>{
+      if(b.onclick?.toString().includes(',true)')){b.classList.add('correct');document.getElementById('cn'+i)?.classList.add('correct');}
+    });
+  }
+  setTimeout(()=>{ mixedIdx++; showMixedQuestion(); }, 800);
 };
 
 function showQuizQuestion(){
@@ -1034,7 +1107,10 @@ window.answerQuiz=(idx,ok)=>{
     document.querySelectorAll('.choice-btn').forEach((b,i)=>{if(b.onclick?.toString().includes(',true)')){b.classList.add('correct');document.getElementById('cn'+i)?.classList.add('correct');}});}
   setTimeout(nextQuestion,900);
 };
-window.nextQuestion=()=>{currentQ++;showQuizQuestion();};
+window.nextQuestion=()=>{
+  if(lastMode==='mixed'){mixedIdx++;showMixedQuestion();}
+  else{currentQ++;showQuizQuestion();}
+};
 function startTimer(){timeLeft=10;updateTimerUI();timerInterval=setInterval(()=>{timeLeft--;updateTimerUI();if(timeLeft<=0){clearTimers();wrong++;nextQuestion();}},1000);}
 function updateTimerUI(){document.getElementById('timerText').textContent=timeLeft;document.getElementById('timerArc').style.strokeDashoffset=113*(1-timeLeft/10);}
 
@@ -1062,13 +1138,36 @@ document.getElementById('spellInput').addEventListener('input',function(){
   this.value=val;renderSpellBoxes(val,q.en.length);
 });
 document.getElementById('spellInput').addEventListener('keydown',function(e){
-  if(e.key==='Enter'){const q=spellQuestions[spellQ];if(!q)return;
-    if(this.value.trim().toLowerCase()===q.en.toLowerCase())correct++;else wrong++;
-    spellQ++;showSpellQuestion();}
+  if(e.key==='Enter'){
+    const q=spellQuestions[spellQ];if(!q)return;
+    const ok = this.value.trim().toLowerCase()===q.en.toLowerCase();
+    if(ok)correct++;else wrong++;
+    clearTimers();
+    // 혼합 모드면 다음 혼합 문제로
+    if(lastMode==='mixed'){
+      mixedIdx++;
+      setTimeout(()=>showMixedQuestion(), 600);
+    } else {
+      spellQ++;showSpellQuestion();
+    }
+  }
 });
-function startSpellTimer(){spellTimeLeft=30;updateSpellTimerUI();spellTimer=setInterval(()=>{spellTimeLeft--;updateSpellTimerUI();if(spellTimeLeft<=0){clearTimers();wrong++;nextSpell();}},1000);}
+function startSpellTimer(){
+  spellTimeLeft=30;updateSpellTimerUI();
+  spellTimer=setInterval(()=>{
+    spellTimeLeft--;updateSpellTimerUI();
+    if(spellTimeLeft<=0){
+      clearTimers();wrong++;
+      if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+      else nextSpell();
+    }
+  },1000);
+}
 function updateSpellTimerUI(){document.getElementById('timerText2').textContent=spellTimeLeft;document.getElementById('timerArc2').style.strokeDashoffset=113*(1-spellTimeLeft/30);}
-window.nextSpell=()=>{spellQ++;showSpellQuestion();};
+window.nextSpell=()=>{
+  if(lastMode==='mixed'){mixedIdx++;showMixedQuestion();}
+  else{spellQ++;showSpellQuestion();}
+};
 
 async function showResult(){
   clearTimers();
