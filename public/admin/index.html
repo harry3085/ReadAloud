@@ -1919,7 +1919,7 @@ window.sortTable = (tableId, colIdx) => {
 // ── 시험 대상 선택 트리 ──────────────────────────────────
 let _testTargets = []; // 선택된 대상 배열 [{type:'class'|'student', id, name, groupName}]
 
-async function renderTestStep1(){
+window.renderTestStep1 = async function(){
   updateStepUI(1);
   _testTargets = [];
 
@@ -2615,7 +2615,7 @@ window.goPage_testCreate = async() => {
   await renderTestStep1();
 };
 
-async function renderTestStep2(){
+window.renderTestStep2 = async function(){
   updateStepUI(2);
   const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
   const books = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -2673,7 +2673,7 @@ window.testStep2Next = () => {
   renderTestStep3();
 };
 
-function renderTestStep3(){
+window.renderTestStep3 = function(){
   updateStepUI(3);
   const maxCount = testData.words.length;
   document.getElementById('testStep1Content').innerHTML = `
@@ -2716,7 +2716,7 @@ function renderTestStep3(){
   `;
 }
 
-function renderTestStep4(){
+window.renderTestStep4 = function(){
   updateStepUI(4);
   testData.count = parseInt(document.getElementById('testCount')?.value)||20;
   const today = new Date().toISOString().slice(0,10);
@@ -2761,7 +2761,7 @@ function renderTestStep4(){
   `;
 }
 
-function updateStepUI(step){
+window.updateStepUI = function(step){
   [1,2,3,4].forEach(i=>{
     const el = document.getElementById('sti-'+i);
     if(!el) return;
