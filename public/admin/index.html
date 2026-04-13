@@ -785,48 +785,31 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
   <!-- 시험지 출력 -->
   <div class="page" id="page-test-print">
     <div class="page-header">
-      <div><div class="page-title">시험지 출력</div><div class="page-sub">출제된 시험을 선택하여 PDF로 출력합니다</div></div>
-      <button class="btn btn-secondary" onclick="loadPrintTestList()">↺ 새로고침</button>
+      <div><div class="page-title">시험지 출력</div><div class="page-sub">MYBOOK 내용의 시험지를 출력하여 개인보관/복습활용</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:380px 1fr;gap:16px;">
-      <!-- 왼쪽: 시험 목록 -->
-      <div style="display:flex;flex-direction:column;gap:16px;">
-        <div class="card" style="padding:0;overflow:hidden;">
-          <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;">
-            📋 출제된 시험 목록
-          </div>
-          <div id="printTestList" style="max-height:400px;overflow-y:auto;">
-            <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
-          </div>
+
+    <!-- 스텝 바 -->
+    <div class="card" style="margin-bottom:16px;padding:16px 24px;">
+      <div style="display:flex;align-items:center;">
+        <div id="psti-1" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--teal);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">1</div>
+          교재 선택
         </div>
-        <!-- 출력 설정 -->
-        <div class="card" id="printSettingCard" style="display:none;">
-          <div class="card-title">⚙️ 출력 설정</div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
-            <div>
-              <div style="color:var(--gray);margin-bottom:6px;font-weight:600;">출력 유형</div>
-              <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:4px;">
-                <input type="radio" name="printType2" value="both" checked> 시험지 + 답안지
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:4px;">
-                <input type="radio" name="printType2" value="exam"> 시험지만
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-                <input type="radio" name="printType2" value="answer"> 답안지만
-              </label>
-            </div>
-          </div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;font-size:14px;padding:12px;" onclick="doPrintSelected()">
-            🖨 PDF 출력
-          </button>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>
+        <div id="psti-2" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--gray);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:#eee;color:var(--gray);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">2</div>
+          출력 설정
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>
+        <div id="psti-3" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--gray);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:#eee;color:var(--gray);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">3</div>
+          출력 정보
         </div>
       </div>
-      <!-- 오른쪽: 선택된 시험 정보 -->
-      <div class="card" id="printPreviewCard">
-        <div style="text-align:center;color:var(--gray);font-size:13px;padding:60px 20px;">
-          왼쪽에서 시험을 선택하면<br>시험 정보가 표시됩니다
-        </div>
-      </div>
+    </div>
+
+    <div class="card" id="printStepContent">
+      <div style="text-align:center;color:var(--gray);padding:40px;font-size:13px;">로딩 중...</div>
     </div>
   </div>
 
@@ -2855,7 +2838,8 @@ window.renderTestStep2 = async function(){
   `;
 }
 window.selectTestBook = async(bookId, bookName) => {
-  testData.bookId = bookId; testData.bookName = bookName; testData.unitIds = []; testData.words = [];
+  testData.bookId = bookId; testData.bookName = bookName;
+  testData.unitIds = []; testData.unitNames = []; testData.words = [];
   document.querySelectorAll('[id^="tb-"]').forEach(el=>{ el.style.background=''; el.style.fontWeight=''; el.style.color=''; el.classList.remove('selected'); });
   const el = document.getElementById('tb-'+bookId);
   if(el){ el.style.background='#e0f5f5'; el.style.fontWeight='600'; el.style.color='var(--teal)'; el.classList.add('selected'); }
@@ -2863,20 +2847,36 @@ window.selectTestBook = async(bookId, bookName) => {
   const units = snap.docs.map(d=>({id:d.id,...d.data()}));
   document.getElementById('testUnitListArea').innerHTML = units.map(u=>`
     <div style="padding:10px 16px;border-bottom:1px solid #f5f5f5;font-size:13px;display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="uc-${u.id}" onchange="toggleUnit('${u.id}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})">
+      <input type="checkbox" id="uc-${u.id}"
+        data-unit-name="${u.name.replace(/"/g,'&quot;')}"
+        onchange="toggleUnit('${u.id}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})">
       <label for="uc-${u.id}" style="cursor:pointer;flex:1;">${u.name} <span style="color:#bbb;font-size:11px;">${u.words?.length||0}개</span></label>
     </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">Unit이 없습니다</div>';
 };
+
 window.toggleUnit = (uid, words) => {
   const cb = document.getElementById('uc-'+uid);
-  if(cb.checked){ testData.unitIds.push(uid); testData.words.push(...words); }
-  else { testData.unitIds = testData.unitIds.filter(id=>id!==uid); testData.words = testData.words.filter(w=>!words.find(fw=>fw.en===w.en)); }
+  const unitName = cb.dataset.unitName || '';
+  if(cb.checked){
+    testData.unitIds.push(uid);
+    testData.unitNames = testData.unitNames || [];
+    testData.unitNames.push(unitName);
+    testData.words.push(...words);
+  } else {
+    testData.unitIds = testData.unitIds.filter(id=>id!==uid);
+    testData.unitNames = (testData.unitNames||[]).filter(n=>n!==unitName);
+    testData.words = testData.words.filter(w=>!words.find(fw=>fw.en===w.en));
+  }
   document.getElementById('testWordCount').textContent = testData.words.length+'개';
 };
+
 window.testStep2Next = () => {
   if(!testData.bookId){showToast('교재를 선택하세요.');return;}
   if(!testData.unitIds.length){showToast('Unit을 선택하세요.');return;}
   if(testData.words.length < 4){showToast('단어가 최소 4개 이상 필요합니다.');return;}
+  // 기본 시험명: 교재명 + Unit명
+  const unitPart = (testData.unitNames||[]).join(', ');
+  testData.defaultExamName = testData.bookName + (unitPart ? ' ' + unitPart : '');
   renderTestStep3();
 };
 
@@ -3067,7 +3067,7 @@ window.renderTestStep4 = function(){
 
     <div style="margin-bottom:16px;">
       <div style="font-size:13px;color:var(--gray);margin-bottom:6px;font-weight:600;">시험명 * <span style="font-weight:400;">(학생 앱에 표시될 이름)</span></div>
-      <input id="ti_name" type="text" placeholder="예: 1단원 단어시험" autofocus
+      <input id="ti_name" type="text" value="${testData.defaultExamName||''}" placeholder="예: Captain Awesome Unit 1" autofocus
         style="width:100%;border:2px solid var(--teal);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;">
     </div>
 
@@ -3719,113 +3719,421 @@ window.printAllBook = window.printWorksheet;
 
 let _selectedPrintTest = null;
 
+// ── 시험지 출력 3단계 ────────────────────────────────────
+let _printData = { selectedUnits:[], mcEn2Ko:0, mcKo2En:0, subjEn2Ko:0, subjKo2En:0 };
+
+function updatePrintStepUI(step){
+  [1,2,3].forEach(i=>{
+    const el = document.getElementById('psti-'+i); if(!el) return;
+    const circle = el.querySelector('.step-circle');
+    if(i<step){ el.style.color='var(--teal)'; circle.style.background='var(--teal)'; circle.style.color='white'; circle.innerHTML='✓'; }
+    else if(i===step){ el.style.color='var(--teal)'; circle.style.background='var(--teal)'; circle.style.color='white'; circle.innerHTML=i; }
+    else { el.style.color='var(--gray)'; circle.style.background='#eee'; circle.style.color='var(--gray)'; circle.innerHTML=i; }
+  });
+}
+
+// ── Step 1: 교재/Unit 선택 ───────────────────────────────
 window.loadPrintTestList = async() => {
-  const el = document.getElementById('printTestList');
-  if(!el) return;
-  el.innerHTML='<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>';
+  updatePrintStepUI(1);
+  _printData = { selectedUnits:[], mcEn2Ko:0, mcKo2En:0, subjEn2Ko:0, subjKo2En:0 };
+  const el = document.getElementById('printStepContent');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">교재 로딩 중...</div>';
+
   try{
-    const snap = await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
-    if(snap.empty){ el.innerHTML='<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">출제된 시험이 없습니다</div>'; return; }
-    el.innerHTML = snap.docs.map(d=>{
-      const t = d.data();
-      const isActive = t.active !== false;
-      return `<div onclick="selectPrintTest('${d.id}')" id="ptest-${d.id}"
-        style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;"
-        onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="badge ${isActive?'badge-green':'badge-gray'}">${isActive?'진행중':'종료'}</span>
-          <span style="font-weight:600;flex:1;">${t.name||'-'}</span>
-          <span style="font-size:11px;color:#bbb;">${t.date||''}</span>
+    const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
+    const books = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!books.length){ el.innerHTML='<div style="padding:20px;text-align:center;color:#bbb;">교재가 없습니다. My Book을 먼저 만들어주세요.</div>'; return; }
+
+    const booksWithUnits = await Promise.all(books.map(async b=>{
+      const uSnap = await getDocs(collection(db,'books',b.id,'units'));
+      return {...b, units: uSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b2)=>(a.name||'').localeCompare(b2.name||'','ko'))};
+    }));
+    window._printBooksWithUnits = booksWithUnits;
+
+    el.innerHTML = `
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">Step 1 교재선택</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <!-- 교재/Unit 트리 -->
+        <div>
+          <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">
+            <input type="text" id="printBookSearch" placeholder="🔍 교재 검색..." oninput="filterPrintBooks(this.value)"
+              style="flex:1;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;outline:none;">
+            <button onclick="addPrintSelected()" class="btn btn-primary btn-sm">추가</button>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:420px;overflow-y:auto;" id="printBookTree">
+            ${booksWithUnits.map(b=>`
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);cursor:pointer;"
+                  onclick="togglePrintBook('pb-${b.id}','pt-${b.id}')">
+                  <span id="pt-${b.id}" style="font-size:11px;color:#aaa;display:inline-block;">›</span>
+                  <input type="checkbox" id="pbc-${b.id}" onclick="event.stopPropagation();checkAllUnits('${b.id}')" style="cursor:pointer;">
+                  <span style="font-weight:600;font-size:13px;flex:1;">📘 ${b.name}</span>
+                  <span style="font-size:11px;color:#aaa;">${b.units.length}Unit</span>
+                </div>
+                <div id="pb-${b.id}" style="display:none;">
+                  ${b.units.map(u=>`
+                    <div style="display:flex;align-items:center;gap:8px;padding:7px 12px 7px 32px;border-bottom:1px solid #f5f5f5;cursor:pointer;"
+                      onclick="togglePrintUnit('${b.id}','${u.id}')">
+                      <input type="checkbox" id="puc-${u.id}" onclick="event.stopPropagation();togglePrintUnit('${b.id}','${u.id}')" style="cursor:pointer;">
+                      <span style="font-size:13px;flex:1;">${u.name}</span>
+                      <span style="font-size:11px;color:#aaa;">${u.words?.length||0}개</span>
+                    </div>`).join('')}
+                </div>
+              </div>`).join('')}
+          </div>
         </div>
-        <div style="font-size:11px;color:var(--gray);margin-top:3px;padding-left:4px;">
-          ${t.targetName||'-'} · ${t.bookName||'-'} · ${t.count||0}문제
+        <!-- 선택된 항목 -->
+        <div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--gray);">
+            선택됨 <span id="printSelectedCount" style="color:var(--teal);">0개</span>
+            <button onclick="clearPrintSelection()" style="float:right;background:none;border:none;color:#bbb;cursor:pointer;font-size:11px;">전체 해제</button>
+          </div>
+          <div id="printSelectedList" style="border:1px solid var(--border);border-radius:8px;min-height:80px;max-height:420px;overflow-y:auto;padding:8px;">
+            <div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">교재/Unit을 선택하세요</div>
+          </div>
         </div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button class="btn btn-primary" onclick="printStep1Next()">다음 → 출력 설정</button>
       </div>`;
-    }).join('');
-  }catch(e){ el.innerHTML='<div style="padding:20px;text-align:center;color:#e05050;">불러오기 실패</div>'; }
+  }catch(e){ el.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패: '+e.message+'</div>'; }
 };
 
-window.selectPrintTest = async(testId) => {
-  // 선택 표시
-  document.querySelectorAll('[id^="ptest-"]').forEach(el=>{ el.classList.remove('selected'); el.style.background=''; });
-  const el = document.getElementById('ptest-'+testId);
-  if(el){ el.classList.add('selected'); el.style.background='#e0f5f5'; }
-
-  const snap = await getDoc(doc(db,'tests',testId));
-  const t = snap.data(); if(!t) return;
-  _selectedPrintTest = {id:testId,...t};
-
-  // 응시 현황 로드
-  const scoresSnap = await getDocs(query(collection(db,'scores'),where('testId','==',testId)));
-  const scores = scoresSnap.docs.map(d=>d.data());
-  const avg = scores.length ? Math.round(scores.reduce((s,r)=>s+(r.score||0),0)/scores.length) : 0;
-  const qTypeLabel = {both:'영→한 + 한→영', en2ko:'영→한', ko2en:'한→영'}[t.qType]||'혼합';
-
-  document.getElementById('printPreviewCard').innerHTML = `
-    <div class="card-title">📄 ${t.name}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-      <div style="background:#f8f9fa;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:800;color:var(--teal);">${t.count||0}</div>
-        <div style="font-size:11px;color:var(--gray);">총 문제수</div>
-      </div>
-      <div style="background:#f8f9fa;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:800;color:var(--blue);">${scores.length}</div>
-        <div style="font-size:11px;color:var(--gray);">응시 횟수</div>
-      </div>
-      <div style="background:#f8f9fa;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:800;color:var(--green);">${avg}점</div>
-        <div style="font-size:11px;color:var(--gray);">평균 점수</div>
-      </div>
-    </div>
-    <div style="font-size:13px;line-height:2;border-top:1px solid var(--border);padding-top:12px;">
-      <div>📚 교재: <b>${t.bookName||'-'}</b></div>
-      <div>👥 대상: <b>${t.targetName||'-'}</b></div>
-      <div>📝 유형: <b>${qTypeLabel}</b></div>
-      <div>📅 출제일: <b>${t.date||'-'}</b></div>
-      <div>🔄 상태: <b>${t.active!==false?'진행중':'종료됨'}</b>
-        <button onclick="toggleTestActive('${testId}',${t.active!==false})" class="btn btn-secondary btn-sm" style="margin-left:8px;">
-          ${t.active!==false?'시험 종료':'시험 재개'}
-        </button>
-      </div>
-    </div>
-    ${scores.length>0?`
-    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
-      <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:8px;">최근 응시 현황</div>
-      <div style="max-height:200px;overflow-y:auto;">
-        ${scores.slice(0,10).map(s=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px;">
-            <span style="flex:1;font-weight:600;">${s.userName||s.name||'-'}</span>
-            <span style="color:var(--gray);">${s.group||'-'}</span>
-            <span class="badge ${(s.score||0)>=80?'badge-green':(s.score||0)>=60?'badge-amber':'badge-red'}">${s.score||0}점</span>
-            <span style="color:#bbb;font-size:11px;">${s.date||''}</span>
-          </div>`).join('')}
-      </div>
-    </div>`:''}
-  `;
-  document.getElementById('printSettingCard').style.display='';
+window.togglePrintBook = (treeId, toggleId) => {
+  const tree = document.getElementById(treeId);
+  const toggle = document.getElementById(toggleId);
+  if(!tree) return;
+  const isOpen = tree.style.display!=='none';
+  tree.style.display = isOpen?'none':'';
+  if(toggle) toggle.style.transform = isOpen?'':'rotate(90deg)';
 };
 
+window.checkAllUnits = (bookId) => {
+  const cb = document.getElementById('pbc-'+bookId);
+  const book = window._printBooksWithUnits?.find(b=>b.id===bookId);
+  if(!book) return;
+  book.units.forEach(u=>{
+    const ucb = document.getElementById('puc-'+u.id);
+    if(ucb) ucb.checked = cb.checked;
+  });
+  // 트리 펼치기
+  if(cb.checked){ const tree=document.getElementById('pb-'+bookId); if(tree){tree.style.display='';document.getElementById('pt-'+bookId).style.transform='rotate(90deg)';} }
+  updatePrintSelectedList();
+};
+
+window.togglePrintUnit = (bookId, unitId) => {
+  const cb = document.getElementById('puc-'+unitId);
+  cb.checked = !cb.checked;
+  updatePrintSelectedList();
+};
+
+window.filterPrintBooks = (q) => {
+  const lq = q.toLowerCase();
+  window._printBooksWithUnits?.forEach(b=>{
+    const bookEl = document.getElementById('pb-'+b.id)?.parentElement;
+    if(!bookEl) return;
+    const match = !lq || b.name.toLowerCase().includes(lq) || b.units.some(u=>u.name.toLowerCase().includes(lq));
+    bookEl.style.display = match?'':'none';
+    if(lq && match){ const tree=document.getElementById('pb-'+b.id); if(tree){tree.style.display='';document.getElementById('pt-'+b.id).style.transform='rotate(90deg)';} }
+  });
+};
+
+window.addPrintSelected = () => { updatePrintSelectedList(); };
+window.clearPrintSelection = () => {
+  document.querySelectorAll('[id^="puc-"],[id^="pbc-"]').forEach(cb=>cb.checked=false);
+  updatePrintSelectedList();
+};
+
+function updatePrintSelectedList(){
+  const selected = [];
+  window._printBooksWithUnits?.forEach(b=>{
+    b.units.forEach(u=>{
+      if(document.getElementById('puc-'+u.id)?.checked)
+        selected.push({bookId:b.id, bookName:b.name, unitId:u.id, unitName:u.name, words:u.words||[]});
+    });
+  });
+  _printData.selectedUnits = selected;
+  const el = document.getElementById('printSelectedList');
+  const cnt = document.getElementById('printSelectedCount');
+  if(cnt) cnt.textContent = selected.length+'개';
+  if(!el) return;
+  if(!selected.length){ el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">교재/Unit을 선택하세요</div>'; return; }
+  el.innerHTML = selected.map(s=>`
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid #f5f5f5;font-size:13px;">
+      <span style="flex:1;">📘 ${s.bookName} › ${s.unitName}</span>
+      <span style="font-size:11px;color:#aaa;">${s.words.length}개</span>
+      <span onclick="removePrintUnit('${s.bookId}','${s.unitId}')" style="cursor:pointer;color:#bbb;font-size:16px;">✕</span>
+    </div>`).join('');
+}
+
+window.removePrintUnit = (bookId, unitId) => {
+  const cb = document.getElementById('puc-'+unitId);
+  if(cb) cb.checked = false;
+  updatePrintSelectedList();
+};
+
+window.printStep1Next = () => {
+  if(!_printData.selectedUnits.length){ showToast('교재/Unit을 선택하세요.'); return; }
+  renderPrintStep2();
+};
+
+// ── Step 2: 출력 설정 ───────────────────────────────────
+function renderPrintStep2(){
+  updatePrintStepUI(2);
+  const totalWords = _printData.selectedUnits.reduce((s,u)=>s+u.words.length,0);
+  // 중복 제거 기준 단어 수
+  const uniqueWords = [...new Map(_printData.selectedUnits.flatMap(u=>u.words).map(w=>[w.en,w])).values()];
+  const total = uniqueWords.length;
+  const defaultMc = Math.min(Math.round(total*0.7), total);
+  const defaultSubj = total - defaultMc;
+
+  document.getElementById('printStepContent').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:20px;">Step 2 출력설정</div>
+    <div style="margin-bottom:12px;font-size:13px;color:var(--gray);">
+      선택 단어: <b style="color:var(--teal);">${total}개</b> (중복제거 기준)
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;padding:8px 12px;background:#f0fafa;border-radius:8px;color:var(--teal);">
+          영어 → 한글 (뜻 맞추기)
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px;">
+          <span style="width:80px;">객관식</span>
+          <input type="number" id="mcEn2Ko" value="${Math.round(defaultMc/2)}" min="0" max="${total}"
+            oninput="updatePrintTotal()"
+            style="width:70px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
+          <span style="color:#bbb;">개</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+          <span style="width:80px;">주관식</span>
+          <input type="number" id="subjEn2Ko" value="${Math.round(defaultSubj/2)}" min="0" max="${total}"
+            oninput="updatePrintTotal()"
+            style="width:70px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
+          <span style="color:#bbb;">개</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;padding:8px 12px;background:#e0eeff;border-radius:8px;color:var(--blue);">
+          한글 → 영어 (스펠링)
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px;">
+          <span style="width:80px;">객관식</span>
+          <input type="number" id="mcKo2En" value="${Math.round(defaultMc/2)}" min="0" max="${total}"
+            oninput="updatePrintTotal()"
+            style="width:70px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
+          <span style="color:#bbb;">개</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+          <span style="width:80px;">주관식</span>
+          <input type="number" id="subjKo2En" value="${Math.round(defaultSubj/2)}" min="0" max="${total}"
+            oninput="updatePrintTotal()"
+            style="width:70px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
+          <span style="color:#bbb;">개</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:12px 14px;background:#f8f9fa;border-radius:8px;font-size:13px;">
+      총 문항: <b id="printTotalCount" style="color:var(--teal);font-size:16px;">${Math.round(defaultMc/2)+Math.round(defaultSubj/2)+Math.round(defaultMc/2)+Math.round(defaultSubj/2)}</b>문제
+      <span style="color:#bbb;margin-left:8px;">(객관식 <span id="ptMc">0</span>개 + 주관식 <span id="ptSubj">0</span>개)</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="loadPrintTestList()">← 이전</button>
+      <button class="btn btn-primary" onclick="printStep2Next()">다음 → 출력 정보</button>
+    </div>`;
+  updatePrintTotal();
+}
+
+window.updatePrintTotal = () => {
+  const mc1 = parseInt(document.getElementById('mcEn2Ko')?.value)||0;
+  const subj1 = parseInt(document.getElementById('subjEn2Ko')?.value)||0;
+  const mc2 = parseInt(document.getElementById('mcKo2En')?.value)||0;
+  const subj2 = parseInt(document.getElementById('subjKo2En')?.value)||0;
+  const total = mc1+subj1+mc2+subj2;
+  const mc = mc1+mc2, subj = subj1+subj2;
+  const el = document.getElementById('printTotalCount');
+  const elMc = document.getElementById('ptMc');
+  const elSubj = document.getElementById('ptSubj');
+  if(el) el.textContent = total;
+  if(elMc) elMc.textContent = mc;
+  if(elSubj) elSubj.textContent = subj;
+  _printData.mcEn2Ko=mc1; _printData.subjEn2Ko=subj1;
+  _printData.mcKo2En=mc2; _printData.subjKo2En=subj2;
+};
+
+window.printStep2Next = () => {
+  _printData.mcEn2Ko = parseInt(document.getElementById('mcEn2Ko')?.value)||0;
+  _printData.subjEn2Ko = parseInt(document.getElementById('subjEn2Ko')?.value)||0;
+  _printData.mcKo2En = parseInt(document.getElementById('mcKo2En')?.value)||0;
+  _printData.subjKo2En = parseInt(document.getElementById('subjKo2En')?.value)||0;
+  const total = _printData.mcEn2Ko+_printData.subjEn2Ko+_printData.mcKo2En+_printData.subjKo2En;
+  if(total===0){ showToast('문항 수를 입력하세요.'); return; }
+  renderPrintStep3();
+};
+
+// ── Step 3: 출력 정보 ───────────────────────────────────
+window.renderPrintStep3 = function(){
+  updatePrintStepUI(3);
+  // 기본 시험명: 교재명 + Unit명
+  const defaultName = _printData.selectedUnits.length===1
+    ? `${_printData.selectedUnits[0].bookName} ${_printData.selectedUnits[0].unitName}`
+    : _printData.selectedUnits.map(u=>u.unitName).join(', ');
+  const today = new Date().toISOString().slice(0,10);
+  const mc = _printData.mcEn2Ko+_printData.mcKo2En;
+  const subj = _printData.subjEn2Ko+_printData.subjKo2En;
+
+  document.getElementById('printStepContent').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:20px;">Step 3 출력정보</div>
+    <div style="max-width:500px;margin:0 auto;">
+      <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:24px;">
+        <div>
+          <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">학원명</div>
+          <input id="pi_academy" type="text" value="큰소리영어"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;">
+        </div>
+        <div>
+          <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">시험명 <span style="font-size:11px;">(수정 가능)</span></div>
+          <input id="pi_name" type="text" value="${defaultName}"
+            style="width:100%;border:2px solid var(--teal);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;">
+        </div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:13px;">
+        <div style="font-weight:700;margin-bottom:8px;">출제 요약</div>
+        <div style="color:var(--gray);line-height:2;">
+          ${_printData.selectedUnits.map(u=>`📘 ${u.bookName} › ${u.unitName} (${u.words.length}개)`).join('<br>')}
+          <br>총 문항: <b style="color:var(--text);">${mc+subj}문제</b>
+          (객관식 <b>${mc}</b>개 + 주관식 <b>${subj}</b>개)
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;padding:12px;" onclick="renderPrintStep2()">← 이전</button>
+        <button class="btn btn-primary" style="flex:1;justify-content:center;padding:12px;font-size:15px;" onclick="doPrintExam('exam')">📄 시험지</button>
+        <button style="flex:1;justify-content:center;padding:12px;font-size:15px;background:#4bc27d;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;" onclick="doPrintExam('answer')">📋 답안지</button>
+        <button style="flex:1;justify-content:center;padding:12px;font-size:14px;background:var(--blue);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;" onclick="doPrintExam('both')">🖨 둘 다</button>
+      </div>
+    </div>`;
+};
+window.renderPrintStep2 = renderPrintStep2; // alias
+
+window.doPrintExam = (ptype) => {
+  const examName = document.getElementById('pi_name')?.value.trim() || '단어시험';
+  const academy = document.getElementById('pi_academy')?.value.trim() || '큰소리영어';
+  const today = new Date().toISOString().slice(0,10);
+
+  // 단어 수집 (중복 제거)
+  const wordMap = new Map();
+  _printData.selectedUnits.forEach(u=>{
+    (u.words||[]).forEach(w=>{ if(!wordMap.has(w.en)) wordMap.set(w.en,w); });
+  });
+  const allWords = [...wordMap.values()];
+  if(!allWords.length){ showToast('단어가 없습니다.'); return; }
+
+  // 문제 구성
+  const mcEn2Ko = parseInt(_printData.mcEn2Ko)||0;
+  const subjEn2Ko = parseInt(_printData.subjEn2Ko)||0;
+  const mcKo2En = parseInt(_printData.mcKo2En)||0;
+  const subjKo2En = parseInt(_printData.subjKo2En)||0;
+
+  let shuffled = [...allWords].sort(()=>Math.random()-0.5);
+  const questions = [];
+  let idx = 0;
+  // 영→한 객관식
+  for(let i=0;i<mcEn2Ko&&idx<shuffled.length;i++,idx++)
+    questions.push({...shuffled[idx], testType:'meaning', isEn2Ko:true, qStyle:'mc'});
+  // 영→한 주관식
+  for(let i=0;i<subjEn2Ko&&idx<shuffled.length;i++,idx++)
+    questions.push({...shuffled[idx], testType:'meaning', isEn2Ko:true, qStyle:'subj'});
+  // 한→영 객관식
+  for(let i=0;i<mcKo2En&&idx<shuffled.length;i++,idx++)
+    questions.push({...shuffled[idx], testType:'meaning', isEn2Ko:false, qStyle:'mc'});
+  // 한→영 주관식
+  for(let i=0;i<subjKo2En&&idx<shuffled.length;i++,idx++)
+    questions.push({...shuffled[idx], testType:'meaning', isEn2Ko:false, qStyle:'subj'});
+
+  // 섞기
+  questions.sort(()=>Math.random()-0.5);
+  questions.forEach((q,i)=>q.num=i+1);
+
+  printMixedExamPDF(questions, examName, academy, today, ptype, allWords);
+};
+
+function printMixedExamPDF(questions, examName, academy, date, ptype, allWords){
+  const half = Math.ceil(questions.length/2);
+  const leftQs = questions.slice(0,half);
+  const rightQs = questions.slice(half);
+
+  const makeQHTML = (q, showAnswer) => {
+    const question = q.isEn2Ko ? q.en : q.ko;
+    const answer = q.isEn2Ko ? q.ko : q.en;
+    if(q.qStyle==='subj'){
+      return `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px;">
+        <span style="color:#3BBFBF;font-weight:700;min-width:22px;">${q.num}.</span>
+        <span style="font-size:11pt;">${question}</span>
+        ${showAnswer
+          ? `<span style="font-weight:bold;color:#1a6b1a;margin-left:6px;">${answer}</span>`
+          : `<span style="flex:1;border-bottom:1px solid #333;min-width:60px;margin-left:4px;">&nbsp;</span>`}
+      </div>`;
+    }
+    // 객관식
+    const others = allWords.filter(w=>w.en!==q.en).sort(()=>Math.random()-0.5).slice(0,3);
+    const choices = [...others.map(o=>q.isEn2Ko?o.ko:o.en), answer].sort(()=>Math.random()-0.5);
+    const ansIdx = choices.indexOf(answer)+1;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;gap:6px;align-items:baseline;margin-bottom:3px;">
+        <span style="color:#3BBFBF;font-weight:700;min-width:22px;">${q.num}.</span>
+        <span style="font-size:11pt;font-weight:bold;">${question}
+          ${showAnswer?`<span style="color:#555;font-weight:normal;font-size:9pt;">(정답:${ansIdx}번)</span>`:''}
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;padding-left:28px;">
+        ${choices.map((c,i)=>`<div style="font-size:10pt;${showAnswer&&(i+1===ansIdx)?'font-weight:bold;color:#1a6b1a;':''}">
+          ${i+1}. ${c}
+        </div>`).join('')}
+      </div>
+    </div>`;
+  };
+
+  const makePage = (isAnswer) => `
+    <div style="page-break-after:always;padding:16px 22px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+      <div style="text-align:center;font-size:15pt;font-weight:bold;margin-bottom:8px;">TEST${isAnswer?' (답안지)':''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;">
+        <div style="font-size:11pt;font-weight:600;">학원명: <u style="padding:0 8px;">${academy}</u></div>
+        <div style="font-size:10pt;">
+          학교: <u style="padding:0 30px;">&nbsp;</u>&nbsp;
+          학년: <u style="padding:0 12px;">&nbsp;</u>&nbsp;
+          반: <u style="padding:0 12px;">&nbsp;</u>&nbsp;
+          이름: <u style="padding:0 40px;">&nbsp;</u>
+        </div>
+      </div>
+      <div style="font-size:9pt;color:#666;margin-bottom:10px;">
+        시험명: <b>${examName}</b> &nbsp;|&nbsp; 날짜: ${date} &nbsp;|&nbsp; 총 ${questions.length}문제
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:1px solid #ccc;padding-top:10px;">
+        <div>${leftQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+        <div style="border-left:1px solid #ccc;padding-left:18px;">${rightQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+      </div>
+    </div>`;
+
+  let pageHTML = '';
+  if(ptype==='both'||ptype==='exam') pageHTML += makePage(false);
+  if(ptype==='both'||ptype==='answer') pageHTML += makePage(true);
+
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${examName}</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;}
+    @media print{@page{margin:8mm;size:A4;}body{-webkit-print-color-adjust:exact;}}</style>
+    </head><body>${pageHTML}
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  win.document.close();
+}
+
+window.generatePDF = () => { showToast('시험지 출력 메뉴에서 교재를 선택 후 출력하세요.'); };
+window.selectPrintTest = async() => {};
 window.toggleTestActive = async(testId, isActive) => {
   await updateDoc(doc(db,'tests',testId),{active:!isActive});
   showToast(isActive?'시험이 종료됐어요.':'시험이 재개됐어요.');
-  await selectPrintTest(testId);
-  await loadPrintTestList();
+  await loadTestList();
 };
-
-window.doPrintSelected = () => {
-  if(!_selectedPrintTest){ showToast('시험을 선택하세요.'); return; }
-  const ptype = document.querySelector('input[name=printType2]:checked')?.value||'both';
-  printExamPDF(
-    _selectedPrintTest.words||[],
-    _selectedPrintTest.name,
-    _selectedPrintTest.academy||'큰소리영어',
-    _selectedPrintTest.date,
-    ptype,
-    _selectedPrintTest.qType||'both'
-  );
-};
-
-window.generatePDF = () => { showToast('시험지 출력 메뉴에서 시험을 선택 후 출력하세요.'); };
+window.doPrintSelected = () => {};
 window.testNextStep = (step) => { showToast('단계를 순서대로 진행하세요.'); };
 window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설정 준비 중...'); };
 window.viewUnit = (bid,uid,name) => { showToast(name+' 상세보기 준비 중...'); };
