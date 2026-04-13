@@ -367,8 +367,11 @@
 
   <!-- UNIT LIST -->
   <div id="units" class="screen">
-    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">단어 테스트</span><span></span></div>
-    <div class="scroll-content"><div class="unit-list" id="unitList"><div class="empty-msg" style="padding:40px;">단원이 없습니다.</div></div></div>
+    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">📝 시험 목록</span><span></span></div>
+    <div class="scroll-content">
+      <div style="padding:12px 16px 4px;font-size:13px;color:var(--gray);">배정된 시험 목록이에요. 시험을 선택하고 풀어보세요!</div>
+      <div class="unit-list" id="unitList"><div class="empty-msg" style="padding:40px;">배정된 시험이 없습니다.</div></div>
+    </div>
   </div>
 
   <!-- MODE SELECT -->
@@ -906,28 +909,90 @@ window.goNoticeList = async()=>{
 };
 
 // ── 단원/테스트 ───────────────────────────────────────────
+let currentTestId = null, currentTestName = '';
+
 window.goUnits = async()=>{
-  const snap=await getDocs(collection(db,'units'));
-  const allUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
-  // 학생 그룹에 해당하는 단원만 필터
-  // 단원에 group이 없으면(미지정) 전체 공개
-  const myGroup=userProfile?.group||'';
-  const units=allUnits.filter(u=>!u.group||u.group===''||u.group==='그룹 없음'||u.group===myGroup);
-  const el=document.getElementById('unitList');
-  if(!units.length){
-    el.innerHTML='<div class="empty-msg" style="padding:40px;">배정된 단원이 없습니다.<br>관리자에게 문의하세요.</div>';
-    show('units');return;
-  }
-  el.innerHTML=units.map(u=>`
-    <div class="unit-card" onclick="selectUnit('${u.id}','${u.name}')">
-      <div style="flex:1"><div class="unit-name">${u.name}</div><div class="unit-count">단어 ${u.words?.length||0}개</div>
-      <div class="unit-progress"><div class="unit-progress-bar" style="width:${Math.round(Math.random()*60+20)}%"></div></div></div>
-      <span class="unit-arrow">›</span>
-    </div>`).join('');
+  const el = document.getElementById('unitList');
+  el.innerHTML = '<div class="empty-msg" style="padding:40px;">로딩 중...</div>';
   show('units');
+
+  try{
+    // tests 컬렉션에서 내게 배정된 시험 가져오기
+    const myGroup = userProfile?.group||'';
+    const myUid = currentUser?.uid||'';
+
+    const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // 내게 해당하는 시험 필터 (반 전체 or 개별 학생)
+    const myTests = allTests.filter(t=>{
+      if(!t.active && t.active !== undefined) return false; // 종료된 시험 제외
+      const targets = t.targets || [];
+      // 구형 데이터 호환 (targetType/targetId)
+      if(targets.length === 0){
+        if(t.targetType === 'class' && t.targetId === myGroup) return true;
+        if(t.targetType === 'student' && t.targetId === myUid) return true;
+        if(t.targetId === myGroup) return true;
+        return false;
+      }
+      return targets.some(tg =>
+        (tg.type==='class' && tg.id===myGroup) ||
+        (tg.type==='student' && tg.id===myUid)
+      );
+    });
+
+    if(!myTests.length){
+      el.innerHTML='<div class="empty-msg" style="padding:40px;">배정된 시험이 없습니다.<br>선생님께 문의하세요.</div>';
+      return;
+    }
+
+    el.innerHTML = myTests.map(t=>{
+      const wordCount = t.words?.length || t.count || 0;
+      const qTypeLabel = {both:'영→한 + 한→영', en2ko:'영→한', ko2en:'한→영'}[t.qType] || '혼합';
+      return `
+        <div class="unit-card" onclick="selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')">
+          <div style="flex:1">
+            <div class="unit-name">${t.name||'시험'}</div>
+            <div class="unit-count">📚 ${t.bookName||''} · ${wordCount}문제 · ${qTypeLabel}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">출제일: ${t.date||''}</div>
+          </div>
+          <span class="unit-arrow">›</span>
+        </div>`;
+    }).join('');
+  } catch(e){
+    el.innerHTML = '<div class="empty-msg" style="padding:40px;">불러오기 실패<br>'+e.message+'</div>';
+  }
+};
+
+window.selectTest = async(testId, testName)=>{
+  currentTestId = testId;
+  currentTestName = testName;
+  const snap = await getDoc(doc(db,'tests',testId));
+  const testDoc = snap.data();
+  if(!testDoc){ showToast('시험 정보를 불러올 수 없어요.'); return; }
+  currentUnitWords = testDoc.words || [];
+  currentUnitId = testId; // 기존 변수 재활용
+  document.getElementById('modeUnitName').textContent = testName;
+  // 시험 유형에 따라 모드 선택 화면 또는 바로 시작
+  if(testDoc.qType === 'en2ko' || testDoc.qType === 'ko2en'){
+    // 단일 유형이면 바로 시작
+    lastMode = testDoc.qType === 'ko2en' ? 'spelling' : 'meaning';
+    // testMode 전역 변수 설정
+    window._currentTestData = testDoc;
+    document.getElementById('infoModalTitle').textContent = testName;
+    document.getElementById('modalWordCount').textContent = currentUnitWords.length+'개';
+    document.getElementById('modalTime').textContent = lastMode==='spelling'?'각 30초':'각 10초';
+    document.getElementById('modalPoint').textContent = currentUnitWords.length*10+'점';
+    document.getElementById('infoModal').classList.remove('hidden');
+  } else {
+    // 혼합(both)이면 모드 선택
+    window._currentTestData = testDoc;
+    show('modeSelect');
+  }
 };
 
 window.selectUnit = async(unitId,unitName)=>{
+  // 하위 호환 유지
   currentUnitId=unitId;
   document.getElementById('modeUnitName').textContent=unitName;
   const snap=await getDoc(doc(db,'units',unitId));
@@ -1016,8 +1081,25 @@ async function showResult(){
   show('result');
   if(currentUser&&userProfile){
     try{
-      await setDoc(doc(db,'scores',currentUser.uid+'_'+currentUnitId+'_'+lastMode),
-        {uid:currentUser.uid,name:userProfile.name,group:userProfile.group,unitId:currentUnitId,mode:lastMode,score,correct,wrong,total,updatedAt:serverTimestamp()},{merge:true});
+      const today = new Date().toISOString().slice(0,10);
+      const testId = currentTestId || currentUnitId;
+      const testName = currentTestName || '';
+      // scores 컬렉션에 저장 (중복 응시 허용 → addDoc)
+      await addDoc(collection(db,'scores'),{
+        uid:currentUser.uid,
+        userId:currentUser.uid,
+        userName:userProfile.name,
+        name:userProfile.name,
+        group:userProfile.group||'',
+        testId, testName,
+        unitId:currentUnitId,
+        unitName:testName||currentTestName||'',
+        bookName:window._currentTestData?.bookName||'',
+        mode:lastMode,
+        score,correct,wrong,total,
+        date:today,
+        createdAt:serverTimestamp()
+      });
     }catch(e){console.log('점수저장실패',e);}
   }
 }
