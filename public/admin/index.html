@@ -156,6 +156,29 @@ tbody tr:last-child td{border-bottom:none;}
 .action-btn.danger:hover{background:#fee2e2;border-color:var(--red);color:var(--red);}
 .action-btn.primary{background:var(--teal);border-color:var(--teal);color:white;}
 .action-btn.primary:hover{background:var(--teal-dark);}
+
+/* ── 테이블 정렬 ── */
+thead th.sortable{cursor:pointer;user-select:none;}
+thead th.sortable:hover{background:#eef;color:var(--teal);}
+thead th.sort-asc::after{content:' ▲';font-size:10px;color:var(--teal);}
+thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
+
+/* ── 시험 대상 선택 트리 ── */
+.target-tree{border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:360px;overflow-y:auto;}
+.tree-class-row{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;}
+.tree-class-row:hover{background:#e0f5f5;}
+.tree-class-row.expanded{background:#e0f5f5;color:var(--teal);}
+.tree-toggle{font-size:11px;color:#aaa;transition:.2s;display:inline-block;width:14px;}
+.tree-class-row.expanded .tree-toggle{transform:rotate(90deg);}
+.tree-student-list{display:none;background:white;}
+.tree-student-list.open{display:block;}
+.tree-student-row{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 36px;border-bottom:1px solid #f5f5f5;font-size:13px;cursor:pointer;}
+.tree-student-row:hover{background:#f8f9fa;}
+.tree-student-row.selected{background:#e0f5f5;}
+.selected-tags{display:flex;flex-wrap:wrap;gap:6px;min-height:40px;padding:8px;border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;}
+.sel-tag{display:inline-flex;align-items:center;gap:4px;background:var(--teal);color:white;padding:3px 8px;border-radius:20px;font-size:12px;font-weight:600;}
+.sel-tag-x{cursor:pointer;opacity:.7;font-size:14px;line-height:1;}
+.sel-tag-x:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -355,7 +378,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="classCheckAll" onchange="toggleCheck('classTableBody',this)"></th><th>No</th><th>반이름</th><th>담당</th><th>앱표기숨김</th><th>All Books</th><th>등록일</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="classCheckAll" onchange="toggleCheck('classTableBody',this)"></th><th onclick="sortTable('classTableBody',0)" class="sortable">No</th><th onclick="sortTable('classTableBody',1)" class="sortable">반이름</th><th onclick="sortTable('classTableBody',2)" class="sortable">담당</th><th>앱표기숨김</th><th>All Books</th><th onclick="sortTable('classTableBody',5)" class="sortable">등록일</th></tr></thead>
           <tbody id="classTableBody"><tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -388,7 +411,7 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th>No</th><th>반</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>알림수신</th><th>등록일</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th onclick="sortTable('studentTableBody',0)" class="sortable">No</th><th onclick="sortTable('studentTableBody',1)" class="sortable">반</th><th onclick="sortTable('studentTableBody',2)" class="sortable">아이디</th><th onclick="sortTable('studentTableBody',3)" class="sortable">이름</th><th onclick="sortTable('studentTableBody',4)" class="sortable">생일</th><th onclick="sortTable('studentTableBody',5)" class="sortable">학교</th><th onclick="sortTable('studentTableBody',6)" class="sortable">학년</th><th>알림수신</th><th onclick="sortTable('studentTableBody',8)" class="sortable">등록일</th></tr></thead>
           <tbody id="studentTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -418,7 +441,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>휴원일</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th onclick="sortTable('pauseTableBody',0)" class="sortable">No</th><th onclick="sortTable('pauseTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('pauseTableBody',2)" class="sortable">이름</th><th onclick="sortTable('pauseTableBody',3)" class="sortable">생일</th><th onclick="sortTable('pauseTableBody',4)" class="sortable">학교</th><th onclick="sortTable('pauseTableBody',5)" class="sortable">학년</th><th onclick="sortTable('pauseTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('pauseTableBody',7)" class="sortable">휴원일</th></tr></thead>
           <tbody id="pauseTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -442,7 +465,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>퇴원일</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th onclick="sortTable('outTableBody',0)" class="sortable">No</th><th onclick="sortTable('outTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('outTableBody',2)" class="sortable">이름</th><th onclick="sortTable('outTableBody',3)" class="sortable">생일</th><th onclick="sortTable('outTableBody',4)" class="sortable">학교</th><th onclick="sortTable('outTableBody',5)" class="sortable">학년</th><th onclick="sortTable('outTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('outTableBody',7)" class="sortable">퇴원일</th></tr></thead>
           <tbody id="outTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -524,7 +547,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th style="width:36px;"><input type="checkbox" id="bookCheckAll" onchange="toggleCheck('bookTableBody',this)"></th><th>No</th><th>교재명</th><th>Unit수</th><th>단어수</th><th>등록일</th></tr></thead>
+            <thead><tr><th style="width:36px;"><input type="checkbox" id="bookCheckAll" onchange="toggleCheck('bookTableBody',this)"></th><th onclick="sortTable('bookTableBody',0)" class="sortable">No</th><th onclick="sortTable('bookTableBody',1)" class="sortable">교재명</th><th onclick="sortTable('bookTableBody',2)" class="sortable">Unit수</th><th onclick="sortTable('bookTableBody',3)" class="sortable">단어수</th><th onclick="sortTable('bookTableBody',4)" class="sortable">등록일</th></tr></thead>
             <tbody id="bookTableBody"><tr><td colspan="6" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
           <div class="tbl-toolbar">
@@ -615,7 +638,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th><th>No</th><th>시험명</th><th>대상</th><th>교재</th><th>문항수</th><th>출제일</th><th>응시수</th><th>평균</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th><th onclick="sortTable('testListBody',0)" class="sortable">No</th><th onclick="sortTable('testListBody',1)" class="sortable">시험명</th><th onclick="sortTable('testListBody',2)" class="sortable">대상</th><th onclick="sortTable('testListBody',3)" class="sortable">교재</th><th onclick="sortTable('testListBody',4)" class="sortable">문항수</th><th onclick="sortTable('testListBody',5)" class="sortable">출제일</th><th>응시수</th><th>평균</th></tr></thead>
           <tbody id="testListBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -759,7 +782,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="noticeCheckAll" onchange="toggleCheck('noticeTableBody',this)"></th><th>No</th><th>제목</th><th>대상</th><th>작성일</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="noticeCheckAll" onchange="toggleCheck('noticeTableBody',this)"></th><th onclick="sortTable('noticeTableBody',0)" class="sortable">No</th><th onclick="sortTable('noticeTableBody',1)" class="sortable">제목</th><th onclick="sortTable('noticeTableBody',2)" class="sortable">대상</th><th onclick="sortTable('noticeTableBody',3)" class="sortable">작성일</th></tr></thead>
           <tbody id="noticeTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -790,7 +813,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="payCheckAll" onchange="toggleCheck('paymentTableBody',this)"></th><th>No</th><th>학생</th><th>반</th><th>항목</th><th>금액</th><th>납부기한</th><th>상태</th><th>메모</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="payCheckAll" onchange="toggleCheck('paymentTableBody',this)"></th><th onclick="sortTable('paymentTableBody',0)" class="sortable">No</th><th onclick="sortTable('paymentTableBody',1)" class="sortable">학생</th><th onclick="sortTable('paymentTableBody',2)" class="sortable">반</th><th onclick="sortTable('paymentTableBody',3)" class="sortable">항목</th><th onclick="sortTable('paymentTableBody',4)" class="sortable">금액</th><th onclick="sortTable('paymentTableBody',5)" class="sortable">납부기한</th><th onclick="sortTable('paymentTableBody',6)" class="sortable">상태</th><th>메모</th></tr></thead>
           <tbody id="paymentTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
@@ -1826,7 +1849,273 @@ window.showToast = (msg) => {
   toastTimer=setTimeout(()=>{t.style.opacity='0';},2500);
 };
 
-// ── 공통 테이블 유틸 ─────────────────────────────────────
+// ── Auth + Firestore 동시 삭제 ────────────────────────────
+async function deleteUserFull(uid, name){
+  if(!confirm(`"${name}" 학생을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`)) return false;
+  try{
+    const res = await fetch('/api/deleteUser',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({uid})
+    });
+    const result = await res.json();
+    if(result.success){ showToast('✅ 계정이 완전 삭제됐어요!'); return true; }
+    else { showToast('❌ 삭제 실패: '+result.error); return false; }
+  } catch(e){ showToast('❌ 삭제 실패: '+e.message); return false; }
+}
+
+// ── 테이블 정렬 엔진 ─────────────────────────────────────
+const _sortState = {}; // {tableId: {col, dir}}
+
+window.sortTable = (tableId, colIdx) => {
+  const s = _pageState[tableId]; if(!s) return;
+  const prev = _sortState[tableId]||{col:-1,dir:'asc'};
+  const dir = (prev.col===colIdx && prev.dir==='asc') ? 'desc' : 'asc';
+  _sortState[tableId] = {col:colIdx, dir};
+
+  // 헤더 클래스 업데이트
+  const table = document.getElementById(tableId)?.closest('table');
+  if(table){
+    table.querySelectorAll('thead th').forEach((th,i)=>{
+      th.classList.remove('sort-asc','sort-desc');
+      if(i===colIdx+1) th.classList.add(dir==='asc'?'sort-asc':'sort-desc'); // +1 체크박스 열 때문
+    });
+  }
+
+  // 데이터 정렬
+  const sorted = [...s.data].sort((a,b)=>{
+    const aEl = document.createElement('div'); aEl.innerHTML = a._row||'';
+    const bEl = document.createElement('div'); bEl.innerHTML = b._row||'';
+    // 렌더된 행에서 텍스트 추출하는 방식 대신 데이터 키 기반 정렬
+    const keys = Object.keys(a);
+    const val = (obj) => {
+      // 컬럼 인덱스로 데이터 접근 (대략적 매핑)
+      const vals = Object.values(obj).filter(v=>typeof v==='string'||typeof v==='number');
+      return (vals[colIdx]||'').toString().toLowerCase();
+    };
+    const av = val(a), bv = val(b);
+    const n = parseFloat(av), m = parseFloat(bv);
+    if(!isNaN(n)&&!isNaN(m)) return dir==='asc'?n-m:m-n;
+    return dir==='asc'?av.localeCompare(bv,'ko'):bv.localeCompare(av,'ko');
+  });
+
+  refreshPagination(tableId, sorted);
+};
+
+// ── 시험 대상 선택 트리 ──────────────────────────────────
+let _testTargets = []; // 선택된 대상 배열 [{type:'class'|'student', id, name, groupName}]
+
+async function renderTestStep1(){
+  updateStepUI(1);
+  _testTargets = [];
+
+  // 학생이 있는 반만 로드
+  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // 반별로 그룹화 + 가나다순 정렬
+  const groupMap = {};
+  students.forEach(u=>{
+    const g = u.group||'미배정';
+    if(!groupMap[g]) groupMap[g]=[];
+    groupMap[g].push(u);
+  });
+  // 학생 이름 가나다순 정렬
+  Object.keys(groupMap).forEach(g=>{
+    groupMap[g].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+  });
+  const groups = Object.keys(groupMap).sort((a,b)=>a.localeCompare(b,'ko'));
+
+  document.getElementById('testStep1Content').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">① 시험 대상 선택</div>
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;">
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;font-weight:600;">
+          클래스 / 학생 선택 <span style="font-weight:400;">(반 클릭: 전체선택, 학생 클릭: 개별선택)</span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <input type="text" id="testSearchInput" placeholder="🔍 학생 이름 검색..." oninput="filterTestTree(this.value)"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;outline:none;">
+        </div>
+        <div class="target-tree" id="testTargetTree">
+          ${groups.map(g=>`
+            <div>
+              <div class="tree-class-row" id="cls-${g}" onclick="toggleTreeClass('${g}')">
+                <span class="tree-toggle">›</span>
+                <input type="checkbox" id="chk-cls-${g}" onclick="event.stopPropagation();toggleClassCheck('${g}')" style="cursor:pointer;">
+                <span>👥 ${g}</span>
+                <span style="margin-left:auto;font-size:11px;color:#aaa;">${groupMap[g].length}명</span>
+              </div>
+              <div class="tree-student-list" id="list-${g}">
+                ${groupMap[g].map(u=>`
+                  <div class="tree-student-row" id="std-${u.id}" onclick="toggleStudentCheck('${u.id}','${u.name}','${g}')">
+                    <input type="checkbox" id="chk-${u.id}" onclick="event.stopPropagation();toggleStudentCheck('${u.id}','${u.name}','${g}')" style="cursor:pointer;">
+                    <span style="color:var(--gray);font-size:11px;width:14px;">${groupMap[g].indexOf(u)+1}</span>
+                    <span>👤 ${u.name}</span>
+                  </div>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;font-weight:600;">
+          선택된 대상 <span id="targetCount" style="color:var(--teal);">0명</span>
+          <button onclick="clearAllTargets()" style="margin-left:8px;background:none;border:none;color:#bbb;cursor:pointer;font-size:11px;">전체해제</button>
+        </div>
+        <div class="selected-tags" id="selectedTargetTags">
+          <span style="color:#bbb;font-size:12px;align-self:center;">대상을 선택하세요</span>
+        </div>
+        <div style="margin-top:16px;padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:12px;color:var(--gray);">
+          선택된 반은 시험 배정 시 해당 반 전체 학생에게 적용됩니다.
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;text-align:right;">
+      <button class="btn btn-primary" onclick="testStep1Next()">다음 → 교재 선택</button>
+    </div>
+  `;
+}
+
+window.toggleTreeClass = (group) => {
+  const row = document.getElementById('cls-'+group);
+  const list = document.getElementById('list-'+group);
+  row?.classList.toggle('expanded');
+  list?.classList.toggle('open');
+};
+
+window.toggleClassCheck = (group) => {
+  const cb = document.getElementById('chk-cls-'+group);
+  const isChecked = cb.checked;
+  // 반 전체를 추가/제거
+  if(isChecked){
+    // 반이 이미 선택목록에 없으면 추가
+    if(!_testTargets.find(t=>t.type==='class'&&t.id===group)){
+      _testTargets = _testTargets.filter(t=>!(t.type==='student'&&t.groupName===group));
+      _testTargets.push({type:'class', id:group, name:group+' 전체', groupName:group});
+    }
+    // 해당 반 학생 체크박스도 모두 체크
+    document.querySelectorAll(`#list-${group} input[type=checkbox]`).forEach(c=>c.checked=true);
+    document.querySelectorAll(`#list-${group} .tree-student-row`).forEach(r=>r.classList.add('selected'));
+    // 반 펼치기
+    document.getElementById('cls-'+group)?.classList.add('expanded');
+    document.getElementById('list-'+group)?.classList.add('open');
+  } else {
+    _testTargets = _testTargets.filter(t=>!(t.id===group&&t.type==='class'));
+    document.querySelectorAll(`#list-${group} input[type=checkbox]`).forEach(c=>c.checked=false);
+    document.querySelectorAll(`#list-${group} .tree-student-row`).forEach(r=>r.classList.remove('selected'));
+  }
+  renderTargetTags();
+};
+
+window.toggleStudentCheck = (uid, name, group) => {
+  const cb = document.getElementById('chk-'+uid);
+  const row = document.getElementById('std-'+uid);
+  const isChecked = !cb.checked;
+  cb.checked = isChecked;
+  if(isChecked){
+    row?.classList.add('selected');
+    // 반 전체 선택 해제
+    _testTargets = _testTargets.filter(t=>!(t.type==='class'&&t.id===group));
+    document.getElementById('chk-cls-'+group).checked = false;
+    if(!_testTargets.find(t=>t.id===uid)){
+      _testTargets.push({type:'student', id:uid, name, groupName:group});
+    }
+  } else {
+    row?.classList.remove('selected');
+    _testTargets = _testTargets.filter(t=>t.id!==uid);
+  }
+  renderTargetTags();
+};
+
+function renderTargetTags(){
+  const el = document.getElementById('selectedTargetTags');
+  const cnt = document.getElementById('targetCount');
+  if(!_testTargets.length){
+    el.innerHTML='<span style="color:#bbb;font-size:12px;align-self:center;">대상을 선택하세요</span>';
+    cnt.textContent='0명';
+    return;
+  }
+  // 가나다순 정렬
+  const sorted = [..._testTargets].sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  el.innerHTML = sorted.map(t=>`
+    <span class="sel-tag">
+      ${t.type==='class'?'👥':'👤'} ${t.name}
+      <span class="sel-tag-x" onclick="removeTarget('${t.id}')">×</span>
+    </span>`).join('');
+  cnt.textContent = _testTargets.length+'명/반';
+}
+
+window.removeTarget = (id) => {
+  const target = _testTargets.find(t=>t.id===id);
+  if(!target) return;
+  _testTargets = _testTargets.filter(t=>t.id!==id);
+  // 체크박스 해제
+  const cb = document.getElementById('chk-'+id) || document.getElementById('chk-cls-'+id);
+  if(cb) cb.checked = false;
+  document.getElementById('std-'+id)?.classList.remove('selected');
+  renderTargetTags();
+};
+
+window.clearAllTargets = () => {
+  _testTargets = [];
+  document.querySelectorAll('.tree-class-row input, .tree-student-row input').forEach(cb=>cb.checked=false);
+  document.querySelectorAll('.tree-student-row').forEach(r=>r.classList.remove('selected'));
+  renderTargetTags();
+};
+
+window.filterTestTree = (q) => {
+  const lq = q.toLowerCase();
+  document.querySelectorAll('.tree-student-row').forEach(row=>{
+    const name = row.querySelector('span:last-child')?.textContent||'';
+    row.style.display = (!lq||name.includes(lq)) ? '' : 'none';
+  });
+  // 검색 시 모든 반 펼치기
+  if(lq){
+    document.querySelectorAll('.tree-class-row').forEach(r=>r.classList.add('expanded'));
+    document.querySelectorAll('.tree-student-list').forEach(l=>l.classList.add('open'));
+  }
+};
+
+window.testStep1Next = () => {
+  if(!_testTargets.length){showToast('시험 대상을 선택하세요.');return;}
+  // testData에 저장
+  testData.targetType = _testTargets.length===1&&_testTargets[0].type==='class'?'class':'mixed';
+  testData.targetId = _testTargets.map(t=>t.id).join(',');
+  testData.targetName = _testTargets.length===1?_testTargets[0].name:`${_testTargets.length}명/반 선택`;
+  testData.targets = [..._testTargets];
+  renderTestStep2();
+};
+
+// ── 삭제 함수 오버라이드 (Auth 포함 삭제) ────────────────
+window.deleteSelectedStudent = async() => {
+  const ids = getCheckedIds('studentTableBody');
+  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`))return;
+  let ok=0;
+  for(const id of ids){
+    try{
+      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id})});
+      ok++;
+    }catch(e){console.log('삭제실패:',e);}
+  }
+  showToast(`✅ ${ok}명 삭제 완료!`); await loadStudents('active');
+};
+window.deleteSelectedOutStudent = async() => {
+  const ids = getCheckedIds('outTableBody');
+  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 완전 삭제할까요?`))return;
+  let ok=0;
+  for(const id of ids){
+    try{
+      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id})});
+      ok++;
+    }catch(e){console.log('삭제실패:',e);}
+  }
+  showToast(`✅ ${ok}명 삭제 완료!`); await loadStudents('out');
+};
+window.deleteStudent = async(id, name) => {
+  await deleteUserFull(id, name);
+  await loadStudents(currentPage==='student-out'?'out':currentPage==='student-pause'?'pause':'active');
+};
 window.toggleCheck = (tbodyId, masterCb) => {
   document.querySelectorAll(`#${tbodyId} input[type=checkbox]`).forEach(cb => cb.checked = masterCb.checked);
 };
