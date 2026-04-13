@@ -139,6 +139,23 @@ tbody tr:last-child td{border-bottom:none;}
 /* ── 반응형 ── */
 @media(max-width:1200px){.dash-grid-3{grid-template-columns:280px 1fr;}}
 @media(max-width:900px){.dash-grid{grid-template-columns:1fr 1fr;}.sidebar{width:160px;}.main{margin-left:160px;}}
+
+/* ── 테이블 공통 툴바 ── */
+.tbl-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.tbl-wrap table{border-radius:0;}
+.tbl-toolbar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8f9fa;border-top:1px solid var(--border);gap:8px;flex-wrap:wrap;}
+.tbl-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.tbl-page{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);}
+.tbl-page-btn{background:white;border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;color:var(--text);}
+.tbl-page-btn:hover{background:var(--teal-light);color:var(--teal);}
+.tbl-page-btn:disabled{background:#f5f5f5;color:#ccc;cursor:default;}
+.tbl-page-info{font-size:12px;color:var(--gray);}
+.tbl-size{border:1px solid var(--border);border-radius:5px;padding:3px 6px;font-size:12px;background:white;}
+.action-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:white;color:var(--text);transition:.15s;}
+.action-btn:hover{background:var(--teal-light);border-color:var(--teal);color:var(--teal);}
+.action-btn.danger:hover{background:#fee2e2;border-color:var(--red);color:var(--red);}
+.action-btn.primary{background:var(--teal);border-color:var(--teal);color:white;}
+.action-btn.primary:hover{background:var(--teal-dark);}
 </style>
 </head>
 <body>
@@ -335,12 +352,20 @@ tbody tr:last-child td{border-bottom:none;}
       <div><div class="page-title">클래스 관리</div><div class="page-sub">반을 관리합니다</div></div>
       <button class="btn btn-primary" onclick="openClassModal()">+ 반 생성</button>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th><input type="checkbox"></th><th>No</th><th>반이름</th><th>담당</th><th>앱표기 숨김</th><th>학습모드 숨김</th><th>All Books</th><th>성적표 발송</th><th>등록일</th><th>관리</th></tr></thead>
-          <tbody id="classTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="classCheckAll" onchange="toggleCheck('classTableBody',this)"></th><th>No</th><th>반이름</th><th>담당</th><th>앱표기숨김</th><th>All Books</th><th>등록일</th></tr></thead>
+          <tbody id="classTableBody"><tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="openClassModal()">+ 반 생성</button>
+            <button class="action-btn" onclick="editSelectedClass()">✏️ 수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedClass()">🗑 삭제</button>
+          </div>
+          <div class="tbl-page" id="classPagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -357,23 +382,29 @@ tbody tr:last-child td{border-bottom:none;}
         <button class="btn btn-primary" onclick="openStudentModal()">+ 재원생 추가</button>
       </div>
     </div>
-    <div class="card">
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <input type="text" id="studentSearch" placeholder="이름, 아이디 검색..." onkeyup="searchStudents()" style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;width:240px;outline:none;">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+        <input type="text" id="studentSearch" placeholder="🔍 이름, 아이디 검색..." onkeyup="searchStudents()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
       </div>
-      <div class="table-wrap">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th>No</th><th>반</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>메시지수신</th><th>등록일</th><th>STUDY</th><th>TEST</th><th>관리</th></tr></thead>
-          <tbody id="studentTableBody"><tr><td colspan="13" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th>No</th><th>반</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>알림수신</th><th>등록일</th></tr></thead>
+          <tbody id="studentTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" onclick="bulkAction('pause')">⏸ 휴원처리</button>
-          <button class="btn btn-secondary btn-sm" onclick="bulkAction('out')">🚪 퇴원처리</button>
-          <button class="btn btn-secondary btn-sm" onclick="bulkAction('assign')">📋 반배정</button>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="openStudentModal()">+ 학생추가</button>
+            <button class="action-btn" onclick="editSelectedStudent()">✏️ 수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedStudent()">🗑 삭제</button>
+            <span style="color:var(--border);margin:0 2px;">|</span>
+            <button class="action-btn" onclick="bulkAction('assign')">📋 반배정</button>
+            <button class="action-btn" onclick="bulkAction('pause')">⏸ 휴원</button>
+            <button class="action-btn danger" onclick="bulkAction('out')">🚪 퇴원</button>
+            <span style="color:var(--border);margin:0 2px;">|</span>
+            <button class="action-btn" onclick="exportStudentExcel('active')">📊 엑셀내보내기</button>
+          </div>
+          <div class="tbl-page" id="studentPagination"></div>
         </div>
-        <div id="studentPagination" style="display:flex;align-items:center;gap:8px;font-size:13px;"></div>
       </div>
     </div>
   </div>
@@ -384,12 +415,20 @@ tbody tr:last-child td{border-bottom:none;}
       <div><div class="page-title">휴원생 관리</div><div class="page-sub">휴원 중인 학생을 관리합니다</div></div>
       <button class="btn btn-secondary" onclick="exportStudentExcel('pause')">📊 엑셀 내보내기</button>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th><input type="checkbox"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>휴원일</th><th>관리</th></tr></thead>
-          <tbody id="pauseTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>휴원일</th></tr></thead>
+          <tbody id="pauseTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="restoreSelectedStudent('pause')">✅ 재원처리</button>
+            <button class="action-btn danger" onclick="outSelectedStudent()">🚪 퇴원처리</button>
+            <button class="action-btn" onclick="exportStudentExcel('pause')">📊 엑셀내보내기</button>
+          </div>
+          <div class="tbl-page" id="pausePagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -400,12 +439,20 @@ tbody tr:last-child td{border-bottom:none;}
       <div><div class="page-title">퇴원생 관리</div><div class="page-sub">퇴원한 학생을 관리합니다</div></div>
       <button class="btn btn-secondary" onclick="exportStudentExcel('out')">📊 엑셀 내보내기</button>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th><input type="checkbox"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>퇴원일</th><th>관리</th></tr></thead>
-          <tbody id="outTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th>No</th><th>아이디</th><th>이름</th><th>생일</th><th>학교</th><th>학년</th><th>등록일</th><th>퇴원일</th></tr></thead>
+          <tbody id="outTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="restoreSelectedStudent('out')">✅ 재원처리</button>
+            <button class="action-btn danger" onclick="deleteSelectedOutStudent()">🗑 삭제</button>
+            <button class="action-btn" onclick="exportStudentExcel('out')">📊 엑셀내보내기</button>
+          </div>
+          <div class="tbl-page" id="outPagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -441,22 +488,39 @@ tbody tr:last-child td{border-bottom:none;}
             </select>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="tbl-wrap">
           <table>
-            <thead><tr><th><input type="checkbox"></th><th>No</th><th>교재명</th><th>Unit수</th><th>단어수</th><th>등록일</th><th>폴더이동</th><th>관리</th></tr></thead>
-            <tbody id="bookTableBody"><tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+            <thead><tr><th style="width:36px;"><input type="checkbox" id="bookCheckAll" onchange="toggleCheck('bookTableBody',this)"></th><th>No</th><th>교재명</th><th>Unit수</th><th>단어수</th><th>등록일</th></tr></thead>
+            <tbody id="bookTableBody"><tr><td colspan="6" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
+          <div class="tbl-toolbar">
+            <div class="tbl-actions">
+              <button class="action-btn primary" onclick="openMyBookModal()">+ My Book 생성</button>
+              <button class="action-btn" onclick="editSelectedBook()">✏️ 수정</button>
+              <button class="action-btn" onclick="addUnitToSelected()">+ Unit 추가</button>
+              <button class="action-btn" onclick="moveSelectedBook()">📁 폴더이동</button>
+              <button class="action-btn danger" onclick="deleteSelectedBook()">🗑 삭제</button>
+            </div>
+            <div class="tbl-page" id="bookPagination"></div>
+          </div>
         </div>
       </div>
       <div class="card">
         <div class="card-title">📁 폴더 목록
           <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="openFolderModal()">+ 폴더 생성</button>
         </div>
-        <div class="table-wrap">
+        <div class="tbl-wrap">
           <table>
-            <thead><tr><th><input type="checkbox"></th><th>No</th><th>폴더명</th><th>폴더수</th><th>교재수</th><th>등록일</th><th>관리</th></tr></thead>
-            <tbody id="folderTableBody"><tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+            <thead><tr><th style="width:36px;"><input type="checkbox" id="folderCheckAll" onchange="toggleCheck('folderTableBody',this)"></th><th>No</th><th>폴더명</th><th>교재수</th><th>등록일</th></tr></thead>
+            <tbody id="folderTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
+          <div class="tbl-toolbar">
+            <div class="tbl-actions">
+              <button class="action-btn primary" onclick="openFolderModal()">+ 폴더 생성</button>
+              <button class="action-btn danger" onclick="deleteSelectedFolder()">🗑 삭제</button>
+            </div>
+            <div class="tbl-page" id="folderPagination"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -514,12 +578,20 @@ tbody tr:last-child td{border-bottom:none;}
   <!-- 시험 목록 -->
   <div class="page" id="page-test-list">
     <div class="page-header"><div><div class="page-title">시험 목록</div><div class="page-sub">출제된 시험을 관리합니다</div></div></div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th>No</th><th>시험명</th><th>반</th><th>교재</th><th>문항수</th><th>출제일</th><th>응시</th><th>평균</th><th>관리</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th><th>No</th><th>시험명</th><th>대상</th><th>교재</th><th>문항수</th><th>출제일</th><th>응시수</th><th>평균</th></tr></thead>
           <tbody id="testListBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="goPage_testCreate()">+ 시험 출제</button>
+            <button class="action-btn" onclick="reprintSelectedTest()">🖨 재출력</button>
+            <button class="action-btn danger" onclick="deleteSelectedTest()">🗑 삭제</button>
+          </div>
+          <div class="tbl-page" id="testPagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -650,12 +722,20 @@ tbody tr:last-child td{border-bottom:none;}
       <div><div class="page-title">공지 관리</div></div>
       <button class="btn btn-primary" onclick="openNoticeModal()">+ 공지 작성</button>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th>No</th><th>제목</th><th>대상</th><th>작성일</th><th>관리</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="noticeCheckAll" onchange="toggleCheck('noticeTableBody',this)"></th><th>No</th><th>제목</th><th>대상</th><th>작성일</th></tr></thead>
           <tbody id="noticeTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="openNoticeModal()">+ 공지 작성</button>
+            <button class="action-btn" onclick="editSelectedNotice()">✏️ 수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedNotice()">🗑 삭제</button>
+          </div>
+          <div class="tbl-page" id="noticePagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -673,12 +753,20 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="stat-card" style="flex:1;"><div class="stat-icon red">❌</div><div><div class="stat-num" id="payUnpaid">-</div><div class="stat-label">미납</div></div></div>
       </div>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th>No</th><th>학생</th><th>반</th><th>항목</th><th>금액</th><th>납부기한</th><th>상태</th><th>메모</th><th>관리</th></tr></thead>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="payCheckAll" onchange="toggleCheck('paymentTableBody',this)"></th><th>No</th><th>학생</th><th>반</th><th>항목</th><th>금액</th><th>납부기한</th><th>상태</th><th>메모</th></tr></thead>
           <tbody id="paymentTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="openPaymentModal()">+ 결제 등록</button>
+            <button class="action-btn" onclick="markSelectedPaid()">✅ 납부완료</button>
+            <button class="action-btn danger" onclick="deleteSelectedPayment()">🗑 삭제</button>
+          </div>
+          <div class="tbl-page" id="paymentPagination"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1033,20 +1121,14 @@ function renderStudentTable(status, students){
     el.innerHTML=students.map((u,i)=>`<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
-      <td>${u.group||'-'}</td>
+      <td><span class="badge badge-teal">${u.group||'-'}</span></td>
       <td style="font-family:monospace;font-size:12px;">${u.username||'-'}</td>
-      <td style="font-weight:600;">${u.name||'-'}</td>
-      <td>${u.birth||'-'}</td>
-      <td>${u.school||'-'}</td>
-      <td>${u.grade||'-'}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editStudent('${u.id}')">${u.name||'-'}</td>
+      <td style="font-size:12px;">${u.birth||'-'}</td>
+      <td style="font-size:12px;">${u.school||'-'}</td>
+      <td style="font-size:12px;">${u.grade||'-'}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
       <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="setStudentMode('${u.id}','study')">STUDY</button></td>
-      <td><button class="btn btn-primary btn-sm" onclick="setStudentMode('${u.id}','test')">TEST</button></td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-secondary btn-sm" onclick="editStudent('${u.id}')">수정</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteStudent('${u.id}','${u.name}')">삭제</button>
-      </td>
     </tr>`).join('');
   } else {
     el.innerHTML=students.map((u,i)=>`<tr>
@@ -1054,15 +1136,11 @@ function renderStudentTable(status, students){
       <td>${i+1}</td>
       <td style="font-family:monospace;font-size:12px;">${u.username||'-'}</td>
       <td style="font-weight:600;">${u.name||'-'}</td>
-      <td>${u.birth||'-'}</td>
-      <td>${u.school||'-'}</td>
-      <td>${u.grade||'-'}</td>
+      <td style="font-size:12px;">${u.birth||'-'}</td>
+      <td style="font-size:12px;">${u.school||'-'}</td>
+      <td style="font-size:12px;">${u.grade||'-'}</td>
       <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       <td style="color:var(--gray);font-size:12px;">${u.statusDate||'-'}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-primary btn-sm" onclick="restoreStudent('${u.id}')">재원처리</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteStudent('${u.id}','${u.name}')">삭제</button>
-      </td>
     </tr>`).join('');
   }
 }
@@ -1273,14 +1351,9 @@ async function loadBooks(){
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name}')">📘 ${b.name}</td>
-      <td>${b.unitCount||0}</td>
-      <td>${b.wordCount||0}</td>
+      <td style="text-align:center;">${b.unitCount||0}</td>
+      <td style="text-align:center;">${b.wordCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="moveToFolder('${b.id}')">📁</button></td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-primary btn-sm" onclick="addUnit('${b.id}','${b.name}')">+Unit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteBook('${b.id}','${b.name}')">삭제</button>
-      </td>
     </tr>`).join('');
   }catch(e){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패</td></tr>';}
   await loadFolders();
@@ -1336,15 +1409,11 @@ async function loadFolders(){
     allFolders=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(!allFolders.length){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">폴더가 없습니다</td></tr>';return;}
     el.innerHTML=allFolders.map((f,i)=>`<tr>
-      <td><input type="checkbox"></td>
+      <td><input type="checkbox" value="${f.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;">📁 ${f.name}</td>
-      <td>0</td>
-      <td>${f.bookCount||0}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--teal);">📁 ${f.name}</td>
+      <td style="text-align:center;">${f.bookCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-danger btn-sm" onclick="deleteFolder('${f.id}','${f.name}')">삭제</button>
-      </td>
     </tr>`).join('');
     // 폴더 필터 옵션
     const sel=document.getElementById('bookFolderFilter');
@@ -1439,18 +1508,15 @@ async function loadPayments(){
     const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
     const sbadge={paid:'badge-green',unpaid:'badge-red',pending:'badge-amber'};
     el.innerHTML=pays.map((p,i)=>`<tr>
+      <td><input type="checkbox" value="${p.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;">${p.userName||'-'}</td>
       <td>${p.group||'-'}</td>
       <td>${p.title||'-'}</td>
       <td style="font-weight:600;">${(p.amount||0).toLocaleString()}원</td>
-      <td>${p.due||'-'}</td>
+      <td style="font-size:12px;">${p.due||'-'}</td>
       <td><span class="badge ${sbadge[p.status]||'badge-gray'}">${slabel[p.status]||'미납'}</span></td>
       <td style="color:var(--gray);font-size:12px;">${p.memo||'-'}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-secondary btn-sm" onclick="updatePayStatus('${p.id}','paid')">납부</button>
-        <button class="btn btn-danger btn-sm" onclick="delPayment('${p.id}')">삭제</button>
-      </td>
     </tr>`).join('');
   }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
@@ -1674,7 +1740,246 @@ window.showToast = (msg) => {
   toastTimer=setTimeout(()=>{t.style.opacity='0';},2500);
 };
 
-// ── 시험 목록 ────────────────────────────────────────────
+// ── 공통 테이블 유틸 ─────────────────────────────────────
+window.toggleCheck = (tbodyId, masterCb) => {
+  document.querySelectorAll(`#${tbodyId} input[type=checkbox]`).forEach(cb => cb.checked = masterCb.checked);
+};
+function getCheckedIds(tbodyId){
+  return [...document.querySelectorAll(`#${tbodyId} input[type=checkbox]:checked`)].map(cb=>cb.value).filter(v=>v&&v!=='on');
+}
+
+// ── 클래스 선택 액션 ────────────────────────────────
+window.editSelectedClass = () => {
+  const ids = getCheckedIds('classTableBody');
+  if(ids.length !== 1){showToast('수정할 반을 하나만 선택하세요.');return;}
+  editClass(ids[0]);
+};
+window.deleteSelectedClass = async() => {
+  const ids = getCheckedIds('classTableBody');
+  if(!ids.length){showToast('삭제할 반을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개 반을 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'groups',id));
+  showToast('삭제됐어요.'); await loadClasses();
+};
+
+// ── 학생 선택 액션 ──────────────────────────────────
+window.editSelectedStudent = () => {
+  const ids = getCheckedIds('studentTableBody');
+  if(ids.length !== 1){showToast('수정할 학생을 하나만 선택하세요.');return;}
+  editStudent(ids[0]);
+};
+window.deleteSelectedStudent = async() => {
+  const ids = getCheckedIds('studentTableBody');
+  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'users',id));
+  showToast('삭제됐어요.'); await loadStudents('active');
+};
+window.restoreSelectedStudent = async(status) => {
+  const tbodyId = status==='pause'?'pauseTableBody':'outTableBody';
+  const ids = getCheckedIds(tbodyId);
+  if(!ids.length){showToast('학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 재원처리 할까요?`))return;
+  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:new Date().toISOString().slice(0,10)});
+  showToast('재원처리 완료!'); await loadStudents(status);
+};
+window.outSelectedStudent = async() => {
+  const ids = getCheckedIds('pauseTableBody');
+  if(!ids.length){showToast('학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
+  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
+  showToast('퇴원처리 완료!'); await loadStudents('pause');
+};
+window.deleteSelectedOutStudent = async() => {
+  const ids = getCheckedIds('outTableBody');
+  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}명을 완전 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'users',id));
+  showToast('삭제됐어요.'); await loadStudents('out');
+};
+
+// ── 공지 선택 액션 ──────────────────────────────────
+window.editSelectedNotice = () => {
+  const ids = getCheckedIds('noticeTableBody');
+  if(ids.length !== 1){showToast('수정할 공지를 하나만 선택하세요.');return;}
+  editNotice(ids[0]);
+};
+window.deleteSelectedNotice = async() => {
+  const ids = getCheckedIds('noticeTableBody');
+  if(!ids.length){showToast('삭제할 공지를 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개 공지를 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'notices',id));
+  showToast('삭제됐어요.'); await loadNotices();
+};
+
+// ── 결제 선택 액션 ──────────────────────────────────
+window.markSelectedPaid = async() => {
+  const ids = getCheckedIds('paymentTableBody');
+  if(!ids.length){showToast('항목을 선택하세요.');return;}
+  for(const id of ids) await updateDoc(doc(db,'payments',id),{status:'paid'});
+  showToast('납부완료 처리됐어요.'); await loadPayments();
+};
+window.deleteSelectedPayment = async() => {
+  const ids = getCheckedIds('paymentTableBody');
+  if(!ids.length){showToast('삭제할 항목을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개를 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'payments',id));
+  showToast('삭제됐어요.'); await loadPayments();
+};
+
+// ── 교재 선택 액션 ──────────────────────────────────
+window.editSelectedBook = () => {
+  const ids = getCheckedIds('bookTableBody');
+  if(ids.length !== 1){showToast('수정할 교재를 하나만 선택하세요.');return;}
+  const book = allBooks.find(b=>b.id===ids[0]);
+  if(!book) return;
+  showModal(`
+    <div style="font-size:17px;font-weight:700;margin-bottom:16px;">교재 이름 수정</div>
+    <input id="editBookName" type="text" value="${book.name}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="updateBookName('${ids[0]}')" style="flex:1;justify-content:center;">저장</button>
+    </div>
+  `);
+};
+window.updateBookName = async(id) => {
+  const name = document.getElementById('editBookName').value.trim();
+  if(!name){alert('교재명을 입력하세요.');return;}
+  await updateDoc(doc(db,'books',id),{name});
+  closeModal(); showToast('교재명이 수정됐어요!'); await loadBooks();
+};
+window.addUnitToSelected = () => {
+  const ids = getCheckedIds('bookTableBody');
+  if(ids.length !== 1){showToast('교재를 하나만 선택하세요.');return;}
+  const book = allBooks.find(b=>b.id===ids[0]);
+  if(book) addUnit(book.id, book.name);
+};
+window.moveSelectedBook = async() => {
+  const ids = getCheckedIds('bookTableBody');
+  if(!ids.length){showToast('이동할 교재를 선택하세요.');return;}
+  const folderOpts = allFolders.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+  if(!folderOpts){showToast('폴더가 없습니다. 폴더를 먼저 생성하세요.');return;}
+  showModal(`
+    <div style="font-size:17px;font-weight:700;margin-bottom:16px;">📁 폴더 이동 (${ids.length}개)</div>
+    <select id="moveFolderId" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;margin-bottom:16px;">${folderOpts}</select>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="doMoveBooks([${ids.map(id=>`'${id}'`).join(',')}])" style="flex:1;justify-content:center;">이동</button>
+    </div>
+  `);
+};
+window.doMoveBooks = async(ids) => {
+  const folderId = document.getElementById('moveFolderId').value;
+  const folder = allFolders.find(f=>f.id===folderId);
+  for(const id of ids) await updateDoc(doc(db,'books',id),{folderId,folderName:folder?.name||''});
+  await updateDoc(doc(db,'folders',folderId),{bookCount:(folder?.bookCount||0)+ids.length});
+  closeModal(); showToast('폴더로 이동했어요!'); await loadBooks();
+};
+window.deleteSelectedBook = async() => {
+  const ids = getCheckedIds('bookTableBody');
+  if(!ids.length){showToast('삭제할 교재를 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개 교재를 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'books',id));
+  showToast('삭제됐어요.'); await loadBooks();
+};
+window.deleteSelectedFolder = async() => {
+  const ids = getCheckedIds('folderTableBody');
+  if(!ids.length){showToast('삭제할 폴더를 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개 폴더를 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'folders',id));
+  showToast('삭제됐어요.'); await loadFolders();
+};
+
+// ── 시험 선택 액션 ──────────────────────────────────
+window.reprintSelectedTest = async() => {
+  const ids = getCheckedIds('testListBody');
+  if(ids.length !== 1){showToast('재출력할 시험을 하나만 선택하세요.');return;}
+  reprintTest(ids[0]);
+};
+window.deleteSelectedTest = async() => {
+  const ids = getCheckedIds('testListBody');
+  if(!ids.length){showToast('삭제할 시험을 선택하세요.');return;}
+  if(!confirm(`선택한 ${ids.length}개 시험을 삭제할까요?`))return;
+  for(const id of ids) await deleteDoc(doc(db,'tests',id));
+  showToast('삭제됐어요.'); await loadTestList();
+};
+
+// ── 엑셀 등록 (재원생 일괄 등록) ────────────────────
+window.previewExcel = async(e) => {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const wb = XLSX.read(ev.target.result, {type:'binary'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1}).filter(r=>r[0]||r[1]);
+    if(!rows.length){showToast('데이터가 없습니다.');return;}
+    // 미리보기
+    const preview = document.getElementById('excelPreview');
+    preview.innerHTML = `
+      <div style="font-size:13px;color:var(--gray);margin-bottom:8px;">총 ${rows.length-1}명 미리보기</div>
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#f8f9fa;">${(rows[0]||[]).map(h=>`<th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
+          <tbody>${rows.slice(1,11).map(r=>`<tr>${r.map(c=>`<td style="padding:6px 10px;border-bottom:1px solid #f5f5f5;">${c||''}</td>`).join('')}</tr>`).join('')}
+          ${rows.length>11?`<tr><td colspan="${rows[0].length}" style="padding:8px 10px;text-align:center;color:#bbb;">... 외 ${rows.length-11}행</td></tr>`:''}
+          </tbody>
+        </table>
+      </div>`;
+    // 전역에 저장
+    window._excelRows = rows;
+  };
+  reader.readAsBinaryString(file);
+};
+
+window.importStudentExcel = async() => {
+  const rows = window._excelRows;
+  if(!rows||rows.length<2){showToast('먼저 엑셀 파일을 업로드하세요.');return;}
+  // 헤더: 아이디,이름,반,생일,학교,학년,연락처,부모님성함,부모님연락처
+  const headers = rows[0].map(h=>(h||'').toString().trim().toLowerCase());
+  const dataRows = rows.slice(1).filter(r=>r[0]||r[1]);
+  if(!confirm(`${dataRows.length}명을 재원생으로 등록할까요?\n기본 비밀번호: 123456`))return;
+
+  const btn = document.querySelector('#page-student-excel .btn-primary');
+  if(btn){btn.textContent='등록 중...';btn.disabled=true;}
+
+  let success=0, fail=0, failList=[];
+  for(const row of dataRows){
+    const username = (row[0]||'').toString().trim();
+    const name = (row[1]||'').toString().trim();
+    const group = (row[2]||'').toString().trim();
+    const birth = (row[3]||'').toString().trim();
+    const school = (row[4]||'').toString().trim();
+    const grade = (row[5]||'').toString().trim();
+    const phone = (row[6]||'').toString().trim();
+    const parentName = (row[7]||'').toString().trim();
+    const parentPhone = (row[8]||'').toString().trim();
+    if(!username||!name){failList.push(username||name||'?');fail++;continue;}
+    const email = username+'@kunsori.app';
+    try{
+      const {initializeApp:ia} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
+      const a2=ga(secApp);
+      const cred=await cu(a2,email,'123456');
+      await so(a2);
+      await setDoc(doc(db,'users',cred.user.uid),{
+        username,name,email,group,birth,school,grade,phone,parentName,parentPhone,
+        role:'student',status:'active',createdAt:serverTimestamp()
+      });
+      success++;
+    }catch(e){
+      console.log(username,'실패:',e.message);
+      failList.push(username); fail++;
+    }
+  }
+  if(btn){btn.textContent='일괄 등록';btn.disabled=false;}
+  let msg = `✅ ${success}명 등록 완료!`;
+  if(fail>0) msg += `\n❌ ${fail}명 실패: ${failList.slice(0,5).join(',')}${failList.length>5?'...':''}`;
+  alert(msg);
+  window._excelRows = null;
+  document.getElementById('excelUpload').value='';
+  document.getElementById('excelPreview').innerHTML='';
+};
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
@@ -1683,18 +1988,15 @@ window.loadTestList = async() => {
     el.innerHTML = snap.docs.map((d,i)=>{
       const t = d.data();
       return `<tr>
+        <td><input type="checkbox" value="${d.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;">${t.name||'-'}</td>
+        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="reprintTest('${d.id}')">${t.name||'-'}</td>
         <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
-        <td>${t.bookName||'-'}</td>
-        <td>${t.count||0}문제</td>
+        <td style="font-size:12px;">${t.bookName||'-'}</td>
+        <td style="text-align:center;">${t.count||0}문제</td>
         <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
-        <td>-</td>
-        <td>-</td>
-        <td style="display:flex;gap:4px;">
-          <button class="btn btn-primary btn-sm" onclick="reprintTest('${d.id}')">재출력</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteTest('${d.id}')">삭제</button>
-        </td>
+        <td style="text-align:center;">-</td>
+        <td style="text-align:center;">-</td>
       </tr>`;
     }).join('');
   }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
