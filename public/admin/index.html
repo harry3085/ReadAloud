@@ -3304,106 +3304,78 @@ window.generateAndSaveTest = async() => {
 function printExamPDF(words, examName, academy, date, ptype, qType){
   qType = qType || 'both';
 
-  // 문제 구성 (쓰기형 - 4지선다 없음)
   const questions = words.map((w, idx)=>{
-    // testType이 있으면 우선 사용, 없으면 qType 기반
     let isEn2Ko;
-    if(w.testType === 'spelling') isEn2Ko = false; // 한→영 (스펠링)
+    if(w.testType === 'spelling') isEn2Ko = false;
     else if(qType==='en2ko') isEn2Ko = true;
     else if(qType==='ko2en') isEn2Ko = false;
-    else isEn2Ko = idx < Math.ceil(words.length/2); // both: 절반씩
-    return {
-      num: idx+1,
-      question: isEn2Ko ? w.en : w.ko,
-      answer: isEn2Ko ? w.ko : w.en,
-      direction: isEn2Ko ? '영→한' : '한→영',
-      isEn2Ko
-    };
+    else isEn2Ko = idx < Math.ceil(words.length/2);
+    return { num:idx+1, question:isEn2Ko?w.en:w.ko, answer:isEn2Ko?w.ko:w.en, isEn2Ko };
   });
 
   const half = Math.ceil(questions.length/2);
   const leftQs = questions.slice(0, half);
   const rightQs = questions.slice(half);
 
-  // 시험지 문제 1개 HTML (빈칸 쓰기형)
-  const makeQHTML = (q) => {
-    const answerLen = q.answer.length;
-    const blank = '_'.repeat(Math.max(answerLen * 2, 8));
-    return `
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:9px;min-height:22px;">
-        <span style="font-size:10.5pt;font-weight:bold;min-width:22px;">${q.num}.</span>
-        <span style="font-size:10.5pt;">${q.question}</span>
-        <span style="flex:1;border-bottom:1px solid #333;min-width:60px;margin-left:4px;">&nbsp;</span>
-      </div>`;
-  };
-
-  // 답안지 문제 1개 HTML (정답 표시)
-  const makeAnswerQHTML = (q) => `
-    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:9px;min-height:22px;">
-      <span style="font-size:10.5pt;font-weight:bold;min-width:22px;">${q.num}.</span>
-      <span style="font-size:10.5pt;">${q.question}</span>
-      <span style="font-size:10.5pt;font-weight:bold;color:#1a6b1a;margin-left:6px;">${q.answer}</span>
+  // 이미지 양식: 번호. 단어(굵게) → 아래 빈 줄
+  const makeQHTML = (q) => `
+    <div style="margin-bottom:22px;break-inside:avoid;">
+      <div style="font-size:11pt;font-weight:700;margin-bottom:7px;">${q.num}. ${q.question}</div>
+      <div style="border-bottom:1.5px solid #333;width:85%;">&nbsp;</div>
     </div>`;
 
-  // 시험지 방향 표시 (영→한 / 한→영 구분선)
+  const makeAnswerQHTML = (q) => `
+    <div style="margin-bottom:22px;break-inside:avoid;">
+      <div style="font-size:11pt;font-weight:700;margin-bottom:4px;">
+        ${q.num}. ${q.question}
+        <span style="font-weight:400;color:#1a6b1a;font-size:10pt;margin-left:8px;">${q.answer}</span>
+      </div>
+      <div style="border-bottom:1px solid #ccc;width:85%;">&nbsp;</div>
+    </div>`;
+
   const makeSection = (qs, isAnswerPage) => {
-    if(qType !== 'both') {
-      // 단일 방향: 그냥 나열
-      return qs.map(q => isAnswerPage ? makeAnswerQHTML(q) : makeQHTML(q)).join('');
-    }
-    // 혼합: 영→한 / 한→영 구분
+    if(qType !== 'both') return qs.map(q=>isAnswerPage?makeAnswerQHTML(q):makeQHTML(q)).join('');
     const en2ko = qs.filter(q=>q.isEn2Ko);
     const ko2en = qs.filter(q=>!q.isEn2Ko);
     let html = '';
     if(en2ko.length) html += `
-      <div style="font-size:9pt;color:#555;font-weight:600;margin-bottom:4px;padding:2px 6px;background:#f5f5f5;border-radius:3px;">
-        ▸ 영어 → 한글 (${en2ko.length}문제)
-      </div>
-      ${en2ko.map(q => isAnswerPage ? makeAnswerQHTML(q) : makeQHTML(q)).join('')}`;
+      <div style="font-size:9pt;font-weight:600;margin-bottom:10px;padding:3px 8px;background:#f5f5f5;border-radius:3px;">▸ 영어 → 한글</div>
+      ${en2ko.map(q=>isAnswerPage?makeAnswerQHTML(q):makeQHTML(q)).join('')}`;
     if(ko2en.length) html += `
-      <div style="font-size:9pt;color:#555;font-weight:600;margin:6px 0 4px;padding:2px 6px;background:#f5f5f5;border-radius:3px;">
-        ▸ 한글 → 영어 (${ko2en.length}문제)
-      </div>
-      ${ko2en.map(q => isAnswerPage ? makeAnswerQHTML(q) : makeQHTML(q)).join('')}`;
+      <div style="font-size:9pt;font-weight:600;margin:6px 0 10px;padding:3px 8px;background:#f5f5f5;border-radius:3px;">▸ 한글 → 영어</div>
+      ${ko2en.map(q=>isAnswerPage?makeAnswerQHTML(q):makeQHTML(q)).join('')}`;
     return html;
   };
 
   const makeExamPage = (isAnswer) => `
-    <div style="page-break-after:always;padding:16px 22px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
-      <div style="text-align:center;font-size:15pt;font-weight:bold;margin-bottom:8px;">
-        TEST${isAnswer?' (답안지)':''}
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;">
-        <div style="font-size:11pt;font-weight:600;">학원명 : <u style="padding:0 8px;">${academy}</u></div>
+    <div style="page-break-after:always;padding:20px 24px 16px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;">
+      <div style="font-size:15pt;font-weight:900;margin-bottom:14px;">${examName}${isAnswer?' (답안지)':''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;border-bottom:1px solid #000;padding-bottom:8px;">
+        <div style="font-size:10.5pt;font-weight:700;">학원명 : <span style="font-weight:400;">${academy}</span></div>
         <div style="font-size:10pt;">
-          학교 : <u style="padding:0 30px;">&nbsp;</u> &nbsp;
-          학년 : <u style="padding:0 12px;">&nbsp;</u> &nbsp;
-          반 : <u style="padding:0 12px;">&nbsp;</u> &nbsp;
-          이름 : <u style="padding:0 40px;">&nbsp;</u>
+          학교 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;학년 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;반 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;이름 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
         </div>
       </div>
-      <div style="font-size:9pt;color:#666;margin-bottom:10px;display:flex;gap:12px;">
-        <span>시험명: <b>${examName}</b></span>
-        <span>날짜: ${date}</span>
-        <span>총 ${questions.length}문제</span>
-        ${isAnswer?'':'<span style="color:#e05050;">※ 빈칸에 정답을 쓰세요</span>'}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:1px solid #ccc;padding-top:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 20px;">
         <div>${makeSection(leftQs, isAnswer)}</div>
-        <div style="border-left:1px solid #ccc;padding-left:18px;">${makeSection(rightQs, isAnswer)}</div>
+        <div style="background:#ccc;"></div>
+        <div style="padding-left:20px;">${makeSection(rightQs, isAnswer)}</div>
       </div>
     </div>`;
 
   let pageHTML = '';
-  if(ptype==='both'||ptype==='exam') pageHTML += makeExamPage(false);
+  if(ptype==='both'||ptype==='exam')   pageHTML += makeExamPage(false);
   if(ptype==='both'||ptype==='answer') pageHTML += makeExamPage(true);
 
   const win = window.open('','_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${examName}</title>
     <style>
-      *{box-sizing:border-box;}
-      body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;}
-      @media print{@page{margin:8mm;size:A4;}body{-webkit-print-color-adjust:exact;}}
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;}
+      @media print{@page{margin:10mm;size:A4;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
     </style>
     </head><body>${pageHTML}
     <script>window.onload=()=>{window.print();}<\/script></body></html>`);
@@ -4058,69 +4030,97 @@ window.doPrintExam = (ptype) => {
 
 function printMixedExamPDF(questions, examName, academy, date, ptype, allWords){
   const half = Math.ceil(questions.length/2);
-  const leftQs = questions.slice(0,half);
+  const leftQs = questions.slice(0, half);
   const rightQs = questions.slice(half);
 
+  // 객관식 보기 캐시 (시험지와 답안지에서 동일한 보기 사용)
+  const choicesCache = {};
+  questions.forEach(q=>{
+    if(q.qStyle==='mc'){
+      const answer = q.isEn2Ko ? q.ko : q.en;
+      const others = allWords.filter(w=>w.en!==q.en).sort(()=>Math.random()-0.5).slice(0,3);
+      const choices = [...others.map(o=>q.isEn2Ko?o.ko:o.en), answer].sort(()=>Math.random()-0.5);
+      choicesCache[q.num] = { choices, ansIdx: choices.indexOf(answer)+1 };
+    }
+  });
+
+  // 이미지 양식 기반: 번호 + 굵은 단어 + 아래 빈 줄
   const makeQHTML = (q, showAnswer) => {
     const question = q.isEn2Ko ? q.en : q.ko;
-    const answer = q.isEn2Ko ? q.ko : q.en;
-    if(q.qStyle==='subj'){
-      return `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px;">
-        <span style="color:#3BBFBF;font-weight:700;min-width:22px;">${q.num}.</span>
-        <span style="font-size:11pt;">${question}</span>
-        ${showAnswer
-          ? `<span style="font-weight:bold;color:#1a6b1a;margin-left:6px;">${answer}</span>`
-          : `<span style="flex:1;border-bottom:1px solid #333;min-width:60px;margin-left:4px;">&nbsp;</span>`}
-      </div>`;
+    const answer   = q.isEn2Ko ? q.ko : q.en;
+
+    if(q.qStyle === 'subj'){
+      // 주관식: 번호. 단어 (굵게) → 아래 빈 줄
+      return `
+        <div style="margin-bottom:22px;break-inside:avoid;">
+          <div style="font-size:11pt;font-weight:700;margin-bottom:6px;">
+            ${q.num}. ${question}
+            ${showAnswer ? `<span style="font-weight:400;color:#1a6b1a;font-size:10pt;margin-left:8px;">${answer}</span>` : ''}
+          </div>
+          ${!showAnswer ? `<div style="border-bottom:1.5px solid #333;width:85%;margin-left:4px;">&nbsp;</div>` : ''}
+        </div>`;
     }
-    // 객관식
-    const others = allWords.filter(w=>w.en!==q.en).sort(()=>Math.random()-0.5).slice(0,3);
-    const choices = [...others.map(o=>q.isEn2Ko?o.ko:o.en), answer].sort(()=>Math.random()-0.5);
-    const ansIdx = choices.indexOf(answer)+1;
-    return `<div style="margin-bottom:10px;">
-      <div style="display:flex;gap:6px;align-items:baseline;margin-bottom:3px;">
-        <span style="color:#3BBFBF;font-weight:700;min-width:22px;">${q.num}.</span>
-        <span style="font-size:11pt;font-weight:bold;">${question}
-          ${showAnswer?`<span style="color:#555;font-weight:normal;font-size:9pt;">(정답:${ansIdx}번)</span>`:''}
-        </span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;padding-left:28px;">
-        ${choices.map((c,i)=>`<div style="font-size:10pt;${showAnswer&&(i+1===ansIdx)?'font-weight:bold;color:#1a6b1a;':''}">
-          ${i+1}. ${c}
-        </div>`).join('')}
-      </div>
-    </div>`;
+
+    // 객관식: 번호. 단어 (굵게) → 보기 4개
+    const { choices, ansIdx } = choicesCache[q.num] || { choices:[], ansIdx:0 };
+    return `
+      <div style="margin-bottom:18px;break-inside:avoid;">
+        <div style="font-size:11pt;font-weight:700;margin-bottom:5px;">
+          ${q.num}. ${question}
+          ${showAnswer ? `<span style="font-size:9pt;font-weight:400;color:#555;">(정답: ${ansIdx}번)</span>` : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 6px;font-size:9.5pt;padding-left:6px;">
+          ${choices.map((c,i)=>`
+            <div style="${showAnswer&&(i+1===ansIdx)?'font-weight:700;color:#1a6b1a;':''}">
+              ${i+1}. ${c}
+            </div>`).join('')}
+        </div>
+      </div>`;
   };
 
   const makePage = (isAnswer) => `
-    <div style="page-break-after:always;padding:16px 22px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
-      <div style="text-align:center;font-size:15pt;font-weight:bold;margin-bottom:8px;">TEST${isAnswer?' (답안지)':''}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px;">
-        <div style="font-size:11pt;font-weight:600;">학원명: <u style="padding:0 8px;">${academy}</u></div>
+    <div style="page-break-after:always;padding:20px 24px 16px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;">
+
+      <!-- 제목 -->
+      <div style="font-size:15pt;font-weight:900;margin-bottom:14px;letter-spacing:-0.3px;">
+        ${examName}${isAnswer?' (답안지)':''}
+      </div>
+
+      <!-- 학원명 + 학교/학년/반/이름 -->
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;border-bottom:1px solid #000;padding-bottom:8px;">
+        <div style="font-size:10.5pt;font-weight:700;">
+          학원명 : <u style="font-weight:400;">${academy}</u>
+        </div>
         <div style="font-size:10pt;">
-          학교: <u style="padding:0 30px;">&nbsp;</u>&nbsp;
-          학년: <u style="padding:0 12px;">&nbsp;</u>&nbsp;
-          반: <u style="padding:0 12px;">&nbsp;</u>&nbsp;
-          이름: <u style="padding:0 40px;">&nbsp;</u>
+          학교 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;학년 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;반 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;이름 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
         </div>
       </div>
-      <div style="font-size:9pt;color:#666;margin-bottom:10px;">
-        시험명: <b>${examName}</b> &nbsp;|&nbsp; 날짜: ${date} &nbsp;|&nbsp; 총 ${questions.length}문제
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:1px solid #ccc;padding-top:10px;">
+
+      <!-- 2열 문제 (가운데 세로선) -->
+      <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 20px;">
         <div>${leftQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
-        <div style="border-left:1px solid #ccc;padding-left:18px;">${rightQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+        <div style="background:#ccc;"></div>
+        <div style="padding-left:20px;">${rightQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
       </div>
     </div>`;
 
   let pageHTML = '';
-  if(ptype==='both'||ptype==='exam') pageHTML += makePage(false);
+  if(ptype==='both'||ptype==='exam')   pageHTML += makePage(false);
   if(ptype==='both'||ptype==='answer') pageHTML += makePage(true);
 
   const win = window.open('','_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${examName}</title>
-    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;}
-    @media print{@page{margin:8mm;size:A4;}body{-webkit-print-color-adjust:exact;}}</style>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;}
+      @media print{
+        @page{margin:10mm;size:A4;}
+        body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      }
+    </style>
     </head><body>${pageHTML}
     <script>window.onload=()=>{window.print();}<\/script></body></html>`);
   win.document.close();
