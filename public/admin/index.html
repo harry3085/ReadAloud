@@ -800,9 +800,10 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           👁 미리보기
           <span id="ptWordCount" style="font-size:12px;color:var(--teal);font-weight:400;margin-left:4px;"></span>
         </div>
-        <div id="ptPreviewArea" style="flex:1;overflow-y:auto;padding:12px;background:#e0e0e0;">
-          <div style="background:white;margin:0 auto;padding:24px;max-width:600px;min-height:400px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
-            <div style="text-align:center;color:#bbb;padding:60px 0;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div>
+        <div id="ptPreviewArea" style="flex:1;overflow:auto;padding:12px;background:#e0e0e0;">
+          <div style="width:794px;height:1123px;background:white;margin:0 auto;border-radius:4px;
+            box-shadow:0 2px 12px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;">
+            <div style="text-align:center;color:#bbb;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div>
           </div>
         </div>
       </div>
@@ -3585,7 +3586,7 @@ window.treeCheckFolder = (prefix, folderId) => {
     const toggle = document.getElementById(`${prefix}-ft-${folderId}`);
     if(el){ el.style.display=''; if(toggle) toggle.style.transform='rotate(90deg)'; }
   }
-  if(prefix === 'ws') { updateWsSelCount(); updateWsPreview(); }
+  if(prefix === 'ws') { updateWsSelCount(); window.updateWsPreview(); }
   else { updatePtSelCount(); updatePtPreview(); }
 };
 
@@ -3603,7 +3604,7 @@ window.treeCheckBook = (prefix, bookId) => {
     const toggle = document.getElementById(`${prefix}-bt-${bookId}`);
     if(el){ el.style.display=''; if(toggle) toggle.style.transform='rotate(90deg)'; }
   }
-  if(prefix === 'ws') { updateWsSelCount(); updateWsPreview(); }
+  if(prefix === 'ws') { updateWsSelCount(); window.updateWsPreview(); }
   else { updatePtSelCount(); updatePtPreview(); }
 };
 
@@ -3611,7 +3612,7 @@ window.treeCheckBook = (prefix, bookId) => {
 window.treeCheckUnit = (prefix, bookId, unitId) => {
   const cb = document.getElementById(`${prefix}-uchk-${unitId}`);
   cb.checked = !cb.checked;
-  if(prefix === 'ws') { updateWsSelCount(); updateWsPreview(); }
+  if(prefix === 'ws') { updateWsSelCount(); window.updateWsPreview(); }
   else { updatePtSelCount(); updatePtPreview(); }
 };
 
@@ -3638,7 +3639,7 @@ window.loadAllBookTree = async() => {
     el.innerHTML = renderFolderTree(treeData, 'ws');
     _allBookSelected = [];
     updateWsSelCount();
-    updateWsPreview();
+    window.updateWsPreview();
   }catch(e){ el.innerHTML=`<div style="padding:16px;color:#e05050;">${e.message}</div>`; }
 };
 
@@ -3649,11 +3650,130 @@ function updateWsSelCount(){
   if(cnt) cnt.textContent = sel.length ? `${sel.length}개 Unit 선택` : '';
 }
 
+// ── 워크시트 미리보기 ────────────────────────────────────
+window.updateWsPreview = function(){
+  _wsSettings.perPage = parseInt(document.getElementById('wsPerPage')?.value)||20;
+  _wsSettings.perCol  = parseInt(document.getElementById('wsPerCol')?.value)||10;
+  _wsSettings.noDup   = document.getElementById('wsNoDup')?.checked||false;
+
+  updateWsSelCount();
+  const sel = _allBookSelected;
+  const previewEl = document.getElementById('wsPreviewArea');
+  const countEl   = document.getElementById('wsWordCount');
+  if(!previewEl) return;
+
+  if(!sel.length){
+    previewEl.innerHTML = buildWsEmptyPage();
+    if(countEl) countEl.textContent = '';
+    return;
+  }
+
+  let allWords = sel.flatMap(s=>s.words||[]);
+  if(_wsSettings.noDup){ const seen=new Set(); allWords=allWords.filter(w=>{const k=w.en.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;}); }
+  if(_wsSettings.order==='scramble') allWords=[...allWords].sort(()=>Math.random()-0.5);
+  if(countEl) countEl.textContent = '총 '+allWords.length+'개';
+
+  const pages = generateWsPages(sel, allWords);
+  previewEl.innerHTML = pages.map((pg,pi)=>buildWsPageHTML(pg,pi,false)).join('');
+};
+
+function buildWsEmptyPage(){
+  return `<div style="background:white;margin:0 auto;padding:24px;max-width:600px;min-height:400px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
+    <div style="text-align:center;color:#bbb;padding:60px 0;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div>
+  </div>`;
+}
+
+function generateWsPages(sel, allWords){
+  const perPage = _wsSettings.perPage;
+  const pages = [];
+  if(_wsSettings.div==='unit'){
+    sel.forEach(s=>{
+      let words = s.words||[];
+      if(_wsSettings.noDup){ const seen=new Set(); words=words.filter(w=>{const k=w.en.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;}); }
+      if(_wsSettings.order==='scramble') words=[...words].sort(()=>Math.random()-0.5);
+      for(let i=0;i<words.length;i+=perPage)
+        pages.push({bookName:s.bookName, unitName:s.unitName, words:words.slice(i,i+perPage)});
+    });
+  } else {
+    const bookNames=[...new Set(sel.map(s=>s.bookName))].join(', ');
+    for(let i=0;i<allWords.length;i+=perPage)
+      pages.push({bookName:bookNames, unitName:`${i+1}~${Math.min(i+perPage,allWords.length)}번`, words:allWords.slice(i,i+perPage)});
+  }
+  return pages;
+}
+
+function buildWsPageHTML(pg, pageIdx, isPrint){
+  const {bookName, unitName, words} = pg;
+  const is2col = _wsSettings.layout==='2col';
+  const content = _wsSettings.content;
+  const sizeMap = {small:'11px', medium:'13px', large:'15px'};
+  const fontSize = sizeMap[_wsSettings.size]||'13px';
+  const logoHTML = _wsLogoDataUrl
+    ? `<img src="${_wsLogoDataUrl}" style="width:44px;height:44px;object-fit:contain;border-radius:6px;">`
+    : `<div style="width:44px;height:44px;border-radius:6px;background:var(--teal);display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:700;text-align:center;line-height:1.3;">큰소리<br>영어</div>`;
+
+  const makeRow = (w, num) => {
+    const numStyle = 'color:#3BBFBF;font-weight:700;min-width:22px;text-align:right;font-size:'+fontSize+';';
+    const enStyle  = 'font-size:'+fontSize+';flex:1;';
+    const koStyle  = 'font-size:'+fontSize+';color:#555;flex:1;';
+    if(content==='spell')
+      return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;"><span style="${numStyle}">${num}</span><span style="${enStyle}">${w.en}</span></div>`;
+    if(content==='meaning')
+      return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;"><span style="${numStyle}">${num}</span><span style="${koStyle}">${w.ko}</span></div>`;
+    return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;"><span style="${numStyle}">${num}</span><span style="${enStyle}">${w.en}</span><span style="${koStyle}">${w.ko}</span></div>`;
+  };
+
+  let wordsHTML = '';
+  if(is2col){
+    const half = Math.ceil(words.length/2);
+    wordsHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:1px solid #ddd;padding-top:8px;">
+      <div>${words.slice(0,half).map((w,i)=>makeRow(w,i+1)).join('')}</div>
+      <div style="border-left:1px solid #eee;padding-left:16px;">${words.slice(half).map((w,i)=>makeRow(w,half+i+1)).join('')}</div>
+    </div>`;
+  } else {
+    wordsHTML = `<div style="border-top:1px solid #ddd;padding-top:8px;">${words.map((w,i)=>makeRow(w,i+1)).join('')}</div>`;
+  }
+
+  const pageStyle = isPrint
+    ? 'page-break-after:always;padding:16px 20px;font-family:\'Malgun Gothic\',\'Apple SD Gothic Neo\',sans-serif;background:white;'
+    : 'background:white;margin:0 auto 16px;padding:16px 20px;max-width:580px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-family:\'Malgun Gothic\',\'Apple SD Gothic Neo\',sans-serif;';
+
+  return `<div style="${pageStyle}">
+    <div style="text-align:center;font-size:17px;font-weight:900;letter-spacing:2px;color:#222;margin-bottom:10px;">WORK SHEET</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ccc;padding-bottom:6px;margin-bottom:10px;font-size:12px;">
+      <span>교재 : <b>${bookName}</b></span>
+      <span>차시 : <b>${unitName}</b></span>
+    </div>
+    ${wordsHTML}
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #ddd;margin-top:10px;padding-top:8px;">
+      <span style="font-size:11px;color:#888;">학원명 : 큰소리영어</span>
+      ${logoHTML}
+    </div>
+  </div>`;
+}
+
+window.printWorksheet = () => {
+  if(!_allBookSelected.length){ showToast('Unit을 선택하세요.'); return; }
+  let allWords = _allBookSelected.flatMap(s=>s.words||[]);
+  if(_wsSettings.noDup){ const seen=new Set(); allWords=allWords.filter(w=>{const k=w.en.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;}); }
+  if(_wsSettings.order==='scramble') allWords=[...allWords].sort(()=>Math.random()-0.5);
+  const pages = generateWsPages(_allBookSelected, allWords);
+  const pagesHTML = pages.map((pg,i)=>buildWsPageHTML(pg,i,true)).join('');
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>WORK SHEET</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;}
+    @media print{@page{margin:8mm;size:A4;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style>
+    </head><body>${pagesHTML}
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  win.document.close();
+};
+window.printAllBook = window.printWorksheet;
+
 window.clearAllBookSelection = () => {
   document.querySelectorAll('[id^="ws-uchk-"],[id^="ws-bchk-"],[id^="ws-fchk-"]').forEach(cb=>cb.checked=false);
   _allBookSelected = [];
   updateWsSelCount();
-  updateWsPreview();
+  window.updateWsPreview();
 };
 
 // ── 시험지 출력 (My Book 출력과 동일한 구조) ─────────────
@@ -3702,33 +3822,130 @@ window.updatePtPreview = () => {
   const sel = getSelectedUnits('pt');
   window._ptSelectedUnits = sel;
   updatePtSelCount();
-  const total = parseInt(document.getElementById('pt_mcEn2Ko')?.value||0)
-    + parseInt(document.getElementById('pt_subjEn2Ko')?.value||0)
-    + parseInt(document.getElementById('pt_mcKo2En')?.value||0)
-    + parseInt(document.getElementById('pt_subjKo2En')?.value||0);
+
+  const mcEn2Ko   = parseInt(document.getElementById('pt_mcEn2Ko')?.value)||0;
+  const subjEn2Ko = parseInt(document.getElementById('pt_subjEn2Ko')?.value)||0;
+  const mcKo2En   = parseInt(document.getElementById('pt_mcKo2En')?.value)||0;
+  const subjKo2En = parseInt(document.getElementById('pt_subjKo2En')?.value)||0;
+  const total = mcEn2Ko + subjEn2Ko + mcKo2En + subjKo2En;
   const cnt = document.getElementById('ptTotalCount');
   if(cnt) cnt.textContent = total;
-  // 미리보기
+
   const previewEl = document.getElementById('ptPreviewArea');
   if(!previewEl) return;
+
+  // 공백 상태
   if(!sel.length){
-    previewEl.innerHTML='<div style="background:white;margin:0 auto;padding:24px;max-width:600px;min-height:400px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);"><div style="text-align:center;color:#bbb;padding:60px 0;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div></div>';
+    previewEl.innerHTML = `
+      <div style="width:794px;height:1123px;background:white;margin:0 auto;border-radius:4px;
+        box-shadow:0 2px 12px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;">
+        <div style="text-align:center;color:#bbb;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div>
+      </div>`;
     return;
   }
-  const examName = document.getElementById('ptExamName')?.value || sel[0].bookName+' '+sel[0].unitName;
+
+  // 단어 수집
   const wordMap = new Map();
   sel.forEach(u=>(u.words||[]).forEach(w=>{if(!wordMap.has(w.en))wordMap.set(w.en,w);}));
-  const words = [...wordMap.values()];
-  previewEl.innerHTML = `<div style="background:white;margin:0 auto;padding:20px 24px;max-width:600px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-family:'Malgun Gothic',sans-serif;">
-    <div style="font-size:14pt;font-weight:900;margin-bottom:10px;">${examName}</div>
-    <div style="font-size:10pt;margin-bottom:12px;border-bottom:1px solid #000;padding-bottom:6px;">
-      학원명: 큰소리영어 &nbsp;&nbsp; 총 ${total}문제 (단어 ${words.length}개)
-    </div>
-    <div style="font-size:12px;color:var(--gray);">
-      선택된 Unit:<br>
-      ${sel.map(u=>`📘 ${u.bookName} › ${u.unitName} (${u.words.length}개)`).join('<br>')}
-    </div>
-  </div>`;
+  const allWords = [...wordMap.values()];
+
+  const examName = document.getElementById('ptExamName')?.value.trim()
+    || (sel.length===1 ? sel[0].bookName+' '+sel[0].unitName : sel.map(u=>u.unitName).join(', '));
+  const academy = document.getElementById('ptAcademy')?.value.trim() || '큰소리영어';
+
+  // 문제 생성 (미리보기용 - 실제 출력과 동일 구조)
+  let shuffled = [...allWords].sort(()=>Math.random()-0.5);
+  const questions = []; let idx = 0;
+  for(let i=0;i<mcEn2Ko&&idx<shuffled.length;i++,idx++)   questions.push({...shuffled[idx],isEn2Ko:true,qStyle:'mc',num:0});
+  for(let i=0;i<subjEn2Ko&&idx<shuffled.length;i++,idx++) questions.push({...shuffled[idx],isEn2Ko:true,qStyle:'subj',num:0});
+  for(let i=0;i<mcKo2En&&idx<shuffled.length;i++,idx++)   questions.push({...shuffled[idx],isEn2Ko:false,qStyle:'mc',num:0});
+  for(let i=0;i<subjKo2En&&idx<shuffled.length;i++,idx++) questions.push({...shuffled[idx],isEn2Ko:false,qStyle:'subj',num:0});
+  questions.sort(()=>Math.random()-0.5).forEach((q,i)=>q.num=i+1);
+
+  // 보기 캐시
+  const choicesCache = {};
+  questions.forEach(q=>{
+    if(q.qStyle==='mc'){
+      const answer = q.isEn2Ko?q.ko:q.en;
+      const others = allWords.filter(w=>w.en!==q.en).sort(()=>Math.random()-0.5).slice(0,3);
+      const choices = [...others.map(o=>q.isEn2Ko?o.ko:o.en),answer].sort(()=>Math.random()-0.5);
+      choicesCache[q.num] = {choices, ansIdx:choices.indexOf(answer)+1};
+    }
+  });
+
+  const makeQHTML = (q) => {
+    const question = q.isEn2Ko?q.en:q.ko;
+    if(q.qStyle==='subj') return `
+      <div style="margin-bottom:16px;break-inside:avoid;">
+        <div style="font-size:9.5pt;font-weight:700;margin-bottom:5px;">${q.num}. ${question}</div>
+        <div style="border-bottom:1.2px solid #333;width:85%;">&nbsp;</div>
+      </div>`;
+    const {choices,ansIdx} = choicesCache[q.num]||{choices:[],ansIdx:0};
+    return `
+      <div style="margin-bottom:14px;break-inside:avoid;">
+        <div style="font-size:9.5pt;font-weight:700;margin-bottom:4px;">${q.num}. ${question}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 4px;font-size:8.5pt;padding-left:4px;">
+          ${choices.map((c,i)=>`<div>${i+1}. ${c}</div>`).join('')}
+        </div>
+      </div>`;
+  };
+
+  const half = Math.ceil(questions.length/2);
+  const leftQs = questions.slice(0,half);
+  const rightQs = questions.slice(half);
+
+  // A4 고정 크기 (796px × 1123px = A4 96dpi 기준)
+  // 축소 비율로 미리보기 컨테이너에 맞춤
+  previewEl.innerHTML = `
+    <div style="display:flex;justify-content:center;padding:12px 0;">
+      <div style="
+        width:794px;
+        height:1123px;
+        background:white;
+        border-radius:4px;
+        box-shadow:0 2px 12px rgba(0,0,0,.25);
+        padding:40px 48px 32px;
+        font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+        overflow:hidden;
+        flex-shrink:0;
+        position:relative;
+      ">
+        <!-- 제목 -->
+        <div style="font-size:16pt;font-weight:900;margin-bottom:14px;">${examName}</div>
+
+        <!-- 학원명 + 학교/학년/반/이름 -->
+        <div style="display:flex;justify-content:space-between;align-items:baseline;
+          border-bottom:1px solid #000;padding-bottom:8px;margin-bottom:20px;">
+          <div style="font-size:10pt;font-weight:700;">
+            학원명 : <span style="font-weight:400;">${academy}</span>
+          </div>
+          <div style="font-size:9pt;">
+            학교 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
+            &nbsp;학년 : <span style="display:inline-block;width:30px;border-bottom:1px solid #000;">&nbsp;</span>
+            &nbsp;반 : <span style="display:inline-block;width:30px;border-bottom:1px solid #000;">&nbsp;</span>
+            &nbsp;이름 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
+          </div>
+        </div>
+
+        <!-- 문제 없을 때 -->
+        ${questions.length===0 ? `
+          <div style="text-align:center;color:#bbb;padding:40px;font-size:13px;">
+            문항 수를 설정하면 미리보기가 표시됩니다
+          </div>` : `
+        <!-- 2열 문제 영역 -->
+        <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 20px;">
+          <div>${leftQs.map(q=>makeQHTML(q)).join('')}</div>
+          <div style="background:#ccc;"></div>
+          <div style="padding-left:20px;">${rightQs.map(q=>makeQHTML(q)).join('')}</div>
+        </div>`}
+
+        <!-- 문항 수 표시 -->
+        ${questions.length>0?`
+        <div style="position:absolute;bottom:20px;right:48px;font-size:9pt;color:#888;">
+          총 ${questions.length}문제
+        </div>`:''}
+      </div>
+    </div>`;
 };
 
 // ptExamName에서 수동 편집 감지
@@ -3779,7 +3996,7 @@ function setWsOpt(group, value, prefix){
   document.querySelectorAll(`[id^="${prefix}"]`).forEach(b=>b.classList.remove('active'));
   document.getElementById(`${prefix}${value}`)?.classList.add('active');
   _wsSettings[group] = value;
-  updateWsPreview();
+  window.updateWsPreview();
 }
 window.setWsDiv     = (v) => setWsOpt('div',     v, 'wsDiv-');
 window.setWsContent = (v) => setWsOpt('content', v, 'wsContent-');
@@ -3794,7 +4011,7 @@ window.loadWsLogo = (e) => {
     _wsLogoDataUrl = ev.target.result;
     document.getElementById('wsLogoPreview').innerHTML =
       `<img src="${_wsLogoDataUrl}" style="width:76px;height:56px;object-fit:contain;border-radius:4px;">`;
-    updateWsPreview();
+    window.updateWsPreview();
   };
   reader.readAsDataURL(file);
 };
