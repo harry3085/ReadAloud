@@ -100,7 +100,7 @@
     .quit-btn{position:absolute;left:20px;background:none;border:none;font-size:20px;color:var(--gray);cursor:pointer;}
     .progress-pill{background:var(--teal);color:white;border-radius:20px;padding:8px 20px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
     .quiz-instruction{text-align:center;color:var(--gray);font-size:15px;padding:12px 20px 6px;flex-shrink:0;}
-    .word-card{margin:8px 16px;background:white;border-radius:20px;padding:32px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08);min-height:110px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .word-card{margin:8px 16px;background:white;border-radius:20px;padding:20px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08);min-height:80px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
     .word-card .word{font-size:24px;font-weight:700;color:var(--text);}
     .choices{padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
     .choice-btn{background:white;border:none;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06);font-size:15px;color:var(--text);text-align:left;transition:all .2s;flex-shrink:0;}
@@ -122,7 +122,7 @@
     .unsc-word-btn{background:white;border:2px solid var(--teal);border-radius:10px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.06);}
     .unsc-word-btn:active{transform:scale(0.95);}
     .unsc-word-btn.used{opacity:0.2;pointer-events:none;text-decoration:line-through;}
-    .reset-btn{background:none;border:2px solid #e05050;color:#e05050;border-radius:10px;padding:6px 14px;font-size:18px;font-weight:700;cursor:pointer;transition:opacity .15s;}
+    .reset-btn{background:#f1f5f9;color:#64748b;border:none;border-radius:14px;padding:10px 18px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px;box-shadow:0 2px 8px rgba(0,0,0,.10);transition:opacity .15s;}
     .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
     .submit-btn:active{opacity:.7;}
     .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -466,15 +466,21 @@
   </div>
 
   <!-- SPELLING -->
-  <div id="spelling" class="screen">
+  <div id="spelling" class="screen" style="position:relative;">
     <div class="quiz-header"><button class="quit-btn" onclick="goHome()">✕</button><div class="progress-pill">✏️ <span id="spellProgress">1/10</span></div></div>
     <div class="quiz-instruction">뜻에 알맞는 영어 단어를 입력하세요.</div>
-    <div class="word-card"><div class="word" id="spellWord"></div></div>
-    <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;">
-      <input class="spell-real-input" type="text" id="spellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
+    <!-- 문제(한글)를 위쪽에 고정 배치 -->
+    <div class="word-card" style="margin:8px 16px;padding:16px 24px;min-height:70px;flex-shrink:0;">
+      <div class="word" id="spellWord"></div>
     </div>
     <div id="spellHint" style="text-align:center;font-size:13px;color:var(--gray);margin:4px 0;flex-shrink:0;"></div>
     <div class="spell-boxes" id="spellBoxes"></div>
+    <!-- 숨겨진 input (화면 밖) -->
+    <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;">
+      <input class="spell-real-input" type="text" id="spellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
+    </div>
+    <!-- 푸터는 flex-shrink:0으로 항상 하단 고정 -->
+    <div style="flex:1;"></div>
     <div class="quiz-footer">
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
       <button class="submit-btn" id="spellSubmitBtn" onclick="submitSpell()" title="제출">▶▶</button>
@@ -492,8 +498,8 @@
       <div class="result-stat"><div class="result-stat-num" id="resultWrong">2</div><div class="result-stat-label">오답</div></div>
       <div class="result-stat"><div class="result-stat-num" id="resultTotal">10</div><div class="result-stat-label">총 문제</div></div>
     </div>
-    <button class="result-btn" onclick="goHome()">홈으로</button>
-    <button class="result-btn outline" onclick="retrySession()" style="margin-top:10px;">다시 풀기</button>
+    <button class="result-btn" onclick="goHome()">✓ 확인</button>
+    <button class="result-btn outline" onclick="retrySession()" style="margin-top:10px;">↺ 다시 풀기</button>
   </div>
 
   <!-- RANKING -->
@@ -1031,7 +1037,7 @@ function filterMyTests(allTests, myGroup, myUid){
   });
 }
 
-function makeTestCard(t, isCompleted, onclick){
+function makeTestCard(t, isCompleted, onclick, completedScore){
   const wordCount = t.words?.length||t.count||0;
   const passScore = t.passScore??80;
   const modeIcon = t.testMode==='unscramble'?'🔀':'📝';
@@ -1041,7 +1047,7 @@ function makeTestCard(t, isCompleted, onclick){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${t.name||'시험'}</div>
           ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
             : `<span style="font-size:11px;background:#f0fafa;color:var(--teal);padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">${modeIcon} ${t.bookName||''} · ${wordCount}문제</div>
@@ -1060,22 +1066,26 @@ window.goUnits = async()=>{
     const myGroup=userProfile?.group||'', myUid=currentUser?.uid||'';
     const snap=await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
     const allTests=snap.docs.map(d=>({id:d.id,...d.data()}));
-    // word 시험만 (unscramble 제외)
     const myTests=filterMyTests(allTests,myGroup,myUid).filter(t=>t.testMode!=='unscramble');
 
-    const completedSet=new Set();
+    // 완료 정보 (score 포함)
+    const completedMap=new Map(); // testId → score
     await Promise.all(myTests.map(async t=>{
-      try{ const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid)); if(d.exists())completedSet.add(t.id); }catch(e){}
+      try{
+        const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedMap.set(t.id, d.data().score??null);
+      }catch(e){}
     }));
 
-    const pending=myTests.filter(t=>!completedSet.has(t.id));
-    const completed=myTests.filter(t=>completedSet.has(t.id));
+    const pending=myTests.filter(t=>!completedMap.has(t.id));
+    const completed=myTests.filter(t=>completedMap.has(t.id));
 
+    const oc = id=>`selectTest('${id}','${(myTests.find(t=>t.id===id)?.name||'').replace(/'/g,"\\'")}')`;
     if(elP) elP.innerHTML=pending.length
-      ? pending.map(t=>makeTestCard(t,false,`selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      ? pending.map(t=>makeTestCard(t,false,oc(t.id),null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 시험이 없습니다.</div>';
     if(elC) elC.innerHTML=completed.length
-      ? completed.map(t=>makeTestCard(t,true,`selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      ? completed.map(t=>makeTestCard(t,true,oc(t.id),completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   }catch(e){
     if(elP) elP.innerHTML=`<div class="empty-msg" style="padding:20px;">불러오기 실패</div>`;
@@ -1093,19 +1103,23 @@ window.goUnscramble = async()=>{
     const allTests=snap.docs.map(d=>({id:d.id,...d.data()}));
     const myTests=filterMyTests(allTests,myGroup,myUid).filter(t=>t.testMode==='unscramble');
 
-    const completedSet=new Set();
+    const completedMap=new Map();
     await Promise.all(myTests.map(async t=>{
-      try{ const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid)); if(d.exists())completedSet.add(t.id); }catch(e){}
+      try{
+        const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedMap.set(t.id, d.data().score??null);
+      }catch(e){}
     }));
 
-    const pending=myTests.filter(t=>!completedSet.has(t.id));
-    const completed=myTests.filter(t=>completedSet.has(t.id));
+    const pending=myTests.filter(t=>!completedMap.has(t.id));
+    const completed=myTests.filter(t=>completedMap.has(t.id));
 
+    const oc = id=>`startUnscrambleTest('${id}','${(myTests.find(t=>t.id===id)?.name||'').replace(/'/g,"\\'")}')`;
     if(elP) elP.innerHTML=pending.length
-      ? pending.map(t=>makeTestCard(t,false,`startUnscrambleTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      ? pending.map(t=>makeTestCard(t,false,oc(t.id),null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 언스크램블이 없습니다.</div>';
     if(elC) elC.innerHTML=completed.length
-      ? completed.map(t=>makeTestCard(t,true,`startUnscrambleTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      ? completed.map(t=>makeTestCard(t,true,oc(t.id),completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 항목이 없습니다.</div>';
   }catch(e){
     if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
@@ -2813,6 +2827,16 @@ window.installApp=async()=>{
 window.addEventListener('appinstalled',()=>{
   showToast('앱이 설치됐어요! 🎉');
 });
+
+// ── 키패드 올라올 때 화면 고정 (스펠링 화면) ──────────────
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', ()=>{
+    const spelling = document.getElementById('spelling');
+    if(!spelling?.classList.contains('active')) return;
+    // 뷰포트 높이가 줄면 (키패드 올라옴) 화면 상단으로 스크롤 방지
+    window.scrollTo(0,0);
+  });
+}
 
 
 // ── 내 정보 변경 ─────────────────────────────────────────
