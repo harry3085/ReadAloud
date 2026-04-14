@@ -333,7 +333,7 @@
         <div class="sub">오늘은 어떻게 공부해 볼까요?</div>
       </div>
       <div class="menu-grid">
-        <div class="menu-card c-teal" onclick="goUnits()"><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><div class="card-icon-big">📝</div></div>
+        <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><div class="card-icon-big">📝</div></div>
         <div class="menu-card c-blue" onclick="goComingSoon('pronunciation')"><div><div class="card-label">AI 발음 분석</div><div class="card-name">발음<br>평가</div><div class="coming-soon">Coming Soon</div></div><div class="card-icon-big">🎤</div></div>
         <div class="menu-card c-purple" onclick="goComingSoon('recording')"><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div><div class="coming-soon">Coming Soon</div></div><div class="card-icon-big">🎙</div></div>
         <div class="menu-card c-green" onclick="goRanking()"><div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div><div class="card-icon-big">🏆</div></div>
@@ -838,10 +838,48 @@ window.doLogout = async()=>{
   localStorage.removeItem('lastLoginAt');
   show('login');
 };
-window.goHome = ()=>{show('home');clearTimers();};
+window.goHome = ()=>{show('home');clearTimers();updateTestBadge();};
 
 // ── 홈 데이터 ─────────────────────────────────────────────
-async function loadHomeData(){await Promise.all([loadNoticePreview(),loadHwFiles()]);}
+async function loadHomeData(){
+  await Promise.all([loadNoticePreview(), loadHwFiles()]);
+  await updateTestBadge();
+}
+
+async function updateTestBadge(){
+  const badge = document.getElementById('testBadge');
+  if(!badge || !currentUser || !userProfile) return;
+  try{
+    const myGroup = userProfile.group||'';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 내 시험 필터
+    const myTests = allTests.filter(t=>{
+      if(!t.active && t.active !== undefined) return false;
+      const targets = t.targets||[];
+      if(!targets.length){
+        return (t.targetType==='class'&&t.targetId===myGroup)||(t.targetType==='student'&&t.targetId===myUid)||(t.targetId===myGroup);
+      }
+      return targets.some(tg=>(tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
+    });
+    // 완료된 시험 확인
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t=>{
+      try{
+        const d = await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedSet.add(t.id);
+      }catch(e){}
+    }));
+    const unfinished = myTests.filter(t=>!completedSet.has(t.id)).length;
+    if(unfinished > 0){
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }catch(e){ badge.style.display='none'; }
+}
 
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
@@ -1011,9 +1049,10 @@ window.selectTest = async(testId, testName)=>{
     const spCount = currentUnitWords.filter(w=>w.testType==='spelling').length;
     document.getElementById('infoModalTitle').textContent = testName;
     document.getElementById('modalWordCount').textContent = currentUnitWords.length+'개';
-    document.getElementById('modalTime').textContent = '4지선다: 각 10초 / 스펠링: 각 30초';
+    document.getElementById('modalTime').innerHTML =
+      `객관식 <b>10초</b> / 주관식 <b>30초</b>`;
     document.getElementById('modalPoint').textContent =
-      `4지선다 ${mcCount}문제 + 스펠링 ${spCount}문제`;
+      (window._currentTestData?.passScore ?? 80) + '점 이상';
     document.getElementById('infoModal').classList.remove('hidden');
     // 혼합 모드 플래그
     lastMode = 'mixed';
@@ -1036,8 +1075,8 @@ window.startSession = mode=>{
   lastMode=mode;
   document.getElementById('infoModalTitle').textContent=mode==='spelling'?'스펠링 테스트':'뜻 맞추기';
   document.getElementById('modalWordCount').textContent=currentUnitWords.length+'개';
-  document.getElementById('modalTime').textContent=mode==='spelling'?'각 30초':'각 10초';
-  document.getElementById('modalPoint').textContent=currentUnitWords.length*10+'점';
+  document.getElementById('modalTime').innerHTML=mode==='spelling'?'주관식 <b>30초</b>':'객관식 <b>10초</b>';
+  document.getElementById('modalPoint').textContent='80점 이상';
   document.getElementById('infoModal').classList.remove('hidden');
 };
 
@@ -2398,7 +2437,7 @@ window.addEventListener('popstate',e=>{
   _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
 
-window.goHome=()=>{show('home');clearTimers();};
+window.goHome=()=>{show('home');clearTimers();updateTestBadge();};
 
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;
