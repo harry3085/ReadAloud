@@ -3240,10 +3240,7 @@ window.renderTestStep3 = function(){
   const allWords = testData.words;
   const maxCount = allWords.length;
 
-  // 단어 분류: 띄어쓰기 없으면 단일단어, 있으면 숙어/구문
-  const singleWords = allWords.filter(w => !w.en.trim().includes(' '));
-  const phraseWords = allWords.filter(w => w.en.trim().includes(' '));
-  const spellableCount = singleWords.length;
+  const spellableCount = allWords.length;
   const defaultCount = Math.min(20, maxCount);
 
   // testData 초기화
@@ -3275,7 +3272,7 @@ window.renderTestStep3 = function(){
             스펠링 비율
             ${spellableCount===0?'<span style="color:#e05050;font-size:11px;font-weight:400;">(단일단어 없음 - 사용불가)</span>':''}
           </div>
-          <div style="${spellableCount===0?'opacity:0.4;pointer-events:none;':''}">
+          <div>
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
               <span style="font-size:12px;color:var(--gray);width:60px;">4지선다</span>
               <input type="range" id="spellRatioSlider" min="0" max="100" step="10" value="${testData.spellRatio}"
@@ -3291,8 +3288,7 @@ window.renderTestStep3 = function(){
               </div>
             </div>
             <div style="margin-top:8px;background:#f8f9fa;border-radius:6px;padding:8px 10px;font-size:12px;color:var(--gray);">
-              스펠링은 단일단어(<b>${spellableCount}개</b>)만 출제 가능해요.<br>
-              숙어/구문 <b>${phraseWords.length}개</b>는 4지선다로만 출제돼요.
+              전체 <b>${spellableCount}개</b> 단어 모두 스펠링 출제 가능해요.
             </div>
           </div>
           ${spellableCount===0?`<div style="font-size:12px;color:#e05050;margin-top:4px;">선택한 단어 중 스펠링 출제 가능한 단어가 없어요.</div>`:''}
@@ -3331,7 +3327,7 @@ window.renderTestStep3 = function(){
             <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid #eee;">
               <span>${w.en}</span>
               <span style="color:var(--gray);">${w.ko}</span>
-              <span style="font-size:10px;color:${w.en.includes(' ')?'#f59e0b':'#3BBFBF'};">${w.en.includes(' ')?'숙어':'단어'}</span>
+
             </div>`).join('')}
           ${allWords.length>20?`<div style="text-align:center;color:#bbb;font-size:11px;margin-top:4px;">... 외 ${allWords.length-20}개</div>`:''}
         </div>
@@ -3367,14 +3363,8 @@ window.updateSpellPreview = () => {
   testData.count = count;
   const ratio = testData.spellRatio || 0;
 
-  const singleWords = testData.words.filter(w => !w.en.trim().includes(' '));
-  const phraseWords = testData.words.filter(w => w.en.trim().includes(' '));
-
-  // 실제 스펠링 가능 문제 수 계산
-  const spellCount = ratio > 0 ? Math.min(
-    Math.round(count * ratio / 100),
-    singleWords.length
-  ) : 0;
+  // 모든 단어 스펠링 가능
+  const spellCount = ratio > 0 ? Math.round(count * ratio / 100) : 0;
   const mcCount = count - spellCount;
 
   el.innerHTML = `
@@ -3412,9 +3402,7 @@ window.renderTestStep4 = function(){
       ${t.type==='class'?'👥':'👤'} ${t.name}
     </span>`).join('') || `<span style="color:var(--teal);font-weight:600;">${testData.targetName}</span>`;
 
-  const singleWords = testData.words.filter(w=>!w.en.trim().includes(' '));
-  const spellCount = testData.spellRatio > 0
-    ? Math.min(Math.round(testData.count * testData.spellRatio / 100), singleWords.length) : 0;
+  const spellCount = testData.spellRatio > 0 ? Math.round(testData.count * testData.spellRatio / 100) : 0;
   const mcCount = testData.count - spellCount;
 
   document.getElementById('testStep1Content').innerHTML = `
@@ -3502,22 +3490,12 @@ window.publishTest = async() => {
   if(testData.mix) allWords = allWords.sort(()=>Math.random()-0.5);
   allWords = allWords.slice(0, testData.count);
 
-  // 단어 분류
-  const singleWords = allWords.filter(w => !w.en.trim().includes(' '));
-  const phraseWords = allWords.filter(w => w.en.trim().includes(' '));
-
-  // 스펠링 문제 수 계산
-  const spellCount = spellRatio > 0
-    ? Math.min(Math.round(allWords.length * spellRatio / 100), singleWords.length)
-    : 0;
-
-  // 단어별 문제유형 지정
-  const spellWords = singleWords.slice(0, spellCount).map(w=>({...w, testType:'spelling'}));
-  const mcSingleWords = singleWords.slice(spellCount).map(w=>({...w, testType:'meaning'}));
-  const mcPhraseWords = phraseWords.map(w=>({...w, testType:'meaning'}));
-
-  // 최종 문제 목록 (섞기)
-  let finalWords = [...spellWords, ...mcSingleWords, ...mcPhraseWords];
+  // 모든 단어 스펠링 가능
+  const spellCount = spellRatio > 0 ? Math.round(allWords.length * spellRatio / 100) : 0;
+  const shuffledAll = [...allWords].sort(()=>Math.random()-0.5);
+  const spellWords = shuffledAll.slice(0, spellCount).map(w=>({...w, testType:'spelling'}));
+  const mcWords = shuffledAll.slice(spellCount).map(w=>({...w, testType:'meaning'}));
+  let finalWords = [...spellWords, ...mcWords];
   if(testData.mix) finalWords = finalWords.sort(()=>Math.random()-0.5);
 
   const today = new Date().toISOString().slice(0,10);
@@ -4243,39 +4221,47 @@ window.updatePtPreview = () => {
       </div>`;
   };
 
-  // A4 한 장당 약 24문제 기준 페이지 분할
-  const PER_PAGE = 24;
+  // A4 한 장당 약 26문제 기준 페이지 분할
+  const PER_PAGE = 26;
   const pageGroups = [];
   for(let i=0;i<questions.length;i+=PER_PAGE) pageGroups.push(questions.slice(i,i+PER_PAGE));
+
+  // 1페이지 헤더 높이 계산용 상수 (px): 제목+학교란+여백 합산
+  // padding-top 20px + 제목줄 약 30px + mb14 + 학교란 약 26px + pb8+mb20 = 약 118px
+  const HEADER_H = '118px';
 
   const makePageHTML = (qs, pgIdx) => {
     const half = Math.ceil(qs.length/2);
     return `
-      <div style="width:794px;min-height:1123px;background:white;margin:0 auto 16px;border-radius:4px;
-        box-shadow:0 2px 10px rgba(0,0,0,.2);padding:40px 48px 32px;
+      <div style="width:794px;min-height:1123px;background:white;margin:0 auto 12px;border-radius:4px;
+        box-shadow:0 2px 10px rgba(0,0,0,.2);padding:20px 36px 16px;
         font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;">
-        ${pgIdx===0?`
-          <div style="font-size:16pt;font-weight:900;margin-bottom:14px;">${examName}</div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #000;padding-bottom:8px;margin-bottom:20px;">
-            <div style="font-size:10pt;font-weight:700;">학원명 : <span style="font-weight:400;">${academy}</span></div>
-            <div style="font-size:9pt;">
+        ${pgIdx===0 ? `
+          <!-- 1페이지: 제목 + 학교/이름란 -->
+          <div style="font-size:15pt;font-weight:900;margin-bottom:10px;">${examName}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #000;padding-bottom:6px;margin-bottom:14px;">
+            <div style="font-size:9.5pt;font-weight:700;">학원명 : <span style="font-weight:400;">${academy}</span></div>
+            <div style="font-size:8.5pt;">
               학교 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
-              &nbsp;학년 : <span style="display:inline-block;width:30px;border-bottom:1px solid #000;">&nbsp;</span>
-              &nbsp;반 : <span style="display:inline-block;width:30px;border-bottom:1px solid #000;">&nbsp;</span>
+              &nbsp;학년 : <span style="display:inline-block;width:28px;border-bottom:1px solid #000;">&nbsp;</span>
+              &nbsp;반 : <span style="display:inline-block;width:28px;border-bottom:1px solid #000;">&nbsp;</span>
               &nbsp;이름 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
             </div>
-          </div>`
-        :`<div style="font-size:10pt;color:#888;margin-bottom:16px;">${examName} (${pgIdx+1}/${pageGroups.length})</div>`}
-        <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 20px;">
+          </div>` : `
+          <!-- 2페이지~: 헤더 높이만큼 여백 (내용 시작 위치 동일) -->
+          <div style="height:${HEADER_H};display:flex;align-items:flex-end;padding-bottom:14px;border-bottom:1px dashed #ddd;margin-bottom:14px;box-sizing:border-box;">
+            <span style="font-size:9pt;color:#bbb;">${examName} — ${pgIdx+1} / ${pageGroups.length}</span>
+          </div>`}
+        <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 18px;">
           <div>${qs.slice(0,half).map(q=>makeQHTML(q)).join('')}</div>
           <div style="background:#ccc;"></div>
-          <div style="padding-left:20px;">${qs.slice(half).map(q=>makeQHTML(q)).join('')}</div>
+          <div style="padding-left:18px;">${qs.slice(half).map(q=>makeQHTML(q)).join('')}</div>
         </div>
-        <div style="text-align:right;font-size:9pt;color:#aaa;margin-top:12px;">- ${pgIdx+1} / ${pageGroups.length} -</div>
+        <div style="text-align:right;font-size:8pt;color:#bbb;margin-top:8px;">— ${pgIdx+1} / ${pageGroups.length} —</div>
       </div>`;
   };
 
-  previewEl.innerHTML = '<div style="padding:16px;">' + pageGroups.map((qs,i)=>makePageHTML(qs,i)).join('') + '</div>';
+  previewEl.innerHTML = '<div style="padding:12px;">' + pageGroups.map((qs,i)=>makePageHTML(qs,i)).join('') + '</div>';
 };
 window.doPrintExamFromTree = (ptype) => {
   const sel = window._ptSelectedUnits || getSelectedUnits('pt');
@@ -4611,11 +4597,7 @@ window.doPrintExam = (ptype) => {
 };
 
 function printMixedExamPDF(questions, examName, academy, date, ptype, allWords){
-  const half = Math.ceil(questions.length/2);
-  const leftQs = questions.slice(0, half);
-  const rightQs = questions.slice(half);
-
-  // 객관식 보기 캐시 (시험지와 답안지에서 동일한 보기 사용)
+  // 객관식 보기 캐시
   const choicesCache = {};
   questions.forEach(q=>{
     if(q.qStyle==='mc'){
@@ -4626,72 +4608,74 @@ function printMixedExamPDF(questions, examName, academy, date, ptype, allWords){
     }
   });
 
-  // 이미지 양식 기반: 번호 + 굵은 단어 + 아래 빈 줄
   const makeQHTML = (q, showAnswer) => {
     const question = q.isEn2Ko ? q.en : q.ko;
     const answer   = q.isEn2Ko ? q.ko : q.en;
-
-    if(q.qStyle === 'subj'){
-      // 주관식: 번호. 단어 (굵게) → 아래 빈 줄
-      return `
-        <div style="margin-bottom:22px;break-inside:avoid;">
-          <div style="font-size:11pt;font-weight:700;margin-bottom:6px;">
-            ${q.num}. ${question}
-            ${showAnswer ? `<span style="font-weight:400;color:#1a6b1a;font-size:10pt;margin-left:8px;">${answer}</span>` : ''}
-          </div>
-          ${!showAnswer ? `<div style="border-bottom:1.5px solid #333;width:85%;margin-left:4px;">&nbsp;</div>` : ''}
-        </div>`;
-    }
-
-    // 객관식: 번호. 단어 (굵게) → 보기 4개
-    const { choices, ansIdx } = choicesCache[q.num] || { choices:[], ansIdx:0 };
-    return `
+    if(q.qStyle === 'subj') return `
       <div style="margin-bottom:18px;break-inside:avoid;">
         <div style="font-size:11pt;font-weight:700;margin-bottom:5px;">
+          ${q.num}. ${question}
+          ${showAnswer ? `<span style="font-weight:400;color:#1a6b1a;font-size:10pt;margin-left:8px;">${answer}</span>` : ''}
+        </div>
+        ${!showAnswer ? `<div style="border-bottom:1.5px solid #333;width:85%;margin-left:4px;">&nbsp;</div>` : ''}
+      </div>`;
+    const { choices=[], ansIdx=0 } = choicesCache[q.num] || {};
+    return `
+      <div style="margin-bottom:16px;break-inside:avoid;">
+        <div style="font-size:11pt;font-weight:700;margin-bottom:4px;">
           ${q.num}. ${question}
           ${showAnswer ? `<span style="font-size:9pt;font-weight:400;color:#555;">(정답: ${ansIdx}번)</span>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 6px;font-size:9.5pt;padding-left:6px;">
-          ${choices.map((c,i)=>`
-            <div style="${showAnswer&&(i+1===ansIdx)?'font-weight:700;color:#1a6b1a;':''}">
-              ${i+1}. ${c}
-            </div>`).join('')}
+          ${choices.map((c,i)=>`<div style="${showAnswer&&(i+1===ansIdx)?'font-weight:700;color:#1a6b1a;':''}">${i+1}. ${c}</div>`).join('')}
         </div>
       </div>`;
   };
 
-  const makePage = (isAnswer) => `
-    <div style="page-break-after:always;padding:20px 24px 16px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;">
+  // 페이지당 문제 수 기준으로 분할
+  const PER_PAGE = 26;
+  const pageGroups = [];
+  for(let i=0;i<questions.length;i+=PER_PAGE) pageGroups.push(questions.slice(i,i+PER_PAGE));
+  const totalPages = pageGroups.length;
 
-      <!-- 제목 -->
-      <div style="font-size:15pt;font-weight:900;margin-bottom:14px;letter-spacing:-0.3px;">
-        ${examName}${isAnswer?' (답안지)':''}
-      </div>
+  // 헤더 높이 (인쇄용 - 미리보기와 동일)
+  // 제목(15pt≈20px)+mb10 + 학교란(≈26px)+pb6+mb14 = 약 76px
+  const HEADER_H = '76px';
 
-      <!-- 학원명 + 학교/학년/반/이름 -->
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;border-bottom:1px solid #000;padding-bottom:8px;">
-        <div style="font-size:10.5pt;font-weight:700;">
-          학원명 : <u style="font-weight:400;">${academy}</u>
+  const makeOnePage = (qs, pgIdx, isAnswer) => {
+    const half = Math.ceil(qs.length/2);
+    const titleSuffix = isAnswer ? ' (답안지)' : '';
+    const header = pgIdx===0 ? `
+      <div style="font-size:15pt;font-weight:900;margin-bottom:10px;">${examName}${titleSuffix}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #000;padding-bottom:6px;margin-bottom:14px;">
+        <div style="font-size:9.5pt;font-weight:700;">학원명 : <span style="font-weight:400;">${academy}</span></div>
+        <div style="font-size:8.5pt;">
+          학교 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;학년 : <span style="display:inline-block;width:28px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;반 : <span style="display:inline-block;width:28px;border-bottom:1px solid #000;">&nbsp;</span>
+          &nbsp;이름 : <span style="display:inline-block;width:70px;border-bottom:1px solid #000;">&nbsp;</span>
         </div>
-        <div style="font-size:10pt;">
-          학교 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
-          &nbsp;학년 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
-          &nbsp;반 : <span style="display:inline-block;width:36px;border-bottom:1px solid #000;">&nbsp;</span>
-          &nbsp;이름 : <span style="display:inline-block;width:80px;border-bottom:1px solid #000;">&nbsp;</span>
+      </div>` : `
+      <div style="height:${HEADER_H};display:flex;align-items:flex-end;padding-bottom:14px;border-bottom:1px solid #eee;margin-bottom:14px;box-sizing:border-box;">
+        <span style="font-size:8pt;color:#aaa;">${examName}${titleSuffix} — ${pgIdx+1} / ${totalPages}</span>
+      </div>`;
+    return `
+      <div style="page-break-after:always;padding:16px 22px 12px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:white;">
+        ${header}
+        <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 18px;">
+          <div>${qs.slice(0,half).map(q=>makeQHTML(q,isAnswer)).join('')}</div>
+          <div style="background:#ccc;"></div>
+          <div style="padding-left:18px;">${qs.slice(half).map(q=>makeQHTML(q,isAnswer)).join('')}</div>
         </div>
-      </div>
-
-      <!-- 2열 문제 (가운데 세로선) -->
-      <div style="display:grid;grid-template-columns:1fr 1px 1fr;gap:0 20px;">
-        <div>${leftQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
-        <div style="background:#ccc;"></div>
-        <div style="padding-left:20px;">${rightQs.map(q=>makeQHTML(q,isAnswer)).join('')}</div>
-      </div>
-    </div>`;
+        ${totalPages>1?`<div style="text-align:right;font-size:8pt;color:#bbb;margin-top:6px;">— ${pgIdx+1} / ${totalPages} —</div>`:''}
+      </div>`;
+  };
 
   let pageHTML = '';
-  if(ptype==='both'||ptype==='exam')   pageHTML += makePage(false);
-  if(ptype==='both'||ptype==='answer') pageHTML += makePage(true);
+  if(ptype==='both'||ptype==='exam')
+    pageGroups.forEach((qs,i)=>{ pageHTML += makeOnePage(qs,i,false); });
+  if(ptype==='both'||ptype==='answer')
+    pageGroups.forEach((qs,i)=>{ pageHTML += makeOnePage(qs,i,true); });
 
   const win = window.open('','_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${examName}</title>
