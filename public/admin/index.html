@@ -2995,74 +2995,241 @@ window.goPage_testCreate = async() => {
 
 window.renderTestStep2 = async function(){
   updateStepUI(2);
-  const snap = await getDocs(query(collection(db,'books'),orderBy('createdAt','desc')));
-  const books = snap.docs.map(d=>({id:d.id,...d.data()}));
+  // 초기화
+  testData.unitIds = []; testData.unitNames = []; testData.words = [];
   document.getElementById('testStep1Content').innerHTML = `
     <div style="font-size:14px;font-weight:600;margin-bottom:16px;">② 교재 / Unit 선택</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">교재 선택</div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:320px;overflow-y:auto;">
-          ${books.map(b=>`
-            <div onclick="selectTestBook('${b.id}','${b.name}')" id="tb-${b.id}"
-              style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;"
-              onmouseover="this.style.background='#f8f9fa'" onmouseout="if(!this.classList.contains('selected'))this.style.background=''">
-              📘 ${b.name} <span style="color:#bbb;font-size:11px;">단어${b.wordCount||0}개</span>
-            </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">교재가 없습니다</div>'}
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;">
+      <!-- 폴더→교재→Unit 트리 -->
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;max-height:420px;">
+        <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+          <span>📁 폴더 / 교재 / Unit</span>
+          <input type="text" id="testBookSearch" placeholder="🔍 검색..." oninput="filterTestBookTree(this.value)"
+            style="border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;outline:none;width:130px;">
+        </div>
+        <div id="testBookTree" style="overflow-y:auto;flex:1;">
+          <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
         </div>
       </div>
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">Unit 선택 (복수 선택 가능)</div>
-        <div id="testUnitListArea" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:320px;overflow-y:auto;">
-          <div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">교재를 선택하세요</div>
+      <!-- 선택된 Unit 목록 + 단어수 -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1;">
+          <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+            <span>✅ 선택된 Unit</span>
+            <button onclick="clearTestUnitSelection()" style="background:none;border:none;color:#bbb;font-size:11px;cursor:pointer;">전체 해제</button>
+          </div>
+          <div id="testSelectedUnitList" style="padding:8px;max-height:300px;overflow-y:auto;font-size:13px;color:#bbb;min-height:60px;">
+            Unit을 선택하세요
+          </div>
+        </div>
+        <div style="padding:10px 14px;background:#f0fafa;border:1px solid var(--teal-light);border-radius:8px;font-size:13px;text-align:center;">
+          선택된 단어: <b id="testWordCount" style="color:var(--teal);font-size:16px;">0</b>개
         </div>
       </div>
     </div>
-    <div style="margin-top:8px;font-size:12px;color:var(--gray);">선택된 단어: <span id="testWordCount" style="color:var(--teal);font-weight:600;">0개</span></div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="renderTestStep1()">← 이전</button>
       <button class="btn btn-primary" onclick="testStep2Next()">다음 → 문제 구성</button>
-    </div>
-  `;
-}
-window.selectTestBook = async(bookId, bookName) => {
-  testData.bookId = bookId; testData.bookName = bookName;
-  testData.unitIds = []; testData.unitNames = []; testData.words = [];
-  document.querySelectorAll('[id^="tb-"]').forEach(el=>{ el.style.background=''; el.style.fontWeight=''; el.style.color=''; el.classList.remove('selected'); });
-  const el = document.getElementById('tb-'+bookId);
-  if(el){ el.style.background='#e0f5f5'; el.style.fontWeight='600'; el.style.color='var(--teal)'; el.classList.add('selected'); }
-  const snap = await getDocs(collection(db,'books',bookId,'units'));
-  const units = snap.docs.map(d=>({id:d.id,...d.data()}));
-  document.getElementById('testUnitListArea').innerHTML = units.map(u=>`
-    <div style="padding:10px 16px;border-bottom:1px solid #f5f5f5;font-size:13px;display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="uc-${u.id}"
-        data-unit-name="${u.name.replace(/"/g,'&quot;')}"
-        onchange="toggleUnit('${u.id}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})">
-      <label for="uc-${u.id}" style="cursor:pointer;flex:1;">${u.name} <span style="color:#bbb;font-size:11px;">${u.words?.length||0}개</span></label>
-    </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">Unit이 없습니다</div>';
+    </div>`;
+
+  // 트리 로드
+  try{
+    const treeData = await buildFolderBookTree();
+    window._testTreeData = treeData;
+    document.getElementById('testBookTree').innerHTML = renderTestFolderTree(treeData);
+  }catch(e){
+    document.getElementById('testBookTree').innerHTML = `<div style="padding:16px;color:#e05050;">${e.message}</div>`;
+  }
 };
 
-window.toggleUnit = (uid, words) => {
-  const cb = document.getElementById('uc-'+uid);
-  const unitName = cb.dataset.unitName || '';
-  if(cb.checked){
-    testData.unitIds.push(uid);
-    testData.unitNames = testData.unitNames || [];
-    testData.unitNames.push(unitName);
-    testData.words.push(...words);
-  } else {
-    testData.unitIds = testData.unitIds.filter(id=>id!==uid);
-    testData.unitNames = (testData.unitNames||[]).filter(n=>n!==unitName);
-    testData.words = testData.words.filter(w=>!words.find(fw=>fw.en===w.en));
+// 시험출제 전용 트리 렌더 (폴더→교재→Unit 체크박스)
+function renderTestFolderTree(treeData){
+  const {folders, folderMap, unassigned} = treeData;
+  let html = '';
+
+  const renderUnitRows = (b) => b.units.map(u=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 12px 7px 52px;border-bottom:1px solid #f5f5f5;cursor:pointer;"
+      onclick="toggleTestUnit('${b.id}','${b.name.replace(/'/g,"\\'")}','${u.id}','${u.name.replace(/'/g,"\\'")}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})">
+      <input type="checkbox" id="tc-uchk-${u.id}"
+        onclick="event.stopPropagation();toggleTestUnit('${b.id}','${b.name.replace(/'/g,"\\'")}','${u.id}','${u.name.replace(/'/g,"\\'")}',${JSON.stringify(u.words||[]).replace(/"/g,'&quot;')})"
+        style="cursor:pointer;">
+      <span style="flex:1;font-size:13px;">${u.name}</span>
+      <span style="font-size:11px;color:#aaa;flex-shrink:0;">${u.words?.length||0}개</span>
+    </div>`).join('');
+
+  const renderBookNode = (b, indent) => `
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px 8px ${indent}px;background:#fafffe;border-bottom:1px solid #f0f0f0;cursor:pointer;"
+        onclick="toggleTreeNode('tc-b-${b.id}','tc-bt-${b.id}')">
+        <span id="tc-bt-${b.id}" style="font-size:11px;color:#aaa;transition:.2s;">›</span>
+        <input type="checkbox" id="tc-bchk-${b.id}"
+          onclick="event.stopPropagation();testCheckBook('${b.id}')"
+          style="cursor:pointer;">
+        <span style="font-size:13px;font-weight:600;flex:1;white-space:nowrap;">📘 ${b.name}</span>
+        <span style="font-size:11px;color:#aaa;flex-shrink:0;">${b.units.length}Unit</span>
+      </div>
+      <div id="tc-b-${b.id}" style="display:none;">${renderUnitRows(b)}</div>
+    </div>`;
+
+  folders.forEach(f=>{
+    const fBooks = folderMap[f.id]?.books||[];
+    if(!fBooks.length) return;
+    html += `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f0f4f8;border-bottom:1px solid var(--border);cursor:pointer;"
+          onclick="toggleTreeNode('tc-f-${f.id}','tc-ft-${f.id}')">
+          <span id="tc-ft-${f.id}" style="font-size:11px;color:#aaa;transition:.2s;">›</span>
+          <input type="checkbox" id="tc-fchk-${f.id}"
+            onclick="event.stopPropagation();testCheckFolder('${f.id}')"
+            style="cursor:pointer;">
+          <span style="font-weight:700;font-size:13px;flex:1;white-space:nowrap;">📁 ${f.name}</span>
+          <span style="font-size:11px;color:#aaa;flex-shrink:0;">${fBooks.length}교재</span>
+        </div>
+        <div id="tc-f-${f.id}" style="display:none;">
+          ${fBooks.map(b=>renderBookNode(b,28)).join('')}
+        </div>
+      </div>`;
+  });
+
+  if(unassigned.length){
+    html += `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fafafa;border-bottom:1px solid var(--border);cursor:pointer;"
+          onclick="toggleTreeNode('tc-f-unassigned','tc-ft-unassigned')">
+          <span id="tc-ft-unassigned" style="font-size:11px;color:#aaa;transition:.2s;">›</span>
+          <input type="checkbox" id="tc-fchk-unassigned"
+            onclick="event.stopPropagation();testCheckFolder('unassigned')"
+            style="cursor:pointer;">
+          <span style="font-weight:700;font-size:13px;flex:1;white-space:nowrap;">📂 미배정</span>
+          <span style="font-size:11px;color:#aaa;flex-shrink:0;">${unassigned.length}교재</span>
+        </div>
+        <div id="tc-f-unassigned" style="display:none;">
+          ${unassigned.map(b=>renderBookNode(b,28)).join('')}
+        </div>
+      </div>`;
   }
-  document.getElementById('testWordCount').textContent = testData.words.length+'개';
+
+  return html || '<div style="padding:16px;text-align:center;color:#bbb;">교재가 없습니다</div>';
+}
+
+// 시험출제 트리 - 폴더 전체 체크
+window.testCheckFolder = (folderId) => {
+  const cb = document.getElementById('tc-fchk-'+folderId);
+  const books = folderId==='unassigned'
+    ? (window._treeBooks||[]).filter(b=>!b.folderId)
+    : (window._treeBooks||[]).filter(b=>b.folderId===folderId);
+  books.forEach(b=>{
+    const bcb = document.getElementById('tc-bchk-'+b.id);
+    if(bcb) bcb.checked = cb.checked;
+    b.units.forEach(u=>{
+      const ucb = document.getElementById('tc-uchk-'+u.id);
+      if(ucb) ucb.checked = cb.checked;
+    });
+    if(cb.checked){
+      const el=document.getElementById('tc-b-'+b.id);
+      const t=document.getElementById('tc-bt-'+b.id);
+      if(el){el.style.display='';if(t)t.style.transform='rotate(90deg)';}
+    }
+  });
+  if(cb.checked){
+    const el=document.getElementById('tc-f-'+folderId);
+    const t=document.getElementById('tc-ft-'+folderId);
+    if(el){el.style.display='';if(t)t.style.transform='rotate(90deg)';}
+  }
+  rebuildTestData();
 };
+
+// 시험출제 트리 - 교재 전체 체크
+window.testCheckBook = (bookId) => {
+  const cb = document.getElementById('tc-bchk-'+bookId);
+  const book = (window._treeBooks||[]).find(b=>b.id===bookId);
+  if(!book) return;
+  book.units.forEach(u=>{
+    const ucb = document.getElementById('tc-uchk-'+u.id);
+    if(ucb) ucb.checked = cb.checked;
+  });
+  if(cb.checked){
+    const el=document.getElementById('tc-b-'+bookId);
+    const t=document.getElementById('tc-bt-'+bookId);
+    if(el){el.style.display='';if(t)t.style.transform='rotate(90deg)';}
+  }
+  rebuildTestData();
+};
+
+// 시험출제 트리 - Unit 개별 체크
+window.toggleTestUnit = (bookId, bookName, unitId, unitName, words) => {
+  const cb = document.getElementById('tc-uchk-'+unitId);
+  cb.checked = !cb.checked;
+  rebuildTestData();
+};
+
+// 체크된 Unit을 수집해서 testData 재구성
+function rebuildTestData(){
+  testData.unitIds = []; testData.unitNames = []; testData.words = [];
+  testData.bookId = ''; testData.bookName = '';
+
+  const books = window._treeBooks || [];
+  const selectedUnits = [];
+
+  books.forEach(b=>{
+    b.units.forEach(u=>{
+      const cb = document.getElementById('tc-uchk-'+u.id);
+      if(cb?.checked){
+        selectedUnits.push({bookId:b.id, bookName:b.name, unitId:u.id, unitName:u.name, words:u.words||[]});
+        testData.unitIds.push(u.id);
+        testData.unitNames.push(u.name);
+        testData.words.push(...(u.words||[]));
+      }
+    });
+  });
+
+  // 대표 교재명 (첫 번째 선택 교재)
+  if(selectedUnits.length){
+    testData.bookId = selectedUnits[0].bookId;
+    testData.bookName = selectedUnits[0].bookName;
+  }
+
+  // 선택된 Unit 태그 표시
+  const listEl = document.getElementById('testSelectedUnitList');
+  const countEl = document.getElementById('testWordCount');
+  if(listEl){
+    if(!selectedUnits.length){
+      listEl.innerHTML='<span style="color:#bbb;">Unit을 선택하세요</span>';
+    } else {
+      listEl.innerHTML = selectedUnits.map(u=>`
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #f5f5f5;font-size:12px;">
+          <span style="color:var(--teal);">📘</span>
+          <span style="flex:1;">${u.bookName} › ${u.unitName}</span>
+          <span style="color:#aaa;">${u.words.length}개</span>
+        </div>`).join('');
+    }
+  }
+  if(countEl) countEl.textContent = testData.words.length;
+}
+
+window.clearTestUnitSelection = () => {
+  document.querySelectorAll('[id^="tc-uchk-"],[id^="tc-bchk-"],[id^="tc-fchk-"]').forEach(cb=>cb.checked=false);
+  rebuildTestData();
+};
+
+window.filterTestBookTree = (q) => {
+  const lq = q.toLowerCase();
+  (window._treeBooks||[]).forEach(b=>{
+    const match = !lq || b.name.toLowerCase().includes(lq) || b.units.some(u=>u.name.toLowerCase().includes(lq));
+    const el = document.getElementById('tc-b-'+b.id)?.parentElement;
+    if(el) el.style.display = match ? '' : 'none';
+    if(lq && match){
+      const bel=document.getElementById('tc-b-'+b.id); const bt=document.getElementById('tc-bt-'+b.id);
+      if(bel){bel.style.display='';if(bt)bt.style.transform='rotate(90deg)';}
+    }
+  });
+};
+
+window.selectTestBook = async() => {}; // 구버전 호환용
 
 window.testStep2Next = () => {
-  if(!testData.bookId){showToast('교재를 선택하세요.');return;}
   if(!testData.unitIds.length){showToast('Unit을 선택하세요.');return;}
   if(testData.words.length < 4){showToast('단어가 최소 4개 이상 필요합니다.');return;}
-  // 기본 시험명: 교재명 + Unit명
   const unitPart = (testData.unitNames||[]).join(', ');
   testData.defaultExamName = testData.bookName + (unitPart ? ' ' + unitPart : '');
   renderTestStep3();
