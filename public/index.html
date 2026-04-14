@@ -114,6 +114,16 @@
     .timer-circle svg{transform:rotate(-90deg);}
     .timer-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal);}
     .footer-btn{background:none;border:none;color:var(--gray);font-size:24px;cursor:pointer;}
+    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 22px;font-size:20px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
+    .submit-btn:active{opacity:.7;}
+    .submit-btn:disabled{opacity:.35;cursor:not-allowed;}
+    .choice-btn.selected{background:#e0f5f5;border:2px solid var(--teal);}
+    .choice-btn.selected .choice-num{background:var(--teal);color:white;}
+    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
+    .submit-btn:active{opacity:.7;}
+    .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
+    .choice-btn.selected{background:#e0f5f5;border:2px solid var(--teal);}
+    .choice-btn.selected .choice-num{background:var(--teal);color:white;}
     .skip-btn{background:none;border:none;color:var(--gray);font-size:15px;font-weight:600;cursor:pointer;}
     .spell-input-wrap{margin:8px 16px;flex-shrink:0;}
     .spell-real-input{width:100%;padding:14px 16px;font-size:20px;font-weight:600;border:2px solid #ddd;border-radius:14px;outline:none;text-align:center;color:var(--text);background:white;letter-spacing:4px;}
@@ -392,8 +402,9 @@
     <div class="choices" id="choicesArea"></div>
     <div class="quiz-footer">
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc" stroke-linecap="round"/></svg><div class="timer-text" id="timerText">10</div></div>
-      <button class="footer-btn" onclick="speakCurrentWord()" title="발음 듣기">🎧</button><button class="footer-btn">⏭</button>
-      <button class="skip-btn" onclick="nextQuestion()">SKIP</button>
+      <button class="footer-btn" onclick="speakCurrentWord()" title="발음 듣기">🎧</button>
+      <button class="submit-btn" id="quizSubmitBtn" onclick="submitQuiz()" title="제출">▶▶</button>
+      <button class="skip-btn" onclick="skipQuiz()">SKIP</button>
     </div>
   </div>
 
@@ -409,8 +420,8 @@
     <div class="spell-boxes" id="spellBoxes"></div>
     <div class="quiz-footer">
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
-      <button class="footer-btn">⏭</button>
-      <button class="skip-btn" onclick="nextSpell()">SKIP</button>
+      <button class="submit-btn" id="spellSubmitBtn" onclick="submitSpell()" title="제출">▶▶</button>
+      <button class="skip-btn" onclick="skipSpell()">SKIP</button>
     </div>
   </div>
 
@@ -946,17 +957,33 @@ window.goUnits = async()=>{
       return;
     }
 
+    // 내가 완료한 시험 목록 조회
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t=>{
+      try{
+        const compDoc = await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
+        if(compDoc.exists()) completedSet.add(t.id);
+      }catch(e){}
+    }));
+
     el.innerHTML = myTests.map(t=>{
       const wordCount = t.words?.length || t.count || 0;
       const qTypeLabel = {both:'영→한 + 한→영', en2ko:'영→한', ko2en:'한→영'}[t.qType] || '혼합';
+      const isCompleted = completedSet.has(t.id);
+      const passScore = t.passScore ?? 80;
       return `
         <div class="unit-card" onclick="selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')">
           <div style="flex:1">
-            <div class="unit-name">${t.name||'시험'}</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="unit-name">${t.name||'시험'}</div>
+              ${isCompleted
+                ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">✅ 완료</span>`
+                : `<span style="font-size:11px;background:#f0fafa;color:var(--teal);padding:2px 8px;border-radius:20px;white-space:nowrap;">통과 ${passScore}점</span>`}
+            </div>
             <div class="unit-count">📚 ${t.bookName||''} · ${wordCount}문제 · ${qTypeLabel}</div>
             <div style="font-size:11px;color:#bbb;margin-top:4px;">출제일: ${t.date||''}</div>
           </div>
-          <span class="unit-arrow">›</span>
+          <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
         </div>`;
     }).join('');
   } catch(e){
@@ -1068,6 +1095,10 @@ function showMixedQuestion(){
         <span class="choice-num" id="cn${i}">${i+1}</span>${c.ko}
       </button>`).join('');
     show('quiz');
+    // >> 버튼 비활성
+    const btn = document.getElementById('quizSubmitBtn');
+    if(btn) btn.disabled = true;
+    window._mixedSelectedIdx = undefined;
     // 자동 음성 읽기
     setTimeout(()=>speakWord(word.en), 300);
     startTimer();
@@ -1075,43 +1106,121 @@ function showMixedQuestion(){
 }
 
 window.answerMixed = (idx, ok) => {
-  clearTimers();
-  if(ok){ document.getElementById('choice'+idx).classList.add('correct'); document.getElementById('cn'+idx).classList.add('correct'); correct++; }
-  else{
-    document.getElementById('choice'+idx).classList.add('wrong'); document.getElementById('cn'+idx).classList.add('wrong'); wrong++;
-    document.querySelectorAll('.choice-btn').forEach((b,i)=>{
-      if(b.onclick?.toString().includes(',true)')){b.classList.add('correct');document.getElementById('cn'+i)?.classList.add('correct');}
-    });
-  }
-  setTimeout(()=>{ mixedIdx++; showMixedQuestion(); }, 800);
+  // 선택만 표시 - 즉시 평가 안 함
+  document.querySelectorAll('.choice-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('choice'+idx)?.classList.add('selected');
+  window._mixedSelectedIdx = idx;
+  window._mixedSelectedOk = ok;
+  // >> 버튼 활성화
+  const btn = document.getElementById('quizSubmitBtn');
+  if(btn) btn.disabled = false;
 };
 
+window.submitQuiz = () => {
+  // 4지선다 공통 제출 (일반/혼합 모드)
+  if(lastMode === 'mixed'){
+    const idx = window._mixedSelectedIdx;
+    const ok  = window._mixedSelectedOk;
+    if(idx === undefined){ return; } // 선택 안 했으면 무시
+    clearTimers();
+    _evaluateQuizChoice(idx, ok, ()=>{ mixedIdx++; showMixedQuestion(); });
+  } else {
+    const idx = window._quizSelectedIdx;
+    const ok  = window._quizSelectedOk;
+    if(idx === undefined){ return; }
+    clearTimers();
+    _evaluateQuizChoice(idx, ok, ()=>{ currentQ++; showQuizQuestion(); });
+  }
+};
+
+window.skipQuiz = () => {
+  clearTimers(); wrong++;
+  window._quizSelectedIdx = undefined; window._mixedSelectedIdx = undefined;
+  if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+  else { currentQ++; showQuizQuestion(); }
+};
+
+function _evaluateQuizChoice(idx, ok, nextFn){
+  if(ok){
+    document.getElementById('choice'+idx)?.classList.add('correct');
+    document.getElementById('cn'+idx)?.classList.add('correct');
+    correct++;
+  } else {
+    document.getElementById('choice'+idx)?.classList.remove('selected');
+    document.getElementById('choice'+idx)?.classList.add('wrong');
+    document.getElementById('cn'+idx)?.classList.add('wrong');
+    wrong++;
+    // 정답 표시
+    document.querySelectorAll('.choice-btn').forEach((b,i)=>{
+      if(b.onclick?.toString().includes(',true)')){
+        b.classList.add('correct');
+        document.getElementById('cn'+i)?.classList.add('correct');
+      }
+    });
+  }
+  // >> 버튼 비활성화
+  const btn = document.getElementById('quizSubmitBtn');
+  if(btn) btn.disabled = true;
+  window._quizSelectedIdx = undefined;
+  window._mixedSelectedIdx = undefined;
+  setTimeout(nextFn, ok ? 500 : 900);
+}
+
 function showQuizQuestion(){
-  clearTimers();if(currentQ>=questions.length){showResult();return;}
+  clearTimers();
+  window._quizSelectedIdx = undefined;
+  if(currentQ>=questions.length){showResult();return;}
   const q=questions[currentQ];
   document.getElementById('quizProgress').textContent=(currentQ+1)+'/'+questions.length;
   document.getElementById('quizWord').textContent=q.en;
   const choices=shuffle([q,...shuffle(currentUnitWords.filter(w=>w.en!==q.en)).slice(0,3)]);
   document.getElementById('choicesArea').innerHTML=choices.map((c,i)=>`
-    <button class="choice-btn" id="choice${i}" onclick="answerQuiz(${i},${choices[i].en===q.en})">
+    <button class="choice-btn" id="choice${i}" onclick="selectQuiz(${i},${choices[i].en===q.en})">
       <span class="choice-num" id="cn${i}">${i+1}</span><span>${c.ko}</span>
     </button>`).join('');
+  // >> 버튼 비활성
+  const btn = document.getElementById('quizSubmitBtn');
+  if(btn) btn.disabled = true;
   // 자동 음성 읽기
   setTimeout(()=>speakWord(q.en), 300);
   startTimer();
 }
-window.answerQuiz=(idx,ok)=>{
-  clearTimers();
-  if(ok){document.getElementById('choice'+idx).classList.add('correct');document.getElementById('cn'+idx).classList.add('correct');correct++;}
-  else{document.getElementById('choice'+idx).classList.add('wrong');document.getElementById('cn'+idx).classList.add('wrong');wrong++;
-    document.querySelectorAll('.choice-btn').forEach((b,i)=>{if(b.onclick?.toString().includes(',true)')){b.classList.add('correct');document.getElementById('cn'+i)?.classList.add('correct');}});}
-  setTimeout(nextQuestion,900);
+
+window.selectQuiz = (idx, ok) => {
+  // 선택만 - 즉시 평가 안 함
+  document.querySelectorAll('.choice-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('choice'+idx)?.classList.add('selected');
+  window._quizSelectedIdx = idx;
+  window._quizSelectedOk = ok;
+  const btn = document.getElementById('quizSubmitBtn');
+  if(btn) btn.disabled = false;
 };
+
+window.answerQuiz = window.selectQuiz; // 혹시 남은 참조 대비
+
 window.nextQuestion=()=>{
   if(lastMode==='mixed'){mixedIdx++;showMixedQuestion();}
   else{currentQ++;showQuizQuestion();}
 };
-function startTimer(){timeLeft=10;updateTimerUI();timerInterval=setInterval(()=>{timeLeft--;updateTimerUI();if(timeLeft<=0){clearTimers();wrong++;nextQuestion();}},1000);}
+function startTimer(){
+  timeLeft=10;updateTimerUI();
+  timerInterval=setInterval(()=>{
+    timeLeft--;updateTimerUI();
+    if(timeLeft<=0){
+      clearTimers();
+      // 타이머 만료: 선택된 것 있으면 그걸로 평가, 없으면 wrong++
+      if(lastMode==='mixed'){
+        if(window._mixedSelectedIdx !== undefined){
+          _evaluateQuizChoice(window._mixedSelectedIdx, window._mixedSelectedOk, ()=>{ mixedIdx++; showMixedQuestion(); });
+        } else { wrong++; mixedIdx++; showMixedQuestion(); }
+      } else {
+        if(window._quizSelectedIdx !== undefined){
+          _evaluateQuizChoice(window._quizSelectedIdx, window._quizSelectedOk, ()=>{ currentQ++; showQuizQuestion(); });
+        } else { wrong++; currentQ++; showQuizQuestion(); }
+      }
+    }
+  },1000);
+}
 function updateTimerUI(){document.getElementById('timerText').textContent=timeLeft;document.getElementById('timerArc').style.strokeDashoffset=113*(1-timeLeft/10);}
 
 // ── 공통 TTS 함수 ─────────────────────────────────────────
@@ -1134,7 +1243,9 @@ function showSpellQuestion(){
   document.getElementById('spellInput').value='';
   document.getElementById('spellHint').textContent='총 '+q.en.length+'글자';
   renderSpellBoxes('',q.en.length);
-  // 박스 클릭해서 input 포커스
+  // >> 버튼 비활성
+  const btn = document.getElementById('spellSubmitBtn');
+  if(btn) btn.disabled = true;
   setTimeout(()=>focusSpellInput(),100);
   startSpellTimer();
 }
@@ -1146,7 +1257,6 @@ function focusSpellInput(){
 
 function renderSpellBoxes(val, len){
   const boxes = document.getElementById('spellBoxes');
-  // 박스 크기를 단어 길이에 따라 동적 조정
   const boxW = len > 12 ? 26 : len > 8 ? 30 : 34;
   const fontSize = len > 12 ? 13 : len > 8 ? 15 : 17;
   boxes.innerHTML = Array.from({length:len},(_,i)=>{
@@ -1167,44 +1277,65 @@ document.getElementById('spellInput').addEventListener('input',function(){
   this.value = val;
   renderSpellBoxes(val, q.en.length);
 
-  // 글자 수가 꽉 차면 자동 평가 (엔터 불필요)
-  if(val.length === q.en.length){
-    const ok = val.trim() === q.en.toLowerCase();
-    clearTimers();
-
-    // 정답/오답 박스 색상 표시
-    const boxes = document.getElementById('spellBoxes');
-    if(boxes){
-      boxes.querySelectorAll('.spell-box').forEach((b,i)=>{
-        const correct_char = q.en[i]?.toLowerCase();
-        const input_char = val[i];
-        b.style.background = ok ? '#d4f5e9' : (input_char===correct_char ? '#d4f5e9' : '#fde8e8');
-        b.style.borderColor = ok ? 'var(--teal)' : (input_char===correct_char ? 'var(--teal)' : '#e05050');
-        b.style.color = ok ? '#1a6b1a' : (input_char===correct_char ? '#1a6b1a' : '#e05050');
-        if(!ok) b.textContent = q.en[i]; // 정답 글자 보여주기
-      });
-    }
-
-    if(ok) correct++; else wrong++;
-
-    setTimeout(()=>{
-      if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
-      else { spellQ++; showSpellQuestion(); }
-    }, ok ? 500 : 900);
-  }
+  // >> 버튼: 한 글자라도 입력 시 활성화
+  const btn = document.getElementById('spellSubmitBtn');
+  if(btn) btn.disabled = (val.length === 0);
 });
+
+// 스펠링 >> 버튼 제출
+window.submitSpell = () => {
+  const q=spellQuestions[spellQ]; if(!q) return;
+  const val = document.getElementById('spellInput').value.trim().toLowerCase();
+  clearTimers();
+  _evaluateSpell(val, q);
+};
+
+// 스펠링 SKIP
+window.skipSpell = () => {
+  clearTimers(); wrong++;
+  const btn = document.getElementById('spellSubmitBtn');
+  if(btn) btn.disabled = true;
+  if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+  else { spellQ++; showSpellQuestion(); }
+};
+
+function _evaluateSpell(val, q){
+  const ok = val === q.en.toLowerCase();
+  if(ok) correct++; else wrong++;
+
+  // 결과 색상 표시
+  const boxes = document.getElementById('spellBoxes');
+  if(boxes){
+    boxes.querySelectorAll('.spell-box').forEach((b,i)=>{
+      const correct_char = q.en[i]?.toLowerCase();
+      const input_char = val[i];
+      if(ok){
+        b.style.background='#d4f5e9'; b.style.borderColor='var(--teal)'; b.style.color='#1a6b1a';
+      } else {
+        b.style.background = (input_char===correct_char)?'#d4f5e9':'#fde8e8';
+        b.style.borderColor = (input_char===correct_char)?'var(--teal)':'#e05050';
+        b.style.color = (input_char===correct_char)?'#1a6b1a':'#e05050';
+        if(!ok) b.textContent = q.en[i]; // 정답 표시
+      }
+    });
+  }
+
+  const btn = document.getElementById('spellSubmitBtn');
+  if(btn) btn.disabled = true;
+
+  setTimeout(()=>{
+    if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+    else { spellQ++; showSpellQuestion(); }
+  }, ok ? 500 : 900);
+}
 
 document.getElementById('spellInput').addEventListener('keydown',function(e){
   if(e.key==='Enter'){
     const q=spellQuestions[spellQ]; if(!q) return;
-    // 입력이 덜 됐을 때 Enter → 강제 제출
     const val = this.value.trim().toLowerCase();
-    if(val.length === 0) return;
-    const ok = val === q.en.toLowerCase();
-    if(ok) correct++; else wrong++;
+    if(!val.length) return;
     clearTimers();
-    if(lastMode==='mixed'){ mixedIdx++; setTimeout(()=>showMixedQuestion(), 500); }
-    else { spellQ++; showSpellQuestion(); }
+    _evaluateSpell(val, q);
   }
 });
 function startSpellTimer(){
@@ -1212,9 +1343,17 @@ function startSpellTimer(){
   spellTimer=setInterval(()=>{
     spellTimeLeft--;updateSpellTimerUI();
     if(spellTimeLeft<=0){
-      clearTimers();wrong++;
-      if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
-      else nextSpell();
+      clearTimers();
+      // 타이머 만료: 입력된 값으로 자동 평가 (wrong 처리)
+      const q=spellQuestions[spellQ];
+      if(q){
+        const val = (document.getElementById('spellInput')?.value||'').trim().toLowerCase();
+        _evaluateSpell(val, q);
+      } else {
+        wrong++;
+        if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+        else nextSpell();
+      }
     }
   },1000);
 }
@@ -1227,18 +1366,27 @@ window.nextSpell=()=>{
 async function showResult(){
   clearTimers();
   const total=correct+wrong,score=Math.round((correct/Math.max(total,1))*100);
+
+  // 통과점수 확인
+  const passScore = window._currentTestData?.passScore ?? 80;
+  const passed = score >= passScore;
+
   document.getElementById('resultScore').textContent=score+'점';
-  document.getElementById('resultLabel').textContent=score>=80?'훌륭해요! 🎊':score>=60?'잘 했어요!':'조금 더 연습해요 💪';
+  document.getElementById('resultLabel').textContent=
+    passed ? `🎉 통과! (${passScore}점 이상)` :
+    score>=60 ? '잘 했어요!' : '조금 더 연습해요 💪';
   document.getElementById('resultCorrect').textContent=correct;
   document.getElementById('resultWrong').textContent=wrong;
   document.getElementById('resultTotal').textContent=total;
   show('result');
+
   if(currentUser&&userProfile){
     try{
       const today = new Date().toISOString().slice(0,10);
       const testId = currentTestId || currentUnitId;
       const testName = currentTestName || '';
-      // scores 컬렉션에 저장 (중복 응시 허용 → addDoc)
+
+      // scores 저장
       await addDoc(collection(db,'scores'),{
         uid:currentUser.uid,
         userId:currentUser.uid,
@@ -1251,9 +1399,22 @@ async function showResult(){
         bookName:window._currentTestData?.bookName||'',
         mode:lastMode,
         score,correct,wrong,total,
+        passed, passScore,
         date:today,
         createdAt:serverTimestamp()
       });
+
+      // 통과하면 해당 시험을 완료 처리 (userCompleted 서브컬렉션)
+      if(passed && testId){
+        try{
+          await setDoc(
+            doc(db,'tests',testId,'userCompleted',currentUser.uid),
+            { uid:currentUser.uid, userName:userProfile.name,
+              score, date:today, completedAt:serverTimestamp() },
+            {merge:true}
+          );
+        }catch(e){console.log('완료처리실패',e);}
+      }
     }catch(e){console.log('점수저장실패',e);}
   }
 }
