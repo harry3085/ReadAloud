@@ -2163,8 +2163,18 @@ window.doSignup=async()=>{
 
 // ── TTS 발음 읽기 ─────────────────────────────────────────
 window.speakCurrentWord=()=>{
-  const q=questions[currentQ];if(!q)return;
-  speakWord(q.en);
+  let word = null;
+  if(lastMode==='mixed'){
+    // 혼합 모드: mixedQueue에서 현재 단어
+    const item = mixedQueue[mixedIdx];
+    word = item?.word?.en || item?.en;
+  } else {
+    // 일반 4지선다 모드
+    const q = questions[currentQ];
+    word = q?.en;
+  }
+  if(!word) return;
+  speakWord(word);
 };
 
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
