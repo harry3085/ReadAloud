@@ -9,9 +9,9 @@
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-tap-highlight-color:transparent;}
     :root{--teal:#3BBFBF;--teal-dark:#2a9f9f;--bg:#e8f4f4;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#5aabcf;--purple:#8b7dd8;--green:#4bc27d;}
-    html,body{height:100%;overflow:hidden;}
-    #app{height:100vh;overflow:hidden;position:relative;}
-    .screen{display:none;height:100vh;height:calc(var(--vh,1vh)*100);background:var(--bg);flex-direction:column;overflow:hidden;}
+    html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
+    #app{height:100%;overflow:hidden;position:relative;}
+    .screen{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg);flex-direction:column;overflow:hidden;}
     .screen.active{display:flex;}
     .scroll-content{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
     #loading{align-items:center;justify-content:center;background:var(--bg);}
@@ -404,29 +404,26 @@
   </div>
 
   <!-- UNSCRAMBLE 풀기 화면 -->
-  <div id="unscramble" class="screen" style="display:flex;flex-direction:column;background:#f8fffe;">
+  <div id="unscramble" class="screen" style="background:#f8fffe;">
     <div class="quiz-header">
       <button class="quit-btn" onclick="goHome()">✕</button>
       <div class="progress-pill">🔀 <span id="unscProgress">1/10</span></div>
     </div>
-
     <!-- 뜻(한글) 표시 -->
     <div class="word-card" style="min-height:60px;">
       <div id="unscMeaning" style="font-size:16px;font-weight:600;color:var(--text);text-align:center;"></div>
     </div>
-
     <!-- 완성중인 문장 -->
     <div style="margin:8px 16px;background:white;border-radius:14px;border:2px solid var(--teal);padding:14px 16px;min-height:56px;flex-shrink:0;">
       <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:6px;">완성 중인 문장</div>
       <div id="unscBuilt" style="font-size:15px;font-weight:600;color:var(--text);min-height:24px;word-break:break-word;"></div>
     </div>
-
     <!-- 섞인 단어 버튼들 -->
     <div style="padding:10px 12px;flex-shrink:0;">
       <div style="font-size:10px;color:var(--gray);font-weight:700;margin-bottom:8px;">단어를 순서대로 클릭하세요</div>
       <div id="unscWords" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
-
+    <div style="flex:1;"></div>
     <div class="quiz-footer">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
@@ -466,20 +463,17 @@
   </div>
 
   <!-- SPELLING -->
-  <div id="spelling" class="screen" style="position:relative;">
+  <div id="spelling" class="screen">
     <div class="quiz-header"><button class="quit-btn" onclick="goHome()">✕</button><div class="progress-pill">✏️ <span id="spellProgress">1/10</span></div></div>
     <div class="quiz-instruction">뜻에 알맞는 영어 단어를 입력하세요.</div>
-    <!-- 문제(한글)를 위쪽에 고정 배치 -->
     <div class="word-card" style="margin:8px 16px;padding:16px 24px;min-height:70px;flex-shrink:0;">
       <div class="word" id="spellWord"></div>
     </div>
     <div id="spellHint" style="text-align:center;font-size:13px;color:var(--gray);margin:4px 0;flex-shrink:0;"></div>
     <div class="spell-boxes" id="spellBoxes"></div>
-    <!-- 숨겨진 input (화면 밖) -->
-    <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;">
+    <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;">
       <input class="spell-real-input" type="text" id="spellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
     </div>
-    <!-- 푸터는 flex-shrink:0으로 항상 하단 고정 -->
     <div style="flex:1;"></div>
     <div class="quiz-footer">
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
@@ -842,9 +836,6 @@ function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Mat
 window.show = id => {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  // 스펠링 화면 벗어날 때 transform 초기화
-  const spelling = document.getElementById('spelling');
-  if(spelling && id !== 'spelling') spelling.style.transform = '';
 };
 window.closeModal = id => document.getElementById(id).classList.add('hidden');
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
@@ -2849,32 +2840,12 @@ window.addEventListener('appinstalled',()=>{
   showToast('앱이 설치됐어요! 🎉');
 });
 
-// ── 모바일 키패드 대응: 실제 뷰포트 높이 고정 ───────────────
-function setVh(){
-  const vh = window.innerHeight * 0.01;
-  document.documentElement.style.setProperty('--vh', vh+'px');
-}
-setVh();
-window.addEventListener('resize', setVh);
-
-// visualViewport 지원 시 더 정확하게
+// ── 모바일 키패드 대응 ────────────────────────────────────
+// html,body position:fixed 으로 키패드 밀림 방지 완료
+// visualViewport 스크롤 방지 (iOS Safari 대응)
 if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', ()=>{
-    // 키패드가 올라와도 스펠링 화면 내용이 위로 밀리지 않게
-    const spelling = document.getElementById('spelling');
-    if(spelling?.classList.contains('active')){
-      // 뷰포트 오프셋만큼 화면을 위로 당김
-      spelling.style.transform = `translateY(-${window.visualViewport.offsetTop}px)`;
-    } else {
-      if(spelling) spelling.style.transform = '';
-    }
-    setVh();
-  });
   window.visualViewport.addEventListener('scroll', ()=>{
-    const spelling = document.getElementById('spelling');
-    if(spelling?.classList.contains('active')){
-      spelling.style.transform = `translateY(-${window.visualViewport.offsetTop}px)`;
-    }
+    window.scrollTo(0, 0);
   });
 }
 
