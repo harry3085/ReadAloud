@@ -405,26 +405,38 @@
 
   <!-- UNSCRAMBLE 풀기 화면 -->
   <div id="unscramble" class="screen" style="background:#f8fffe;">
+
+    <!-- 헤더 -->
     <div class="quiz-header">
       <button class="quit-btn" onclick="goHome()">✕</button>
       <div class="progress-pill">🔀 <span id="unscProgress">1/10</span></div>
     </div>
-    <!-- 뜻(한글) 표시 -->
-    <div class="word-card" style="min-height:60px;">
-      <div id="unscMeaning" style="font-size:16px;font-weight:600;color:var(--text);text-align:center;"></div>
+
+    <!-- 설명 + 한글 뜻 -->
+    <div style="padding:8px 16px 4px;flex-shrink:0;">
+      <div style="font-size:11px;color:var(--gray);text-align:center;margin-bottom:6px;">
+        단어를 문장의 순서에 맞게 클릭하세요
+      </div>
+      <div style="background:white;border-radius:16px;padding:16px 20px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);">
+        <div id="unscMeaning" style="font-size:17px;font-weight:700;color:var(--text);line-height:1.5;"></div>
+      </div>
     </div>
-    <!-- 완성중인 문장 -->
-    <div style="margin:8px 16px;background:white;border-radius:14px;border:2px solid var(--teal);padding:14px 16px;min-height:56px;flex-shrink:0;">
-      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:6px;">완성 중인 문장</div>
-      <div id="unscBuilt" style="font-size:15px;font-weight:600;color:var(--text);min-height:24px;word-break:break-word;"></div>
+
+    <!-- 완성 중인 문장 영역 (크게) -->
+    <div style="margin:10px 16px 0;flex-shrink:0;">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:5px;">완성 중인 문장</div>
+      <div style="background:white;border-radius:14px;border:2px solid var(--teal);padding:14px 16px;min-height:72px;">
+        <div id="unscBuilt" style="font-size:15px;font-weight:600;color:var(--text);word-break:break-word;line-height:1.6;min-height:24px;"></div>
+      </div>
     </div>
+
     <!-- 섞인 단어 버튼들 -->
-    <div style="padding:10px 12px;flex-shrink:0;">
-      <div style="font-size:10px;color:var(--gray);font-weight:700;margin-bottom:8px;">단어를 순서대로 클릭하세요</div>
+    <div style="padding:10px 14px;flex-shrink:0;">
       <div id="unscWords" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
-    <div style="flex:1;"></div>
-    <div class="quiz-footer">
+
+    <!-- 하단 푸터 (빈공간 없이 바로 붙임) -->
+    <div class="quiz-footer" style="margin-top:auto;border-top:1px solid #e0f0f0;">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
           <circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/>
