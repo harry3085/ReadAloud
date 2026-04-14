@@ -119,6 +119,9 @@
     .submit-btn:disabled{opacity:.35;cursor:not-allowed;}
     .choice-btn.selected{background:#e0f5f5;border:2px solid var(--teal);}
     .choice-btn.selected .choice-num{background:var(--teal);color:white;}
+    .unsc-word-btn{background:white;border:2px solid var(--teal);border-radius:10px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.06);}
+    .unsc-word-btn:active{transform:scale(0.95);}
+    .unsc-word-btn.used{opacity:0.25;pointer-events:none;text-decoration:line-through;}
     .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
     .submit-btn:active{opacity:.7;}
     .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -334,7 +337,7 @@
       </div>
       <div class="menu-grid">
         <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><div class="card-icon-big">📝</div></div>
-        <div class="menu-card c-blue" onclick="goComingSoon('pronunciation')"><div><div class="card-label">AI 발음 분석</div><div class="card-name">발음<br>평가</div><div class="coming-soon">Coming Soon</div></div><div class="card-icon-big">🎤</div></div>
+        <div class="menu-card c-blue" onclick="goUnscramble()" style="position:relative;"><span id="unscrambleBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 순서 맞추기</div><div class="card-name">언스크<br>램블</div></div><div class="card-icon-big">🔀</div></div>
         <div class="menu-card c-purple" onclick="goComingSoon('recording')"><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div><div class="coming-soon">Coming Soon</div></div><div class="card-icon-big">🎙</div></div>
         <div class="menu-card c-green" onclick="goRanking()"><div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div><div class="card-icon-big">🏆</div></div>
       </div>
@@ -375,12 +378,64 @@
     </div>
   </div>
 
-  <!-- UNIT LIST -->
+  <!-- UNIT LIST (단어시험) -->
   <div id="units" class="screen">
-    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">📝 시험 목록</span><span></span></div>
-    <div class="scroll-content">
-      <div style="padding:12px 16px 4px;font-size:13px;color:var(--gray);">배정된 시험 목록이에요. 시험을 선택하고 풀어보세요!</div>
-      <div class="unit-list" id="unitList"><div class="empty-msg" style="padding:40px;">배정된 시험이 없습니다.</div></div>
+    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">📝 단어 시험</span><span></span></div>
+    <div class="scroll-content" style="padding:0 0 16px;">
+      <!-- 미완료/진행중 -->
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+      <div id="unitListPending"><div class="empty-msg" style="padding:20px;">배정된 시험이 없습니다.</div></div>
+      <!-- 완료 -->
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div id="unitListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div></div>
+    </div>
+  </div>
+
+  <!-- UNSCRAMBLE LIST -->
+  <div id="unscrambleList" class="screen">
+    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">🔀 언스크램블</span><span></span></div>
+    <div class="scroll-content" style="padding:0 0 16px;">
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+      <div id="unscListPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div id="unscListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 항목이 없습니다.</div></div>
+    </div>
+  </div>
+
+  <!-- UNSCRAMBLE 풀기 화면 -->
+  <div id="unscramble" class="screen" style="display:flex;flex-direction:column;background:#f8fffe;">
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="goHome()">✕</button>
+      <div class="progress-pill">🔀 <span id="unscProgress">1/10</span></div>
+    </div>
+
+    <!-- 뜻(한글) 표시 -->
+    <div class="word-card" style="min-height:60px;">
+      <div id="unscMeaning" style="font-size:16px;font-weight:600;color:var(--text);text-align:center;"></div>
+    </div>
+
+    <!-- 완성중인 문장 -->
+    <div style="margin:8px 16px;background:white;border-radius:14px;border:2px solid var(--teal);padding:14px 16px;min-height:56px;flex-shrink:0;">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:6px;">완성 중인 문장</div>
+      <div id="unscBuilt" style="font-size:15px;font-weight:600;color:var(--text);min-height:24px;word-break:break-word;"></div>
+    </div>
+
+    <!-- 섞인 단어 버튼들 -->
+    <div style="padding:10px 12px;flex-shrink:0;">
+      <div style="font-size:10px;color:var(--gray);font-weight:700;margin-bottom:8px;">단어를 순서대로 클릭하세요</div>
+      <div id="unscWords" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+
+    <div class="quiz-footer">
+      <div class="timer-circle">
+        <svg width="44" height="44" viewBox="0 0 44 44">
+          <circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/>
+          <circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="unscTimerArc" stroke-linecap="round"/>
+        </svg>
+        <div class="timer-text" id="unscTimerText">30</div>
+      </div>
+      <button class="submit-btn" id="unscSubmitBtn" onclick="submitUnscramble()" disabled>▶▶</button>
+      <button class="skip-btn" onclick="skipUnscramble()">SKIP</button>
     </div>
   </div>
 
@@ -838,12 +893,12 @@ window.doLogout = async()=>{
   localStorage.removeItem('lastLoginAt');
   show('login');
 };
-window.goHome = ()=>{show('home');clearTimers();updateTestBadge();};
+window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();};
 
 // ── 홈 데이터 ─────────────────────────────────────────────
 async function loadHomeData(){
   await Promise.all([loadNoticePreview(), loadHwFiles()]);
-  await updateTestBadge();
+  await Promise.all([updateTestBadge(), updateUnscBadge()]);
 }
 
 async function updateTestBadge(){
@@ -960,72 +1015,98 @@ window.goNoticeList = async()=>{
 // ── 단원/테스트 ───────────────────────────────────────────
 let currentTestId = null, currentTestName = '';
 
-window.goUnits = async()=>{
-  const el = document.getElementById('unitList');
-  el.innerHTML = '<div class="empty-msg" style="padding:40px;">로딩 중...</div>';
-  show('units');
-
-  try{
-    // tests 컬렉션에서 내게 배정된 시험 가져오기
-    const myGroup = userProfile?.group||'';
-    const myUid = currentUser?.uid||'';
-
-    const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-
-    // 내게 해당하는 시험 필터 (반 전체 or 개별 학생)
-    const myTests = allTests.filter(t=>{
-      if(!t.active && t.active !== undefined) return false; // 종료된 시험 제외
-      const targets = t.targets || [];
-      // 구형 데이터 호환 (targetType/targetId)
-      if(targets.length === 0){
-        if(t.targetType === 'class' && t.targetId === myGroup) return true;
-        if(t.targetType === 'student' && t.targetId === myUid) return true;
-        if(t.targetId === myGroup) return true;
-        return false;
-      }
-      return targets.some(tg =>
-        (tg.type==='class' && tg.id===myGroup) ||
-        (tg.type==='student' && tg.id===myUid)
-      );
-    });
-
-    if(!myTests.length){
-      el.innerHTML='<div class="empty-msg" style="padding:40px;">배정된 시험이 없습니다.<br>선생님께 문의하세요.</div>';
-      return;
+// ── 내 시험 필터 공통 함수 ────────────────────────────────
+function filterMyTests(allTests, myGroup, myUid){
+  return allTests.filter(t=>{
+    if(!t.active && t.active !== undefined) return false;
+    const targets = t.targets||[];
+    if(!targets.length){
+      return (t.targetType==='class'&&t.targetId===myGroup)
+        ||(t.targetType==='student'&&t.targetId===myUid)
+        ||(t.targetId===myGroup);
     }
+    return targets.some(tg=>(tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
+  });
+}
 
-    // 내가 완료한 시험 목록 조회
-    const completedSet = new Set();
+function makeTestCard(t, isCompleted, onclick){
+  const wordCount = t.words?.length||t.count||0;
+  const passScore = t.passScore??80;
+  const modeIcon = t.testMode==='unscramble'?'🔀':'📝';
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${t.name||'시험'}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
+            : `<span style="font-size:11px;background:#f0fafa;color:var(--teal);padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">${modeIcon} ${t.bookName||''} · ${wordCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${t.date||''}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+    </div>`;
+}
+
+window.goUnits = async()=>{
+  const elP = document.getElementById('unitListPending');
+  const elC = document.getElementById('unitListCompleted');
+  if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  show('units');
+  try{
+    const myGroup=userProfile?.group||'', myUid=currentUser?.uid||'';
+    const snap=await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
+    const allTests=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // word 시험만 (unscramble 제외)
+    const myTests=filterMyTests(allTests,myGroup,myUid).filter(t=>t.testMode!=='unscramble');
+
+    const completedSet=new Set();
     await Promise.all(myTests.map(async t=>{
-      try{
-        const compDoc = await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
-        if(compDoc.exists()) completedSet.add(t.id);
-      }catch(e){}
+      try{ const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid)); if(d.exists())completedSet.add(t.id); }catch(e){}
     }));
 
-    el.innerHTML = myTests.map(t=>{
-      const wordCount = t.words?.length || t.count || 0;
-      const qTypeLabel = {both:'영→한 + 한→영', en2ko:'영→한', ko2en:'한→영'}[t.qType] || '혼합';
-      const isCompleted = completedSet.has(t.id);
-      const passScore = t.passScore ?? 80;
-      return `
-        <div class="unit-card" onclick="selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <div class="unit-name">${t.name||'시험'}</div>
-              ${isCompleted
-                ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">✅ 완료</span>`
-                : `<span style="font-size:11px;background:#f0fafa;color:var(--teal);padding:2px 8px;border-radius:20px;white-space:nowrap;">통과 ${passScore}점</span>`}
-            </div>
-            <div class="unit-count">📚 ${t.bookName||''} · ${wordCount}문제 · ${qTypeLabel}</div>
-            <div style="font-size:11px;color:#bbb;margin-top:4px;">출제일: ${t.date||''}</div>
-          </div>
-          <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
-        </div>`;
-    }).join('');
-  } catch(e){
-    el.innerHTML = '<div class="empty-msg" style="padding:40px;">불러오기 실패<br>'+e.message+'</div>';
+    const pending=myTests.filter(t=>!completedSet.has(t.id));
+    const completed=myTests.filter(t=>completedSet.has(t.id));
+
+    if(elP) elP.innerHTML=pending.length
+      ? pending.map(t=>makeTestCard(t,false,`selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 시험이 없습니다.</div>';
+    if(elC) elC.innerHTML=completed.length
+      ? completed.map(t=>makeTestCard(t,true,`selectTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  }catch(e){
+    if(elP) elP.innerHTML=`<div class="empty-msg" style="padding:20px;">불러오기 실패</div>`;
+  }
+};
+
+window.goUnscramble = async()=>{
+  const elP=document.getElementById('unscListPending');
+  const elC=document.getElementById('unscListCompleted');
+  if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  show('unscrambleList');
+  try{
+    const myGroup=userProfile?.group||'', myUid=currentUser?.uid||'';
+    const snap=await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
+    const allTests=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myTests=filterMyTests(allTests,myGroup,myUid).filter(t=>t.testMode==='unscramble');
+
+    const completedSet=new Set();
+    await Promise.all(myTests.map(async t=>{
+      try{ const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid)); if(d.exists())completedSet.add(t.id); }catch(e){}
+    }));
+
+    const pending=myTests.filter(t=>!completedSet.has(t.id));
+    const completed=myTests.filter(t=>completedSet.has(t.id));
+
+    if(elP) elP.innerHTML=pending.length
+      ? pending.map(t=>makeTestCard(t,false,`startUnscrambleTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 언스크램블이 없습니다.</div>';
+    if(elC) elC.innerHTML=completed.length
+      ? completed.map(t=>makeTestCard(t,true,`startUnscrambleTest('${t.id}','${(t.name||'').replace(/'/g,"\\'")}')`)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 항목이 없습니다.</div>';
+  }catch(e){
+    if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
   }
 };
 
@@ -2361,6 +2442,186 @@ window.doSignup=async()=>{
   }
 };
 
+// ── 언스크램블 ──────────────────────────────────────────────
+let _unscTest = null;       // 현재 시험 데이터
+let _unscSentences = [];    // 문제 배열 [{en, ko, shuffled:[]}]
+let _unscIdx = 0;           // 현재 문제 인덱스
+let _unscBuilt = [];        // 선택된 단어 배열
+let _unscTimer = null;
+let _unscTimeLeft = 30;
+let _unscCorrect = 0, _unscWrong = 0;
+
+window.startUnscrambleTest = async(testId, testName)=>{
+  const snap = await getDoc(doc(db,'tests',testId));
+  if(!snap.exists()){ showToast('시험을 찾을 수 없습니다.'); return; }
+  _unscTest = {id:testId, ...snap.data()};
+  window._currentTestData = _unscTest;
+  currentTestId = testId;
+  currentTestName = testName;
+
+  // 문장(en) → 단어 단위로 섞기
+  const words = _unscTest.words||[];
+  _unscSentences = words.map(w=>({
+    en: w.en||'',
+    ko: w.ko||'',
+    tokens: (w.en||'').trim().split(/\s+/),
+    shuffled: shuffle((w.en||'').trim().split(/\s+/))
+  }));
+  _unscIdx = 0; _unscCorrect = 0; _unscWrong = 0;
+  show('unscramble');
+  showUnscQuestion();
+};
+
+function showUnscQuestion(){
+  clearUnscTimer();
+  if(_unscIdx >= _unscSentences.length){ showUnscResult(); return; }
+  const q = _unscSentences[_unscIdx];
+  _unscBuilt = [];
+  document.getElementById('unscProgress').textContent = (_unscIdx+1)+'/'+_unscSentences.length;
+  document.getElementById('unscMeaning').textContent = q.ko;
+  document.getElementById('unscBuilt').textContent = '';
+  // 섞인 단어 버튼
+  document.getElementById('unscWords').innerHTML = q.shuffled.map((w,i)=>
+    `<button class="unsc-word-btn" id="unscW${i}" onclick="pickUnscWord(${i},'${w.replace(/'/g,"\\'")}')">
+      ${w}
+    </button>`
+  ).join('');
+  const btn = document.getElementById('unscSubmitBtn');
+  if(btn) btn.disabled = true;
+  startUnscTimer();
+}
+
+window.pickUnscWord = (idx, word)=>{
+  const btn = document.getElementById('unscW'+idx);
+  if(!btn || btn.classList.contains('used')) return;
+  btn.classList.add('used');
+  _unscBuilt.push({idx, word});
+  // 완성 문장 표시
+  const builtEl = document.getElementById('unscBuilt');
+  if(builtEl) builtEl.textContent = _unscBuilt.map(b=>b.word).join(' ');
+  // 제출 버튼 활성
+  const submitBtn = document.getElementById('unscSubmitBtn');
+  if(submitBtn) submitBtn.disabled = false;
+  // 마지막 단어 선택 시 자동 제출
+  const q = _unscSentences[_unscIdx];
+  if(_unscBuilt.length === q.tokens.length){
+    setTimeout(()=>submitUnscramble(), 300);
+  }
+};
+
+window.submitUnscramble = ()=>{
+  if(_unscBuilt.length === 0) return;
+  clearUnscTimer();
+  const q = _unscSentences[_unscIdx];
+  const answer = _unscBuilt.map(b=>b.word).join(' ');
+  const correct = answer.trim().toLowerCase() === q.en.trim().toLowerCase();
+
+  // 결과 표시
+  const builtEl = document.getElementById('unscBuilt');
+  if(builtEl){
+    builtEl.style.color = correct ? '#059669' : '#e05050';
+    if(!correct) builtEl.textContent = `❌ ${answer}\n✅ ${q.en}`;
+  }
+  if(correct) _unscCorrect++; else _unscWrong++;
+
+  // 제출 버튼 비활성
+  const btn = document.getElementById('unscSubmitBtn');
+  if(btn) btn.disabled = true;
+
+  setTimeout(()=>{
+    if(builtEl) builtEl.style.color = '';
+    _unscIdx++;
+    showUnscQuestion();
+  }, correct ? 600 : 1200);
+};
+
+window.skipUnscramble = ()=>{
+  clearUnscTimer();
+  _unscWrong++;
+  _unscIdx++;
+  showUnscQuestion();
+};
+
+function startUnscTimer(){
+  _unscTimeLeft = 30;
+  updateUnscTimerUI();
+  _unscTimer = setInterval(()=>{
+    _unscTimeLeft--;
+    updateUnscTimerUI();
+    if(_unscTimeLeft <= 0){
+      clearUnscTimer();
+      _unscWrong++;
+      _unscIdx++;
+      showUnscQuestion();
+    }
+  }, 1000);
+}
+function clearUnscTimer(){ clearInterval(_unscTimer); }
+function updateUnscTimerUI(){
+  const txt = document.getElementById('unscTimerText');
+  const arc = document.getElementById('unscTimerArc');
+  if(txt) txt.textContent = _unscTimeLeft;
+  if(arc) arc.style.strokeDashoffset = 113*(1-_unscTimeLeft/30);
+}
+
+async function showUnscResult(){
+  const total = _unscCorrect + _unscWrong;
+  const score = Math.round((_unscCorrect/Math.max(total,1))*100);
+  const passScore = _unscTest?.passScore ?? 80;
+  const passed = score >= passScore;
+
+  show('result');
+  document.getElementById('resultScore').textContent = score+'점';
+  document.getElementById('resultLabel').textContent =
+    passed ? `🎉 통과! (${passScore}점 이상)` : score>=60?'잘 했어요!':'조금 더 연습해요 💪';
+  document.getElementById('resultCorrect').textContent = _unscCorrect;
+  document.getElementById('resultWrong').textContent = _unscWrong;
+  document.getElementById('resultTotal').textContent = total;
+
+  if(currentUser && userProfile && currentTestId){
+    try{
+      const today = new Date().toISOString().slice(0,10);
+      await addDoc(collection(db,'scores'),{
+        uid:currentUser.uid, userId:currentUser.uid,
+        userName:userProfile.name, name:userProfile.name,
+        group:userProfile.group||'',
+        testId:currentTestId, testName:currentTestName,
+        bookName:_unscTest?.bookName||'',
+        mode:'unscramble', testMode:'unscramble',
+        score, correct:_unscCorrect, wrong:_unscWrong, total,
+        passed, passScore,
+        date:today, createdAt:serverTimestamp()
+      });
+      if(passed){
+        await setDoc(
+          doc(db,'tests',currentTestId,'userCompleted',currentUser.uid),
+          {uid:currentUser.uid, userName:userProfile.name, score, date:today, completedAt:serverTimestamp()},
+          {merge:true}
+        );
+      }
+    }catch(e){ console.log('점수저장실패',e); }
+  }
+}
+
+// updateTestBadge에 언스크램블 뱃지도 추가
+async function updateUnscBadge(){
+  const badge = document.getElementById('unscrambleBadge');
+  if(!badge||!currentUser||!userProfile) return;
+  try{
+    const myGroup=userProfile.group||'', myUid=currentUser.uid;
+    const snap=await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
+    const allTests=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myTests=filterMyTests(allTests,myGroup,myUid).filter(t=>t.testMode==='unscramble');
+    const completedSet=new Set();
+    await Promise.all(myTests.map(async t=>{
+      try{ const d=await getDoc(doc(db,'tests',t.id,'userCompleted',myUid)); if(d.exists())completedSet.add(t.id); }catch(e){}
+    }));
+    const n=myTests.filter(t=>!completedSet.has(t.id)).length;
+    badge.textContent = n>99?'99+':n;
+    badge.style.display = n>0?'flex':'none';
+  }catch(e){ badge.style.display='none'; }
+}
+
 // ── TTS 발음 읽기 ─────────────────────────────────────────
 window.speakCurrentWord=()=>{
   let word = null;
@@ -2437,7 +2698,7 @@ window.addEventListener('popstate',e=>{
   _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
 
-window.goHome=()=>{show('home');clearTimers();updateTestBadge();};
+window.goHome=()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();};
 
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;
