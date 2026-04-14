@@ -122,7 +122,7 @@
     .unsc-word-btn{background:white;border:2px solid var(--teal);border-radius:10px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.06);}
     .unsc-word-btn:active{transform:scale(0.95);}
     .unsc-word-btn.used{opacity:0.2;pointer-events:none;text-decoration:line-through;}
-    .reset-btn{background:#f1f5f9;color:#64748b;border:none;border-radius:14px;padding:10px 18px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px;box-shadow:0 2px 8px rgba(0,0,0,.10);transition:opacity .15s;}
+    .reset-btn{background:#fee2e2;color:#b91c1c;border:none;border-radius:14px;padding:10px 20px;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(185,28,28,.25);transition:opacity .15s;letter-spacing:0;}
     .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
     .submit-btn:active{opacity:.7;}
     .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -435,7 +435,7 @@
         </svg>
         <div class="timer-text" id="unscTimerText">30</div>
       </div>
-      <button class="reset-btn" id="unscResetBtn" onclick="resetUnscramble()" title="다시 선택" style="opacity:0.3;">«</button>
+      <button class="reset-btn" id="unscResetBtn" onclick="resetUnscramble()" title="초기화" style="opacity:0.3;">R</button>
       <button class="submit-btn" id="unscSubmitBtn" onclick="submitUnscramble()" disabled>▶▶</button>
       <button class="skip-btn" onclick="skipUnscramble()">SKIP</button>
     </div>
@@ -1286,9 +1286,10 @@ function _evaluateQuizChoice(idx, ok, nextFn){
     document.getElementById('choice'+idx)?.classList.add('wrong');
     document.getElementById('cn'+idx)?.classList.add('wrong');
     wrong++;
-    // 정답 표시
+    // 정답 버튼 강조 - data 속성 기반으로 찾기 (더 안전)
     document.querySelectorAll('.choice-btn').forEach((b,i)=>{
-      if(b.onclick?.toString().includes(',true)')){
+      const onclickStr = b.getAttribute('onclick')||'';
+      if(onclickStr.includes(',true)')){
         b.classList.add('correct');
         document.getElementById('cn'+i)?.classList.add('correct');
       }
@@ -1554,7 +1555,17 @@ async function showResult(){
     }catch(e){console.log('점수저장실패',e);}
   }
 }
-window.retrySession=()=>{correct=0;wrong=0;currentQ=0;spellQ=0;doStart();};
+window.retrySession=()=>{
+  if(lastMode==='unscramble'){
+    // 언스크램블 재시작
+    _unscIdx=0; _unscCorrect=0; _unscWrong=0;
+    if(_unscSentences.length>0){ show('unscramble'); showUnscQuestion(); }
+    else { goHome(); }
+  } else {
+    correct=0; wrong=0; currentQ=0; spellQ=0;
+    doStart();
+  }
+};
 
 // ── 랭킹 ─────────────────────────────────────────────────
 window.goRanking=async()=>{
@@ -2654,6 +2665,7 @@ async function showUnscResult(){
   const score = Math.round((_unscCorrect/Math.max(total,1))*100);
   const passScore = _unscTest?.passScore ?? 80;
   const passed = score >= passScore;
+  lastMode = 'unscramble'; // 다시 풀기 시 올바른 모드 재시작 위해
 
   show('result');
   document.getElementById('resultScore').textContent = score+'점';
