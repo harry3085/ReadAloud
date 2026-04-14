@@ -2485,12 +2485,15 @@ window.startUnscrambleTest = async(testId, testName)=>{
   currentTestName = testName;
 
   const words = _unscTest.words||[];
-  _unscSentences = words.map(w=>({
+  let sentences = words.map(w=>({
     en: w.en||'',
     ko: w.ko||'',
     tokens: (w.en||'').trim().split(/\s+/).filter(Boolean),
     shuffled: shuffle((w.en||'').trim().split(/\s+/).filter(Boolean))
   }));
+  // mix:true면 문제 출제 순서도 랜덤
+  if(_unscTest.mix !== false) sentences = shuffle(sentences);
+  _unscSentences = sentences;
   _unscIdx = 0; _unscCorrect = 0; _unscWrong = 0; _unscSubmitted = false;
   show('unscramble');
   showUnscQuestion();
