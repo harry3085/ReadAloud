@@ -3297,37 +3297,64 @@ window.renderTestStep3 = function(){
 
       <!-- 오른쪽: 문항 수 + 단어 분석 -->
       <div style="display:flex;flex-direction:column;gap:16px;">
-        <div>
-          <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">문항 수</div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
-            <input type="number" id="testCount" value="${defaultCount}" min="4" max="${maxCount}"
-              onchange="testData.count=parseInt(this.value)||20;updateSpellPreview()"
-              style="border:1px solid var(--border);border-radius:6px;padding:8px 12px;width:80px;font-size:14px;font-weight:600;outline:none;text-align:center;">
-            <span style="color:#bbb;">/ 최대 ${maxCount}개</span>
+
+        <!-- 언스크램블 토글 (최상단) -->
+        <div style="background:#fff8e1;border:2px solid #ffe082;border-radius:10px;padding:12px 14px;">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <input type="checkbox" id="unscrambleCheck"
+              onchange="toggleUnscrambleMode(this.checked)"
+              ${testData.isUnscramble?'checked':''}
+              style="width:18px;height:18px;cursor:pointer;">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#b45309;">🔀 언스크램블 문제</div>
+              <div style="font-size:11px;color:#92400e;margin-top:2px;">단어(문장)를 섞어놓고 순서대로 클릭하는 문제</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- 일반 문제 구성 (언스크램블 선택 시 비활성) -->
+        <div id="normalTestOptions">
+          <div style="margin-bottom:16px;">
+            <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">문항 수</div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+              <input type="number" id="testCount" value="${defaultCount}" min="4" max="${maxCount}"
+                onchange="testData.count=parseInt(this.value)||20;updateSpellPreview()"
+                style="border:1px solid var(--border);border-radius:6px;padding:8px 12px;width:80px;font-size:14px;font-weight:600;outline:none;text-align:center;">
+              <span style="color:#bbb;">/ 최대 ${maxCount}개</span>
+            </div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">옵션</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="mixCheck" checked onchange="testData.mix=this.checked"> 문제 순서 섞기
+            </label>
+          </div>
+          <!-- 문제 구성 미리보기 -->
+          <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:10px;padding:14px;margin-bottom:0;">
+            <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:10px;">📊 문제 구성 미리보기</div>
+            <div id="spellPreview" style="font-size:13px;line-height:2;"></div>
           </div>
         </div>
 
         <div>
-          <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">옵션</div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="mixCheck" checked onchange="testData.mix=this.checked"> 문제 순서 섞기
-          </label>
+          <div style="font-size:13px;color:var(--gray);margin-bottom:8px;font-weight:600;">
+            통과 점수 <span style="font-weight:400;font-size:11px;">(이 점수 이상이면 시험 완료 처리)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="passScore" value="${testData.passScore||80}" min="0" max="100"
+              style="border:1px solid var(--border);border-radius:6px;padding:8px 12px;width:80px;font-size:14px;font-weight:600;outline:none;text-align:center;">
+            <span style="color:#bbb;">점 이상</span>
+            <span style="font-size:12px;color:var(--teal);padding:3px 8px;background:#e0f5f5;border-radius:10px;">기본 80점</span>
+          </div>
         </div>
 
-        <!-- 문제 구성 미리보기 -->
-        <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:10px;padding:14px;">
-          <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:10px;">📊 문제 구성 미리보기</div>
-          <div id="spellPreview" style="font-size:13px;line-height:2;"></div>
-        </div>
-
-        <!-- 선택된 단어 목록 미리보기 -->
+        <!-- 선택된 단어/문장 목록 미리보기 -->
         <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;max-height:160px;overflow-y:auto;">
-          <div style="font-size:11px;font-weight:600;color:var(--gray);margin-bottom:6px;">선택된 단어 목록</div>
+          <div style="font-size:11px;font-weight:600;color:var(--gray);margin-bottom:6px;">선택된 단어/문장 목록</div>
           ${allWords.slice(0,20).map(w=>`
             <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid #eee;">
               <span>${w.en}</span>
               <span style="color:var(--gray);">${w.ko}</span>
-
             </div>`).join('')}
           ${allWords.length>20?`<div style="text-align:center;color:#bbb;font-size:11px;margin-top:4px;">... 외 ${allWords.length-20}개</div>`:''}
         </div>
@@ -3386,11 +3413,20 @@ window.updateSpellPreview = () => {
     </div>`;
 };
 
+window.toggleUnscrambleMode = (checked) => {
+  testData.isUnscramble = checked;
+  const el = document.getElementById('normalTestOptions');
+  if(el) el.style.opacity = checked ? '0.35' : '1';
+  if(el) el.style.pointerEvents = checked ? 'none' : '';
+};
+
 window.goStep4FromStep3 = () => {
+  testData.isUnscramble = document.getElementById('unscrambleCheck')?.checked || false;
   testData.count = parseInt(document.getElementById('testCount')?.value)||20;
   testData.mix = document.getElementById('mixCheck')?.checked ?? true;
   testData.qType = document.querySelector('input[name=qtype]:checked')?.value || 'both';
   testData.spellRatio = parseInt(document.getElementById('spellRatioSlider')?.value)||0;
+  testData.passScore = parseInt(document.getElementById('passScore')?.value)||80;
   renderTestStep4();
 };
 
@@ -3444,6 +3480,16 @@ window.renderTestStep4 = function(){
           <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">문제 섞기</div>
           <div style="font-weight:600;">${testData.mix?'✅ 사용':'❌ 미사용'}</div>
         </div>
+        <div>
+          <div style="color:var(--gray);font-size:11px;margin-bottom:3px;">통과 점수</div>
+          <div style="font-weight:600;color:var(--teal);">${testData.passScore||80}점 이상</div>
+        </div>
+        ${testData.isUnscramble?`
+        <div style="grid-column:1/-1;">
+          <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#b45309;">
+            🔀 언스크램블 모드 — 문장 순서 맞추기 문제
+          </div>
+        </div>`:''}
       </div>
     </div>
 
@@ -3519,6 +3565,8 @@ window.publishTest = async() => {
       mix: testData.mix,
       words: finalWords.map(w=>({en:w.en, ko:w.ko, testType:w.testType})),
       active: true,
+      passScore: testData.passScore||80,
+      testMode: testData.isUnscramble ? 'unscramble' : 'word',
       createdAt: serverTimestamp(),
       createdBy: currentUser.uid
     });
@@ -3625,6 +3673,8 @@ window.generateAndSaveTest = async() => {
       qType:testData.qType, count:words.length, mix:testData.mix,
       words:words.map(w=>({en:w.en,ko:w.ko})),
       active:true,
+      passScore: testData.passScore||80,
+      testMode: testData.isUnscramble ? 'unscramble' : 'word',
       createdAt:serverTimestamp(), createdBy:currentUser.uid
     });
     showToast('✅ 시험이 저장됐어요! 학생 앱에 표시됩니다.');
