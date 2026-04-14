@@ -11,7 +11,7 @@
     :root{--teal:#3BBFBF;--teal-dark:#2a9f9f;--bg:#e8f4f4;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#5aabcf;--purple:#8b7dd8;--green:#4bc27d;}
     html,body{height:100%;overflow:hidden;}
     #app{height:100vh;overflow:hidden;position:relative;}
-    .screen{display:none;height:100vh;background:var(--bg);flex-direction:column;overflow:hidden;}
+    .screen{display:none;height:100vh;height:calc(var(--vh,1vh)*100);background:var(--bg);flex-direction:column;overflow:hidden;}
     .screen.active{display:flex;}
     .scroll-content{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
     #loading{align-items:center;justify-content:center;background:var(--bg);}
@@ -839,7 +839,13 @@ let lastSelectedUnitId = null;
 
 // ── 유틸 ─────────────────────────────────────────────────
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-window.show = id => { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); };
+window.show = id => {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  // 스펠링 화면 벗어날 때 transform 초기화
+  const spelling = document.getElementById('spelling');
+  if(spelling && id !== 'spelling') spelling.style.transform = '';
+};
 window.closeModal = id => document.getElementById(id).classList.add('hidden');
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);}
@@ -2470,13 +2476,14 @@ window.doSignup=async()=>{
 };
 
 // ── 언스크램블 ──────────────────────────────────────────────
-let _unscTest = null;       // 현재 시험 데이터
-let _unscSentences = [];    // 문제 배열 [{en, ko, shuffled:[]}]
-let _unscIdx = 0;           // 현재 문제 인덱스
-let _unscBuilt = [];        // 선택된 단어 배열
+let _unscTest = null;
+let _unscSentences = [];
+let _unscIdx = 0;
+let _unscBuilt = [];
 let _unscTimer = null;
 let _unscTimeLeft = 30;
 let _unscCorrect = 0, _unscWrong = 0;
+let _unscSubmitted = false;  // 이중 제출 방지 플래그
 
 window.startUnscrambleTest = async(testId, testName)=>{
   const snap = await getDoc(doc(db,'tests',testId));
@@ -2486,46 +2493,48 @@ window.startUnscrambleTest = async(testId, testName)=>{
   currentTestId = testId;
   currentTestName = testName;
 
-  // 문장(en) → 단어 단위로 섞기
   const words = _unscTest.words||[];
   _unscSentences = words.map(w=>({
     en: w.en||'',
     ko: w.ko||'',
-    tokens: (w.en||'').trim().split(/\s+/),
-    shuffled: shuffle((w.en||'').trim().split(/\s+/))
+    tokens: (w.en||'').trim().split(/\s+/).filter(Boolean),
+    shuffled: shuffle((w.en||'').trim().split(/\s+/).filter(Boolean))
   }));
-  _unscIdx = 0; _unscCorrect = 0; _unscWrong = 0;
+  _unscIdx = 0; _unscCorrect = 0; _unscWrong = 0; _unscSubmitted = false;
   show('unscramble');
   showUnscQuestion();
 };
 
 function showUnscQuestion(){
   clearUnscTimer();
-  if(_unscIdx >= _unscSentences.length){ showUnscResult(); return; }
+  _unscSubmitted = false;  // 새 문제마다 제출 플래그 초기화
+
+  if(_unscIdx >= _unscSentences.length){
+    showUnscResult();
+    return;
+  }
+
   const q = _unscSentences[_unscIdx];
   _unscBuilt = [];
 
   document.getElementById('unscProgress').textContent = (_unscIdx+1)+'/'+_unscSentences.length;
   document.getElementById('unscMeaning').textContent = q.ko;
 
-  // 완성 문장 영역 초기화
   const builtEl = document.getElementById('unscBuilt');
   if(builtEl){
-    builtEl.textContent = '';
+    builtEl.innerHTML = '';
     builtEl.style.color = '';
     builtEl.style.background = '';
     builtEl.style.borderRadius = '';
     builtEl.style.padding = '';
   }
 
-  // 섞인 단어 버튼 렌더
   document.getElementById('unscWords').innerHTML = q.shuffled.map((w,i)=>
     `<button class="unsc-word-btn" id="unscW${i}" onclick="pickUnscWord(${i},'${w.replace(/'/g,"\\'")}')">
       ${w}
     </button>`
   ).join('');
 
-  // 버튼 상태 초기화
   const submitBtn = document.getElementById('unscSubmitBtn');
   if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = '▶▶'; }
   const resetBtn = document.getElementById('unscResetBtn');
@@ -2534,44 +2543,16 @@ function showUnscQuestion(){
   startUnscTimer();
 }
 
-window.pickUnscWord = (idx, word)=>{
-  const btn = document.getElementById('unscW'+idx);
-  if(!btn || btn.classList.contains('used')) return;
-  btn.classList.add('used');
-  _unscBuilt.push({idx, word});
-
-  // 완성 중인 문장 표시
-  const builtEl = document.getElementById('unscBuilt');
-  if(builtEl) builtEl.textContent = _unscBuilt.map(b=>b.word).join(' ');
-
-  // 제출 버튼 활성 (자동 제출 없음 - ▶▶ 눌러야 제출)
-  const submitBtn = document.getElementById('unscSubmitBtn');
-  if(submitBtn) submitBtn.disabled = false;
-  const resetBtn = document.getElementById('unscResetBtn');
-  if(resetBtn) resetBtn.style.opacity = '1';
-};
-
-// 리셋: 선택 취소하고 단어 버튼 다시 활성
-window.resetUnscramble = ()=>{
-  _unscBuilt = [];
-  // 모든 단어 버튼 used 해제
-  document.querySelectorAll('.unsc-word-btn').forEach(b=>b.classList.remove('used'));
-  // 완성 문장 초기화
-  const builtEl = document.getElementById('unscBuilt');
-  if(builtEl){ builtEl.textContent=''; builtEl.style.color=''; builtEl.style.background=''; }
-  // 제출 버튼 비활성
-  const submitBtn = document.getElementById('unscSubmitBtn');
-  if(submitBtn) submitBtn.disabled = true;
-  const resetBtn = document.getElementById('unscResetBtn');
-  if(resetBtn) resetBtn.style.opacity = '0.3';
-  // 시간은 계속 흐름 (타이머 유지)
-};
-
 window.submitUnscramble = ()=>{
-  if(_unscBuilt.length === 0) return;
+  if(_unscSubmitted) return;  // 이중 제출 방지
+  if(_unscBuilt.length === 0) return;  // 아무것도 선택 안 했으면 무시
+
+  _unscSubmitted = true;
   clearUnscTimer();
 
   const q = _unscSentences[_unscIdx];
+  if(!q){ showUnscResult(); return; }  // 범위 초과 안전 처리
+
   const answer = _unscBuilt.map(b=>b.word).join(' ');
   const isCorrect = answer.trim().toLowerCase() === q.en.trim().toLowerCase();
 
@@ -2579,10 +2560,9 @@ window.submitUnscramble = ()=>{
   document.querySelectorAll('.unsc-word-btn').forEach(b=>{ b.style.pointerEvents='none'; });
   const submitBtn = document.getElementById('unscSubmitBtn');
   const resetBtn  = document.getElementById('unscResetBtn');
-  if(submitBtn){ submitBtn.disabled=true; submitBtn.textContent='▶▶'; }
+  if(submitBtn){ submitBtn.disabled=true; }
   if(resetBtn)  resetBtn.style.opacity='0.3';
 
-  // 정답/오답 피드백 (완성 문장 영역에 표시)
   const builtEl = document.getElementById('unscBuilt');
   if(builtEl){
     if(isCorrect){
@@ -2603,19 +2583,46 @@ window.submitUnscramble = ()=>{
 
   if(isCorrect) _unscCorrect++; else _unscWrong++;
 
-  // 정답이면 0.8초, 오답이면 2초 후 다음 문제
   setTimeout(()=>{
     _unscIdx++;
     showUnscQuestion();
   }, isCorrect ? 800 : 2000);
 };
 
+window.pickUnscWord = (idx, word)=>{
+  if(_unscSubmitted) return;  // 제출 후엔 클릭 무시
+  const btn = document.getElementById('unscW'+idx);
+  if(!btn || btn.classList.contains('used')) return;
+  btn.classList.add('used');
+  _unscBuilt.push({idx, word});
+  const builtEl = document.getElementById('unscBuilt');
+  if(builtEl) builtEl.textContent = _unscBuilt.map(b=>b.word).join(' ');
+  const submitBtn = document.getElementById('unscSubmitBtn');
+  if(submitBtn) submitBtn.disabled = false;
+  const resetBtn = document.getElementById('unscResetBtn');
+  if(resetBtn) resetBtn.style.opacity = '1';
+};
+
+window.resetUnscramble = ()=>{
+  if(_unscSubmitted) return;
+  _unscBuilt = [];
+  document.querySelectorAll('.unsc-word-btn').forEach(b=>b.classList.remove('used'));
+  const builtEl = document.getElementById('unscBuilt');
+  if(builtEl){ builtEl.innerHTML=''; builtEl.style.background=''; builtEl.style.padding=''; }
+  const submitBtn = document.getElementById('unscSubmitBtn');
+  if(submitBtn) submitBtn.disabled = true;
+  const resetBtn = document.getElementById('unscResetBtn');
+  if(resetBtn) resetBtn.style.opacity = '0.3';
+};
+
 window.skipUnscramble = ()=>{
+  if(_unscSubmitted) return;
+  _unscSubmitted = true;
   clearUnscTimer();
   // 스킵 시 정답 잠깐 보여주기
   const q = _unscSentences[_unscIdx];
   const builtEl = document.getElementById('unscBuilt');
-  if(builtEl){
+  if(builtEl && q){
     builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:3px;">건너뜀</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
     builtEl.style.background = '#f8f9fa';
     builtEl.style.padding = '8px 10px';
@@ -2633,14 +2640,16 @@ function startUnscTimer(){
     updateUnscTimerUI();
     if(_unscTimeLeft <= 0){
       clearUnscTimer();
-      // 시간 만료: 현재 입력 상태로 자동 제출
+      if(_unscSubmitted) return;  // 이미 제출된 경우 무시
       if(_unscBuilt.length > 0){
+        // 입력 있으면 그대로 제출
         submitUnscramble();
       } else {
-        // 아무것도 안 선택했으면 그냥 틀림
+        // 아무것도 선택 안 했으면 틀림 처리
+        _unscSubmitted = true;
         const q = _unscSentences[_unscIdx];
         const builtEl = document.getElementById('unscBuilt');
-        if(builtEl){
+        if(builtEl && q){
           builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:3px;">시간 초과</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
           builtEl.style.background = '#f8f9fa';
           builtEl.style.padding = '8px 10px';
@@ -2840,13 +2849,32 @@ window.addEventListener('appinstalled',()=>{
   showToast('앱이 설치됐어요! 🎉');
 });
 
-// ── 키패드 올라올 때 화면 고정 (스펠링 화면) ──────────────
+// ── 모바일 키패드 대응: 실제 뷰포트 높이 고정 ───────────────
+function setVh(){
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--vh', vh+'px');
+}
+setVh();
+window.addEventListener('resize', setVh);
+
+// visualViewport 지원 시 더 정확하게
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', ()=>{
+    // 키패드가 올라와도 스펠링 화면 내용이 위로 밀리지 않게
     const spelling = document.getElementById('spelling');
-    if(!spelling?.classList.contains('active')) return;
-    // 뷰포트 높이가 줄면 (키패드 올라옴) 화면 상단으로 스크롤 방지
-    window.scrollTo(0,0);
+    if(spelling?.classList.contains('active')){
+      // 뷰포트 오프셋만큼 화면을 위로 당김
+      spelling.style.transform = `translateY(-${window.visualViewport.offsetTop}px)`;
+    } else {
+      if(spelling) spelling.style.transform = '';
+    }
+    setVh();
+  });
+  window.visualViewport.addEventListener('scroll', ()=>{
+    const spelling = document.getElementById('spelling');
+    if(spelling?.classList.contains('active')){
+      spelling.style.transform = `translateY(-${window.visualViewport.offsetTop}px)`;
+    }
   });
 }
 
