@@ -4135,7 +4135,7 @@ function updatePtSelCount(){
     if(nameEl && !nameEl._userEdited){
       const defaultName = sel.length === 1
         ? `${sel[0].bookName} ${sel[0].unitName}`
-        : sel.map(u=>u.unitName).join(', ');
+        : `${sel[0].bookName} ${sel.map(u=>u.unitName).join(', ')}`;
       nameEl.value = defaultName;
     }
   }
@@ -4169,7 +4169,7 @@ window.updatePtPreview = () => {
   if(!previewEl) return;
 
   const examName = (sel.length ? (document.getElementById('ptExamName')?.value.trim()
-    || (sel.length===1 ? sel[0].bookName+' '+sel[0].unitName : sel.map(u=>u.unitName).join(', '))) : '');
+    || (sel.length===1 ? sel[0].bookName+' '+sel[0].unitName : sel[0].bookName+' '+sel.map(u=>u.unitName).join(', '))) : '');
   const academy = document.getElementById('ptAcademy')?.value.trim() || '큰소리영어';
 
   const emptyBlock = `<div style="width:794px;min-height:1123px;background:white;margin:0 auto 16px;border-radius:4px;
