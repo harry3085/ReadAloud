@@ -119,8 +119,8 @@
     .spell-real-input{width:100%;padding:14px 16px;font-size:20px;font-weight:600;border:2px solid #ddd;border-radius:14px;outline:none;text-align:center;color:var(--text);background:white;letter-spacing:4px;}
     .spell-real-input:focus{border-color:var(--teal);}
     .spell-hint{text-align:center;font-size:13px;color:#aaa;margin-top:8px;}
-    .spell-boxes{display:flex;gap:5px;padding:12px 16px;flex-wrap:nowrap;justify-content:center;flex-shrink:0;overflow-x:auto;}
-    .spell-box{width:38px;height:46px;min-width:38px;background:white;border:2px solid #ddd;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text);flex-shrink:0;}
+    .spell-boxes{display:flex;gap:2px;padding:8px 12px;flex-wrap:wrap;justify-content:center;flex-shrink:0;}
+    .spell-box{width:32px;height:40px;min-width:0;background:white;border:2px solid #ddd;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--text);cursor:pointer;}
     .spell-box.active{background:#e8f9f9;border:2px solid var(--teal);}
     .spell-box.filled{background:white;border:2px solid var(--teal);color:var(--teal);}
     #result{align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
@@ -402,10 +402,10 @@
     <div class="quiz-header"><button class="quit-btn" onclick="goHome()">✕</button><div class="progress-pill">✏️ <span id="spellProgress">1/10</span></div></div>
     <div class="quiz-instruction">뜻에 알맞는 영어 단어를 입력하세요.</div>
     <div class="word-card"><div class="word" id="spellWord"></div></div>
-    <div class="spell-input-wrap">
-      <input class="spell-real-input" type="text" id="spellInput" placeholder="영어로 입력 후 Enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-      <div class="spell-hint" id="spellHint"></div>
+    <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;">
+      <input class="spell-real-input" type="text" id="spellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
     </div>
+    <div id="spellHint" style="text-align:center;font-size:13px;color:var(--gray);margin:4px 0;flex-shrink:0;"></div>
     <div class="spell-boxes" id="spellBoxes"></div>
     <div class="quiz-footer">
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
@@ -1048,18 +1048,14 @@ function showMixedQuestion(){
     spellQ = 0;
     // progress 표시 업데이트
     document.getElementById('spellProgress').textContent = `${mixedIdx+1}/${mixedQueue.length}`;
-    document.getElementById('spellWord').textContent = word.ko; // 한글 보여주기
-    // hint 초기화
-    const boxes = document.getElementById('spellBoxes');
-    const hint = document.getElementById('spellHint');
+    document.getElementById('spellWord').textContent = word.ko;
+    document.getElementById('spellHint').textContent = '총 '+word.en.length+'글자';
     const input = document.getElementById('spellInput');
-    const letters = word.en.split('');
-    boxes.innerHTML = letters.map((_,i)=>`<div class="spell-box" id="sb${i}">_</div>`).join('');
-    hint.textContent='';
     input.value='';
-    input.focus();
+    renderSpellBoxes('', word.en.length);
     // 스펠링 화면으로 전환
     show('spelling');
+    setTimeout(()=>focusSpellInput(), 150);
     startSpellTimer();
   } else {
     // 4지선다 모드로 전환
@@ -1072,6 +1068,8 @@ function showMixedQuestion(){
         <span class="choice-num" id="cn${i}">${i+1}</span>${c.ko}
       </button>`).join('');
     show('quiz');
+    // 자동 음성 읽기
+    setTimeout(()=>speakWord(word.en), 300);
     startTimer();
   }
 }
@@ -1098,6 +1096,8 @@ function showQuizQuestion(){
     <button class="choice-btn" id="choice${i}" onclick="answerQuiz(${i},${choices[i].en===q.en})">
       <span class="choice-num" id="cn${i}">${i+1}</span><span>${c.ko}</span>
     </button>`).join('');
+  // 자동 음성 읽기
+  setTimeout(()=>speakWord(q.en), 300);
   startTimer();
 }
 window.answerQuiz=(idx,ok)=>{
@@ -1114,42 +1114,97 @@ window.nextQuestion=()=>{
 function startTimer(){timeLeft=10;updateTimerUI();timerInterval=setInterval(()=>{timeLeft--;updateTimerUI();if(timeLeft<=0){clearTimers();wrong++;nextQuestion();}},1000);}
 function updateTimerUI(){document.getElementById('timerText').textContent=timeLeft;document.getElementById('timerArc').style.strokeDashoffset=113*(1-timeLeft/10);}
 
+// ── 공통 TTS 함수 ─────────────────────────────────────────
+function speakWord(word){
+  if(!word) return;
+  if('speechSynthesis' in window){
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(word);
+    utter.lang='en-US'; utter.rate=0.85; utter.pitch=1;
+    window.speechSynthesis.speak(utter);
+  }
+}
+
 function showSpellQuestion(){
-  clearTimers();if(spellQ>=spellQuestions.length){showResult();return;}
+  clearTimers();
+  if(spellQ>=spellQuestions.length){showResult();return;}
   const q=spellQuestions[spellQ];
   document.getElementById('spellProgress').textContent=(spellQ+1)+'/'+spellQuestions.length;
   document.getElementById('spellWord').textContent=q.ko;
   document.getElementById('spellInput').value='';
   document.getElementById('spellHint').textContent='총 '+q.en.length+'글자';
   renderSpellBoxes('',q.en.length);
-  setTimeout(()=>document.getElementById('spellInput').focus(),100);
+  // 박스 클릭해서 input 포커스
+  setTimeout(()=>focusSpellInput(),100);
   startSpellTimer();
 }
-function renderSpellBoxes(val,len){
-  document.getElementById('spellBoxes').innerHTML=Array.from({length:len},(_,i)=>{
-    const ch=val[i]||'';const cls=ch?'spell-box filled':(i===val.length?'spell-box active':'spell-box');
-    return `<div class="${cls}">${ch}</div>`;
+
+function focusSpellInput(){
+  const inp = document.getElementById('spellInput');
+  if(inp){ inp.focus(); inp.click(); }
+}
+
+function renderSpellBoxes(val, len){
+  const boxes = document.getElementById('spellBoxes');
+  // 박스 크기를 단어 길이에 따라 동적 조정
+  const boxW = len > 12 ? 26 : len > 8 ? 30 : 34;
+  const fontSize = len > 12 ? 13 : len > 8 ? 15 : 17;
+  boxes.innerHTML = Array.from({length:len},(_,i)=>{
+    const ch = val[i]||'';
+    const cls = ch ? 'spell-box filled' : (i===val.length ? 'spell-box active' : 'spell-box');
+    return `<div class="${cls}" id="sb${i}"
+      style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;"
+      onclick="focusSpellInput()">${ch||'_'}</div>`;
   }).join('');
 }
+
+document.getElementById('spellBoxes').addEventListener('click', focusSpellInput);
+
 document.getElementById('spellInput').addEventListener('input',function(){
-  const q=spellQuestions[spellQ];if(!q)return;
-  let val=this.value.toLowerCase().replace(/[^a-z ]/g,'');
-  if(val.length>q.en.length)val=val.slice(0,q.en.length);
-  this.value=val;renderSpellBoxes(val,q.en.length);
+  const q=spellQuestions[spellQ]; if(!q) return;
+  let val = this.value.toLowerCase().replace(/[^a-z ]/g,'');
+  if(val.length > q.en.length) val = val.slice(0, q.en.length);
+  this.value = val;
+  renderSpellBoxes(val, q.en.length);
+
+  // 글자 수가 꽉 차면 자동 평가 (엔터 불필요)
+  if(val.length === q.en.length){
+    const ok = val.trim() === q.en.toLowerCase();
+    clearTimers();
+
+    // 정답/오답 박스 색상 표시
+    const boxes = document.getElementById('spellBoxes');
+    if(boxes){
+      boxes.querySelectorAll('.spell-box').forEach((b,i)=>{
+        const correct_char = q.en[i]?.toLowerCase();
+        const input_char = val[i];
+        b.style.background = ok ? '#d4f5e9' : (input_char===correct_char ? '#d4f5e9' : '#fde8e8');
+        b.style.borderColor = ok ? 'var(--teal)' : (input_char===correct_char ? 'var(--teal)' : '#e05050');
+        b.style.color = ok ? '#1a6b1a' : (input_char===correct_char ? '#1a6b1a' : '#e05050');
+        if(!ok) b.textContent = q.en[i]; // 정답 글자 보여주기
+      });
+    }
+
+    if(ok) correct++; else wrong++;
+
+    setTimeout(()=>{
+      if(lastMode==='mixed'){ mixedIdx++; showMixedQuestion(); }
+      else { spellQ++; showSpellQuestion(); }
+    }, ok ? 500 : 900);
+  }
 });
+
 document.getElementById('spellInput').addEventListener('keydown',function(e){
   if(e.key==='Enter'){
-    const q=spellQuestions[spellQ];if(!q)return;
-    const ok = this.value.trim().toLowerCase()===q.en.toLowerCase();
-    if(ok)correct++;else wrong++;
+    const q=spellQuestions[spellQ]; if(!q) return;
+    // 입력이 덜 됐을 때 Enter → 강제 제출
+    const val = this.value.trim().toLowerCase();
+    if(val.length === 0) return;
+    const ok = val === q.en.toLowerCase();
+    if(ok) correct++; else wrong++;
     clearTimers();
-    // 혼합 모드면 다음 혼합 문제로
-    if(lastMode==='mixed'){
-      mixedIdx++;
-      setTimeout(()=>showMixedQuestion(), 600);
-    } else {
-      spellQ++;showSpellQuestion();
-    }
+    if(lastMode==='mixed'){ mixedIdx++; setTimeout(()=>showMixedQuestion(), 500); }
+    else { spellQ++; showSpellQuestion(); }
   }
 });
 function startSpellTimer(){
@@ -2109,16 +2164,7 @@ window.doSignup=async()=>{
 // ── TTS 발음 읽기 ─────────────────────────────────────────
 window.speakCurrentWord=()=>{
   const q=questions[currentQ];if(!q)return;
-  const word=q.en;
-  if(!word)return;
-  if('speechSynthesis' in window){
-    window.speechSynthesis.cancel();
-    const utter=new SpeechSynthesisUtterance(word);
-    utter.lang='en-US';utter.rate=0.85;utter.pitch=1;
-    window.speechSynthesis.speak(utter);
-  } else {
-    showToast('이 브라우저는 발음 읽기를 지원하지 않아요.');
-  }
+  speakWord(q.en);
 };
 
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
