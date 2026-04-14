@@ -3310,6 +3310,13 @@ window.renderTestStep3 = function(){
               <div style="font-size:11px;color:#92400e;margin-top:2px;">단어(문장)를 섞어놓고 순서대로 클릭하는 문제</div>
             </div>
           </label>
+          <!-- 언스크램블 전용 순서 섞기 옵션 -->
+          <div id="unscrambleMixOption" style="margin-top:10px;padding-top:10px;border-top:1px solid #ffe082;display:${testData.isUnscramble?'block':'none'};">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:#92400e;">
+              <input type="checkbox" id="unscrambleMixCheck" ${testData.mix!==false?'checked':''} onchange="testData.mix=this.checked">
+              문제 출제 순서 랜덤하게 섞기
+            </label>
+          </div>
         </div>
 
         <!-- 일반 문제 구성 (언스크램블 선택 시 비활성) -->
@@ -3416,14 +3423,18 @@ window.updateSpellPreview = () => {
 window.toggleUnscrambleMode = (checked) => {
   testData.isUnscramble = checked;
   const el = document.getElementById('normalTestOptions');
-  if(el) el.style.opacity = checked ? '0.35' : '1';
-  if(el) el.style.pointerEvents = checked ? 'none' : '';
+  if(el){ el.style.opacity = checked ? '0.35' : '1'; el.style.pointerEvents = checked ? 'none' : ''; }
+  const mixOpt = document.getElementById('unscrambleMixOption');
+  if(mixOpt) mixOpt.style.display = checked ? 'block' : 'none';
 };
 
 window.goStep4FromStep3 = () => {
   testData.isUnscramble = document.getElementById('unscrambleCheck')?.checked || false;
   testData.count = parseInt(document.getElementById('testCount')?.value)||20;
-  testData.mix = document.getElementById('mixCheck')?.checked ?? true;
+  // 언스크램블이면 전용 mix 체크박스, 일반이면 기본 mix 체크박스
+  testData.mix = testData.isUnscramble
+    ? (document.getElementById('unscrambleMixCheck')?.checked ?? true)
+    : (document.getElementById('mixCheck')?.checked ?? true);
   testData.qType = document.querySelector('input[name=qtype]:checked')?.value || 'both';
   testData.spellRatio = parseInt(document.getElementById('spellRatioSlider')?.value)||0;
   testData.passScore = parseInt(document.getElementById('passScore')?.value)||80;
