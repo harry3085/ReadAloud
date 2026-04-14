@@ -1041,18 +1041,48 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
       <button class="btn btn-primary" id="tabPaste" onclick="switchBookTab('paste')" style="flex:1;justify-content:center;">📋 붙여넣기</button>
       <button class="btn btn-secondary" id="tabExcel" onclick="switchBookTab('excel')" style="flex:1;justify-content:center;">📊 엑셀 업로드</button>
     </div>
-    <div style="margin-bottom:12px;">
-      <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">교재명 *</div>
-      <input id="bookName" type="text" placeholder="교재명을 입력하세요" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+
+    <!-- 교재명 + Unit 설정 한 줄 -->
+    <div style="display:grid;grid-template-columns:1fr 200px;gap:10px;margin-bottom:12px;">
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">교재명 *</div>
+        <input id="bookName" type="text" placeholder="교재명을 입력하세요"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+      </div>
+      <div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">Unit 이름 접두사</div>
+        <input id="unitPrefix" type="text" value="Unit"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"
+          placeholder="Unit, Chapter ...">
+      </div>
     </div>
-    <div style="margin-bottom:12px;">
-      <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">Unit명 *</div>
-      <input id="unitName" type="text" placeholder="Unit명을 입력하세요 (예: Unit 1, Chapter 1)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+
+    <!-- Unit당 단어수 설정 -->
+    <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;font-weight:600;color:var(--teal);">📦 Unit 자동 분할</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="autoSplitUnit" checked onchange="toggleAutoSplit()">
+          단어 수 초과 시 자동으로 Unit 분할
+        </label>
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;" id="unitSizeWrap">
+          <span style="color:var(--gray);">Unit당</span>
+          <input type="number" id="wordsPerUnit" value="35" min="5" max="200"
+            onchange="try{localStorage.setItem('kunsori_wordsPerUnit',this.value);}catch(e){}updateSplitPreview()"
+            style="width:60px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;outline:none;text-align:center;">
+          <span style="color:var(--gray);">개</span>
+        </div>
+      </div>
+      <div id="splitPreviewMsg" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
     </div>
+
     <!-- 붙여넣기 탭 -->
     <div id="tabPasteArea">
       <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">📋 엑셀에서 영어·한글 두 열 선택 → 복사 → 붙여넣기</div>
-      <textarea id="pasteData" rows="8" placeholder="여기에 붙여넣기 (Tab으로 구분된 영어&#9;한글 형식)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;resize:none;outline:none;font-family:monospace;"></textarea>
+      <textarea id="pasteData" rows="8"
+        placeholder="여기에 붙여넣기 (Tab으로 구분된 영어&#9;한글 형식)"
+        oninput="updateSplitPreview()"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;resize:none;outline:none;font-family:monospace;"></textarea>
     </div>
     <!-- 엑셀 탭 -->
     <div id="tabExcelArea" style="display:none;">
@@ -1561,9 +1591,16 @@ window.saveStudent = async() => {
 window.openMyBookModal = () => {
   document.getElementById('mybookModal').style.display='flex';
   document.getElementById('bookName').value='';
-  document.getElementById('unitName').value='';
   document.getElementById('pasteData').value='';
   document.getElementById('bookPreview').innerHTML='';
+  const msgEl = document.getElementById('splitPreviewMsg');
+  if(msgEl) msgEl.textContent='';
+  // 저장된 wordsPerUnit 복원
+  try{
+    const saved = localStorage.getItem('kunsori_wordsPerUnit');
+    const el = document.getElementById('wordsPerUnit');
+    if(el && saved) el.value = saved;
+  }catch(e){}
 };
 window.closeMyBookModal = () => { document.getElementById('mybookModal').style.display='none'; };
 window.switchBookTab = (tab) => {
@@ -1622,29 +1659,112 @@ function previewBookData(){
     </table>
   </div>`;
 }
+// Unit 자동분할 토글
+window.toggleAutoSplit = () => {
+  const on = document.getElementById('autoSplitUnit')?.checked;
+  const wrap = document.getElementById('unitSizeWrap');
+  if(wrap) wrap.style.opacity = on ? '1' : '0.4';
+  updateSplitPreview();
+};
+
+// 분할 미리보기 메시지
+window.updateSplitPreview = () => {
+  const text = document.getElementById('pasteData')?.value || '';
+  const lines = text.split('\n').filter(l=>l.trim());
+  const words = lines.map(l=>{const p=l.split('\t');return{en:(p[0]||'').trim(),ko:(p[1]||'').trim()};}).filter(w=>w.en);
+  const autoSplit = document.getElementById('autoSplitUnit')?.checked;
+  const perUnit = parseInt(document.getElementById('wordsPerUnit')?.value)||35;
+  const prefix = document.getElementById('unitPrefix')?.value.trim()||'Unit';
+  const msgEl = document.getElementById('splitPreviewMsg');
+  if(!msgEl) return;
+  if(!words.length){ msgEl.textContent=''; return; }
+  if(!autoSplit){
+    msgEl.innerHTML = `<span style="color:var(--teal);">총 ${words.length}개 단어 → ${prefix} 1개로 저장</span>`;
+    return;
+  }
+  const unitCount = Math.ceil(words.length / perUnit);
+  const parts = Array.from({length:unitCount},(_,i)=>{
+    const from = i*perUnit+1, to = Math.min((i+1)*perUnit, words.length);
+    return `${prefix} ${i+1} (${from}~${to}번, ${to-from+1}개)`;
+  });
+  msgEl.innerHTML = `<span style="color:var(--teal);font-weight:600;">총 ${words.length}개 → ${unitCount}개 Unit으로 자동 분할</span><br>
+    <span style="color:#888;">${parts.join(' / ')}</span>`;
+};
+
 window.saveMyBook = async() => {
-  const bookName=document.getElementById('bookName').value.trim();
-  const unitName=document.getElementById('unitName').value.trim();
-  const text=document.getElementById('pasteData').value;
-  if(!bookName){alert('교재명을 입력하세요.');return;}
-  if(!unitName){alert('Unit명을 입력하세요.');return;}
-  const lines=text.split('\n').filter(l=>l.trim());
-  const words=lines.map(l=>{const p=l.split('\t');return{en:(p[0]||'').trim(),ko:(p[1]||'').trim()};}).filter(w=>w.en);
-  if(!words.length){alert('단어를 입력하세요.');return;}
+  const bookName = document.getElementById('bookName').value.trim();
+  const unitPrefix = document.getElementById('unitPrefix')?.value.trim() || 'Unit';
+  const autoSplit = document.getElementById('autoSplitUnit')?.checked ?? true;
+  const wordsPerUnit = parseInt(document.getElementById('wordsPerUnit')?.value)||35;
+
+  if(!bookName){ alert('교재명을 입력하세요.'); return; }
+
+  // 단어 파싱 (붙여넣기 or 엑셀 미리보기 데이터)
+  const text = document.getElementById('pasteData').value;
+  const lines = text.split('\n').filter(l=>l.trim());
+  const words = lines.map(l=>{
+    const p = l.split('\t');
+    return { en:(p[0]||'').trim(), ko:(p[1]||'').trim() };
+  }).filter(w=>w.en);
+
+  if(!words.length){ alert('단어를 입력하세요.'); return; }
+
+  // Unit 분할 계산
+  let units = [];
+  if(autoSplit && words.length > wordsPerUnit){
+    const unitCount = Math.ceil(words.length / wordsPerUnit);
+    for(let i=0;i<unitCount;i++){
+      units.push({
+        name: `${unitPrefix} ${i+1}`,
+        words: words.slice(i*wordsPerUnit, (i+1)*wordsPerUnit)
+      });
+    }
+  } else {
+    // 단일 Unit
+    units = [{ name: `${unitPrefix} 1`, words }];
+  }
+
+  const btn = document.querySelector('#mybookModal .btn-primary:last-child');
+  if(btn){ btn.textContent='저장 중...'; btn.disabled=true; }
+
   try{
     // books 컬렉션에 교재 생성
-    const bookRef=await addDoc(collection(db,'books'),{
-      name:bookName, unitCount:1, wordCount:words.length,
-      createdAt:serverTimestamp(), createdBy:currentUser.uid
+    const bookRef = await addDoc(collection(db,'books'),{
+      name: bookName,
+      unitCount: units.length,
+      wordCount: words.length,
+      createdAt: serverTimestamp(),
+      createdBy: currentUser.uid
     });
-    // units 서브컬렉션에 Unit 생성
-    await addDoc(collection(db,'books',bookRef.id,'units'),{
-      name:unitName, words, wordCount:words.length, createdAt:serverTimestamp()
-    });
+
+    // 각 Unit 저장
+    for(const u of units){
+      await addDoc(collection(db,'books',bookRef.id,'units'),{
+        name: u.name,
+        words: u.words,
+        wordCount: u.words.length,
+        createdAt: serverTimestamp()
+      });
+    }
+
     closeMyBookModal();
-    showToast(`✅ "${bookName}" 교재가 생성됐어요! (단어 ${words.length}개)`);
+    // 입력 초기화
+    document.getElementById('bookName').value='';
+    document.getElementById('pasteData').value='';
+    document.getElementById('bookPreview').innerHTML='';
+    document.getElementById('splitPreviewMsg').textContent='';
+
+    if(units.length > 1){
+      showToast(`✅ "${bookName}" 교재 생성 완료! (${units.length}개 Unit, 총 ${words.length}개 단어)`);
+    } else {
+      showToast(`✅ "${bookName}" 교재가 생성됐어요! (단어 ${words.length}개)`);
+    }
     await loadBooks();
-  }catch(e){alert('저장 실패: '+e.message);}
+  }catch(e){
+    alert('저장 실패: '+e.message);
+  } finally {
+    if(btn){ btn.textContent='✅ 교재 저장'; btn.disabled=false; }
+  }
 };
 async function loadBooks(){
   // 기본: 폴더 미배정 교재만 표시
