@@ -3042,27 +3042,36 @@ window.openRecHwDetail = async(hwId) => {
   document.getElementById('recHwContent').textContent = _recCurrentHw.content||'';
 
   // 기존 제출 내역 확인
-  const subSnap = await getDocs(query(collection(db,'recSubmissions'),
-    where('hwId','==',hwId)));
-  subSnap.docs.filter(d=>d.data().uid===currentUser.uid).forEach(d=>{
-    const slot = d.data().slot;
-    _recSubmittedSlots[slot] = true;
+  const subSnap = await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hwId)));
+  const myUid = currentUser.uid;
+  subSnap.docs.filter(d=>d.data().uid===myUid).forEach(d=>{
+    _recSubmittedSlots[d.data().slot] = true;
   });
+
+  // 피드백 확인
+  const fbSnap = await getDocs(query(collection(db,'recFeedbacks'), where('hwId','==',hwId), where('uid','==',myUid)));
+  const feedbacks = {}; // slot → feedback
+  fbSnap.docs.forEach(d=>{ feedbacks[d.data().slot] = d.data().feedback; });
 
   // 각 슬롯 UI 초기화
   [1,2,3].forEach(n=>{
-    resetRecSlotUI(n, _recSubmittedSlots[n]===true);
+    resetRecSlotUI(n, _recSubmittedSlots[n]===true, feedbacks[n]);
   });
 
   show('recHwDetail');
 };
 
-function resetRecSlotUI(n, alreadySubmitted){
+function resetRecSlotUI(n, alreadySubmitted, feedback){
   const statusEl = document.getElementById('recStatus'+n);
   const audioWrap = document.getElementById('recAudioWrap'+n);
   const btnRecord = document.getElementById('recBtnRecord'+n);
   const btnConfirm = document.getElementById('recBtnConfirm'+n);
   const btnSubmit = document.getElementById('recBtnSubmit'+n);
+  const block = document.getElementById('recBlock'+n);
+
+  // 피드백 영역 (기존에 있으면 제거 후 재생성)
+  const existingFb = document.getElementById('recFeedback'+n);
+  if(existingFb) existingFb.remove();
 
   if(alreadySubmitted){
     if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
@@ -3070,6 +3079,21 @@ function resetRecSlotUI(n, alreadySubmitted){
     if(btnConfirm) btnConfirm.style.display='none';
     if(btnSubmit) btnSubmit.style.display='none';
     if(audioWrap) audioWrap.style.display='none';
+    // 피드백 표시
+    if(block && feedback){
+      const fbDiv = document.createElement('div');
+      fbDiv.id = 'recFeedback'+n;
+      fbDiv.style.cssText = 'margin-top:10px;background:#e0f2fe;border-radius:8px;padding:10px 12px;border-left:3px solid #0284c7;';
+      fbDiv.innerHTML = `<div style="font-size:11px;color:#0284c7;font-weight:700;margin-bottom:4px;">💬 선생님 피드백</div>
+        <div style="font-size:13px;color:#1e40af;white-space:pre-wrap;">${feedback}</div>`;
+      block.appendChild(fbDiv);
+    } else if(block && !feedback){
+      const fbDiv = document.createElement('div');
+      fbDiv.id = 'recFeedback'+n;
+      fbDiv.style.cssText = 'margin-top:8px;font-size:11px;color:#bbb;text-align:center;';
+      fbDiv.textContent = '선생님 피드백 대기 중...';
+      block.appendChild(fbDiv);
+    }
   } else {
     if(statusEl){ statusEl.textContent='대기'; statusEl.style.background='#f5f5f5'; statusEl.style.color='#aaa'; }
     if(btnRecord){ btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#3BBFBF'; btnRecord.style.color='white'; }
@@ -3164,10 +3188,20 @@ window.submitRec = async(n) => {
     if(btnSubmit) btnSubmit.style.display='none';
     const btnRecord = document.getElementById('recBtnRecord'+n);
     if(btnRecord){ btnRecord.textContent='🔄 다시녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
-    showToast(`녹음 ${n}회차 제출 완료!`);
-    // 3개 모두 완료 시 알림
+    // 피드백 대기 메시지 표시
+    const block = document.getElementById('recBlock'+n);
+    const existingFb = document.getElementById('recFeedback'+n);
+    if(existingFb) existingFb.remove();
+    if(block){
+      const fbDiv = document.createElement('div');
+      fbDiv.id = 'recFeedback'+n;
+      fbDiv.style.cssText = 'margin-top:8px;font-size:11px;color:#bbb;text-align:center;';
+      fbDiv.textContent = '선생님 피드백 대기 중...';
+      block.appendChild(fbDiv);
+    }
+    showToast(`🎙 녹음 ${n}회차 제출 완료!`);
     if([1,2,3].every(s=>_recSubmittedSlots[s])){
-      setTimeout(()=>showToast('🎉 모든 녹음 제출 완료!'), 800);
+      setTimeout(()=>showToast('🎉 모든 녹음 제출 완료! 선생님 피드백을 기다려주세요.'), 800);
     }
     await updateRecBadge();
   }catch(e){
