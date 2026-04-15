@@ -926,9 +926,10 @@ async function updateTestBadge(){
     const myUid = currentUser.uid;
     const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // 내 시험 필터
+    // 내 시험 필터 + 언스크램블 제외 (단어시험만)
     const myTests = allTests.filter(t=>{
       if(!t.active && t.active !== undefined) return false;
+      if(t.testMode === 'unscramble') return false;  // 언스크램블은 별도 뱃지
       const targets = t.targets||[];
       if(!targets.length){
         return (t.targetType==='class'&&t.targetId===myGroup)||(t.targetType==='student'&&t.targetId===myUid)||(t.targetId===myGroup);
