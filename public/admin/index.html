@@ -290,6 +290,10 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
       공지 관리
     </div>
+    <div class="nav-item" onclick="goPage('hwfile')" id="nav-hwfile">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      숙제파일 관리
+    </div>
     <div class="nav-item" onclick="goPage('payment')" id="nav-payment">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       결제 관리
@@ -1158,6 +1162,37 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
     </div>
   </div>
 
+  <!-- 숙제파일 관리 -->
+  <div class="page" id="page-hwfile">
+    <div class="page-header">
+      <div><div class="page-title">숙제파일 관리</div><div class="page-sub">반별·학생별로 파일을 업로드합니다</div></div>
+      <button class="btn btn-primary" onclick="openHwFileModal()">+ 파일 등록</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:36px;"><input type="checkbox" id="hwfileCheckAll" onchange="toggleCheck('hwfileTableBody',this)"></th>
+            <th onclick="sortTable('hwfileTableBody',0)" class="sortable">No</th>
+            <th onclick="sortTable('hwfileTableBody',1)" class="sortable">파일명</th>
+            <th onclick="sortTable('hwfileTableBody',2)" class="sortable">대상</th>
+            <th onclick="sortTable('hwfileTableBody',3)" class="sortable">종류</th>
+            <th onclick="sortTable('hwfileTableBody',4)" class="sortable">등록일</th>
+            <th>다운로드</th>
+          </tr></thead>
+          <tbody id="hwfileTableBody"><tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+        </table>
+        <div class="tbl-toolbar">
+          <div class="tbl-actions">
+            <button class="action-btn primary" onclick="openHwFileModal()">+ 파일 등록</button>
+            <button class="action-btn danger" onclick="deleteSelectedHwFile()">🗑 삭제</button>
+          </div>
+          <div class="tbl-page" id="hwfilePagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 결제 관리 -->
   <div class="page" id="page-payment">
     <div class="page-header">
@@ -1273,7 +1308,7 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -1325,7 +1360,7 @@ const pageLabels = {
   'test-create':'시험 출제', 'test-list':'시험 목록', 'test-print':'시험지 출력',
   'rec-content':'숙제목록 작성', 'rec-assign':'숙제 생성', 'rec-status':'제출 현황',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
-  message:'메시지 관리', notice:'공지 관리', payment:'결제 관리',
+  message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
 };
 window.goPage = async(id) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1343,6 +1378,7 @@ window.goPage = async(id) => {
   else if(id==='book-mybook') await loadBooks();
   else if(id==='book-allbook') await loadAllBookTree();
   else if(id==='notice') await loadNotices();
+  else if(id==='hwfile') await loadHwFileAdmin();
   else if(id==='payment') await loadPayments();
   else if(id==='message') await loadMessages();
   else if(id==='test-list') await loadTestList();
@@ -2218,6 +2254,135 @@ window.deleteNotice = async(id) => {
   if(!confirm('공지를 삭제할까요?'))return;
   await deleteDoc(doc(db,'notices',id));
   showToast('삭제됐어요.'); await loadNotices();
+};
+
+// ── 숙제파일 관리 ────────────────────────────────────────
+async function loadHwFileAdmin(){
+  const el = document.getElementById('hwfileTableBody'); if(!el) return;
+  try{
+    const snap = await getDocs(query(collection(db,'hwFiles'), orderBy('createdAt','desc')));
+    const files = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const icons={pdf:'📄',docx:'📝',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
+    initPagination('hwfileTableBody', files, (f,i)=>`<tr>
+      <td><input type="checkbox" value="${f.id}"></td>
+      <td>${i+1}</td>
+      <td style="font-weight:600;">${f.name||'-'}</td>
+      <td><span class="badge badge-teal">${f.group==='전체'?'전체':f.group||'-'}</span></td>
+      <td>${icons[f.type]||'📄'} ${(f.type||'').toUpperCase()}</td>
+      <td style="color:var(--gray);font-size:12px;">${f.date||''}</td>
+      <td><a href="${f.url||'#'}" target="_blank" class="btn btn-secondary btn-sm">다운로드</a></td>
+    </tr>`, 'hwfilePagination', 7);
+  }catch(e){ el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
+}
+
+window.openHwFileModal = async() => {
+  // 반/학생 목록 로드
+  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+  const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📁 숙제파일 등록</div>
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+      <div>
+        <div style="color:var(--gray);margin-bottom:4px;">파일명 (표시 이름)</div>
+        <input id="hwfName" type="text" placeholder="예: 1단원 받아쓰기" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+      </div>
+      <div>
+        <div style="color:var(--gray);margin-bottom:4px;">대상 선택</div>
+        <select id="hwfTarget" onchange="onHwfTargetChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+          <option value="all">전체</option>
+          <optgroup label="── 반별 ──">
+            ${groups.map(g=>`<option value="group:${g}">반: ${g}</option>`).join('')}
+          </optgroup>
+          <optgroup label="── 개별 학생 ──">
+            ${students.map(u=>`<option value="uid:${u.id}">학생: ${u.name} (${u.group||'-'})</option>`).join('')}
+          </optgroup>
+        </select>
+      </div>
+      <div>
+        <div style="color:var(--gray);margin-bottom:4px;">파일 선택</div>
+        <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.hwp"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+      </div>
+      <div id="hwfProgress" style="display:none;height:6px;background:#eee;border-radius:10px;overflow:hidden;">
+        <div id="hwfProgressBar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" id="hwfUploadBtn" onclick="uploadHwFileAdmin()" style="flex:2;justify-content:center;">📤 업로드</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('hwfName')?.focus(),100);
+};
+
+window.uploadHwFileAdmin = async() => {
+  const name = document.getElementById('hwfName')?.value.trim();
+  const targetVal = document.getElementById('hwfTarget')?.value||'all';
+  const fileEl = document.getElementById('hwfFile');
+  const file = fileEl?.files[0];
+  if(!name){ showToast('파일명을 입력하세요.'); return; }
+  if(!file){ showToast('파일을 선택하세요.'); return; }
+
+  // 대상 파싱
+  let group = '전체', targetUid = null;
+  if(targetVal.startsWith('group:')) group = targetVal.replace('group:','');
+  else if(targetVal.startsWith('uid:')){ targetUid = targetVal.replace('uid:',''); group = targetUid; }
+
+  const btn = document.getElementById('hwfUploadBtn');
+  const prog = document.getElementById('hwfProgress');
+  const bar  = document.getElementById('hwfProgressBar');
+  if(btn){ btn.disabled=true; btn.textContent='업로드 중...'; }
+  if(prog) prog.style.display='block';
+
+  try{
+    const ext = file.name.split('.').pop().toLowerCase();
+    const path = `hwFiles/${Date.now()}_${file.name}`;
+    const storageRef = ref(storage, path);
+
+    // 업로드 진행률 표시
+    const task = uploadBytesResumable(storageRef, file);
+    await new Promise((res,rej)=>{
+      task.on('state_changed',
+        snap=>{ const pct=Math.round(snap.bytesTransferred/snap.totalBytes*100); if(bar) bar.style.width=pct+'%'; },
+        rej, res
+      );
+    });
+    const url = await getDownloadURL(storageRef);
+    const today = new Date().toISOString().slice(0,10);
+
+    await addDoc(collection(db,'hwFiles'),{
+      name, url, group,
+      targetUid: targetUid||null,
+      type: ext,
+      date: today,
+      storagePath: path,
+      createdAt: serverTimestamp()
+    });
+
+    closeModal();
+    showToast('✅ 파일이 등록됐어요!');
+    await loadHwFileAdmin();
+  }catch(e){
+    showToast('업로드 실패: '+e.message);
+    if(btn){ btn.disabled=false; btn.textContent='📤 업로드'; }
+  }
+};
+
+window.deleteSelectedHwFile = async() => {
+  const ids = getCheckedIds('hwfileTableBody');
+  if(!ids.length){ showToast('삭제할 파일을 선택하세요.'); return; }
+  if(!confirm(`선택한 파일 ${ids.length}개를 삭제할까요?`)) return;
+  for(const id of ids){
+    try{
+      const d = await getDoc(doc(db,'hwFiles',id));
+      if(d.exists() && d.data().storagePath){
+        try{ await deleteObject(ref(storage, d.data().storagePath)); }catch(e){}
+      }
+      await deleteDoc(doc(db,'hwFiles',id));
+    }catch(e){}
+  }
+  showToast('삭제됐어요.'); await loadHwFileAdmin();
 };
 
 // ── 결제 관리 ────────────────────────────────────────
