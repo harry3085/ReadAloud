@@ -991,15 +991,18 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
       <div><div class="page-title">제출 현황</div><div class="page-sub">숙제별·학생별 녹음 제출 현황을 확인합니다</div></div>
       <button class="btn btn-secondary" onclick="loadRecStatus()">↺ 새로고침</button>
     </div>
-    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;">
+    <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;">
       <!-- 숙제 목록 -->
       <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 160px);">
-        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;">📋 배정된 숙제</div>
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;display:flex;align-items:center;justify-content:space-between;">
+          <span>📋 배정된 숙제</span>
+          <button class="btn btn-primary btn-sm" onclick="goPage('rec-assign')">+ 새 숙제</button>
+        </div>
         <div id="recStatusHwList" style="overflow-y:auto;flex:1;">
           <div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>
         </div>
       </div>
-      <!-- 학생별 제출 현황 -->
+      <!-- 학생별 제출 현황 + 피드백 -->
       <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 160px);">
         <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;" id="recStatusTitle">학생별 제출 현황</div>
         <div id="recStatusDetail" style="overflow-y:auto;flex:1;">
@@ -5382,60 +5385,158 @@ window.loadRecStatus = async() => {
     const snap = await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc')));
     const hws = snap.docs.map(d=>({id:d.id,...d.data()}));
     el.innerHTML = hws.map(hw=>`
-      <div onclick="loadRecHwDetail('${hw.id}','${(hw.title||'').replace(/'/g,"\'")}') "
-        style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;"
-        onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
-        <div style="font-weight:600;margin-bottom:2px;">📄 ${hw.title||'-'}</div>
-        <div style="font-size:11px;color:var(--gray);">${hw.targetName||'-'} · ${hw.date||''} ${hw.dueDate?'~ '+hw.dueDate:''}</div>
+      <div style="border-bottom:1px solid #f5f5f5;">
+        <div onclick="loadRecHwDetail('${hw.id}','${(hw.title||'').replace(/'/g,"\\'")}') "
+          style="padding:12px 16px 8px;cursor:pointer;font-size:13px;"
+          onmouseover="this.parentElement.style.background='#f8f9fa'" onmouseout="this.parentElement.style.background=''">
+          <div style="font-weight:600;margin-bottom:2px;">📄 ${hw.title||'-'}</div>
+          <div style="font-size:11px;color:var(--gray);">${hw.targetName||'-'} · ${hw.date||''} ${hw.dueDate?'~ '+hw.dueDate:''}</div>
+        </div>
+        <div style="padding:0 12px 10px;display:flex;gap:6px;">
+          <button onclick="editRecHw('${hw.id}')" class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;">✏️ 수정</button>
+          <button onclick="deleteRecHw('${hw.id}','${(hw.title||'').replace(/'/g,"\\'")}') " class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;cursor:pointer;">🗑 삭제</button>
+        </div>
       </div>`).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">생성된 숙제가 없습니다</div>';
   }catch(e){ el.innerHTML='<div style="padding:16px;color:#e05050;">불러오기 실패</div>'; }
 };
 
+window.editRecHw = async(hwId) => {
+  const snap = await getDoc(doc(db,'recHw',hwId));
+  if(!snap.exists()) return;
+  const hw = snap.data();
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;">✏️ 숙제 수정</div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목</div>
+      <input id="editHwTitle" value="${(hw.title||'').replace(/"/g,'&quot;')}"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+    </div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">숙제 내용</div>
+      <textarea id="editHwContent" rows="5"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;resize:vertical;outline:none;">${hw.content||''}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">마감일</div>
+      <input type="date" id="editHwDue" value="${hw.dueDate||''}"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="saveRecHwEdit('${hwId}')" style="flex:2;justify-content:center;">💾 저장</button>
+    </div>`);
+};
+
+window.saveRecHwEdit = async(hwId) => {
+  const title = document.getElementById('editHwTitle')?.value.trim();
+  const content = document.getElementById('editHwContent')?.value.trim();
+  const dueDate = document.getElementById('editHwDue')?.value||'';
+  if(!title){ showToast('제목을 입력하세요.'); return; }
+  await updateDoc(doc(db,'recHw',hwId),{title,content,dueDate,updatedAt:serverTimestamp()});
+  showToast('수정됐어요!'); closeModal();
+  await loadRecStatus();
+};
+
+window.deleteRecHw = async(hwId, title) => {
+  if(!confirm(`"${title}" 숙제를 삭제할까요?\n학생들의 제출 기록은 유지됩니다.`)) return;
+  await updateDoc(doc(db,'recHw',hwId),{active:false});
+  showToast('숙제가 비활성화됐어요.'); await loadRecStatus();
+};
+
+let _currentHwId = null;
 window.loadRecHwDetail = async(hwId, title) => {
+  _currentHwId = hwId;
   const detailEl = document.getElementById('recStatusDetail');
   const titleEl = document.getElementById('recStatusTitle');
-  if(titleEl) titleEl.textContent = `📄 ${title} — 학생별 현황`;
+  if(titleEl) titleEl.textContent = `📄 ${title}`;
   if(detailEl) detailEl.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">로딩 중...</div>';
   try{
     const hwDoc = await getDoc(doc(db,'recHw',hwId));
     const hw = hwDoc.data();
+
+    // 제출 내역
     const subSnap = await getDocs(query(collection(db,'recSubmissions'),where('hwId','==',hwId)));
     const subs = {};
     subSnap.docs.forEach(d=>{ const s=d.data(); if(!subs[s.uid])subs[s.uid]=[]; subs[s.uid].push(s); });
+
+    // 피드백 내역
+    const fbSnap = await getDocs(query(collection(db,'recFeedbacks'),where('hwId','==',hwId)));
+    const fbs = {}; // uid_slot → feedback
+    fbSnap.docs.forEach(d=>{ const f=d.data(); fbs[f.uid+'_'+f.slot]=f; });
+
+    // 대상 학생
     const targets = hw.targets||[];
     let studentIds = [];
     for(const t of targets){
       if(t.type==='student') studentIds.push({uid:t.id, name:t.name, group:''});
       else {
         const gs = await getDocs(query(collection(db,'users'),where('group','==',t.id)));
-        gs.docs.filter(d=>d.data().role==='student').forEach(d=>studentIds.push({uid:d.id, name:d.data().name, group:d.data().group||''}));
+        gs.docs.filter(d=>d.data().role==='student').forEach(d=>studentIds.push({uid:d.id,name:d.data().name,group:d.data().group||''}));
       }
     }
     const seen=new Set(); studentIds=studentIds.filter(s=>{if(seen.has(s.uid))return false;seen.add(s.uid);return true;});
     studentIds.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+
     detailEl.innerHTML = `
-      <div style="padding:10px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:12px;color:var(--gray);">
-        총 ${studentIds.length}명 대상 · ${(hw.content||'').slice(0,50)}${(hw.content||'').length>50?'...':''}
+      <div style="padding:10px 16px;background:#f0fafa;border-bottom:1px solid var(--border);font-size:12px;color:var(--gray);">
+        총 ${studentIds.length}명 대상 · <span style="font-weight:600;">${(hw.content||'').slice(0,60)}${(hw.content||'').length>60?'...':''}</span>
       </div>
       ${studentIds.map(s=>{
         const mySubs=subs[s.uid]||[];
         const slots=[1,2,3].map(n=>mySubs.find(x=>x.slot===n));
         const completed=slots.every(x=>x);
-        return `<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-weight:600;font-size:13px;">${s.name} <span style="font-size:11px;color:#bbb;">${s.group}</span></div>
-            <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700;background:${completed?'#d1fae5':'#fef9c3'};color:${completed?'#059669':'#92400e'};">${completed?'✅ 완료':'⏳ 미완료'}</span>
+        return `<div style="padding:14px 16px;border-bottom:1px solid #f5f5f5;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:14px;">${s.name} <span style="font-size:11px;color:#bbb;font-weight:400;">${s.group}</span></div>
+            <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;background:${completed?'#d1fae5':'#fef9c3'};color:${completed?'#059669':'#92400e'};">${completed?'✅ 완료':'⏳ 미완료'}</span>
           </div>
-          <div style="display:flex;gap:8px;">
-            ${[1,2,3].map(n=>{ const sub=slots[n-1];
-              return `<div style="flex:1;padding:6px 8px;background:${sub?'#d1fae5':'#f5f5f5'};border-radius:6px;text-align:center;font-size:11px;">
-                <div style="font-weight:600;color:${sub?'#059669':'#aaa'};">녹음 ${n}</div>
-                ${sub?`<audio src="${sub.url}" controls style="width:100%;height:24px;margin-top:3px;"></audio>`:'<div style="color:#bbb;margin-top:2px;">미제출</div>'}
-              </div>`;}).join('')}
-          </div>
+          ${[1,2,3].map(n=>{
+            const sub=slots[n-1];
+            const fb=fbs[s.uid+'_'+n];
+            return `<div style="background:${sub?'#f8fffe':'#f9f9f9'};border-radius:10px;padding:10px 12px;margin-bottom:8px;border:1px solid ${sub?'var(--teal-light)':'#eee'};">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:700;color:${sub?'var(--teal)':'#aaa'};">녹음 ${n}회차</span>
+                ${sub?'<span style="font-size:11px;color:#059669;">✅ 제출완료</span>':'<span style="font-size:11px;color:#bbb;">미제출</span>'}
+              </div>
+              ${sub?`<audio src="${sub.url}" controls style="width:100%;height:32px;margin-bottom:8px;"></audio>`:''}
+              ${sub?`
+                <div style="display:flex;gap:6px;align-items:flex-start;">
+                  <textarea id="fb-${s.uid}-${n}" rows="2" placeholder="피드백 내용 (학생에게 표시됩니다)"
+                    style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;resize:none;outline:none;">${fb?fb.feedback:''}</textarea>
+                  <button onclick="saveRecFeedback('${hwId}','${s.uid}',${n},'${s.name.replace(/'/g,"\\'")}' )"
+                    style="background:var(--teal);color:white;border:none;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">
+                    ${fb?'수정':'저장'}
+                  </button>
+                </div>
+                ${fb?`<div style="font-size:11px;color:#059669;margin-top:4px;">✓ 피드백 저장됨 (${fb.createdAt?.toDate?fb.createdAt.toDate().toLocaleDateString('ko-KR'):'-'})</div>`:''}
+              `:''}
+            </div>`;
+          }).join('')}
         </div>`;
       }).join('')||'<div style="padding:20px;text-align:center;color:#bbb;">대상 학생이 없습니다</div>'}`;
   }catch(e){ detailEl.innerHTML=`<div style="padding:20px;color:#e05050;">불러오기 실패: ${e.message}</div>`; }
+};
+
+window.saveRecFeedback = async(hwId, uid, slot, studentName) => {
+  const val = document.getElementById(`fb-${uid}-${slot}`)?.value.trim();
+  if(!val){ showToast('피드백 내용을 입력하세요.'); return; }
+  try{
+    // 기존 피드백 찾기
+    const fbSnap = await getDocs(query(collection(db,'recFeedbacks'),where('hwId','==',hwId),where('uid','==',uid),where('slot','==',slot)));
+    if(fbSnap.empty){
+      await addDoc(collection(db,'recFeedbacks'),{
+        hwId, uid, slot: Number(slot), feedback:val,
+        studentName, teacherId:currentUser.uid,
+        createdAt:serverTimestamp(), updatedAt:serverTimestamp()
+      });
+    } else {
+      await updateDoc(fbSnap.docs[0].ref,{feedback:val, updatedAt:serverTimestamp()});
+    }
+    showToast(`✅ ${studentName} 녹음${slot} 피드백 저장!`);
+    // 버튼 텍스트 업데이트
+    const btn = document.querySelector(`button[onclick*="saveRecFeedback('${hwId}','${uid}',${slot}"]`);
+    if(btn) btn.textContent='수정';
+  }catch(e){ showToast('저장 실패: '+e.message); }
 };
 window.viewUnit = (bid, uid, name) => {
   // 먼저 최신 unit 데이터 로드
