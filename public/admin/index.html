@@ -1236,6 +1236,7 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getStorage, ref, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -1248,6 +1249,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 let currentUser = null, adminProfile = null;
 let allGroups = [], allStudents = [], allBooks = [], allFolders = [];
@@ -5383,7 +5385,8 @@ window.loadRecStatus = async() => {
   el.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
   try{
     const snap = await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc')));
-    const hws = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // active:false 제외 (삭제된 숙제 숨김)
+    const hws = snap.docs.map(d=>({id:d.id,...d.data()})).filter(hw=>hw.active!==false);
     el.innerHTML = hws.map(hw=>`
       <div style="border-bottom:1px solid #f5f5f5;">
         <div onclick="loadRecHwDetail('${hw.id}','${(hw.title||'').replace(/'/g,"\\'")}') "
@@ -5438,9 +5441,41 @@ window.saveRecHwEdit = async(hwId) => {
 };
 
 window.deleteRecHw = async(hwId, title) => {
-  if(!confirm(`"${title}" 숙제를 삭제할까요?\n학생들의 제출 기록은 유지됩니다.`)) return;
-  await updateDoc(doc(db,'recHw',hwId),{active:false});
-  showToast('숙제가 비활성화됐어요.'); await loadRecStatus();
+  if(!confirm(`"${title}" 숙제를 완전히 삭제할까요?\n\n⚠️ 학생들의 녹음 파일과 제출 기록, 피드백이 모두 삭제됩니다.`)) return;
+
+  const el = document.getElementById('recStatusHwList');
+  if(el) el.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">삭제 중...</div>';
+
+  try{
+    // 1. 제출된 녹음 파일 Storage에서 삭제
+    const subSnap = await getDocs(query(collection(db,'recSubmissions'),where('hwId','==',hwId)));
+    for(const d of subSnap.docs){
+      const path = d.data().storagePath;
+      if(path){
+        try{ await deleteObject(ref(storage, path)); }catch(e){ console.log('스토리지 삭제 실패',e); }
+      }
+    }
+    // 2. recSubmissions 삭제
+    for(const d of subSnap.docs) await deleteDoc(d.ref);
+
+    // 3. recFeedbacks 삭제
+    const fbSnap = await getDocs(query(collection(db,'recFeedbacks'),where('hwId','==',hwId)));
+    for(const d of fbSnap.docs) await deleteDoc(d.ref);
+
+    // 4. recHw 문서 삭제
+    await deleteDoc(doc(db,'recHw',hwId));
+
+    showToast('✅ 숙제와 관련 데이터가 모두 삭제됐어요.');
+    // 오른쪽 패널 초기화
+    const detailEl = document.getElementById('recStatusDetail');
+    if(detailEl) detailEl.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">왼쪽에서 숙제를 선택하세요</div>';
+    const titleEl = document.getElementById('recStatusTitle');
+    if(titleEl) titleEl.textContent = '학생별 제출 현황';
+    await loadRecStatus();
+  }catch(e){
+    showToast('삭제 실패: '+e.message);
+    await loadRecStatus();
+  }
 };
 
 let _currentHwId = null;
