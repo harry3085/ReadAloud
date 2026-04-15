@@ -1408,7 +1408,7 @@ window.selectTest = async(testId, testName)=>{
     document.getElementById('infoModalTitle').textContent = testName;
     document.getElementById('modalWordCount').textContent = currentUnitWords.length;
     document.getElementById('modalTime').innerHTML =
-      `객관식 <b>10초</b> / 주관식 <b>30초</b>`;
+      `객 <b>10초</b> / 주 <b>30초</b>`;
     document.getElementById('modalPoint').textContent =
       (window._currentTestData?.passScore ?? 80) + '점 이상';
     document.getElementById('infoModal').classList.remove('hidden');
