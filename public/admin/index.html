@@ -255,9 +255,19 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
         <div class="nav-item" onclick="goPage('test-print')" id="nav-test-print">시험지 출력</div>
       </div>
     </div>
+    <div class="nav-group" id="navgroup-rec">
+      <div class="nav-item" onclick="toggleNav('rec')">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+        녹음숙제 관리
+        <span class="nav-toggle">›</span>
+      </div>
+      <div class="nav-children nav-sub">
+        <div class="nav-item" onclick="goPage('rec-content')" id="nav-rec-content">숙제목록 작성</div>
+        <div class="nav-item" onclick="goPage('rec-assign')" id="nav-rec-assign">숙제 생성</div>
+        <div class="nav-item" onclick="goPage('rec-status')" id="nav-rec-status">제출 현황</div>
+      </div>
+    </div>
   </div>
-  <div class="nav-section">
-    <div class="nav-label">성적 & 통계</div>
     <div class="nav-group" id="navgroup-score">
       <div class="nav-item" onclick="toggleNav('score')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -881,6 +891,70 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
     </div>
   </div>
 
+  <!-- 숙제목록 작성 -->
+  <div class="page" id="page-rec-content">
+    <div class="page-header">
+      <div><div class="page-title">숙제목록 작성</div><div class="page-sub">녹음 숙제 내용을 작성합니다</div></div>
+      <button class="btn btn-primary" onclick="openRecContentModal()">+ 숙제 내용 추가</button>
+    </div>
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;height:calc(100vh-160px);">
+      <!-- 폴더 목록 -->
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;display:flex;align-items:center;justify-content:space-between;">
+          <span>📁 폴더</span>
+          <button onclick="openRecFolderModal()" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:18px;font-weight:700;">+</button>
+        </div>
+        <div id="recFolderList" style="overflow-y:auto;flex:1;">
+          <div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
+        </div>
+      </div>
+      <!-- 숙제 목록 -->
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;display:flex;align-items:center;justify-content:space-between;">
+          <span id="recContentLabel">📋 숙제 목록</span>
+          <button onclick="openRecContentModal()" class="btn btn-primary btn-sm">+ 추가</button>
+        </div>
+        <div id="recContentList" style="overflow-y:auto;flex:1;">
+          <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">왼쪽에서 폴더를 선택하세요</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 숙제 생성 -->
+  <div class="page" id="page-rec-assign">
+    <div class="page-header">
+      <div><div class="page-title">숙제 생성</div><div class="page-sub">학생/반에게 녹음 숙제를 배정합니다</div></div>
+    </div>
+    <div class="card" id="recAssignContent">
+      <div style="text-align:center;color:var(--gray);padding:40px;">로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 제출 현황 -->
+  <div class="page" id="page-rec-status">
+    <div class="page-header">
+      <div><div class="page-title">제출 현황</div><div class="page-sub">숙제별·학생별 녹음 제출 현황을 확인합니다</div></div>
+      <button class="btn btn-secondary" onclick="loadRecStatus()">↺ 새로고침</button>
+    </div>
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;">
+      <!-- 숙제 목록 -->
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 160px);">
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;">📋 배정된 숙제</div>
+        <div id="recStatusHwList" style="overflow-y:auto;flex:1;">
+          <div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>
+        </div>
+      </div>
+      <!-- 학생별 제출 현황 -->
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 160px);">
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;" id="recStatusTitle">학생별 제출 현황</div>
+        <div id="recStatusDetail" style="overflow-y:auto;flex:1;">
+          <div style="padding:20px;text-align:center;color:#bbb;">왼쪽에서 숙제를 선택하세요</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 성적 리포트 -->
   <div class="page" id="page-score-report">
     <div class="page-header">
@@ -1153,6 +1227,7 @@ const pageLabels = {
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
   'book-mybook':'My Book', 'book-allbook':'My Book 출력',
   'test-create':'시험 출제', 'test-list':'시험 목록', 'test-print':'시험지 출력',
+  'rec-content':'숙제목록 작성', 'rec-assign':'숙제 생성', 'rec-status':'제출 현황',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', payment:'결제 관리',
 };
@@ -1176,6 +1251,9 @@ window.goPage = async(id) => {
   else if(id==='message') await loadMessages();
   else if(id==='test-list') await loadTestList();
   else if(id==='test-print') loadPrintTestList();
+  else if(id==='rec-content') await loadRecContent();
+  else if(id==='rec-assign') await loadRecAssign();
+  else if(id==='rec-status') await loadRecStatus();
   else if(id==='score-report') initScoreReport();
   else if(id==='score-personal') await loadPersonalStudentList();
 };
@@ -4749,6 +4827,414 @@ window.toggleTestActive = async(testId, isActive) => {
 window.doPrintSelected = () => {};
 window.testNextStep = (step) => { showToast('단계를 순서대로 진행하세요.'); };
 window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설정 준비 중...'); };
+// ═══════════════════════════════════════════════════════
+// 녹음숙제 관리
+// ═══════════════════════════════════════════════════════
+let _recFolders = [], _recCurrentFolderId = null;
+
+// ── 숙제목록 작성 ────────────────────────────────────────
+window.loadRecContent = async() => {
+  await loadRecFolders();
+};
+
+async function loadRecFolders(){
+  const el = document.getElementById('recFolderList'); if(!el) return;
+  el.innerHTML = '<div style="padding:12px;text-align:center;color:#bbb;">로딩 중...</div>';
+  try{
+    const snap = await getDocs(query(collection(db,'recFolders'),orderBy('createdAt','asc')));
+    _recFolders = snap.docs.map(d=>({id:d.id,...d.data()}));
+    el.innerHTML = _recFolders.map(f=>`
+      <div id="recfolder-${f.id}" onclick="selectRecFolder('${f.id}','${f.name.replace(/'/g,"\\'")}') "
+        style="padding:10px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:space-between;"
+        onmouseover="this.style.background='#f5f5f5'" onmouseout="if(_recCurrentFolderId!=='${f.id}')this.style.background=''">
+        <span>📁 ${f.name}</span>
+        <button onclick="event.stopPropagation();deleteRecFolder('${f.id}','${f.name.replace(/'/g,"\\'")}') " style="background:none;border:none;color:#bbb;cursor:pointer;font-size:14px;">✕</button>
+      </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">폴더가 없습니다</div>';
+  }catch(e){ el.innerHTML='<div style="padding:12px;color:#e05050;">불러오기 실패</div>'; }
+}
+
+window.selectRecFolder = async(folderId, folderName) => {
+  _recCurrentFolderId = folderId;
+  document.querySelectorAll('[id^="recfolder-"]').forEach(el=>el.style.background='');
+  const row = document.getElementById('recfolder-'+folderId);
+  if(row) row.style.background='#e0f5f5';
+  const label = document.getElementById('recContentLabel');
+  if(label) label.textContent = `📁 ${folderName}`;
+  await loadRecContentList(folderId);
+};
+
+async function loadRecContentList(folderId){
+  const el = document.getElementById('recContentList'); if(!el) return;
+  el.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
+  try{
+    const snap = await getDocs(query(collection(db,'recContents'),where('folderId','==',folderId),orderBy('createdAt','asc')));
+    const items = snap.docs.map(d=>({id:d.id,...d.data()}));
+    el.innerHTML = items.map(c=>`
+      <div style="padding:14px 16px;border-bottom:1px solid #f5f5f5;display:flex;align-items:flex-start;justify-content:space-between;">
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;margin-bottom:4px;">📄 ${c.title||'제목없음'}</div>
+          <div style="font-size:12px;color:var(--gray);line-height:1.6;">${(c.content||'').replace(/\n/g,'<br>')}</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">
+          <button onclick="editRecContent('${c.id}')" class="btn btn-secondary btn-sm">수정</button>
+          <button onclick="deleteRecContent('${c.id}','${(c.title||'').replace(/'/g,"\\'")}') " class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;">삭제</button>
+        </div>
+      </div>`).join('') || '<div style="padding:24px;text-align:center;color:#bbb;font-size:13px;">숙제 내용이 없습니다<br>+ 추가 버튼으로 작성하세요</div>';
+  }catch(e){ el.innerHTML='<div style="padding:16px;color:#e05050;">불러오기 실패</div>'; }
+}
+
+window.openRecFolderModal = () => {
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">📁 폴더 추가</div>
+    <input id="recFolderName" type="text" placeholder="폴더명 (예: 중3 교재, Arthur 시리즈)"
+      style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="saveRecFolder()" style="flex:1;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('recFolderName')?.focus(),100);
+};
+
+window.saveRecFolder = async() => {
+  const name = document.getElementById('recFolderName')?.value.trim();
+  if(!name){ showToast('폴더명을 입력하세요.'); return; }
+  await addDoc(collection(db,'recFolders'),{name, createdAt:serverTimestamp()});
+  closeModal(); showToast('폴더가 추가됐어요!');
+  await loadRecFolders();
+};
+
+window.deleteRecFolder = async(id, name) => {
+  if(!confirm(`"${name}" 폴더를 삭제할까요?\n폴더 내 숙제 목록도 모두 삭제됩니다.`)) return;
+  const snap = await getDocs(query(collection(db,'recContents'),where('folderId','==',id)));
+  for(const d of snap.docs) await deleteDoc(d.ref);
+  await deleteDoc(doc(db,'recFolders',id));
+  if(_recCurrentFolderId===id){ _recCurrentFolderId=null; document.getElementById('recContentList').innerHTML='<div style="padding:20px;text-align:center;color:#bbb;">폴더를 선택하세요</div>'; }
+  showToast('삭제됐어요.');
+  await loadRecFolders();
+};
+
+window.openRecContentModal = (existingId) => {
+  if(!_recCurrentFolderId){ showToast('먼저 폴더를 선택하세요.'); return; }
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;">${existingId?'✏️ 숙제 내용 수정':'📝 숙제 내용 추가'}</div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목 (교재명/단원 등)</div>
+      <input id="recContentTitle" type="text" placeholder="예: Arthur Chapter 3"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">숙제 내용</div>
+      <textarea id="recContentBody" rows="6" placeholder="예: XX교재 Page 23, 시작문장 ~ Page 26 종료문장"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;resize:vertical;outline:none;line-height:1.6;"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="saveRecContent('${existingId||''}')" style="flex:2;justify-content:center;">💾 저장</button>
+    </div>`);
+  if(existingId){
+    getDoc(doc(db,'recContents',existingId)).then(snap=>{
+      const d=snap.data();
+      if(document.getElementById('recContentTitle')) document.getElementById('recContentTitle').value=d.title||'';
+      if(document.getElementById('recContentBody')) document.getElementById('recContentBody').value=d.content||'';
+    });
+  }
+  setTimeout(()=>document.getElementById('recContentTitle')?.focus(),100);
+};
+
+window.editRecContent = (id) => { openRecContentModal(id); };
+
+window.saveRecContent = async(existingId) => {
+  const title = document.getElementById('recContentTitle')?.value.trim();
+  const content = document.getElementById('recContentBody')?.value.trim();
+  if(!title){ showToast('제목을 입력하세요.'); return; }
+  if(!content){ showToast('숙제 내용을 입력하세요.'); return; }
+  if(existingId){
+    await updateDoc(doc(db,'recContents',existingId),{title,content,updatedAt:serverTimestamp()});
+    showToast('수정됐어요!');
+  } else {
+    await addDoc(collection(db,'recContents'),{title,content,folderId:_recCurrentFolderId,createdAt:serverTimestamp()});
+    showToast('추가됐어요!');
+  }
+  closeModal();
+  await loadRecContentList(_recCurrentFolderId);
+};
+
+window.deleteRecContent = async(id, title) => {
+  if(!confirm(`"${title}" 항목을 삭제할까요?`)) return;
+  await deleteDoc(doc(db,'recContents',id));
+  showToast('삭제됐어요.');
+  await loadRecContentList(_recCurrentFolderId);
+};
+
+// ── 숙제 생성 ─────────────────────────────────────────────
+let _recAssignStep = 1;
+let _recAssignData = { targets:[], targetName:'', contents:[], dueDate:'' };
+
+window.loadRecAssign = async() => {
+  _recAssignStep = 1; _recAssignData = {targets:[], targetName:'', contents:[], dueDate:''};
+  renderRecAssignStep1();
+};
+
+function updateRecStepUI(step){
+  [1,2,3].forEach(i=>{
+    const el=document.getElementById('rasti-'+i); if(!el) return;
+    const circle=el.querySelector('.step-circle');
+    if(i<step){ el.style.color='var(--teal)';circle.style.background='var(--teal)';circle.style.color='white';circle.innerHTML='✓'; }
+    else if(i===step){ el.style.color='var(--teal)';circle.style.background='var(--teal)';circle.style.color='white';circle.innerHTML=i; }
+    else { el.style.color='var(--gray)';circle.style.background='#eee';circle.style.color='var(--gray)';circle.innerHTML=i; }
+  });
+}
+
+async function renderRecAssignStep1(){
+  updateRecStepUI(1);
+  // 반/학생 목록 로드
+  const [groupSnap, studentSnap] = await Promise.all([
+    getDocs(query(collection(db,'groups'),orderBy('name'))),
+    getDocs(query(collection(db,'users'),where('role','==','student'),orderBy('name')))
+  ]);
+  const groups = groupSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const students = studentSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  document.getElementById('recAssignContent').innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:20px;gap:0;">
+      ${[1,2,3].map((i,idx)=>`
+        <div id="rasti-${i}" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:${i===1?'var(--teal)':'var(--gray)'};">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:${i===1?'var(--teal)':'#eee'};color:${i===1?'white':'var(--gray)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${i}</div>
+          ${['대상 선택','숙제 선택','생성 확인'][idx]}
+        </div>
+        ${i<3?'<div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>':''}`).join('')}
+    </div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">① 대상 선택</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">반 선택</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">
+          ${groups.map(g=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;">
+              <input type="checkbox" class="rec-target-chk" value="${g.id}" data-name="${g.name}" data-type="class" onchange="updateRecTargetCount()">
+              👥 ${g.name}
+            </label>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;">반이 없습니다</div>'}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;font-weight:600;">개별 학생</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">
+          ${students.map(s=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;">
+              <input type="checkbox" class="rec-target-chk" value="${s.id}" data-name="${s.name}" data-type="student" onchange="updateRecTargetCount()">
+              👤 ${s.name} <span style="font-size:11px;color:#bbb;">${s.group||''}</span>
+            </label>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;">학생이 없습니다</div>'}
+        </div>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:16px;">선택된 대상: <b id="recTargetCount" style="color:var(--teal);">0</b>명/반</div>
+    <div style="text-align:right;">
+      <button class="btn btn-primary" onclick="recAssignStep1Next()">다음 → 숙제 선택</button>
+    </div>`;
+}
+
+window.updateRecTargetCount = () => {
+  const cnt = document.querySelectorAll('.rec-target-chk:checked').length;
+  const el = document.getElementById('recTargetCount'); if(el) el.textContent = cnt;
+};
+
+window.recAssignStep1Next = () => {
+  const checked = [...document.querySelectorAll('.rec-target-chk:checked')];
+  if(!checked.length){ showToast('대상을 선택하세요.'); return; }
+  _recAssignData.targets = checked.map(c=>({type:c.dataset.type, id:c.value, name:c.dataset.name}));
+  _recAssignData.targetName = checked.length===1 ? checked[0].dataset.name : `${checked.length}명/반 선택`;
+  renderRecAssignStep2();
+};
+
+async function renderRecAssignStep2(){
+  updateRecStepUI(2);
+  const [folderSnap] = [await getDocs(query(collection(db,'recFolders'),orderBy('createdAt','asc')))];
+  const folders = folderSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const foldersWithContents = await Promise.all(folders.map(async f=>{
+    const cSnap = await getDocs(query(collection(db,'recContents'),where('folderId','==',f.id),orderBy('createdAt','asc')));
+    return {...f, contents: cSnap.docs.map(d=>({id:d.id,...d.data()}))};
+  }));
+
+  document.getElementById('recAssignContent').innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:20px;gap:0;">
+      ${[1,2,3].map((i,idx)=>`
+        <div id="rasti-${i}" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:${i<=2?'var(--teal)':'var(--gray)'};">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:${i<=2?'var(--teal)':'#eee'};color:${i<=2?'white':'var(--gray)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${i<2?'✓':i}</div>
+          ${['대상 선택','숙제 선택','생성 확인'][idx]}
+        </div>
+        ${i<3?'<div style="flex:1;height:2px;background:var(--border);margin:0 10px;"></div>':''}`).join('')}
+    </div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">② 숙제 선택</div>
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:16px;">
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:360px;overflow-y:auto;">
+        ${foldersWithContents.filter(f=>f.contents.length).map(f=>`
+          <div>
+            <div style="padding:9px 14px;background:#f0f4f8;border-bottom:1px solid var(--border);font-weight:700;font-size:13px;">📁 ${f.name}</div>
+            ${f.contents.map(c=>`
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;">
+                <input type="checkbox" class="rec-content-chk" value="${c.id}" data-title="${c.title||''}" data-content="${(c.content||'').replace(/"/g,'&quot;')}" style="margin-top:2px;flex-shrink:0;">
+                <div><div style="font-weight:600;">${c.title||'제목없음'}</div>
+                <div style="font-size:11px;color:var(--gray);margin-top:2px;">${(c.content||'').slice(0,60)}${(c.content||'').length>60?'...':''}</div></div>
+              </label>`).join('')}
+          </div>`).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">숙제 내용이 없습니다</div>'}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제출 마감일</div>
+          <input type="date" id="recDueDate" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+        <div style="padding:12px;background:#f0fafa;border-radius:8px;font-size:12px;color:var(--gray);">
+          📌 대상: <b style="color:var(--text);">${_recAssignData.targetName}</b>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="loadRecAssign()">← 이전</button>
+      <button class="btn btn-primary" onclick="recAssignStep2Next()">다음 → 생성 확인</button>
+    </div>`;
+}
+
+window.recAssignStep2Next = () => {
+  const checked = [...document.querySelectorAll('.rec-content-chk:checked')];
+  if(!checked.length){ showToast('숙제 내용을 선택하세요.'); return; }
+  _recAssignData.contents = checked.map(c=>({id:c.value, title:c.dataset.title, content:c.dataset.content}));
+  _recAssignData.dueDate = document.getElementById('recDueDate')?.value||'';
+  renderRecAssignStep3();
+};
+
+function renderRecAssignStep3(){
+  updateRecStepUI(3);
+  document.getElementById('recAssignContent').innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:20px;gap:0;">
+      ${[1,2,3].map((i,idx)=>`
+        <div id="rasti-${i}" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--teal);">
+          <div class="step-circle" style="width:28px;height:28px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${i<3?'✓':i}</div>
+          ${['대상 선택','숙제 선택','생성 확인'][idx]}
+        </div>
+        ${i<3?'<div style="flex:1;height:2px;background:var(--teal);margin:0 10px;"></div>':''}`).join('')}
+    </div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px;">③ 생성 확인</div>
+    <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <div style="margin-bottom:8px;"><span style="color:var(--gray);font-size:12px;">대상</span><br><b>${_recAssignData.targetName}</b></div>
+      <div style="margin-bottom:8px;"><span style="color:var(--gray);font-size:12px;">숙제 내용 (${_recAssignData.contents.length}개)</span><br>
+        ${_recAssignData.contents.map(c=>`<div style="font-size:13px;">📄 ${c.title}</div>`).join('')}</div>
+      ${_recAssignData.dueDate?`<div><span style="color:var(--gray);font-size:12px;">마감일</span><br><b>${_recAssignData.dueDate}</b></div>`:''}
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="renderRecAssignStep2()">← 이전</button>
+      <button class="btn btn-primary" id="recCreateBtn" onclick="createRecHw()" style="min-width:140px;justify-content:center;padding:10px 20px;">🎙 숙제 생성</button>
+    </div>`;
+}
+
+window.createRecHw = async() => {
+  const btn = document.getElementById('recCreateBtn');
+  if(btn){ btn.textContent='생성 중...'; btn.disabled=true; }
+  const today = new Date().toISOString().slice(0,10);
+  try{
+    for(const c of _recAssignData.contents){
+      await addDoc(collection(db,'recHw'),{
+        contentId: c.id,
+        title: c.title,
+        content: c.content,
+        targets: _recAssignData.targets,
+        targetName: _recAssignData.targetName,
+        dueDate: _recAssignData.dueDate||'',
+        active: true,
+        date: today,
+        createdAt: serverTimestamp(),
+        createdBy: currentUser.uid
+      });
+    }
+    document.getElementById('recAssignContent').innerHTML = `
+      <div style="text-align:center;padding:48px 20px;">
+        <div style="font-size:48px;margin-bottom:12px;">🎉</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px;">숙제 생성 완료!</div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:20px;">${_recAssignData.targetName}에게 ${_recAssignData.contents.length}개 숙제가 배정됐어요.</div>
+        <div style="display:flex;gap:10px;justify-content:center;">
+          <button class="btn btn-secondary" onclick="loadRecAssign()">+ 새 숙제 생성</button>
+          <button class="btn btn-primary" onclick="goPage('rec-status')">📋 제출 현황 확인</button>
+        </div>
+      </div>`;
+  }catch(e){ showToast('생성 실패: '+e.message); if(btn){btn.textContent='🎙 숙제 생성';btn.disabled=false;} }
+};
+
+// ── 제출 현황 ──────────────────────────────────────────────
+window.loadRecStatus = async() => {
+  const el = document.getElementById('recStatusHwList'); if(!el) return;
+  el.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
+  try{
+    const snap = await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc')));
+    const hws = snap.docs.map(d=>({id:d.id,...d.data()}));
+    el.innerHTML = hws.map(hw=>`
+      <div onclick="loadRecHwDetail('${hw.id}','${(hw.title||'').replace(/'/g,"\\'")}') "
+        style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;"
+        onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+        <div style="font-weight:600;margin-bottom:2px;">📄 ${hw.title||'-'}</div>
+        <div style="font-size:11px;color:var(--gray);">${hw.targetName||'-'} · ${hw.date||''} ${hw.dueDate?'~ '+hw.dueDate:''}</div>
+      </div>`).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">생성된 숙제가 없습니다</div>';
+  }catch(e){ el.innerHTML='<div style="padding:16px;color:#e05050;">불러오기 실패</div>'; }
+};
+
+window.loadRecHwDetail = async(hwId, title) => {
+  const detailEl = document.getElementById('recStatusDetail');
+  const titleEl = document.getElementById('recStatusTitle');
+  if(titleEl) titleEl.textContent = `📄 ${title} — 학생별 현황`;
+  if(detailEl) detailEl.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">로딩 중...</div>';
+
+  try{
+    const hwDoc = await getDoc(doc(db,'recHw',hwId));
+    const hw = hwDoc.data();
+    // 해당 숙제 제출 내역
+    const subSnap = await getDocs(query(collection(db,'recSubmissions'),where('hwId','==',hwId)));
+    const subs = {}; // uid → [{slot, url, submittedAt}]
+    subSnap.docs.forEach(d=>{
+      const s=d.data(); if(!subs[s.uid]) subs[s.uid]=[];
+      subs[s.uid].push(s);
+    });
+
+    // 대상 학생 목록
+    const targets = hw.targets||[];
+    let studentIds = [];
+    for(const t of targets){
+      if(t.type==='student') studentIds.push({uid:t.id, name:t.name, group:''});
+      else {
+        const gs = await getDocs(query(collection(db,'users'),where('group','==',t.id),where('role','==','student')));
+        gs.docs.forEach(d=>studentIds.push({uid:d.id, name:d.data().name, group:d.data().group||''}));
+      }
+    }
+    // 중복 제거
+    const seen=new Set(); studentIds=studentIds.filter(s=>{if(seen.has(s.uid))return false;seen.add(s.uid);return true;});
+
+    detailEl.innerHTML = `
+      <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:12px;color:var(--gray);">
+        총 ${studentIds.length}명 대상 · 숙제내용: ${(hw.content||'').slice(0,50)}${(hw.content||'').length>50?'...':''}
+      </div>
+      ${studentIds.map(s=>{
+        const mySubs = subs[s.uid]||[];
+        const slots = [1,2,3].map(n=>mySubs.find(x=>x.slot===n));
+        const completed = slots.every(x=>x);
+        return `
+          <div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <div style="font-weight:600;font-size:13px;">${s.name} <span style="font-size:11px;color:#bbb;">${s.group}</span></div>
+              <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700;background:${completed?'#d1fae5':'#fef9c3'};color:${completed?'#059669':'#92400e'};">
+                ${completed?'✅ 완료':'⏳ 미완료'}
+              </span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              ${[1,2,3].map(n=>{
+                const sub = slots[n-1];
+                return `<div style="flex:1;padding:6px 8px;background:${sub?'#d1fae5':'#f5f5f5'};border-radius:6px;text-align:center;font-size:11px;">
+                  <div style="font-weight:600;color:${sub?'#059669':'#aaa'};">녹음 ${n}</div>
+                  ${sub?`<div style="color:#059669;margin-top:2px;">제출완료</div><audio src="${sub.url}" controls style="width:100%;height:24px;margin-top:3px;"></audio>`:'<div style="color:#bbb;">미제출</div>'}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+      }).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">대상 학생이 없습니다</div>'}`;
+  }catch(e){ detailEl.innerHTML=`<div style="padding:20px;color:#e05050;">불러오기 실패: ${e.message}</div>`; }
+};
+
 window.viewUnit = (bid, uid, name) => {
   // 먼저 최신 unit 데이터 로드
   getDoc(doc(db,'books',bid,'units',uid)).then(snap=>{
