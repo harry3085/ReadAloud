@@ -2960,8 +2960,8 @@ window.loadTestList = async() => {
       return '<span class="badge badge-teal">📝 단어시험</span>';
     };
 
-    initPagination('testListBody', testsWithStats, (t,i)=>`
-      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)">
+    el.innerHTML = testsWithStats.map((t,i)=>`
+      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;color:var(--teal);">${t.name||'-'}</td>
@@ -2975,28 +2975,43 @@ window.loadTestList = async() => {
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
       </tr>
-      <tr id="progress-${t.id}" style="display:none;">
-        <td colspan="10" style="padding:0;background:#f8fffe;">
-          <div id="progress-content-${t.id}" style="padding:12px 16px 12px 48px;font-size:12px;color:var(--gray);">로딩 중...</div>
+      <tr id="progress-${t.id}" style="display:none;background:#f0faff;">
+        <td colspan="10" style="padding:0;border-top:none;">
+          <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
-      </tr>`, 'testPagination', 9);
+      </tr>`).join('');
+
+    // 페이지네이션 숨김
+    const pgEl = document.getElementById('testPagination');
+    if(pgEl) pgEl.innerHTML = `<span class="tbl-page-info">총 ${testsWithStats.length}개</span>`;
   }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 };
 
-window.toggleTestProgress = async(testId, tr) => {
+window.toggleTestProgress = async(testId) => {
   const progressRow = document.getElementById('progress-'+testId);
-  if(!progressRow) return;
-  const isOpen = progressRow.style.display !== 'none';
-  // 다른 열린 행 닫기
-  document.querySelectorAll('[id^="progress-"]').forEach(r=>r.style.display='none');
-  if(isOpen) return;
+  if(!progressRow){ console.warn('progress row not found:', testId); return; }
 
-  progressRow.style.display='';
+  const isOpen = progressRow.getAttribute('data-open') === '1';
+
+  // 다른 열린 행 모두 닫기
+  document.querySelectorAll('[id^="progress-"][data-open="1"]').forEach(r=>{
+    r.style.display='none';
+    r.setAttribute('data-open','0');
+  });
+
+  if(isOpen) return; // 이미 열려 있었으면 닫고 끝
+
+  // 열기
+  progressRow.style.display = 'table-row';
+  progressRow.setAttribute('data-open','1');
+
   const contentEl = document.getElementById('progress-content-'+testId);
-  contentEl.textContent = '로딩 중...';
+  if(!contentEl) return;
+  contentEl.innerHTML = '<span style="color:#bbb;">로딩 중...</span>';
 
   try{
     const testDoc = await getDoc(doc(db,'tests',testId));
+    if(!testDoc.exists()){ contentEl.textContent='시험 데이터 없음'; return; }
     const t = testDoc.data();
     const targets = t.targets||[];
 
