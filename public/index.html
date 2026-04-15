@@ -412,21 +412,21 @@
       <div class="progress-pill">🔀 <span id="unscProgress">1/10</span></div>
     </div>
 
-    <!-- 설명 + 한글 뜻 -->
-    <div style="padding:8px 16px 4px;flex-shrink:0;">
-      <div style="font-size:11px;color:var(--gray);text-align:center;margin-bottom:6px;">
-        단어를 문장의 순서에 맞게 클릭하세요
-      </div>
-      <div style="background:white;border-radius:16px;padding:16px 20px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);">
-        <div id="unscMeaning" style="font-size:17px;font-weight:700;color:var(--text);line-height:1.5;"></div>
-      </div>
+    <!-- 설명 문구 -->
+    <div style="padding:6px 16px 2px;flex-shrink:0;text-align:center;">
+      <div style="font-size:11px;color:var(--gray);">단어를 문장의 순서에 맞게 클릭하세요</div>
+    </div>
+
+    <!-- 한글 뜻 카드 (기존 방식 유지) -->
+    <div class="word-card" style="margin:6px 16px;padding:16px 20px;min-height:60px;flex-shrink:0;">
+      <div id="unscMeaning" style="font-size:16px;font-weight:600;color:var(--text);text-align:center;line-height:1.5;"></div>
     </div>
 
     <!-- 완성 중인 문장 영역 (고정 높이) -->
-    <div style="margin:10px 16px 0;flex-shrink:0;">
+    <div style="margin:6px 16px 0;flex-shrink:0;">
       <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:5px;">완성 중인 문장</div>
-      <div style="background:white;border-radius:14px;border:2px solid var(--teal);padding:12px 16px;height:192px;overflow:hidden;box-sizing:border-box;">
-        <div id="unscBuilt" style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;line-height:1.55;height:100%;overflow:hidden;"></div>
+      <div style="background:white;border-radius:14px;border:2px solid var(--teal);padding:12px 16px;height:130px;overflow:hidden;box-sizing:border-box;">
+        <div id="unscBuilt" style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;line-height:1.55;overflow:hidden;"></div>
       </div>
     </div>
 
@@ -435,7 +435,7 @@
       <div id="unscWords" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
 
-    <!-- 하단 푸터 (빈공간 없이 바로 붙임) -->
+    <!-- 하단 푸터 -->
     <div class="quiz-footer" style="margin-top:auto;border-top:1px solid #e0f0f0;">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
@@ -2540,7 +2540,12 @@ function showUnscQuestion(){
   ).join('');
 
   const submitBtn = document.getElementById('unscSubmitBtn');
-  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = '▶▶'; }
+  if(submitBtn){
+    submitBtn.disabled = true;
+    submitBtn.textContent = '▶▶';
+    submitBtn.style.background = '';
+    submitBtn.style.fontSize = '';
+  }
   const resetBtn = document.getElementById('unscResetBtn');
   if(resetBtn) resetBtn.style.opacity = '0.3';
 
@@ -2548,48 +2553,56 @@ function showUnscQuestion(){
 }
 
 window.submitUnscramble = ()=>{
-  if(_unscSubmitted) return;  // 이중 제출 방지
-  if(_unscBuilt.length === 0) return;  // 아무것도 선택 안 했으면 무시
+  // 2단계: 결과 확인 후 ▶▶ 누르면 다음 문제
+  if(_unscSubmitted === 'confirmed'){
+    _unscIdx++;
+    showUnscQuestion();
+    return;
+  }
+
+  // 1단계: 첫 제출 → 정답/오답 표시
+  if(_unscSubmitted) return;
+  if(_unscBuilt.length === 0) return;
 
   _unscSubmitted = true;
   clearUnscTimer();
 
   const q = _unscSentences[_unscIdx];
-  if(!q){ showUnscResult(); return; }  // 범위 초과 안전 처리
+  if(!q){ showUnscResult(); return; }
 
   const answer = _unscBuilt.map(b=>b.word).join(' ');
   const isCorrect = answer.trim().toLowerCase() === q.en.trim().toLowerCase();
 
-  // 모든 단어 버튼 클릭 불가
+  // 단어 버튼 클릭 불가, R 버튼 비활성
   document.querySelectorAll('.unsc-word-btn').forEach(b=>{ b.style.pointerEvents='none'; });
-  const submitBtn = document.getElementById('unscSubmitBtn');
-  const resetBtn  = document.getElementById('unscResetBtn');
-  if(submitBtn){ submitBtn.disabled=true; }
-  if(resetBtn)  resetBtn.style.opacity='0.3';
+  const resetBtn = document.getElementById('unscResetBtn');
+  if(resetBtn) resetBtn.style.opacity='0.3';
 
+  // 정답/오답 표시
   const builtEl = document.getElementById('unscBuilt');
   if(builtEl){
     if(isCorrect){
-      builtEl.innerHTML = `<span style="color:#059669;font-weight:700;">✅ 정답!</span>&nbsp; ${answer}`;
+      builtEl.innerHTML = `<span style="color:#059669;font-weight:700;font-size:15px;">✅ 정답!</span><br><span style="color:#059669;">${answer}</span>`;
       builtEl.style.background = '#d1fae5';
-      builtEl.style.padding = '';
-      builtEl.style.borderRadius = '';
     } else {
       builtEl.innerHTML =
         `<div style="color:#e05050;font-weight:700;font-size:12px;">❌ 오답 &nbsp;<span style="text-decoration:line-through;font-weight:400;">${answer}</span></div>` +
         `<div style="color:#059669;font-weight:700;margin-top:6px;">✅ 정답: ${q.en}</div>`;
       builtEl.style.background = '#fde8e8';
-      builtEl.style.padding = '';
-      builtEl.style.borderRadius = '';
     }
   }
 
   if(isCorrect) _unscCorrect++; else _unscWrong++;
 
-  setTimeout(()=>{
-    _unscIdx++;
-    showUnscQuestion();
-  }, isCorrect ? 800 : 2000);
+  // ▶▶ 버튼을 "다음 →"으로 변경해서 다시 눌러야 다음으로
+  _unscSubmitted = 'confirmed';
+  const submitBtn = document.getElementById('unscSubmitBtn');
+  if(submitBtn){
+    submitBtn.disabled = false;
+    submitBtn.textContent = '다음 ›';
+    submitBtn.style.background = isCorrect ? '#059669' : '#e05050';
+    submitBtn.style.fontSize = '15px';
+  }
 };
 
 window.pickUnscWord = (idx, word)=>{
@@ -2620,19 +2633,25 @@ window.resetUnscramble = ()=>{
 
 window.skipUnscramble = ()=>{
   if(_unscSubmitted) return;
-  _unscSubmitted = true;
+  _unscSubmitted = 'confirmed';
   clearUnscTimer();
-  // 스킵 시 정답 잠깐 보여주기
+  _unscWrong++;
   const q = _unscSentences[_unscIdx];
   const builtEl = document.getElementById('unscBuilt');
   if(builtEl && q){
-    builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:3px;">건너뜀</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
+    builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:4px;">건너뜀</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
     builtEl.style.background = '#f8f9fa';
-    builtEl.style.padding = '';
-    builtEl.style.borderRadius = '';
   }
-  _unscWrong++;
-  setTimeout(()=>{ _unscIdx++; showUnscQuestion(); }, 1000);
+  document.querySelectorAll('.unsc-word-btn').forEach(b=>{ b.style.pointerEvents='none'; });
+  const resetBtn = document.getElementById('unscResetBtn');
+  if(resetBtn) resetBtn.style.opacity = '0.3';
+  const submitBtn = document.getElementById('unscSubmitBtn');
+  if(submitBtn){
+    submitBtn.disabled = false;
+    submitBtn.textContent = '다음 ›';
+    submitBtn.style.background = '#888';
+    submitBtn.style.fontSize = '15px';
+  }
 };
 
 function startUnscTimer(){
@@ -2643,23 +2662,30 @@ function startUnscTimer(){
     updateUnscTimerUI();
     if(_unscTimeLeft <= 0){
       clearUnscTimer();
-      if(_unscSubmitted) return;  // 이미 제출된 경우 무시
+      if(_unscSubmitted) return;
       if(_unscBuilt.length > 0){
-        // 입력 있으면 그대로 제출
+        // 입력 있으면 그대로 제출 (결과 확인 후 다음)
         submitUnscramble();
       } else {
-        // 아무것도 선택 안 했으면 틀림 처리
-        _unscSubmitted = true;
+        // 아무것도 선택 안 했으면 틀림 처리 후 결과 표시
+        _unscSubmitted = 'confirmed';
+        _unscWrong++;
         const q = _unscSentences[_unscIdx];
         const builtEl = document.getElementById('unscBuilt');
         if(builtEl && q){
-          builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:3px;">시간 초과</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
+          builtEl.innerHTML = `<div style="color:#aaa;font-size:12px;margin-bottom:4px;">시간 초과</div><div style="color:#059669;font-weight:700;">✅ 정답: ${q.en}</div>`;
           builtEl.style.background = '#f8f9fa';
-          builtEl.style.padding = '';
-          builtEl.style.borderRadius = '';
         }
-        _unscWrong++;
-        setTimeout(()=>{ _unscIdx++; showUnscQuestion(); }, 1200);
+        const submitBtn = document.getElementById('unscSubmitBtn');
+        if(submitBtn){
+          submitBtn.disabled = false;
+          submitBtn.textContent = '다음 ›';
+          submitBtn.style.background = '#888';
+          submitBtn.style.fontSize = '15px';
+        }
+        document.querySelectorAll('.unsc-word-btn').forEach(b=>{ b.style.pointerEvents='none'; });
+        const resetBtn = document.getElementById('unscResetBtn');
+        if(resetBtn) resetBtn.style.opacity = '0.3';
       }
     }
   }, 1000);
