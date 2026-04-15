@@ -4887,6 +4887,7 @@ window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설
 // 녹음숙제 관리
 // ═══════════════════════════════════════════════════════
 let _recFolders = [], _recCurrentFolderId = null, _recContents = [];
+let _recAssignTargets = [], _recSelectedContents = [];
 
 // ── 숙제목록 작성 (MyBook 구조) ──────────────────────────
 window.loadRecContent = async() => {
@@ -5047,7 +5048,6 @@ window.deleteSelectedRecContent = async() => {
 };
 
 // ── 숙제 생성 (시험출제 구조) ─────────────────────────────
-let _recAssignTargets = [];
 
 function updateRecStepUI(step){
   [1,2,3].forEach(i=>{
@@ -5065,13 +5065,15 @@ function updateRecStepUI(step){
 
 window.loadRecAssign = async() => {
   _recAssignTargets = [];
+  _recSelectedContents = [];
   await renderRecStep1();
 };
 
 async function renderRecStep1(){
   updateRecStepUI(1);
-  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student')));
-  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.status!=='out');
+  // 시험출제 Step1과 동일한 방식으로 학생 로드
+  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()}));
   const groupMap = {};
   students.forEach(u=>{ const g=u.group||'미배정'; if(!groupMap[g])groupMap[g]=[]; groupMap[g].push(u); });
   Object.keys(groupMap).forEach(g=>groupMap[g].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko')));
@@ -5093,7 +5095,7 @@ async function renderRecStep1(){
             <div>
               <div class="tree-class-row" id="rcls-${g}" onclick="toggleRecTreeClass('${g}')">
                 <span class="tree-toggle">›</span>
-                <input type="checkbox" id="rchk-cls-${g}" onclick="event.stopPropagation();toggleRecClassCheck('${g}',${JSON.stringify(groupMap[g].map(u=>({id:u.id,name:u.name,group:g})))})" style="cursor:pointer;">
+                <input type="checkbox" id="rchk-cls-${g}" onclick="event.stopPropagation();toggleRecClassCheck('${g}')" style="cursor:pointer;">
                 <span>👥 ${g}</span>
                 <span style="margin-left:auto;font-size:11px;color:#aaa;">${groupMap[g].length}명</span>
               </div>
@@ -5116,6 +5118,9 @@ async function renderRecStep1(){
         <div class="selected-tags" id="recSelectedTags">
           <span style="color:#bbb;font-size:12px;align-self:center;">대상을 선택하세요</span>
         </div>
+        <div style="margin-top:16px;padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:12px;color:var(--gray);">
+          선택된 반은 배정 시 해당 반 전체 학생에게 적용됩니다.
+        </div>
       </div>
     </div>
     <div style="margin-top:16px;text-align:right;">
@@ -5127,28 +5132,39 @@ window.toggleRecTreeClass = (g) => {
   document.getElementById('rcls-'+g)?.classList.toggle('expanded');
   document.getElementById('rlist-'+g)?.classList.toggle('open');
 };
-window.toggleRecClassCheck = (g, members) => {
+window.toggleRecClassCheck = (g) => {
   const cb = document.getElementById('rchk-cls-'+g);
-  if(cb.checked){
-    _recAssignTargets = _recAssignTargets.filter(t=>!(t.type==='student'&&t.groupName===g));
-    if(!_recAssignTargets.find(t=>t.type==='class'&&t.id===g))
+  const isChecked = cb.checked;
+  if(isChecked){
+    if(!_recAssignTargets.find(t=>t.type==='class'&&t.id===g)){
+      _recAssignTargets = _recAssignTargets.filter(t=>!(t.type==='student'&&t.groupName===g));
       _recAssignTargets.push({type:'class',id:g,name:g+' 전체',groupName:g});
-    members.forEach(u=>{ const el=document.getElementById('rchk-'+u.id); if(el)el.checked=false; });
+    }
+    // 학생 체크박스 전체 체크 + 열기
+    document.querySelectorAll('#rlist-'+g+' input[type=checkbox]').forEach(c=>c.checked=true);
+    document.querySelectorAll('#rlist-'+g+' .tree-student-row').forEach(r=>r.classList.add('selected'));
+    document.getElementById('rcls-'+g)?.classList.add('expanded');
+    document.getElementById('rlist-'+g)?.classList.add('open');
   } else {
-    _recAssignTargets = _recAssignTargets.filter(t=>!(t.type==='class'&&t.id===g));
+    _recAssignTargets = _recAssignTargets.filter(t=>!(t.id===g&&t.type==='class'));
+    document.querySelectorAll('#rlist-'+g+' input[type=checkbox]').forEach(c=>c.checked=false);
+    document.querySelectorAll('#rlist-'+g+' .tree-student-row').forEach(r=>r.classList.remove('selected'));
   }
   updateRecTargetTags();
 };
 window.toggleRecStudentCheck = (uid, name, g) => {
   const cb = document.getElementById('rchk-'+uid);
+  const row = document.getElementById('rstd-'+uid);
   const isNowChecked = !cb.checked;
   cb.checked = isNowChecked;
   if(isNowChecked){
+    row?.classList.add('selected');
     _recAssignTargets = _recAssignTargets.filter(t=>!(t.type==='class'&&t.id===g));
-    const clsCb = document.getElementById('rchk-cls-'+g); if(clsCb)clsCb.checked=false;
+    const clsCb=document.getElementById('rchk-cls-'+g); if(clsCb)clsCb.checked=false;
     if(!_recAssignTargets.find(t=>t.id===uid))
       _recAssignTargets.push({type:'student',id:uid,name,groupName:g});
   } else {
+    row?.classList.remove('selected');
     _recAssignTargets = _recAssignTargets.filter(t=>t.id!==uid);
   }
   updateRecTargetTags();
@@ -5156,6 +5172,7 @@ window.toggleRecStudentCheck = (uid, name, g) => {
 window.clearRecTargets = () => {
   _recAssignTargets = [];
   document.querySelectorAll('[id^="rchk-"]').forEach(el=>el.checked=false);
+  document.querySelectorAll('.tree-student-row').forEach(r=>r.classList.remove('selected'));
   updateRecTargetTags();
 };
 function updateRecTargetTags(){
@@ -5168,21 +5185,25 @@ function updateRecTargetTags(){
       return;
     }
     tags.innerHTML = _recAssignTargets.map(t=>`
-      <span class="tag" onclick="removeRecTarget('${t.id}')" style="cursor:pointer;">
-        ${t.name} ✕
-      </span>`).join('');
+      <span class="tag" onclick="removeRecTarget('${t.id}')" style="cursor:pointer;">${t.name} ✕</span>`).join('');
   }
 }
 window.removeRecTarget = (id) => {
   _recAssignTargets = _recAssignTargets.filter(t=>t.id!==id);
-  const cb = document.getElementById('rchk-'+id); if(cb) cb.checked=false;
+  const cb=document.getElementById('rchk-'+id)||document.getElementById('rchk-cls-'+id);
+  if(cb) cb.checked=false;
+  document.getElementById('rstd-'+id)?.classList.remove('selected');
   updateRecTargetTags();
 };
 window.filterRecTree = (val) => {
-  const v = val.toLowerCase();
+  const v=val.toLowerCase();
   document.querySelectorAll('[id^="rstd-"]').forEach(el=>{
-    el.style.display = !v||el.textContent.toLowerCase().includes(v)?'':'none';
+    el.style.display=!v||el.textContent.toLowerCase().includes(v)?'':'none';
   });
+  if(v){
+    document.querySelectorAll('.tree-class-row').forEach(r=>r.classList.add('expanded'));
+    document.querySelectorAll('.tree-student-list').forEach(l=>l.classList.add('open'));
+  }
 };
 window.recStep1Next = () => {
   if(!_recAssignTargets.length){ showToast('대상을 선택하세요.'); return; }
@@ -5199,48 +5220,100 @@ async function renderRecStep2(){
     return {...f, contents: cSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.seconds||0)-(b.createdAt?.seconds||0))};
   }));
 
+  // 폴더→숙제내용 트리 HTML 생성 (시험출제 Step2와 동일 구조)
+  const treeHtml = foldersWithContents.filter(f=>f.contents.length).map(f=>`
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f0f4f8;border-bottom:1px solid var(--border);cursor:pointer;"
+        onclick="toggleTreeNode('rc-f-${f.id}','rc-ft-${f.id}')">
+        <span id="rc-ft-${f.id}" style="font-size:11px;color:var(--teal);transition:.2s;">›</span>
+        <span style="font-weight:700;font-size:13px;">📁 ${f.name}</span>
+        <span style="margin-left:auto;font-size:11px;color:#aaa;">${f.contents.length}개</span>
+      </div>
+      <div id="rc-f-${f.id}" style="display:none;">
+        ${f.contents.map(c=>`
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px 9px 28px;border-bottom:1px solid #f5f5f5;cursor:pointer;"
+            onclick="toggleRecContent('${c.id}','${(c.title||'').replace(/'/g,"\\'")}','${(c.content||'').replace(/'/g,"\\'").replace(/\n/g,'\\n')}')">
+            <input type="checkbox" id="rc-chk-${c.id}" style="cursor:pointer;margin-top:2px;flex-shrink:0;"
+              onclick="event.stopPropagation();toggleRecContent('${c.id}','${(c.title||'').replace(/'/g,"\\'")}','${(c.content||'').replace(/'/g,"\\'").replace(/\n/g,'\\n')}')">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">📄 ${c.title||'제목없음'}</div>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;">${(c.content||'').split('\\n')[0].slice(0,60)}...</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">숙제 내용이 없습니다<br>먼저 숙제목록 작성에서 내용을 추가하세요</div>';
+
   document.getElementById('recAssignContent').innerHTML = `
     <div style="font-size:14px;font-weight:600;margin-bottom:16px;">② 숙제 선택</div>
-    <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:16px;">
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;font-weight:600;">숙제 목록 선택 (복수 선택 가능)</div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:400px;overflow-y:auto;">
-          ${foldersWithContents.filter(f=>f.contents.length).map(f=>`
-            <div>
-              <div style="padding:9px 14px;background:#f0f4f8;border-bottom:1px solid var(--border);font-weight:700;font-size:13px;">📁 ${f.name}</div>
-              ${f.contents.map(c=>`
-                <label style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;">
-                  <input type="checkbox" class="rec-content-chk" value="${c.id}" data-title="${(c.title||'').replace(/"/g,'&quot;')}" data-content="${(c.content||'').replace(/"/g,'&quot;')}" style="margin-top:2px;flex-shrink:0;">
-                  <div>
-                    <div style="font-weight:600;">📄 ${c.title||'제목없음'}</div>
-                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">${(c.content||'').slice(0,60)}${(c.content||'').length>60?'...':''}</div>
-                  </div>
-                </label>`).join('')}
-            </div>`).join('') || '<div style="padding:20px;text-align:center;color:#bbb;">숙제 내용이 없습니다<br>먼저 숙제목록 작성에서 내용을 추가하세요</div>'}
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;">
+      <!-- 폴더→숙제 트리 -->
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;max-height:420px;">
+        <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;flex-shrink:0;">
+          📁 폴더 / 숙제 목록
         </div>
+        <div id="recContentTree" style="overflow-y:auto;flex:1;">${treeHtml}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:12px;">
+      <!-- 선택된 숙제 목록 -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1;">
+          <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+            <span>✅ 선택된 숙제</span>
+            <button onclick="clearRecContentSel()" style="background:none;border:none;color:#bbb;font-size:11px;cursor:pointer;">전체 해제</button>
+          </div>
+          <div id="recSelectedContentList" style="padding:8px;max-height:200px;overflow-y:auto;font-size:13px;color:#bbb;min-height:40px;">
+            숙제를 선택하세요
+          </div>
+        </div>
         <div>
           <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제출 마감일 (선택)</div>
           <input type="date" id="recDueDate" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
         </div>
-        <div style="padding:12px;background:#f0fafa;border-radius:8px;font-size:12px;color:var(--gray);line-height:1.6;">
-          📌 대상<br><b style="color:var(--text);font-size:13px;">${targetName}</b>
+        <div style="padding:10px 12px;background:#f0fafa;border:1px solid var(--teal-light);border-radius:8px;font-size:12px;color:var(--gray);">
+          📌 대상: <b style="color:var(--text);">${targetName}</b>
         </div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="loadRecAssign()">← 이전</button>
       <button class="btn btn-primary" onclick="recStep2Next()">다음 → 생성 확인</button>
     </div>`;
 }
 
+// 선택된 숙제 목록 관리
+window.toggleRecContent = (id, title, content) => {
+  const cb = document.getElementById('rc-chk-'+id);
+  const exists = _recSelectedContents.find(c=>c.id===id);
+  if(exists){
+    _recSelectedContents = _recSelectedContents.filter(c=>c.id!==id);
+    if(cb) cb.checked = false;
+  } else {
+    _recSelectedContents.push({id, title, content:content.replace(/\\n/g,'\n')});
+    if(cb) cb.checked = true;
+  }
+  renderRecSelectedList();
+};
+window.clearRecContentSel = () => {
+  _recSelectedContents = [];
+  document.querySelectorAll('[id^="rc-chk-"]').forEach(el=>el.checked=false);
+  renderRecSelectedList();
+};
+function renderRecSelectedList(){
+  const el = document.getElementById('recSelectedContentList'); if(!el) return;
+  if(!_recSelectedContents.length){
+    el.innerHTML='<div style="color:#bbb;padding:8px;font-size:13px;">숙제를 선택하세요</div>';
+    return;
+  }
+  el.innerHTML = _recSelectedContents.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #f5f5f5;font-size:13px;">
+      <span>📄 ${c.title}</span>
+      <button onclick="toggleRecContent('${c.id}','${c.title.replace(/'/g,"\\'")}','')" style="background:none;border:none;color:#bbb;cursor:pointer;font-size:12px;">✕</button>
+    </div>`).join('');
+}
+
 window.recStep2Next = () => {
-  const checked = [...document.querySelectorAll('.rec-content-chk:checked')];
-  if(!checked.length){ showToast('숙제 내용을 선택하세요.'); return; }
-  const contents = checked.map(c=>({id:c.value, title:c.dataset.title, content:c.dataset.content}));
+  if(!_recSelectedContents.length){ showToast('숙제 내용을 선택하세요.'); return; }
   const dueDate = document.getElementById('recDueDate')?.value||'';
-  renderRecStep3(contents, dueDate);
+  renderRecStep3(_recSelectedContents, dueDate);
 };
 
 function renderRecStep3(contents, dueDate){
