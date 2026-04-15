@@ -56,6 +56,16 @@ module.exports = async (req, res) => {
       });
     }
 
+    // pushNotifications 이력 저장
+    const pushRef = db.collection('pushNotifications').doc();
+    await pushRef.set({
+      title, body, target,
+      sent: true,
+      date: new Date().toISOString().slice(0,10),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    const pushId = pushRef.id;
+
     // 각 학생에게 userNotifications 도큐먼트 저장 (팝업 확인용)
     const batch = db.batch();
     const now = FieldValue.serverTimestamp();
@@ -65,6 +75,7 @@ module.exports = async (req, res) => {
         uid: u.uid,
         title,
         body,
+        pushId,   // 알림 이력과 연결
         read: false,
         createdAt: now,
       });
