@@ -3045,10 +3045,12 @@ window.openRecHwDetail = async(hwId) => {
 
   const myUid = currentUser.uid;
 
-  // 기존 제출 내역
+  // 기존 제출 내역 + URL 저장
   const subSnap = await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hwId)));
+  const submittedUrls = {}; // slot → url
   subSnap.docs.filter(d=>d.data().uid===myUid).forEach(d=>{
     _recSubmittedSlots[d.data().slot] = true;
+    submittedUrls[d.data().slot] = d.data().url;
   });
 
   // 피드백 (학생별 1개)
@@ -3062,7 +3064,7 @@ window.openRecHwDetail = async(hwId) => {
   }
 
   // 각 슬롯 UI 초기화 (피드백은 별도 처리)
-  [1,2,3].forEach(n => resetRecSlotUI(n, _recSubmittedSlots[n]===true));
+  [1,2,3].forEach(n => resetRecSlotUI(n, _recSubmittedSlots[n]===true, submittedUrls[n]));
 
   // 격려/피드백 영역 표시
   const allSubmitted = [1,2,3].every(n=>_recSubmittedSlots[n]);
@@ -3077,7 +3079,7 @@ window.openRecHwDetail = async(hwId) => {
       } else {
         encEl.innerHTML = `<div style="background:#f0fdf4;border-radius:12px;padding:14px 16px;border-left:4px solid #059669;">
           <div style="font-size:14px;color:#059669;font-weight:600;">🎉 3번 모두 녹음 제출 완료!</div>
-          <div style="font-size:13px;color:#065f46;margin-top:4px;">정말 열심히 했어요! 선생님 피드백을 기다려주세요 😊</div>
+          <div style="font-size:13px;color:#065f46;margin-top:4px;">정말 열심히 녹음했어요! 수고했습니다 👏</div>
         </div>`;
       }
       encEl.style.display='block';
@@ -3089,22 +3091,28 @@ window.openRecHwDetail = async(hwId) => {
   show('recHwDetail');
 };
 
-function resetRecSlotUI(n, alreadySubmitted){
+function resetRecSlotUI(n, alreadySubmitted, audioUrl){
   const statusEl = document.getElementById('recStatus'+n);
   const audioWrap = document.getElementById('recAudioWrap'+n);
   const btnRecord = document.getElementById('recBtnRecord'+n);
   const btnConfirm = document.getElementById('recBtnConfirm'+n);
   const btnSubmit = document.getElementById('recBtnSubmit'+n);
+  const audioEl = document.getElementById('recAudio'+n);
 
   if(alreadySubmitted){
     if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
-    if(btnRecord){ btnRecord.textContent='🔄 다시녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
+    // 재녹음/재제출 버튼 완전 숨김
+    if(btnRecord) btnRecord.style.display='none';
     if(btnConfirm) btnConfirm.style.display='none';
     if(btnSubmit) btnSubmit.style.display='none';
-    if(audioWrap) audioWrap.style.display='none';
+    // 다시 듣기: URL이 있으면 오디오 표시
+    if(audioUrl && audioEl){
+      audioEl.src = audioUrl;
+      if(audioWrap) audioWrap.style.display='block';
+    }
   } else {
     if(statusEl){ statusEl.textContent='대기'; statusEl.style.background='#f5f5f5'; statusEl.style.color='#aaa'; }
-    if(btnRecord){ btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#3BBFBF'; btnRecord.style.color='white'; }
+    if(btnRecord){ btnRecord.style.display=''; btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#3BBFBF'; btnRecord.style.color='white'; }
     if(btnConfirm) btnConfirm.style.display='none';
     if(btnSubmit) btnSubmit.style.display='none';
     if(audioWrap) audioWrap.style.display='none';
@@ -3194,8 +3202,16 @@ window.submitRec = async(n) => {
     _recSubmittedSlots[n] = true;
     if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
     if(btnSubmit) btnSubmit.style.display='none';
+    // 재녹음 버튼 숨김 (제출 완료 후 재제출 불가)
     const btnRecord = document.getElementById('recBtnRecord'+n);
-    if(btnRecord){ btnRecord.textContent='🔄 다시녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
+    if(btnRecord) btnRecord.style.display='none';
+    const btnConfirm2 = document.getElementById('recBtnConfirm'+n);
+    if(btnConfirm2) btnConfirm2.style.display='none';
+    // 제출된 녹음 다시 듣기
+    const audioEl2 = document.getElementById('recAudio'+n);
+    const audioWrap2 = document.getElementById('recAudioWrap'+n);
+    if(audioEl2){ audioEl2.src = url; }
+    if(audioWrap2) audioWrap2.style.display='block';
     showToast(`🎙 녹음 ${n}회차 제출 완료!`);
     // 3개 모두 완료 시 격려 메시지
     if([1,2,3].every(s=>_recSubmittedSlots[s])){
@@ -3203,7 +3219,7 @@ window.submitRec = async(n) => {
       if(encEl){
         encEl.innerHTML = `<div style="background:#f0fdf4;border-radius:12px;padding:14px 16px;border-left:4px solid #059669;">
           <div style="font-size:14px;color:#059669;font-weight:600;">🎉 3번 모두 녹음 제출 완료!</div>
-          <div style="font-size:13px;color:#065f46;margin-top:4px;">정말 열심히 했어요! 선생님 피드백을 기다려주세요 😊</div>
+          <div style="font-size:13px;color:#065f46;margin-top:4px;">정말 열심히 녹음했어요! 수고했습니다 👏</div>
         </div>`;
         encEl.style.display='block';
       }
