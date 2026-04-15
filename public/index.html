@@ -339,7 +339,7 @@
       <div class="menu-grid">
         <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><div class="card-icon-big">📝</div></div>
         <div class="menu-card c-blue" onclick="goUnscramble()" style="position:relative;"><span id="unscrambleBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 순서 맞추기</div><div class="card-name">언스크<br>램블</div></div><div class="card-icon-big">🔀</div></div>
-        <div class="menu-card c-purple" onclick="goComingSoon('recording')"><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div><div class="coming-soon">Coming Soon</div></div><div class="card-icon-big">🎙</div></div>
+        <div class="menu-card c-purple" onclick="goRecHw()" style="position:relative;"><span id="recBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div></div><div class="card-icon-big">🎙</div></div>
         <div class="menu-card c-green" onclick="goRanking()"><div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div><div class="card-icon-big">🏆</div></div>
       </div>
       <div class="notice-section">
@@ -491,6 +491,65 @@
       <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
       <button class="submit-btn" id="spellSubmitBtn" onclick="submitSpell()" title="제출">▶▶</button>
       <button class="skip-btn" onclick="skipSpell()">SKIP</button>
+    </div>
+  </div>
+
+  <!-- RECORDING HW LIST -->
+  <div id="recHwList" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="goHome()">‹</button>
+      <span class="page-title">🎙 녹음 숙제</span>
+      <span></span>
+    </div>
+    <div class="scroll-content" style="padding:0 0 16px;">
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+      <div id="recHwPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
+      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div id="recHwCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div></div>
+    </div>
+  </div>
+
+  <!-- RECORDING HW DETAIL (녹음 제출 화면) -->
+  <div id="recHwDetail" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="show('recHwList');loadRecHwList();">‹</button>
+      <span class="page-title" id="recHwDetailTitle">녹음 숙제</span>
+      <span></span>
+    </div>
+    <div class="scroll-content" style="padding:12px 16px 24px;">
+      <!-- 숙제 내용 -->
+      <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--teal);font-weight:700;margin-bottom:6px;">📄 숙제 내용</div>
+        <div id="recHwContent" style="font-size:14px;color:var(--text);line-height:1.7;white-space:pre-wrap;"></div>
+      </div>
+      <!-- 3회 녹음 블록 -->
+      <div style="font-size:12px;color:var(--gray);margin-bottom:10px;">동일한 내용을 3번 녹음하여 제출하세요.</div>
+      ${[1,2,3].map(n=>`
+      <div id="recBlock${n}" style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-weight:700;font-size:14px;">녹음 ${n}회차</div>
+          <span id="recStatus${n}" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
+        </div>
+        <!-- 녹음된 오디오 미리듣기 -->
+        <div id="recAudioWrap${n}" style="display:none;margin-bottom:10px;">
+          <audio id="recAudio${n}" controls style="width:100%;height:36px;"></audio>
+        </div>
+        <!-- 버튼 3개 -->
+        <div style="display:flex;gap:8px;">
+          <button id="recBtnRecord${n}" onclick="toggleRecording(${n})"
+            style="flex:1;padding:10px;border-radius:10px;border:none;background:#3BBFBF;color:white;font-size:13px;font-weight:700;cursor:pointer;">
+            🎙 녹음
+          </button>
+          <button id="recBtnConfirm${n}" onclick="confirmRec(${n})"
+            style="flex:1;padding:10px;border-radius:10px;border:none;background:#e5eeff;color:#5aabcf;font-size:13px;font-weight:700;cursor:pointer;display:none;">
+            ✔ 확인
+          </button>
+          <button id="recBtnSubmit${n}" onclick="submitRec(${n})"
+            style="flex:1;padding:10px;border-radius:10px;border:none;background:#4bc27d;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">
+            ▶ 제출
+          </button>
+        </div>
+      </div>`).join('')}
     </div>
   </div>
 
@@ -910,12 +969,12 @@ window.doLogout = async()=>{
   localStorage.removeItem('lastLoginAt');
   show('login');
 };
-window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();};
+window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();updateRecBadge();};
 
 // ── 홈 데이터 ─────────────────────────────────────────────
 async function loadHomeData(){
   await Promise.all([loadNoticePreview(), loadHwFiles()]);
-  await Promise.all([updateTestBadge(), updateUnscBadge()]);
+  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge()]);
 }
 
 async function updateTestBadge(){
@@ -2834,7 +2893,7 @@ window.addEventListener('popstate',e=>{
   _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
 
-window.goHome=()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();};
+window.goHome=()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();updateRecBadge();};
 
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;
@@ -2878,6 +2937,249 @@ window.installApp=async()=>{
 window.addEventListener('appinstalled',()=>{
   showToast('앱이 설치됐어요! 🎉');
 });
+
+// ── 녹음 숙제 ─────────────────────────────────────────────
+let _recCurrentHw = null;      // 현재 숙제 데이터
+let _recMediaRecorders = {};   // slot → MediaRecorder
+let _recBlobs = {};            // slot → Blob (녹음 데이터)
+let _recStreams = {};           // slot → MediaStream
+let _recSubmittedSlots = {};   // slot → true/false
+
+window.goRecHw = async() => {
+  show('recHwList');
+  await loadRecHwList();
+  await updateRecBadge();
+};
+
+window.loadRecHwList = async() => {
+  const elP = document.getElementById('recHwPending');
+  const elC = document.getElementById('recHwCompleted');
+  if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  try{
+    const myGroup = userProfile?.group||'', myUid = currentUser?.uid||'';
+    const snap = await getDocs(query(collection(db,'recHw'), orderBy('createdAt','desc')));
+    const allHws = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 내 숙제 필터
+    const myHws = allHws.filter(hw=>{
+      if(!hw.active && hw.active!==undefined) return false;
+      const targets = hw.targets||[];
+      return targets.some(t=>(t.type==='class'&&t.id===myGroup)||(t.type==='student'&&t.id===myUid));
+    });
+    // 제출 현황 확인
+    const submittedMap = new Map(); // hwId → [slot numbers]
+    await Promise.all(myHws.map(async hw=>{
+      try{
+        const snap2 = await getDocs(query(collection(db,'recSubmissions'),
+          where('hwId','==',hw.id), where('uid','==',myUid)));
+        submittedMap.set(hw.id, snap2.docs.map(d=>d.data().slot));
+      }catch(e){ submittedMap.set(hw.id,[]); }
+    }));
+
+    const pending = myHws.filter(hw=>{
+      const slots = submittedMap.get(hw.id)||[];
+      return slots.length < 3;
+    });
+    const completed = myHws.filter(hw=>{
+      const slots = submittedMap.get(hw.id)||[];
+      return slots.length >= 3;
+    });
+
+    const makeCard = (hw, done) => {
+      const slots = submittedMap.get(hw.id)||[];
+      const badge = done
+        ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
+        : `<span style="font-size:11px;background:#f3f0ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">${slots.length}/3 제출</span>`;
+      return `<div class="unit-card" onclick="openRecHwDetail('${hw.id}')">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="unit-name">🎙 ${hw.title||'숙제'}</div>${badge}
+          </div>
+          <div class="unit-count">${hw.dueDate?'마감: '+hw.dueDate:''}</div>
+        </div>
+        <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'✓':'›'}</span>
+      </div>`;
+    };
+
+    if(elP) elP.innerHTML = pending.length
+      ? pending.map(hw=>makeCard(hw,false)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 숙제가 없습니다.</div>';
+    if(elC) elC.innerHTML = completed.length
+      ? completed.map(hw=>makeCard(hw,true)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div>';
+  }catch(e){
+    if(elP) elP.innerHTML = `<div class="empty-msg" style="padding:20px;">불러오기 실패</div>`;
+  }
+};
+
+window.openRecHwDetail = async(hwId) => {
+  const snap = await getDoc(doc(db,'recHw',hwId));
+  if(!snap.exists()){ showToast('숙제를 찾을 수 없습니다.'); return; }
+  _recCurrentHw = {id:hwId, ...snap.data()};
+  _recBlobs = {}; _recMediaRecorders = {}; _recStreams = {}; _recSubmittedSlots = {};
+
+  document.getElementById('recHwDetailTitle').textContent = _recCurrentHw.title||'녹음 숙제';
+  document.getElementById('recHwContent').textContent = _recCurrentHw.content||'';
+
+  // 기존 제출 내역 확인
+  const subSnap = await getDocs(query(collection(db,'recSubmissions'),
+    where('hwId','==',hwId), where('uid','==',currentUser.uid)));
+  subSnap.docs.forEach(d=>{
+    const slot = d.data().slot;
+    _recSubmittedSlots[slot] = true;
+  });
+
+  // 각 슬롯 UI 초기화
+  [1,2,3].forEach(n=>{
+    resetRecSlotUI(n, _recSubmittedSlots[n]===true);
+  });
+
+  show('recHwDetail');
+};
+
+function resetRecSlotUI(n, alreadySubmitted){
+  const statusEl = document.getElementById('recStatus'+n);
+  const audioWrap = document.getElementById('recAudioWrap'+n);
+  const btnRecord = document.getElementById('recBtnRecord'+n);
+  const btnConfirm = document.getElementById('recBtnConfirm'+n);
+  const btnSubmit = document.getElementById('recBtnSubmit'+n);
+
+  if(alreadySubmitted){
+    if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
+    if(btnRecord){ btnRecord.textContent='🔄 다시녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
+    if(btnConfirm) btnConfirm.style.display='none';
+    if(btnSubmit) btnSubmit.style.display='none';
+    if(audioWrap) audioWrap.style.display='none';
+  } else {
+    if(statusEl){ statusEl.textContent='대기'; statusEl.style.background='#f5f5f5'; statusEl.style.color='#aaa'; }
+    if(btnRecord){ btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#3BBFBF'; btnRecord.style.color='white'; }
+    if(btnConfirm) btnConfirm.style.display='none';
+    if(btnSubmit) btnSubmit.style.display='none';
+    if(audioWrap) audioWrap.style.display='none';
+  }
+}
+
+window.toggleRecording = async(n) => {
+  const recorder = _recMediaRecorders[n];
+  // 녹음 중이면 정지
+  if(recorder && recorder.state === 'recording'){
+    recorder.stop();
+    return;
+  }
+  // 새 녹음 시작
+  try{
+    // 기존 스트림 정리
+    if(_recStreams[n]){ _recStreams[n].getTracks().forEach(t=>t.stop()); }
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    _recStreams[n] = stream;
+    const chunks = [];
+    const mr = new MediaRecorder(stream);
+    _recMediaRecorders[n] = mr;
+    mr.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+    mr.onstop = ()=>{
+      _recBlobs[n] = new Blob(chunks, {type:'audio/webm'});
+      stream.getTracks().forEach(t=>t.stop());
+      // UI 업데이트: 확인/제출 버튼 표시
+      const audioEl = document.getElementById('recAudio'+n);
+      const audioWrap = document.getElementById('recAudioWrap'+n);
+      const btnRecord = document.getElementById('recBtnRecord'+n);
+      const btnConfirm = document.getElementById('recBtnConfirm'+n);
+      const btnSubmit = document.getElementById('recBtnSubmit'+n);
+      const statusEl = document.getElementById('recStatus'+n);
+      if(audioEl) audioEl.src = URL.createObjectURL(_recBlobs[n]);
+      if(audioWrap) audioWrap.style.display='block';
+      if(btnRecord){ btnRecord.textContent='🎙 다시 녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
+      if(btnConfirm) btnConfirm.style.display='block';
+      if(btnSubmit) btnSubmit.style.display='none';
+      if(statusEl){ statusEl.textContent='녹음완료'; statusEl.style.background='#e0f2fe'; statusEl.style.color='#0284c7'; }
+    };
+    mr.start();
+    // UI: 녹음 중 표시
+    const btnRecord = document.getElementById('recBtnRecord'+n);
+    const statusEl = document.getElementById('recStatus'+n);
+    const btnConfirm = document.getElementById('recBtnConfirm'+n);
+    const btnSubmit = document.getElementById('recBtnSubmit'+n);
+    if(btnRecord){ btnRecord.textContent='⏹ 정지'; btnRecord.style.background='#e05050'; btnRecord.style.color='white'; }
+    if(statusEl){ statusEl.textContent='🔴 녹음 중'; statusEl.style.background='#fee2e2'; statusEl.style.color='#b91c1c'; }
+    if(btnConfirm) btnConfirm.style.display='none';
+    if(btnSubmit) btnSubmit.style.display='none';
+  }catch(e){
+    showToast('마이크 접근 실패: '+e.message);
+  }
+};
+
+window.confirmRec = (n) => {
+  // 확인 클릭 → 제출 버튼 활성화
+  const btnConfirm = document.getElementById('recBtnConfirm'+n);
+  const btnSubmit = document.getElementById('recBtnSubmit'+n);
+  const statusEl = document.getElementById('recStatus'+n);
+  if(btnConfirm) btnConfirm.style.display='none';
+  if(btnSubmit) btnSubmit.style.display='block';
+  if(statusEl){ statusEl.textContent='제출 대기'; statusEl.style.background='#fef9c3'; statusEl.style.color='#92400e'; }
+};
+
+window.submitRec = async(n) => {
+  if(!_recBlobs[n]){ showToast('먼저 녹음해주세요.'); return; }
+  const btnSubmit = document.getElementById('recBtnSubmit'+n);
+  const statusEl = document.getElementById('recStatus'+n);
+  if(btnSubmit){ btnSubmit.disabled=true; btnSubmit.textContent='업로드 중...'; }
+  try{
+    const fileName = `recHw/${_recCurrentHw.id}/${currentUser.uid}_slot${n}_${Date.now()}.webm`;
+    const storageRef = ref(storage, fileName);
+    await uploadBytesResumable(storageRef, _recBlobs[n]);
+    const url = await getDownloadURL(storageRef);
+    // Firestore에 제출 기록
+    await addDoc(collection(db,'recSubmissions'),{
+      hwId: _recCurrentHw.id,
+      uid: currentUser.uid,
+      userName: userProfile.name,
+      group: userProfile.group||'',
+      slot: n,
+      url,
+      storagePath: fileName,
+      submittedAt: serverTimestamp()
+    });
+    _recSubmittedSlots[n] = true;
+    if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
+    if(btnSubmit) btnSubmit.style.display='none';
+    const btnRecord = document.getElementById('recBtnRecord'+n);
+    if(btnRecord){ btnRecord.textContent='🔄 다시녹음'; btnRecord.style.background='#e5e7eb'; btnRecord.style.color='#555'; }
+    showToast(`녹음 ${n}회차 제출 완료!`);
+    // 3개 모두 완료 시 알림
+    if([1,2,3].every(s=>_recSubmittedSlots[s])){
+      setTimeout(()=>showToast('🎉 모든 녹음 제출 완료!'), 800);
+    }
+    await updateRecBadge();
+  }catch(e){
+    showToast('제출 실패: '+e.message);
+    if(btnSubmit){ btnSubmit.disabled=false; btnSubmit.textContent='▶ 제출'; }
+  }
+};
+
+// 녹음숙제 홈 뱃지
+async function updateRecBadge(){
+  const badge = document.getElementById('recBadge');
+  if(!badge||!currentUser||!userProfile) return;
+  try{
+    const myGroup=userProfile.group||'', myUid=currentUser.uid;
+    const snap=await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc')));
+    const allHws=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myHws=allHws.filter(hw=>{
+      if(!hw.active&&hw.active!==undefined) return false;
+      const targets=hw.targets||[];
+      return targets.some(t=>(t.type==='class'&&t.id===myGroup)||(t.type==='student'&&t.id===myUid));
+    });
+    let incomplete = 0;
+    await Promise.all(myHws.map(async hw=>{
+      try{
+        const s=await getDocs(query(collection(db,'recSubmissions'),
+          where('hwId','==',hw.id),where('uid','==',myUid)));
+        if(s.size<3) incomplete++;
+      }catch(e){ incomplete++; }
+    }));
+    badge.textContent = incomplete>99?'99+':incomplete;
+    badge.style.display = incomplete>0?'flex':'none';
+  }catch(e){ badge.style.display='none'; }
+}
 
 // ── 모바일 키패드 대응 ────────────────────────────────────
 // html,body position:fixed 으로 키패드 밀림 방지 완료
