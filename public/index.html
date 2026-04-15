@@ -314,7 +314,16 @@
         <img class="header-icon" src="/icons/icon-192.png" alt="" onerror="this.style.display='none'">
         <span class="home-logo-text">큰소리 영어</span>
       </div>
-      <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <!-- 알림 버튼 -->
+        <button onclick="openNotifPanel()" style="background:none;border:none;cursor:pointer;padding:6px;position:relative;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+          </svg>
+          <span id="notifBadge" style="display:none;position:absolute;top:3px;right:3px;background:#e05050;color:white;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center;"></span>
+        </button>
+        <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
+      </div>
       <div class="dropdown" id="dd1">
         <div class="dropdown-item" onclick="goMyInfo()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -904,6 +913,23 @@
       </div>
     </div>
   </div>
+
+  <!-- 알림 목록 패널 (우측에서 슬라이드) -->
+  <div id="notifPanel" style="display:none;position:fixed;inset:0;z-index:400;">
+    <div onclick="closeNotifPanel()" style="position:absolute;inset:0;background:rgba(0,0,0,.3);"></div>
+    <div style="position:absolute;top:0;right:0;bottom:0;width:300px;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.15);display:flex;flex-direction:column;">
+      <div style="padding:16px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div style="font-size:16px;font-weight:700;">🔔 알림함</div>
+        <button onclick="closeNotifPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;">✕</button>
+      </div>
+      <div id="notifPanelList" style="overflow-y:auto;flex:1;padding:8px 0;">
+        <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #eee;flex-shrink:0;">
+        <button onclick="markAllNotifsRead()" style="width:100%;background:#f5f5f5;border:none;border-radius:10px;padding:10px;font-size:13px;color:#555;cursor:pointer;">모두 읽음 처리</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- SheetJS for Excel import -->
@@ -998,8 +1024,11 @@ window.doLogin = async () => {
       document.getElementById('greetName').textContent=profile.name+' 님';
       await loadHomeData();
       show('home');
-      // 미확인 알림 팝업 (약간 딜레이)
-      setTimeout(()=>checkUnreadNotifs(), 1500);
+      // 미확인 알림 팝업 + 뱃지 (약간 딜레이)
+      setTimeout(async()=>{
+        await updateNotifBadge();
+        checkUnreadNotifs();
+      }, 1500);
       // FCM 토큰 등록 (학생만)
       setTimeout(registerFCMToken, 2000);
       setupForegroundMessage();
@@ -2460,6 +2489,7 @@ function setupForegroundMessage() {
   });
 }
 
+
 // ── 알림 팝업 모달 ──────────────────────────────────────────
 function showNotifModal(title, body, docId){
   const overlay = document.getElementById('notifModalOverlay');
@@ -2474,17 +2504,15 @@ function showNotifModal(title, body, docId){
     btn.onclick = async() => {
       overlay.style.display='none';
       if(docId && currentUser){
-        try{
-          await updateDoc(doc(db,'userNotifications',docId),{read:true});
-        }catch(e){}
+        try{ await updateDoc(doc(db,'userNotifications',docId),{read:true}); }catch(e){}
       }
-      // 다음 미확인 알림 확인
+      await updateNotifBadge();
       checkUnreadNotifs();
     };
   }
 }
 
-// 앱 진입 시 미확인 알림 확인
+// 앱 진입 시 미확인 알림 순차 표시
 async function checkUnreadNotifs(){
   if(!currentUser) return;
   try{
@@ -2493,14 +2521,100 @@ async function checkUnreadNotifs(){
       where('uid','==',currentUser.uid),
       where('read','==',false)
     ));
+    await updateNotifBadge(snap.size);
     if(snap.empty) return;
-    // 가장 오래된 것부터 순서대로 표시
     const sorted = snap.docs.sort((a,b)=>(a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0));
     const first = sorted[0];
     const d = first.data();
     showNotifModal(d.title||'알림', d.body||'', first.id);
   }catch(e){ console.log('알림 확인 실패',e); }
 }
+
+// 뱃지 업데이트
+async function updateNotifBadge(count){
+  const badge = document.getElementById('notifBadge');
+  if(!badge) return;
+  if(count===undefined && currentUser){
+    try{
+      const snap = await getDocs(query(
+        collection(db,'userNotifications'),
+        where('uid','==',currentUser.uid),
+        where('read','==',false)
+      ));
+      count = snap.size;
+    }catch(e){ count=0; }
+  }
+  if(count>0){
+    badge.textContent = count>9?'9+':count;
+    badge.style.display='flex';
+  } else {
+    badge.style.display='none';
+  }
+}
+
+// 알림 패널 열기
+window.openNotifPanel = async() => {
+  const panel = document.getElementById('notifPanel');
+  const list  = document.getElementById('notifPanelList');
+  if(!panel||!list) return;
+  panel.style.display='block';
+  list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>';
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid)
+    ));
+    const notifs = snap.docs
+      .map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+    if(!notifs.length){
+      list.innerHTML='<div style="padding:32px 16px;text-align:center;color:#bbb;font-size:13px;">📭 알림이 없어요</div>';
+      return;
+    }
+    list.innerHTML = notifs.map(n=>`
+      <div onclick="readNotif('${n.id}')" style="padding:14px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;background:${n.read?'white':'#f0fafa'};">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="font-size:20px;flex-shrink:0;">${n.read?'🔔':'🔴'}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${n.title||'알림'}</div>
+            <div style="font-size:12px;color:#777;line-height:1.5;">${n.body||''}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  }catch(e){ list.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패</div>'; }
+};
+
+// 개별 알림 읽음 처리
+window.readNotif = async(docId) => {
+  try{
+    await updateDoc(doc(db,'userNotifications',docId),{read:true});
+    await openNotifPanel(); // 새로고침
+    await updateNotifBadge();
+  }catch(e){}
+};
+
+// 알림 패널 닫기
+window.closeNotifPanel = () => {
+  const panel = document.getElementById('notifPanel');
+  if(panel) panel.style.display='none';
+};
+
+// 모두 읽음
+window.markAllNotifsRead = async() => {
+  if(!currentUser) return;
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
+      where('read','==',false)
+    ));
+    await Promise.all(snap.docs.map(d=>updateDoc(d.ref,{read:true})));
+    await openNotifPanel();
+    await updateNotifBadge(0);
+    showToast('모두 읽음 처리됐어요!');
+  }catch(e){}
+};
 
 // ── 푸시 알림 발송 (Vercel Function 경유) ─────────────────
 function getPushFormData() {
