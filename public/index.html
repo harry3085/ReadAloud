@@ -2970,8 +2970,8 @@ window.loadRecHwList = async() => {
     await Promise.all(myHws.map(async hw=>{
       try{
         const snap2 = await getDocs(query(collection(db,'recSubmissions'),
-          where('hwId','==',hw.id), where('uid','==',myUid)));
-        submittedMap.set(hw.id, snap2.docs.map(d=>d.data().slot));
+          where('hwId','==',hw.id)));
+        submittedMap.set(hw.id, snap2.docs.map(d=>d.data()).filter(d=>d.uid===myUid).map(d=>d.slot));
       }catch(e){ submittedMap.set(hw.id,[]); }
     }));
 
@@ -3022,8 +3022,8 @@ window.openRecHwDetail = async(hwId) => {
 
   // 기존 제출 내역 확인
   const subSnap = await getDocs(query(collection(db,'recSubmissions'),
-    where('hwId','==',hwId), where('uid','==',currentUser.uid)));
-  subSnap.docs.forEach(d=>{
+    where('hwId','==',hwId)));
+  subSnap.docs.filter(d=>d.data().uid===currentUser.uid).forEach(d=>{
     const slot = d.data().slot;
     _recSubmittedSlots[slot] = true;
   });
@@ -3172,8 +3172,9 @@ async function updateRecBadge(){
     await Promise.all(myHws.map(async hw=>{
       try{
         const s=await getDocs(query(collection(db,'recSubmissions'),
-          where('hwId','==',hw.id),where('uid','==',myUid)));
-        if(s.size<3) incomplete++;
+          where('hwId','==',hw.id)));
+        const myCount=s.docs.filter(d=>d.data().uid===myUid).length;
+        if(myCount<3) incomplete++;
       }catch(e){ incomplete++; }
     }));
     badge.textContent = incomplete>99?'99+':incomplete;
