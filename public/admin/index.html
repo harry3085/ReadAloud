@@ -1032,14 +1032,23 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
         <span style="color:var(--gray);">~</span>
         <input type="date" id="scoreTo" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
         <select id="scoreClassFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;"><option value="">전체 반</option></select>
+        <select id="scoreModeFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+          <option value="">전체 종류</option>
+          <option value="word">📝 단어시험</option>
+          <option value="unscramble">🔀 언스크램블</option>
+        </select>
         <button class="btn btn-primary" onclick="loadScoreReport()">조회</button>
       </div>
     </div>
-    <div class="card">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tbl-wrap">
         <table>
-          <thead><tr><th>No</th><th>반</th><th>이름</th><th>교재명</th><th>문항/점수</th><th>점수</th><th>일시</th><th>상세</th></tr></thead>
-          <tbody id="scoreReportBody"><tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">기간을 선택하고 조회하세요</td></tr></tbody>
+          <thead><tr>
+            <th>No</th><th>반</th><th>이름</th>
+            <th>종류</th><th>교재명</th><th>시험명</th>
+            <th>정답/전체</th><th>점수</th><th>일시</th><th>상세</th>
+          </tr></thead>
+          <tbody id="scoreReportBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">기간을 선택하고 조회하세요</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -2418,30 +2427,146 @@ function initScoreReport(){
 }
 window.loadScoreReport = async() => {
   const el=document.getElementById('scoreReportBody');
-  el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
+  el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
   try{
     const snap=await getDocs(query(collection(db,'scores'),orderBy('createdAt','desc')));
     const scores=snap.docs.map(d=>({id:d.id,...d.data()}));
     const from=document.getElementById('scoreFrom').value;
     const to=document.getElementById('scoreTo').value;
     const cls=document.getElementById('scoreClassFilter').value;
+    const modeFilter=document.getElementById('scoreModeFilter').value;
+
     const filtered=scores.filter(s=>{
       const d=s.date||'';
+      const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble';
+      if(modeFilter==='word' && isUnsc) return false;
+      if(modeFilter==='unscramble' && !isUnsc) return false;
       return(!from||d>=from)&&(!to||d<=to)&&(!cls||s.group===cls);
     });
-    if(!filtered.length){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';return;}
+    if(!filtered.length){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';return;}
+
+    // testId로 교재명 보완
+    const testIds=[...new Set(filtered.map(s=>s.testId).filter(Boolean))];
+    const testMap={};
+    await Promise.all(testIds.map(async id=>{
+      try{ const d=await getDoc(doc(db,'tests',id)); if(d.exists()) testMap[id]=d.data(); }catch(e){}
+    }));
+
     const sbadge=v=>v>=80?'badge-green':v>=60?'badge-amber':'badge-red';
-    el.innerHTML=filtered.map((s,i)=>`<tr>
-      <td>${i+1}</td>
-      <td>${s.group||'-'}</td>
-      <td style="font-weight:600;">${s.userName||'-'}</td>
-      <td>${s.unitName||'-'}</td>
-      <td>${s.correct||0}/${s.total||0}</td>
-      <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
-      <td style="color:var(--gray);font-size:12px;">${s.date||''}</td>
-      <td><button class="btn btn-secondary btn-sm">상세</button></td>
-    </tr>`).join('');
-  }catch(e){el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+    el.innerHTML=filtered.map((s,i)=>{
+      const t=testMap[s.testId]||{};
+      const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble'||t.testMode==='unscramble';
+      const modeHtml=isUnsc
+        ?'<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀 언스크램블</span>'
+        :'<span class="badge badge-teal" style="font-size:10px;">📝 단어시험</span>';
+      const bookName=s.bookName||t.bookName||s.unitName||'-';
+      const testName=s.testName||t.name||'-';
+      return `<tr style="cursor:pointer;" onclick="showScoreDetail('${s.id}','${s.testId||''}')">
+        <td>${i+1}</td>
+        <td>${s.group||'-'}</td>
+        <td style="font-weight:600;">${s.userName||'-'}</td>
+        <td>${modeHtml}</td>
+        <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${bookName}">${bookName}</td>
+        <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${testName}">${testName}</td>
+        <td style="text-align:center;">${s.correct||0}/${s.total||0}</td>
+        <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
+        <td style="color:var(--gray);font-size:12px;">${s.createdAt?.toDate?s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):s.date||''}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showScoreDetail('${s.id}','${s.testId||''}')">상세</button></td>
+      </tr>`;
+    }).join('');
+  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+};
+
+window.showScoreDetail = async(scoreId, testId) => {
+  try{
+    const scoreDoc = await getDoc(doc(db,'scores',scoreId));
+    if(!scoreDoc.exists()){ showToast('데이터 없음'); return; }
+    const s = scoreDoc.data();
+    const isUnsc = s.testMode==='unscramble'||s.mode==='unscramble';
+
+    let testData=null, words=[];
+    if(testId){
+      try{
+        const tDoc=await getDoc(doc(db,'tests',testId));
+        if(tDoc.exists()){ testData=tDoc.data(); words=testData.words||testData.sentences||[]; }
+      }catch(e){}
+    }
+
+    const bookName=s.bookName||testData?.bookName||s.unitName||'-';
+    const testName=s.testName||testData?.name||'-';
+    const passScore=s.passScore||testData?.passScore||80;
+    const passed=s.passed||(s.score>=passScore);
+    const pct=s.score||0;
+    const badge=pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
+
+    // 단어/문장 목록 HTML
+    const itemsHtml = words.length
+      ? isUnsc
+        ? `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📋 시험 문장 (${words.length}개)</div>
+           <div style="display:flex;flex-direction:column;gap:3px;">
+             ${words.map((w,i)=>`
+               <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;border-radius:8px;background:${i%2===0?'#f8f9fa':'white'};font-size:12px;">
+                 <span style="color:#ccc;font-size:11px;width:18px;flex-shrink:0;">${i+1}</span>
+                 <div>
+                   <div style="font-weight:600;">${w.sentence||w.en||''}</div>
+                   ${w.ko?`<div style="color:var(--gray);font-size:11px;">${w.ko}</div>`:''}
+                 </div>
+               </div>`).join('')}
+           </div>`
+        : `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📋 시험 단어 (${words.length}개) · 정답 ${s.correct||0}개 · 오답 ${s.wrong||0}개</div>
+           <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+             ${words.map((w,i)=>`
+               <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:${i%2===0?'#f8f9fa':'white'};font-size:12px;">
+                 <span style="color:#ccc;font-size:10px;width:16px;flex-shrink:0;">${i+1}</span>
+                 <span style="font-weight:600;">${w.en||''}</span>
+                 <span style="color:var(--gray);margin-left:auto;">${w.ko||''}</span>
+               </div>`).join('')}
+           </div>`
+      : `<div style="color:#bbb;font-size:12px;text-align:center;padding:16px;">시험 단어 데이터가 없습니다</div>`;
+
+    showModal(`
+      <!-- 헤더 -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <div style="font-size:16px;font-weight:700;">${s.userName||'-'}
+            <span style="font-size:12px;color:var(--gray);font-weight:400;">${s.group||''}</span>
+          </div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px;">
+            ${isUnsc
+              ? '<span style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;border-radius:20px;padding:1px 7px;font-size:11px;">🔀 언스크램블</span>'
+              : '<span style="background:#e0f5f5;color:var(--teal);border-radius:20px;padding:1px 7px;font-size:11px;">📝 단어시험</span>'}
+            &nbsp;${bookName} &nbsp;·&nbsp; ${testName}
+          </div>
+        </div>
+        <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;">${pct}점</span>
+      </div>
+      <!-- 요약 4칸 -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
+        <div style="background:#f0fafa;border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:1px;">정답</div>
+        </div>
+        <div style="background:#fee2e2;border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:#e05050;">${s.wrong||0}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:1px;">오답</div>
+        </div>
+        <div style="background:#f8f9fa;border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:1px;">전체</div>
+        </div>
+        <div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:1px;">기준 ${passScore}점</div>
+        </div>
+      </div>
+      <!-- 시험 문항 목록 -->
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;max-height:300px;overflow-y:auto;">
+        ${itemsHtml}
+      </div>
+      <div style="font-size:11px;color:#bbb;text-align:right;margin-top:6px;">${s.date||''} ${s.createdAt?.toDate?s.createdAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''}</div>
+      <button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;margin-top:10px;">닫기</button>
+    `);
+  }catch(e){ showToast('상세 불러오기 실패: '+e.message); }
 };
 async function loadPersonalStudentList(){
   const el=document.getElementById('personalStudentList');
@@ -2484,14 +2609,24 @@ window.loadPersonalScore = async(uid) => {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>No</th><th>교재/단원</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
-          <tbody>${scores.map((s,i)=>`<tr>
-            <td>${i+1}</td>
-            <td>${s.unitName||'-'}</td>
-            <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
-            <td>${s.correct||0}/${s.total||0}</td>
-            <td style="color:var(--gray);font-size:12px;">${s.date||''}</td>
-          </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:#bbb;padding:12px;">응시 내역이 없습니다</td></tr>'}
+          <thead><tr><th>No</th><th>종류</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
+          <tbody>${scores.map((s,i)=>{
+            const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble';
+            const modeHtml=isUnsc
+              ?'<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀</span>'
+              :'<span class="badge badge-teal" style="font-size:10px;">📝</span>';
+            const bookName=s.bookName||s.unitName||'-';
+            const testName=s.testName||'-';
+            return `<tr>
+              <td>${i+1}</td>
+              <td>${modeHtml}</td>
+              <td style="font-size:12px;">${bookName}</td>
+              <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${testName}</td>
+              <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
+              <td>${s.correct||0}/${s.total||0}</td>
+              <td style="color:var(--gray);font-size:12px;">${s.date||''}</td>
+            </tr>`;
+          }).join('')||'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:12px;">응시 내역이 없습니다</td></tr>'}
           </tbody>
         </table>
       </div>
