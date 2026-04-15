@@ -1410,7 +1410,7 @@ window.selectTest = async(testId, testName)=>{
     document.getElementById('modalTime').innerHTML =
       `객 <b>10초</b> / 주 <b>30초</b>`;
     document.getElementById('modalPoint').textContent =
-      (window._currentTestData?.passScore ?? 80) + '점 이상';
+      (window._currentTestData?.passScore ?? 80) + '점';
     document.getElementById('infoModal').classList.remove('hidden');
     // 혼합 모드 플래그
     lastMode = 'mixed';
