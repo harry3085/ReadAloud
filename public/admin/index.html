@@ -4869,8 +4869,9 @@ async function loadRecContentList(folderId){
   const el = document.getElementById('recContentList'); if(!el) return;
   el.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
   try{
-    const snap = await getDocs(query(collection(db,'recContents'),where('folderId','==',folderId),orderBy('createdAt','asc')));
-    const items = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const snap = await getDocs(query(collection(db,'recContents'),where('folderId','==',folderId)));
+    const items = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(a.createdAt?.seconds||0)-(b.createdAt?.seconds||0));
     el.innerHTML = items.map(c=>`
       <div style="padding:14px 16px;border-bottom:1px solid #f5f5f5;display:flex;align-items:flex-start;justify-content:space-between;">
         <div style="flex:1;">
@@ -5053,8 +5054,8 @@ async function renderRecAssignStep2(){
   const [folderSnap] = [await getDocs(query(collection(db,'recFolders'),orderBy('createdAt','asc')))];
   const folders = folderSnap.docs.map(d=>({id:d.id,...d.data()}));
   const foldersWithContents = await Promise.all(folders.map(async f=>{
-    const cSnap = await getDocs(query(collection(db,'recContents'),where('folderId','==',f.id),orderBy('createdAt','asc')));
-    return {...f, contents: cSnap.docs.map(d=>({id:d.id,...d.data()}))};
+    const cSnap = await getDocs(query(collection(db,'recContents'),where('folderId','==',f.id)));
+    return {...f, contents: cSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.seconds||0)-(b.createdAt?.seconds||0))};
   }));
 
   document.getElementById('recAssignContent').innerHTML = `
