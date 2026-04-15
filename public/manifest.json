@@ -1,7 +1,7 @@
 {
   "name": "큰소리 영어",
   "short_name": "큰소리 영어",
-  "description": "따라만 해도 기억되는 영단어 학습",
+  "description": "큰소리로 말하는 영어학습",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#e8f4f4",
