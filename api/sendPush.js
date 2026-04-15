@@ -1,11 +1,8 @@
 // Vercel Serverless Function - 푸시 알림 발송
-// Firebase Admin SDK 사용 (서버에서만 실행)
-
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
-// Firebase Admin 초기화 (환경변수에서 서비스 계정 키 읽기)
 function initAdmin() {
   if (getApps().length > 0) return;
   initializeApp({
@@ -18,7 +15,6 @@ function initAdmin() {
 }
 
 module.exports = async (req, res) => {
-  // CORS 허용
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -35,85 +31,88 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: '제목, 내용, 대상은 필수입니다.' });
     }
 
-    // 대상 학생들의 FCM 토큰 수집
-    let tokens = [];
+    // 대상 학생 목록 수집
+    let users = []; // [{uid, fcmToken}]
 
     if (target === 'all') {
-      // 전체 학생
-      const snap = await db.collection('users')
-        .where('role', '==', 'student')
-        .get();
-      snap.forEach(doc => {
-        const t = doc.data().fcmToken;
-        if (t) tokens.push(t);
-      });
-
+      const snap = await db.collection('users').where('role', '==', 'student').get();
+      snap.forEach(doc => users.push({ uid: doc.id, fcmToken: doc.data().fcmToken }));
     } else if (target.startsWith('uid:')) {
-      // 개별 학생
       const uid = target.replace('uid:', '');
       const snap = await db.collection('users').doc(uid).get();
-      const t = snap.data()?.fcmToken;
-      if (t) tokens.push(t);
-
+      if (snap.exists) users.push({ uid: snap.id, fcmToken: snap.data()?.fcmToken });
     } else {
-      // 특정 그룹
       const snap = await db.collection('users')
         .where('role', '==', 'student')
         .where('group', '==', target)
         .get();
-      snap.forEach(doc => {
-        const t = doc.data().fcmToken;
-        if (t) tokens.push(t);
+      snap.forEach(doc => users.push({ uid: doc.id, fcmToken: doc.data().fcmToken }));
+    }
+
+    if (users.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: '알림을 받을 수 있는 학생이 없어요.',
       });
     }
 
-    if (tokens.length === 0) {
-      return res.status(200).json({ 
-        success: false, 
-        message: '알림을 받을 수 있는 학생이 없어요. (앱을 열어서 알림을 허용해야 해요)' 
+    // 각 학생에게 userNotifications 도큐먼트 저장 (팝업 확인용)
+    const batch = db.batch();
+    const now = FieldValue.serverTimestamp();
+    users.forEach(u => {
+      const ref = db.collection('userNotifications').doc();
+      batch.set(ref, {
+        uid: u.uid,
+        title,
+        body,
+        read: false,
+        createdAt: now,
       });
-    }
-
-    // FCM 멀티캐스트 발송
-    const message = {
-      notification: { title, body },
-      webpush: {
-        notification: {
-          title,
-          body,
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
-          vibrate: [200, 100, 200],
-        },
-        fcmOptions: { link: '/' },
-      },
-      tokens,
-    };
-
-    const result = await messaging.sendEachForMulticast(message);
-    
-    // 실패한 토큰 정리
-    const failedTokens = [];
-    result.responses.forEach((resp, i) => {
-      if (!resp.success) failedTokens.push(tokens[i]);
     });
+    await batch.commit();
 
-    // 유효하지 않은 토큰 Firestore에서 제거
-    if (failedTokens.length > 0) {
-      const usersSnap = await db.collection('users')
-        .where('fcmToken', 'in', failedTokens.slice(0, 10))
-        .get();
-      const batch = db.batch();
-      usersSnap.forEach(doc => batch.update(doc.ref, { fcmToken: null }));
-      await batch.commit();
+    // FCM 발송 (토큰 있는 학생만)
+    const tokens = users.map(u => u.fcmToken).filter(Boolean);
+    let sent = 0, failed = 0;
+
+    if (tokens.length > 0) {
+      const message = {
+        notification: { title, body },
+        webpush: {
+          notification: {
+            title, body,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
+            vibrate: [200, 100, 200],
+            requireInteraction: true, // 확인 전까지 알림 유지
+          },
+          fcmOptions: { link: '/' },
+        },
+        tokens,
+      };
+
+      const result = await messaging.sendEachForMulticast(message);
+      sent = result.successCount;
+      failed = result.failureCount;
+
+      // 실패 토큰 정리
+      const failedTokens = [];
+      result.responses.forEach((resp, i) => { if (!resp.success) failedTokens.push(tokens[i]); });
+      if (failedTokens.length > 0) {
+        const usersSnap = await db.collection('users')
+          .where('fcmToken', 'in', failedTokens.slice(0, 10)).get();
+        const cleanBatch = db.batch();
+        usersSnap.forEach(doc => cleanBatch.update(doc.ref, { fcmToken: null }));
+        await cleanBatch.commit();
+      }
     }
 
     return res.status(200).json({
       success: true,
-      sent: result.successCount,
-      failed: result.failureCount,
-      total: tokens.length,
-      message: `${result.successCount}명에게 알림을 보냈어요!`,
+      sent,
+      failed,
+      total: users.length,
+      message: `${users.length}명에게 알림을 보냈어요!`,
     });
 
   } catch (err) {
