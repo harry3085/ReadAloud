@@ -767,8 +767,19 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th><th onclick="sortTable('testListBody',0)" class="sortable">No</th><th onclick="sortTable('testListBody',1)" class="sortable">시험명</th><th onclick="sortTable('testListBody',2)" class="sortable">대상</th><th onclick="sortTable('testListBody',3)" class="sortable">교재</th><th onclick="sortTable('testListBody',4)" class="sortable">문항수</th><th onclick="sortTable('testListBody',5)" class="sortable">출제일</th><th>응시수</th><th>평균</th></tr></thead>
-          <tbody id="testListBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr>
+            <th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th>
+            <th onclick="sortTable('testListBody',0)" class="sortable">No</th>
+            <th onclick="sortTable('testListBody',1)" class="sortable">시험명</th>
+            <th>종류</th>
+            <th onclick="sortTable('testListBody',2)" class="sortable">대상</th>
+            <th onclick="sortTable('testListBody',3)" class="sortable">교재</th>
+            <th onclick="sortTable('testListBody',4)" class="sortable">문항수</th>
+            <th onclick="sortTable('testListBody',5)" class="sortable">출제일</th>
+            <th>응시수</th>
+            <th>평균</th>
+          </tr></thead>
+          <tbody id="testListBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
           <div class="tbl-actions">
@@ -2932,10 +2943,9 @@ window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
     const snap = await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
-    if(snap.empty){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';return;}
+    if(snap.empty){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';return;}
     const tests = snap.docs.map(d=>({id:d.id,...d.data()}));
 
-    // 각 시험의 응시 데이터 병렬 로드
     const scoresSnap = await getDocs(collection(db,'scores'));
     const allScores = scoresSnap.docs.map(d=>d.data());
 
@@ -2945,20 +2955,128 @@ window.loadTestList = async() => {
       return {...t, attemptCount:ts.length, avgScore:avg};
     });
 
-    initPagination('testListBody', testsWithStats, (t,i)=>`<tr>
-      <td><input type="checkbox" value="${t.id}"></td>
-      <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="selectPrintTest('${t.id}')">${t.name||'-'}</td>
-      <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
-      <td style="font-size:12px;">${t.bookName||'-'}</td>
-      <td style="text-align:center;">${t.count||0}문제</td>
-      <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
-      <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
-      <td style="text-align:center;">
-        ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
-      </td>
-    </tr>`, 'testPagination', 9);
-  }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+    const modeLabel = (t) => {
+      if(t.testMode==='unscramble') return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
+      return '<span class="badge badge-teal">📝 단어시험</span>';
+    };
+
+    initPagination('testListBody', testsWithStats, (t,i)=>`
+      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)">
+        <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
+        <td>${i+1}</td>
+        <td style="font-weight:600;color:var(--teal);">${t.name||'-'}</td>
+        <td>${modeLabel(t)}</td>
+        <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
+        <td style="font-size:12px;">${t.bookName||'-'}</td>
+        <td style="text-align:center;">${t.count||0}문제</td>
+        <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
+        <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
+        <td style="text-align:center;">
+          ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
+        </td>
+      </tr>
+      <tr id="progress-${t.id}" style="display:none;">
+        <td colspan="10" style="padding:0;background:#f8fffe;">
+          <div id="progress-content-${t.id}" style="padding:12px 16px 12px 48px;font-size:12px;color:var(--gray);">로딩 중...</div>
+        </td>
+      </tr>`, 'testPagination', 9);
+  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+};
+
+window.toggleTestProgress = async(testId, tr) => {
+  const progressRow = document.getElementById('progress-'+testId);
+  if(!progressRow) return;
+  const isOpen = progressRow.style.display !== 'none';
+  // 다른 열린 행 닫기
+  document.querySelectorAll('[id^="progress-"]').forEach(r=>r.style.display='none');
+  if(isOpen) return;
+
+  progressRow.style.display='';
+  const contentEl = document.getElementById('progress-content-'+testId);
+  contentEl.textContent = '로딩 중...';
+
+  try{
+    const testDoc = await getDoc(doc(db,'tests',testId));
+    const t = testDoc.data();
+    const targets = t.targets||[];
+
+    // 대상 학생 목록
+    let students = [];
+    for(const tg of targets){
+      if(tg.type==='student') students.push({uid:tg.id, name:tg.name, group:''});
+      else {
+        const gs = await getDocs(query(collection(db,'users'),where('group','==',tg.id)));
+        gs.docs.filter(d=>d.data().role==='student').forEach(d=>
+          students.push({uid:d.id, name:d.data().name, group:d.data().group||''})
+        );
+      }
+    }
+    const seen=new Set(); students=students.filter(s=>{if(seen.has(s.uid))return false;seen.add(s.uid);return true;});
+    students.sort((a,b)=>(a.group+a.name).localeCompare(b.group+b.name,'ko'));
+
+    // 완료 목록
+    const compSnap = await getDocs(collection(db,'tests',testId,'userCompleted'));
+    const compMap = {}; // uid → {score}
+    compSnap.docs.forEach(d=>{ compMap[d.id]=d.data(); });
+
+    // 점수 목록 (응시 여부 확인용)
+    const scoreSnap = await getDocs(query(collection(db,'scores'),where('testId','==',testId)));
+    const scoreMap = {}; // uid → 최고점수
+    scoreSnap.docs.forEach(d=>{
+      const s=d.data();
+      if(!scoreMap[s.uid]||s.score>scoreMap[s.uid]) scoreMap[s.uid]=s.score;
+    });
+
+    const done    = students.filter(s=> compMap[s.uid]);                           // 완료
+    const tried   = students.filter(s=>!compMap[s.uid] && scoreMap[s.uid]!==undefined); // 응시했지만 미통과
+    const notYet  = students.filter(s=>!compMap[s.uid] && scoreMap[s.uid]===undefined);  // 시작 안 함
+
+    // 반별 그룹화
+    const groupMap = {};
+    students.forEach(s=>{
+      const g=s.group||'미배정';
+      if(!groupMap[g]) groupMap[g]=[];
+      groupMap[g].push(s);
+    });
+
+    let html = `<div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
+      <span>총 <b>${students.length}</b>명</span>
+      <span style="color:#059669;">✅ 완료 <b>${done.length}</b>명</span>
+      <span style="color:#b45309;">🔄 응시중 <b>${tried.length}</b>명</span>
+      <span style="color:#aaa;">⬜ 미시작 <b>${notYet.length}</b>명</span>
+      <span style="color:var(--blue);">통과점수 <b>${t.passScore||80}점</b></span>
+    </div>`;
+
+    Object.keys(groupMap).sort((a,b)=>a.localeCompare(b,'ko')).forEach(g=>{
+      const gs = groupMap[g];
+      const gDone  = gs.filter(s=>compMap[s.uid]).length;
+      const gTried = gs.filter(s=>!compMap[s.uid]&&scoreMap[s.uid]!==undefined).length;
+      html += `<div style="margin-bottom:8px;">
+        <div style="font-weight:700;font-size:12px;color:var(--gray);padding:4px 0;border-bottom:1px solid #eee;margin-bottom:5px;">
+          👥 ${g} &nbsp;
+          <span style="font-weight:400;">
+            ✅${gDone} 🔄${gTried} ⬜${gs.length-gDone-gTried}
+          </span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${gs.map(s=>{
+            const c=compMap[s.uid];
+            const sc=scoreMap[s.uid];
+            const started = sc!==undefined;
+            // 색상: 완료=초록, 응시중=주황, 미시작=회색
+            const bg  = c ? '#d1fae5' : started ? '#fff3cd' : '#f3f4f6';
+            const col = c ? '#059669' : started ? '#b45309' : '#9ca3af';
+            const icon= c ? '✅' : started ? '🔄' : '⬜';
+            return `<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:${bg};color:${col};">
+              ${icon} ${s.name}${sc!==undefined?` <span style="font-size:10px;opacity:.8;">${sc}점</span>`:''}
+            </span>`;
+          }).join('')}
+        </div>
+      </div>`;
+    });
+
+    contentEl.innerHTML = html;
+  }catch(e){ contentEl.textContent='불러오기 실패: '+e.message; }
 };
 window.reprintTest = async(id) => {
   const snap = await getDoc(doc(db,'tests',id));
