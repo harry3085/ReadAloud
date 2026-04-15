@@ -4,7 +4,7 @@
   "description": "큰소리로 말하는 영어학습",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#e8f4f4",
+  "background_color": "#FEF2EC",
   "theme_color": "#E8714A",
   "orientation": "portrait",
   "icons": [
