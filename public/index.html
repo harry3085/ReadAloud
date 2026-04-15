@@ -8,7 +8,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-tap-highlight-color:transparent;}
-    :root{--teal:#3BBFBF;--teal-dark:#2a9f9f;--bg:#e8f4f4;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#5aabcf;--purple:#8b7dd8;--green:#4bc27d;}
+    :root{--teal:#E8714A;--teal-dark:#D85A30;--bg:#FEF2EC;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#EF9F27;--purple:#D4537E;--green:#F4936A;}
     html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
     #app{height:100%;overflow:hidden;position:relative;}
     .screen{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg);flex-direction:column;overflow:hidden;}
@@ -19,33 +19,39 @@
     .loading-title{font-size:24px;font-weight:800;color:var(--text);margin-bottom:8px;}
     .loading-spinner{width:36px;height:36px;border:3px solid #ddd;border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;margin-top:24px;}
     @keyframes spin{to{transform:rotate(360deg);}}
-    #login{align-items:center;justify-content:flex-start;padding:20px 32px;position:relative;overflow-y:auto;}
-    .logo-area{text-align:center;margin-bottom:40px;}
-    .app-icon{width:72px;height:72px;border-radius:18px;object-fit:cover;display:inline-block;margin-bottom:10px;}
-    .logo-title{font-size:26px;font-weight:800;color:var(--text);}
-    .logo-sub{font-size:14px;color:var(--gray);margin-top:4px;}
-    .login-input{width:100%;background:white;border:none;border-radius:14px;padding:16px 20px;font-size:16px;color:var(--text);outline:none;margin-bottom:0;box-shadow:0 2px 8px rgba(0,0,0,.06);}
-    .login-input::placeholder{color:#bbb;}
-    .login-btn{width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:18px;font-size:17px;font-weight:600;cursor:pointer;margin-top:8px;}
-    .save-id{display:flex;align-items:center;gap:8px;margin-top:18px;font-size:14px;color:var(--gray);}
+    #login{align-items:stretch;justify-content:flex-start;padding:0;position:relative;overflow-y:auto;background:var(--bg);}
+    .login-hero{background:linear-gradient(160deg,#E8714A,#D85A30);padding:52px 32px 36px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+    .logo-area{text-align:center;margin-bottom:0;}
+    .app-icon{width:68px;height:68px;border-radius:18px;object-fit:cover;display:inline-block;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);}
+    .logo-title{font-size:26px;font-weight:800;color:white;}
+    .logo-sub{font-size:14px;color:rgba(255,255,255,0.75);margin-top:4px;}
+    .login-card{background:white;border-radius:28px 28px 0 0;padding:32px 28px 24px;flex:1;margin-top:-20px;box-shadow:0 -4px 24px rgba(232,113,74,.12);}
+    .login-input{width:100%;background:#FFF8F5;border:1.5px solid #FFE0D4;border-radius:16px;padding:30px 22px;font-size:17px;color:var(--text);outline:none;margin-bottom:0;transition:border-color .2s;}
+    .login-input:focus{border-color:var(--teal);}
+    .login-input::placeholder{color:#ccc;}
+    .login-btn{width:100%;background:linear-gradient(135deg,#E8714A,#D85A30);color:white;border:none;border-radius:16px;padding:35px;font-size:18px;font-weight:700;cursor:pointer;margin-top:10px;box-shadow:0 4px 14px rgba(232,113,74,.35);}
+    .save-id{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--gray);}
     .save-id input{accent-color:var(--teal);}
-    .version{position:absolute;bottom:24px;font-size:13px;color:#aaa;font-weight:500;}
+    .version{text-align:center;font-size:13px;color:#ccc;font-weight:500;padding-top:8px;}
     .login-error{color:var(--red);font-size:13px;text-align:center;margin-top:8px;min-height:20px;}
-    .home-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--bg);position:relative;flex-shrink:0;}
+    .home-header{background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 40px;position:relative;flex-shrink:0;}
+    .home-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
     .home-logo{display:flex;align-items:center;gap:10px;}
-    .header-icon{width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;}
-    .home-logo-text{font-size:17px;font-weight:800;color:var(--text);}
-    .menu-btn{font-size:22px;color:var(--gray);cursor:pointer;background:none;border:none;padding:4px 8px;}
-    .dropdown{position:absolute;top:56px;right:16px;background:white;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;z-index:200;display:none;min-width:160px;}
+    .header-icon{width:32px;height:32px;border-radius:9px;object-fit:cover;flex-shrink:0;}
+    .home-logo-text{font-size:16px;font-weight:800;color:white;}
+    .home-header-actions{display:flex;align-items:center;gap:4px;}
+    .menu-btn{font-size:22px;color:rgba(255,255,255,0.9);cursor:pointer;background:rgba(255,255,255,0.15);border:none;padding:6px 10px;border-radius:10px;}
+    .dropdown{position:absolute;top:100px;right:16px;background:white;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;z-index:200;display:none;min-width:160px;}
     .dropdown.open{display:block;}
     .dropdown-item{display:flex;align-items:center;gap:10px;padding:14px 18px;font-size:15px;color:var(--text);cursor:pointer;border-bottom:1px solid #f5f5f5;}
     .dropdown-item:last-child{border-bottom:none;}
     .dropdown-item:hover{background:#f9f9f9;}
     .dropdown-item.danger{color:var(--red);}
     .dropdown-item svg{width:18px;height:18px;flex-shrink:0;}
-    .home-greeting{text-align:center;padding:4px 0 16px;flex-shrink:0;}
-    .home-greeting .name{font-size:17px;font-weight:600;color:var(--text);}
-    .home-greeting .sub{font-size:14px;color:var(--gray);margin-top:2px;}
+    .home-greeting{padding:0;}
+    .home-greeting .name{font-size:20px;font-weight:800;color:white;}
+    .home-greeting .sub{font-size:13px;color:rgba(255,255,255,0.75);margin-top:3px;}
+    .home-body{background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;}
     .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 12px;flex-shrink:0;}
     .menu-card{border-radius:22px;padding:20px 16px 14px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;min-height:130px;transition:transform .15s;position:relative;overflow:hidden;}
     .menu-card:active{transform:scale(0.97);}
@@ -53,15 +59,15 @@
     .card-name{font-size:18px;font-weight:700;color:white;line-height:1.25;}
     .card-icon-big{font-size:32px;opacity:0.22;align-self:flex-end;margin-top:6px;}
     .coming-soon{font-size:10px;color:rgba(255,255,255,.65);background:rgba(255,255,255,.2);border-radius:20px;padding:2px 8px;margin-top:5px;display:inline-block;}
-    .c-teal{background:linear-gradient(140deg,#3BBFBF,#2a9f9f);}
-    .c-blue{background:linear-gradient(140deg,#5aabcf,#3d8fb0);}
-    .c-purple{background:linear-gradient(140deg,#8b7dd8,#6b5cb8);}
-    .c-green{background:linear-gradient(140deg,#4bc27d,#2da860);}
+    .c-teal{background:linear-gradient(140deg,#E8714A,#D85A30);}
+    .c-blue{background:linear-gradient(140deg,#EF9F27,#BA7517);}
+    .c-purple{background:linear-gradient(140deg,#D4537E,#993556);}
+    .c-green{background:linear-gradient(140deg,#F4936A,#E8714A);}
     .notice-section{padding:0 16px 8px;}
     .notice-card{background:white;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:10px;}
     .notice-card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;}
     .notice-card-title{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px;}
-    .notice-card-title .icon{width:26px;height:26px;border-radius:8px;background:#e8f4f4;display:flex;align-items:center;justify-content:center;font-size:14px;}
+    .notice-card-title .icon{width:26px;height:26px;border-radius:8px;background:#FEF2EC;display:flex;align-items:center;justify-content:center;font-size:14px;}
     .notice-more{font-size:12px;color:var(--teal);font-weight:600;cursor:pointer;background:none;border:none;}
     .notice-item{padding:10px 18px;border-top:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:flex-start;gap:10px;}
     .notice-item:hover{background:#fafafa;}
@@ -69,11 +75,11 @@
     .notice-item-text{flex:1;}
     .notice-item-title{font-size:14px;color:var(--text);font-weight:500;line-height:1.4;}
     .notice-item-meta{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:8px;}
-    .notice-tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;background:#e8f4f4;color:var(--teal);}
+    .notice-tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;background:#FEE4D8;color:var(--teal);}
     .notice-tag.all{background:#fff3e0;color:#e6820a;}
     .hw-file-item{padding:12px 18px;border-top:1px solid #f5f5f5;display:flex;align-items:center;gap:12px;}
     .file-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-    .file-icon.pdf{background:#ffe5e5;} .file-icon.docx{background:#e5eeff;} .file-icon.img{background:#e5fff0;}
+    .file-icon.pdf{background:#ffe5e5;} .file-icon.docx{background:#FFF0E5;} .file-icon.img{background:#e5fff0;}
     .file-info{flex:1;}
     .file-name{font-size:14px;font-weight:500;color:var(--text);}
     .file-meta{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:6px;align-items:center;}
@@ -96,37 +102,40 @@
     .mode-icon{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
     .mode-name{font-size:16px;font-weight:700;color:var(--text);}
     .mode-desc{font-size:13px;color:var(--gray);margin-top:2px;}
-    .quiz-header{display:flex;align-items:center;justify-content:center;padding:14px 20px;position:relative;flex-shrink:0;}
-    .quit-btn{position:absolute;left:20px;background:none;border:none;font-size:20px;color:var(--gray);cursor:pointer;}
-    .progress-pill{background:var(--teal);color:white;border-radius:20px;padding:8px 20px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
-    .quiz-instruction{text-align:center;color:var(--gray);font-size:15px;padding:12px 20px 6px;flex-shrink:0;}
-    .word-card{margin:8px 16px;background:white;border-radius:20px;padding:20px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08);min-height:80px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .word-card .word{font-size:24px;font-weight:700;color:var(--text);}
+    .quiz-header{display:flex;align-items:center;gap:12px;padding:14px 20px 0;flex-shrink:0;}
+    .quit-btn{background:none;border:none;font-size:20px;color:var(--gray);cursor:pointer;flex-shrink:0;}
+    .progress-bar-wrap{flex:1;height:8px;background:#FFE0D4;border-radius:4px;}
+    .progress-bar-fill{height:8px;background:var(--teal);border-radius:4px;transition:width .3s;}
+    .progress-pill{font-size:12px;font-weight:700;color:var(--teal);flex-shrink:0;min-width:32px;text-align:right;}
+    .quiz-instruction{text-align:center;color:var(--gray);font-size:13px;padding:10px 20px 6px;flex-shrink:0;}
+    .word-card{margin:6px 16px;background:white;border-radius:20px;padding:20px 24px;text-align:center;box-shadow:0 4px 16px rgba(232,113,74,.12);min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
+    .word-card .word{font-size:26px;font-weight:800;color:var(--text);}
+    .word-card .word-listen{font-size:11px;color:var(--teal);font-weight:600;margin-top:6px;}
     .choices{padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;}
     .choice-btn{background:white;border:none;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06);font-size:15px;color:var(--text);text-align:left;transition:all .2s;flex-shrink:0;}
-    .choice-btn.correct{background:#d4f5e9;border:2px solid #3BBFBF;}
+    .choice-btn.correct{background:#FFE8E0;border:2px solid #E8714A;}
     .choice-btn.wrong{background:#fde8e8;border:2px solid #e05050;}
-    .choice-num{background:#e0f5f5;color:var(--teal);border-radius:10px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+    .choice-num{background:#FEE4D8;color:var(--teal);border-radius:10px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
     .choice-num.correct{background:var(--teal);color:white;}
     .choice-num.wrong{background:var(--red);color:white;}
-    .quiz-footer{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;flex-shrink:0;}
+    .quiz-footer{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;flex-shrink:0;border-top:1px solid #f0e8e4;}
     .timer-circle{width:44px;height:44px;position:relative;}
     .timer-circle svg{transform:rotate(-90deg);}
     .timer-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal);}
     .footer-btn{background:none;border:none;color:var(--gray);font-size:24px;cursor:pointer;}
-    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 22px;font-size:20px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
+    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 24px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px;box-shadow:0 2px 8px rgba(232,113,74,.3);transition:opacity .15s;}
     .submit-btn:active{opacity:.7;}
     .submit-btn:disabled{opacity:.35;cursor:not-allowed;}
-    .choice-btn.selected{background:#e0f5f5;border:2px solid var(--teal);}
+    .choice-btn.selected{background:#FEE4D8;border:2px solid var(--teal);}
     .choice-btn.selected .choice-num{background:var(--teal);color:white;}
     .unsc-word-btn{background:white;border:2px solid var(--teal);border-radius:10px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.06);}
     .unsc-word-btn:active{transform:scale(0.95);}
     .unsc-word-btn.used{opacity:0.2;pointer-events:none;text-decoration:line-through;}
     .reset-btn{background:#fee2e2;color:#b91c1c;border:none;border-radius:14px;padding:10px 20px;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(185,28,28,.25);transition:opacity .15s;letter-spacing:0;}
-    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(59,191,191,.3);transition:opacity .15s;}
+    .submit-btn{background:var(--teal);color:white;border:none;border-radius:14px;padding:10px 20px;font-size:18px;font-weight:700;cursor:pointer;letter-spacing:2px;box-shadow:0 2px 8px rgba(232,113,74,.3);transition:opacity .15s;}
     .submit-btn:active{opacity:.7;}
     .submit-btn:disabled{opacity:.4;cursor:not-allowed;}
-    .choice-btn.selected{background:#e0f5f5;border:2px solid var(--teal);}
+    .choice-btn.selected{background:#FEE4D8;border:2px solid var(--teal);}
     .choice-btn.selected .choice-num{background:var(--teal);color:white;}
     .skip-btn{background:none;border:none;color:var(--gray);font-size:15px;font-weight:600;cursor:pointer;}
     .spell-input-wrap{margin:8px 16px;flex-shrink:0;}
@@ -135,7 +144,7 @@
     .spell-hint{text-align:center;font-size:13px;color:#aaa;margin-top:8px;}
     .spell-boxes{display:flex;gap:2px;padding:8px 12px;flex-wrap:wrap;justify-content:center;flex-shrink:0;}
     .spell-box{width:32px;height:40px;min-width:0;background:white;border:2px solid #ddd;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--text);cursor:pointer;}
-    .spell-box.active{background:#e8f9f9;border:2px solid var(--teal);}
+    .spell-box.active{background:#FFF0EB;border:2px solid var(--teal);}
     .spell-box.filled{background:white;border:2px solid var(--teal);color:var(--teal);}
     #result{align-items:center;justify-content:center;padding:40px 24px;text-align:center;}
     .result-score{font-size:64px;font-weight:800;color:var(--teal);}
@@ -151,21 +160,21 @@
     .ranking-tabs{display:flex;background:#f0f0f0;border-radius:12px;margin:0 16px 16px;padding:4px;flex-shrink:0;}
     .ranking-tab{flex:1;padding:9px;text-align:center;font-size:14px;font-weight:500;color:var(--gray);cursor:pointer;border-radius:9px;}
     .ranking-tab.active{background:white;color:var(--teal);font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.08);}
-    .rank-list{padding:0 16px;display:flex;flex-direction:column;gap:10px;}
-    .rank-item{background:white;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
-    .rank-item.me{border:2px solid var(--teal);background:#f5fefe;}
-    .rank-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;background:#f0f0f0;color:var(--gray);}
+    .rank-list{padding:0 16px;display:flex;flex-direction:column;gap:6px;}
+    .rank-item{background:white;border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 5px rgba(0,0,0,.05);}
+    .rank-item.me{border:2px solid var(--teal);background:#FFF8F5;}
+    .rank-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;background:#f0f0f0;color:var(--gray);}
     .rank-num.gold{background:#ffd700;color:#a07000;} .rank-num.silver{background:#c0c0c0;color:#606060;} .rank-num.bronze{background:#cd7f32;color:#6b3800;}
-    .rank-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;flex-shrink:0;}
+    .rank-avatar{display:none;}
     .rank-info{flex:1;}
-    .rank-name{font-size:15px;font-weight:600;color:var(--text);}
-    .rank-name span{font-size:12px;color:var(--teal);font-weight:500;margin-left:4px;}
-    .rank-sub{font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:8px;align-items:center;}
-    .rank-score{font-size:18px;font-weight:800;color:var(--teal);}
-    .rank-bar{height:4px;background:#eee;border-radius:2px;margin-top:6px;}
-    .rank-bar-fill{height:4px;background:var(--teal);border-radius:2px;}
+    .rank-name{font-size:13px;font-weight:600;color:var(--text);}
+    .rank-name span{font-size:11px;color:var(--teal);font-weight:500;margin-left:4px;}
+    .rank-sub{display:none;}
+    .rank-score{font-size:15px;font-weight:800;color:var(--teal);}
+    .rank-bar{display:none;}
+    .rank-bar-fill{display:none;}
     .hw-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;}
-    .hw-done{background:#e0f5f0;color:#2a9f9f;} .hw-none{background:#f0f0f0;color:#aaa;}
+    .hw-done{background:#FEE4D8;color:#D85A30;} .hw-none{background:#f0f0f0;color:#aaa;}
     .hw-order{font-size:11px;color:var(--teal);font-weight:600;} .hw-order.late{color:#aaa;}
     .section-head{font-size:13px;font-weight:600;color:var(--gray);padding:4px 16px 8px;}
     .notice-full-item{background:white;border-radius:16px;padding:18px 20px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
@@ -195,8 +204,8 @@
     .tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;font-weight:500;color:var(--gray);cursor:pointer;border-radius:9px;}
     .tab.active{background:white;color:var(--teal);font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.08);}
     /* 그룹 태그 */
-    .group-tag{display:inline-flex;align-items:center;gap:6px;background:#e8f4f4;color:var(--teal);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;margin:3px;cursor:pointer;}
-    .group-tag:hover{background:#d0eeed;}
+    .group-tag{display:inline-flex;align-items:center;gap:6px;background:#FEE4D8;color:var(--teal);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;margin:3px;cursor:pointer;}
+    .group-tag:hover{background:#FDDDD4;}
     .group-tag .del{color:#aaa;font-size:12px;margin-left:2px;}
     /* 진도 현황 */
     .stats-filter{display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap;flex-shrink:0;}
@@ -231,7 +240,7 @@
     .modal{background:white;border-radius:24px;padding:24px;width:100%;max-width:360px;max-height:85vh;overflow-y:auto;}
     .modal-title{font-size:18px;font-weight:700;color:var(--teal);margin-bottom:20px;text-align:center;}
     .modal-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:24px;}
-    .stat-box{background:#f5fafa;border-radius:14px;padding:14px 8px;text-align:center;}
+    .stat-box{background:#FFF8F6;border-radius:14px;padding:14px 8px;text-align:center;}
     .stat-emoji{font-size:26px;margin-bottom:6px;} .stat-label{font-size:11px;font-weight:700;color:var(--teal);margin-bottom:6px;} .stat-label.red{color:#e06060;} .stat-value{font-size:13px;font-weight:600;color:var(--text);}
     .start-btn{width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:600;cursor:pointer;}
     .confirm-modal{background:white;border-radius:20px;padding:28px 24px 20px;width:100%;max-width:300px;text-align:center;}
@@ -257,26 +266,30 @@
 
   <!-- LOGIN -->
   <div id="login" class="screen">
-    <div class="logo-area" style="margin-bottom:24px;margin-top:32px;">
-      <img class="app-icon" src="/icons/icon-192.png" alt="큰소리 영어" onerror="this.style.display='none'">
-      <div class="logo-title">큰소리 영어</div>
-      <div class="logo-sub">큰소리로 말하는 영어 학습</div>
+    <div class="login-hero">
+      <div class="logo-area">
+        <img class="app-icon" src="/icons/icon-192.png" alt="큰소리 영어" onerror="this.style.display='none'">
+        <div class="logo-title">큰소리 영어</div>
+        <div class="logo-sub">큰소리로 말하는 영어 학습</div>
+      </div>
     </div>
-    <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username" style="margin-bottom:12px;">
-    <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password" style="margin-bottom:6px;">
-    <div class="login-error" id="loginError" style="min-height:18px;font-size:13px;margin-bottom:4px;"></div>
-    <button class="login-btn" onclick="doLogin()">로그인</button>
-    <div style="display:flex;gap:16px;margin-top:14px;justify-content:center;">
-      <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
-      <label class="save-id"><input type="checkbox" id="savePwCheck"> 비밀번호 저장</label>
+    <div class="login-card">
+      <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username" style="margin-bottom:12px;">
+      <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password" style="margin-bottom:6px;">
+      <div class="login-error" id="loginError" style="min-height:18px;font-size:13px;margin-bottom:4px;"></div>
+      <button class="login-btn" onclick="doLogin()">로그인</button>
+      <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
+        <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
+        <label class="save-id"><input type="checkbox" id="savePwCheck"> 비밀번호 저장</label>
+      </div>
+      <div style="margin-top:14px;text-align:center;font-size:14px;color:var(--gray);">
+        계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
+      </div>
+      <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:#FEF2EC;color:var(--teal);border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:600;cursor:pointer;">
+        📱 홈화면에 추가
+      </button>
+      <div class="version">version : 3.0.0</div>
     </div>
-    <div style="margin-top:14px;text-align:center;font-size:14px;color:var(--gray);">
-      계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
-    </div>
-    <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:white;color:var(--teal);border:1.5px solid var(--teal);border-radius:14px;padding:18px;font-size:15px;font-weight:600;cursor:pointer;">
-      📱 홈화면에 추가
-    </button>
-    <div class="version">version : 3.0.0</div>
   </div>
 
   <!-- 회원가입 -->
@@ -296,7 +309,7 @@
           <div class="form-row"><label class="form-label">연락처 *</label><input class="form-input" id="signupPhone" placeholder="010-0000-0000" type="tel"></div>
           <div class="form-row"><label class="form-label">부모님 성함 (선택)</label><input class="form-input" id="signupParentName" placeholder="선택사항"></div>
           <div class="form-row"><label class="form-label">부모님 연락처 (선택)</label><input class="form-input" id="signupParentPhone" placeholder="010-0000-0000" type="tel"></div>
-          <div style="background:#f5fafa;border-radius:10px;padding:12px;font-size:13px;color:var(--gray);margin-bottom:10px;">
+          <div style="background:#FFF8F6;border-radius:10px;padding:12px;font-size:13px;color:var(--gray);margin-bottom:10px;">
             ℹ️ 그룹 배정은 관리자가 완료합니다. 가입 후 관리자에게 문의하세요.
           </div>
           <div class="login-error" id="signupError" style="margin-bottom:8px;"></div>
@@ -310,19 +323,24 @@
   <!-- STUDENT HOME -->
   <div id="home" class="screen">
     <div class="home-header">
-      <div class="home-logo">
-        <img class="header-icon" src="/icons/icon-192.png" alt="" onerror="this.style.display='none'">
-        <span class="home-logo-text">큰소리 영어</span>
+      <div class="home-header-top">
+        <div class="home-logo">
+          <img class="header-icon" src="/icons/icon-192.png" alt="" onerror="this.style.display='none'">
+          <span class="home-logo-text">큰소리 영어</span>
+        </div>
+        <div class="home-header-actions">
+          <button onclick="openNotifPanel()" style="background:rgba(255,255,255,0.15);border:none;cursor:pointer;padding:6px 8px;border-radius:10px;position:relative;display:flex;align-items:center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            <span id="notifBadge" style="display:none;position:absolute;top:3px;right:3px;background:#e05050;color:white;border-radius:50%;width:14px;height:14px;font-size:9px;font-weight:700;align-items:center;justify-content:center;"></span>
+          </button>
+          <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:4px;">
-        <!-- 알림 버튼 -->
-        <button onclick="openNotifPanel()" style="background:none;border:none;cursor:pointer;padding:6px;position:relative;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2">
-            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-          </svg>
-          <span id="notifBadge" style="display:none;position:absolute;top:3px;right:3px;background:#e05050;color:white;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center;"></span>
-        </button>
-        <button class="menu-btn" onclick="toggleDropdown('dd1')">⋮</button>
+      <div class="home-greeting">
+        <div class="name" id="greetName">학생 님</div>
+        <div class="sub">오늘은 어떻게 공부해 볼까요?</div>
       </div>
       <div class="dropdown" id="dd1">
         <div class="dropdown-item" onclick="goMyInfo()">
@@ -335,17 +353,14 @@
         </div>
       </div>
     </div>
-    <div id="pushBanner" style="display:none;background:linear-gradient(135deg,#3BBFBF,#2a9f9f);color:white;padding:12px 16px;flex-shrink:0;align-items:center;gap:10px;">
+    <div id="pushBanner" style="display:none;background:linear-gradient(135deg,#E8714A,#D85A30);color:white;padding:12px 16px;flex-shrink:0;align-items:center;gap:10px;">
       <span style="font-size:18px;">🔔</span>
       <div style="flex:1;font-size:13px;">알림을 허용하면 시험·숙제 알림을 받을 수 있어요!</div>
       <button onclick="document.getElementById('pushBanner').style.display='none'" style="background:rgba(255,255,255,.2);color:white;border:none;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;">닫기</button>
     </div>
+    <div class="home-body">
     <div class="scroll-content">
-      <div class="home-greeting">
-        <div class="name" id="greetName">학생 님</div>
-        <div class="sub">오늘은 어떻게 공부해 볼까요?</div>
-      </div>
-      <div class="menu-grid">
+      <div class="menu-grid" style="margin-top:28px;">
         <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><div class="card-icon-big">📝</div></div>
         <div class="menu-card c-blue" onclick="goUnscramble()" style="position:relative;"><span id="unscrambleBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 순서 맞추기</div><div class="card-name">언스크<br>램블</div></div><div class="card-icon-big">🔀</div></div>
         <div class="menu-card c-purple" onclick="goRecHw()" style="position:relative;"><span id="recBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div></div><div class="card-icon-big">🎙</div></div>
@@ -365,6 +380,7 @@
         </div>
       </div>
       <div style="height:20px;"></div>
+    </div>
     </div>
   </div>
 
@@ -390,71 +406,83 @@
 
   <!-- UNIT LIST (단어시험) -->
   <div id="units" class="screen">
-    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">📝 단어 시험</span><span></span></div>
-    <div class="scroll-content" style="padding:0 0 16px;">
-      <!-- 미완료/진행중 -->
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">단어 시험</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">단원을 선택해 시험을 시작하세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+    <div class="scroll-content" style="padding:16px 16px 16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">진행 중 / 미완료</div>
       <div id="unitListPending"><div class="empty-msg" style="padding:20px;">배정된 시험이 없습니다.</div></div>
-      <!-- 완료 -->
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
       <div id="unitListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div></div>
+    </div>
     </div>
   </div>
 
   <!-- UNSCRAMBLE LIST -->
   <div id="unscrambleList" class="screen">
-    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">🔀 언스크램블</span><span></span></div>
-    <div class="scroll-content" style="padding:0 0 16px;">
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">언스크램블</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">단원을 선택해 시험을 시작하세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+    <div class="scroll-content" style="padding:16px 16px 16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">진행 중 / 미완료</div>
       <div id="unscListPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
       <div id="unscListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 항목이 없습니다.</div></div>
+    </div>
     </div>
   </div>
 
   <!-- UNSCRAMBLE 풀기 화면 -->
-  <div id="unscramble" class="screen" style="background:#f8fffe;">
+  <div id="unscramble" class="screen" style="background:#FFF8F5;">
 
-    <!-- 헤더 -->
+    <!-- 헤더: 진행바 -->
     <div class="quiz-header">
       <button class="quit-btn" onclick="goHome()">✕</button>
-      <div class="progress-pill">🔀 <span id="unscProgress">1/10</span></div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="unscProgressBar" style="width:10%;"></div></div>
+      <div class="progress-pill" id="unscProgress">1/10</div>
     </div>
 
     <!-- 설명 문구 -->
-    <div style="padding:6px 16px 2px;flex-shrink:0;text-align:center;">
-      <div style="font-size:11px;color:var(--gray);">단어를 문장의 순서에 맞게 클릭하세요</div>
-    </div>
+    <div style="font-size:11px;color:var(--gray);text-align:center;margin:8px 0 6px;flex-shrink:0;">단어를 순서에 맞게 클릭하세요</div>
 
-    <!-- 한글 뜻 카드 (기존 방식 유지) -->
-    <div class="word-card" style="margin:6px 16px;padding:16px 20px;min-height:60px;flex-shrink:0;">
-      <div id="unscMeaning" style="font-size:16px;font-weight:600;color:var(--text);text-align:center;line-height:1.5;"></div>
-    </div>
-
-    <!-- 완성 중인 문장 영역 (고정 높이) -->
-    <div style="margin:6px 16px 0;flex-shrink:0;">
-      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:5px;">완성 중인 문장</div>
-      <div style="background:white;border-radius:14px;border:2px solid var(--teal);padding:12px 16px;height:130px;overflow:hidden;box-sizing:border-box;">
-        <div id="unscBuilt" style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;line-height:1.55;overflow:hidden;"></div>
+    <!-- 뜻+문장 합체 카드 -->
+    <div style="margin:0 16px 10px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(232,113,74,.12);flex-shrink:0;">
+      <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:14px 16px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:3px;">한글 뜻</div>
+        <div id="unscMeaning" style="font-size:15px;font-weight:700;color:white;line-height:1.5;"></div>
+      </div>
+      <div style="padding:12px 16px;min-height:64px;">
+        <div style="font-size:9px;color:var(--teal);font-weight:700;margin-bottom:6px;">완성 중인 문장</div>
+        <div id="unscBuilt" style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;line-height:1.6;"></div>
       </div>
     </div>
 
     <!-- 섞인 단어 버튼들 -->
-    <div style="padding:10px 14px;flex-shrink:0;">
+    <div style="padding:4px 14px 10px;flex-shrink:0;">
       <div id="unscWords" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
 
     <!-- 하단 푸터 -->
-    <div class="quiz-footer" style="margin-top:auto;border-top:1px solid #e0f0f0;">
+    <div class="quiz-footer" style="margin-top:auto;">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
           <circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/>
-          <circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="unscTimerArc" stroke-linecap="round"/>
+          <circle cx="22" cy="22" r="18" fill="none" stroke="#E8714A" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="unscTimerArc" stroke-linecap="round"/>
         </svg>
         <div class="timer-text" id="unscTimerText">30</div>
       </div>
       <button class="reset-btn" id="unscResetBtn" onclick="resetUnscramble()" title="초기화" style="opacity:0.3;">R</button>
-      <button class="submit-btn" id="unscSubmitBtn" onclick="submitUnscramble()" disabled>▶▶</button>
+      <button class="submit-btn" id="unscSubmitBtn" onclick="submitUnscramble()" disabled>제출 ▶</button>
       <button class="skip-btn" onclick="skipUnscramble()">SKIP</button>
     </div>
   </div>
@@ -464,124 +492,152 @@
     <div class="page-header"><button class="back-btn" onclick="show('units')">‹</button><span class="page-title" id="modeUnitName">단원</span><span></span></div>
     <div style="padding:16px 16px 8px;font-size:14px;color:var(--gray);">테스트 방식을 선택하세요</div>
     <div class="mode-select">
-      <button class="mode-btn" onclick="startSession('spelling')"><div class="mode-icon" style="background:#e0f5f5;">✏️</div><div><div class="mode-name">스펠링 테스트</div><div class="mode-desc">한글을 보고 영어 단어를 타이핑해요</div></div></button>
-      <button class="mode-btn" onclick="startSession('meaning')"><div class="mode-icon" style="background:#e5eeff;">📖</div><div><div class="mode-name">뜻 맞추기</div><div class="mode-desc">영어를 보고 한글 뜻을 4지선다로 골라요</div></div></button>
+      <button class="mode-btn" onclick="startSession('spelling')"><div class="mode-icon" style="background:#FEE4D8;">✏️</div><div><div class="mode-name">스펠링 테스트</div><div class="mode-desc">한글을 보고 영어 단어를 타이핑해요</div></div></button>
+      <button class="mode-btn" onclick="startSession('meaning')"><div class="mode-icon" style="background:#FFF0E5;">📖</div><div><div class="mode-name">뜻 맞추기</div><div class="mode-desc">영어를 보고 한글 뜻을 4지선다로 골라요</div></div></button>
     </div>
   </div>
 
   <!-- QUIZ -->
   <div id="quiz" class="screen">
-    <div class="quiz-header"><button class="quit-btn" onclick="goHome()">✕</button><div class="progress-pill">📖 <span id="quizProgress">1/10</span></div></div>
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="goHome()">✕</button>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="quizProgressBar" style="width:10%;"></div></div>
+      <div class="progress-pill" id="quizProgress">1/10</div>
+    </div>
     <div class="quiz-instruction">뜻과 일치하는 한글을 고르세요.</div>
-    <div class="word-card"><div class="word" id="quizWord"></div></div>
+    <div class="word-card">
+      <div class="word" id="quizWord"></div>
+      <div class="word-listen" onclick="speakCurrentWord()">🎧 발음 듣기</div>
+    </div>
     <div class="choices" id="choicesArea"></div>
     <div class="quiz-footer">
-      <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc" stroke-linecap="round"/></svg><div class="timer-text" id="timerText">10</div></div>
-      <button class="footer-btn" onclick="speakCurrentWord()" title="발음 듣기">🎧</button>
-      <button class="submit-btn" id="quizSubmitBtn" onclick="submitQuiz()" title="제출">▶▶</button>
+      <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#E8714A" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc" stroke-linecap="round"/></svg><div class="timer-text" id="timerText">10</div></div>
+      <button class="submit-btn" id="quizSubmitBtn" onclick="submitQuiz()">제출 ▶</button>
       <button class="skip-btn" onclick="skipQuiz()">SKIP</button>
     </div>
   </div>
 
   <!-- SPELLING -->
   <div id="spelling" class="screen">
-    <div class="quiz-header"><button class="quit-btn" onclick="goHome()">✕</button><div class="progress-pill">✏️ <span id="spellProgress">1/10</span></div></div>
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="goHome()">✕</button>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="spellProgressBar" style="width:10%;"></div></div>
+      <div class="progress-pill" id="spellProgress">1/10</div>
+    </div>
     <div class="quiz-instruction">뜻에 알맞는 영어 단어를 입력하세요.</div>
-    <div class="word-card" style="margin:8px 16px;padding:16px 24px;min-height:70px;flex-shrink:0;">
+    <div class="word-card" style="margin:6px 16px;min-height:70px;flex-shrink:0;">
       <div class="word" id="spellWord"></div>
     </div>
-    <div id="spellHint" style="text-align:center;font-size:13px;color:var(--gray);margin:4px 0;flex-shrink:0;"></div>
+    <div id="spellHint" style="text-align:center;font-size:12px;color:var(--teal);font-weight:600;margin:4px 0;flex-shrink:0;"></div>
     <div class="spell-boxes" id="spellBoxes"></div>
     <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;">
       <input class="spell-real-input" type="text" id="spellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
     </div>
     <div style="flex:1;"></div>
     <div class="quiz-footer">
-      <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3BBFBF" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
-      <button class="submit-btn" id="spellSubmitBtn" onclick="submitSpell()" title="제출">▶▶</button>
+      <div class="timer-circle"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/><circle cx="22" cy="22" r="18" fill="none" stroke="#E8714A" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="timerArc2" stroke-linecap="round"/></svg><div class="timer-text" id="timerText2">30</div></div>
+      <button class="submit-btn" id="spellSubmitBtn" onclick="submitSpell()">제출 ▶</button>
       <button class="skip-btn" onclick="skipSpell()">SKIP</button>
     </div>
   </div>
 
   <!-- RECORDING HW LIST -->
   <div id="recHwList" class="screen">
-    <div class="page-header">
-      <button class="back-btn" onclick="goHome()">‹</button>
-      <span class="page-title">🎙 녹음 숙제</span>
-      <span></span>
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">녹음 숙제</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">동일한 내용을 3번 녹음해 제출하세요</div>
     </div>
-    <div class="scroll-content" style="padding:0 0 16px;">
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:var(--gray);">📋 진행 중 / 미완료</div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+    <div class="scroll-content" style="padding:16px 16px 16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">진행 중 / 미완료</div>
       <div id="recHwPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
-      <div style="padding:12px 16px 6px;font-size:12px;font-weight:700;color:#059669;margin-top:8px;">✅ 완료</div>
+      <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
       <div id="recHwCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div></div>
+    </div>
     </div>
   </div>
 
   <!-- RECORDING HW DETAIL (녹음 제출 화면) -->
   <div id="recHwDetail" class="screen">
-    <div class="page-header">
-      <button class="back-btn" onclick="show('recHwList');loadRecHwList();">‹</button>
-      <span class="page-title" id="recHwDetailTitle">녹음 숙제</span>
-      <span></span>
-    </div>
-    <div class="scroll-content" style="padding:12px 16px 24px;">
-      <!-- 숙제 내용 -->
-      <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:16px;">
-        <div style="font-size:11px;color:var(--teal);font-weight:700;margin-bottom:6px;">📄 숙제 내용</div>
-        <div id="recHwContent" style="font-size:14px;color:var(--text);line-height:1.7;white-space:pre-wrap;"></div>
+    <!-- 코럴 히어로 헤더 + 숙제내용 -->
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="show('recHwList');loadRecHwList();">‹</button>
+        <span id="recHwDetailTitle" style="font-size:16px;font-weight:800;color:white;">녹음 숙제</span>
       </div>
-      <div style="font-size:12px;color:var(--gray);margin-bottom:10px;">동일한 내용을 3번 녹음하여 제출하세요.</div>
+      <div style="background:rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:600;margin-bottom:6px;">숙제 내용</div>
+        <div id="recHwContent" style="font-size:14px;color:white;line-height:1.7;white-space:pre-wrap;"></div>
+      </div>
+    </div>
+
+    <!-- 바디 -->
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+    <div class="scroll-content" style="padding:16px 16px 24px;">
+
+      <!-- 3단계 진행 표시 -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">
+        <div id="recStep1" style="width:32px;height:32px;border-radius:50%;background:#E8714A;color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">1</div>
+        <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div id="recStepLine1" style="width:0%;height:3px;background:#E8714A;border-radius:2px;transition:width .4s;"></div></div>
+        <div id="recStep2" style="width:32px;height:32px;border-radius:50%;background:#FFE0D4;color:#E8714A;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">2</div>
+        <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div id="recStepLine2" style="width:0%;height:3px;background:#E8714A;border-radius:2px;transition:width .4s;"></div></div>
+        <div id="recStep3" style="width:32px;height:32px;border-radius:50%;background:#FFE0D4;color:#E8714A;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">3</div>
+      </div>
+
       <!-- 격려/피드백 영역 -->
       <div id="recEncourage" style="display:none;margin-bottom:12px;"></div>
 
       <!-- 녹음 1회차 -->
-      <div id="recBlock1" style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;">
+      <div id="recBlock1" style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(232,113,74,.08);margin-bottom:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-weight:700;font-size:14px;">녹음 1회차</div>
-          <span id="recStatus1" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
+          <div style="font-weight:700;font-size:14px;color:#222;">녹음 1회차</div>
+          <span id="recStatus1" style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
         </div>
         <div id="recAudioWrap1" style="display:none;margin-bottom:10px;">
           <audio id="recAudio1" controls style="width:100%;height:36px;"></audio>
         </div>
         <div style="display:flex;gap:8px;">
-          <button id="recBtnRecord1" onclick="toggleRecording(1)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#3BBFBF;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
-          <button id="recBtnConfirm1" onclick="confirmRec(1)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#e5eeff;color:#5aabcf;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
-          <button id="recBtnSubmit1" onclick="submitRec(1)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#4bc27d;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
+          <button id="recBtnRecord1" onclick="toggleRecording(1)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#E8714A;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
+          <button id="recBtnConfirm1" onclick="confirmRec(1)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
+          <button id="recBtnSubmit1" onclick="submitRec(1)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#F4936A;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
         </div>
       </div>
 
       <!-- 녹음 2회차 -->
-      <div id="recBlock2" style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;">
+      <div id="recBlock2" style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(232,113,74,.08);margin-bottom:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-weight:700;font-size:14px;">녹음 2회차</div>
-          <span id="recStatus2" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
+          <div style="font-weight:700;font-size:14px;color:#222;">녹음 2회차</div>
+          <span id="recStatus2" style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
         </div>
         <div id="recAudioWrap2" style="display:none;margin-bottom:10px;">
           <audio id="recAudio2" controls style="width:100%;height:36px;"></audio>
         </div>
         <div style="display:flex;gap:8px;">
-          <button id="recBtnRecord2" onclick="toggleRecording(2)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#3BBFBF;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
-          <button id="recBtnConfirm2" onclick="confirmRec(2)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#e5eeff;color:#5aabcf;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
-          <button id="recBtnSubmit2" onclick="submitRec(2)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#4bc27d;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
+          <button id="recBtnRecord2" onclick="toggleRecording(2)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#E8714A;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
+          <button id="recBtnConfirm2" onclick="confirmRec(2)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
+          <button id="recBtnSubmit2" onclick="submitRec(2)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#F4936A;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
         </div>
       </div>
 
       <!-- 녹음 3회차 -->
-      <div id="recBlock3" style="background:white;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;">
+      <div id="recBlock3" style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(232,113,74,.08);margin-bottom:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-weight:700;font-size:14px;">녹음 3회차</div>
-          <span id="recStatus3" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
+          <div style="font-weight:700;font-size:14px;color:#222;">녹음 3회차</div>
+          <span id="recStatus3" style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>
         </div>
         <div id="recAudioWrap3" style="display:none;margin-bottom:10px;">
           <audio id="recAudio3" controls style="width:100%;height:36px;"></audio>
         </div>
         <div style="display:flex;gap:8px;">
-          <button id="recBtnRecord3" onclick="toggleRecording(3)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#3BBFBF;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
-          <button id="recBtnConfirm3" onclick="confirmRec(3)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#e5eeff;color:#5aabcf;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
-          <button id="recBtnSubmit3" onclick="submitRec(3)" style="flex:1;padding:10px;border-radius:10px;border:none;background:#4bc27d;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
+          <button id="recBtnRecord3" onclick="toggleRecording(3)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#E8714A;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
+          <button id="recBtnConfirm3" onclick="confirmRec(3)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;display:none;">✔ 확인</button>
+          <button id="recBtnSubmit3" onclick="submitRec(3)" style="flex:1;padding:12px;border-radius:12px;border:none;background:#F4936A;color:white;font-size:13px;font-weight:700;cursor:pointer;display:none;">▶ 제출</button>
         </div>
       </div>
+    </div>
     </div>
   </div>
 
@@ -601,12 +657,41 @@
 
   <!-- RANKING -->
   <div id="ranking" class="screen">
-    <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">랭킹</span><span></span></div>
-    <div class="ranking-header-info"><div class="ranking-group-name">소속 그룹</div><div class="ranking-group-title" id="rankingGroupTitle">🏫 그룹</div></div>
-    <div class="ranking-tabs"><div class="ranking-tab active" onclick="switchRankTab('score')">점수 순위</div><div class="ranking-tab" onclick="switchRankTab('hw')">🎙 녹음숙제</div></div>
-    <div class="scroll-content">
-      <div id="rankScoreList" class="rank-list" style="padding-bottom:16px;"></div>
-      <div id="rankHwList" class="rank-list" style="display:none;padding-bottom:16px;"></div>
+    <!-- 코럴 히어로 헤더 + TOP3 포디움 -->
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 16px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:16px;font-weight:800;color:white;flex:1;">랭킹</span>
+        <span id="rankingGroupTitle" style="font-size:11px;color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.18);padding:4px 12px;border-radius:12px;">🏫 그룹</span>
+      </div>
+      <!-- TOP3 포디움 -->
+      <div id="rankPodium" style="display:flex;align-items:flex-end;justify-content:center;gap:10px;margin-bottom:4px;">
+        <!-- JS로 채워짐, 기본 placeholder -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.5);">2</div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.5);">-</div>
+          <div style="background:rgba(255,255,255,0.2);border-radius:8px 8px 0 0;width:56px;height:36px;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="font-size:13px;">👑</div>
+          <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.5);">1</div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.5);">-</div>
+          <div style="background:rgba(255,255,255,0.3);border-radius:8px 8px 0 0;width:56px;height:52px;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.5);">3</div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.5);">-</div>
+          <div style="background:rgba(255,255,255,0.15);border-radius:8px 8px 0 0;width:56px;height:24px;"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 바디 -->
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-2px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="ranking-tabs" style="margin:10px 16px 6px;"><div class="ranking-tab active" onclick="switchRankTab('score')">점수 순위</div><div class="ranking-tab" onclick="switchRankTab('hw')">녹음숙제</div></div>
+      <div class="scroll-content">
+        <div id="rankScoreList" class="rank-list" style="padding-bottom:16px;"></div>
+        <div id="rankHwList" class="rank-list" style="display:none;padding-bottom:16px;"></div>
+      </div>
     </div>
   </div>
 
@@ -854,14 +939,25 @@
 
   <!-- 테스트 시작 모달 -->
   <div class="modal-overlay hidden" id="infoModal">
-    <div class="modal">
-      <div class="modal-title" id="infoModalTitle">Information</div>
-      <div class="modal-stats">
-        <div class="stat-box"><div class="stat-emoji">🅰️</div><div class="stat-label">WORD</div><div class="stat-value" id="modalWordCount">10개</div></div>
-        <div class="stat-box"><div class="stat-emoji">🕐</div><div class="stat-label">TIME</div><div class="stat-value" id="modalTime">30초</div></div>
-        <div class="stat-box"><div class="stat-emoji">⭐</div><div class="stat-label red">POINT</div><div class="stat-value" id="modalPoint">100점</div></div>
+    <div style="background:white;border-radius:20px;padding:22px 20px;width:100%;max-width:300px;">
+      <div style="font-size:16px;font-weight:800;color:#E8714A;text-align:center;margin-bottom:18px;" id="infoModalTitle">Unit 5 스펠링</div>
+      <div style="display:flex;justify-content:space-around;margin-bottom:20px;">
+        <div style="text-align:center;">
+          <div style="font-size:24px;font-weight:800;color:#222;" id="modalWordCount">10</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;">문제</div>
+        </div>
+        <div style="width:1px;background:#f0f0f0;"></div>
+        <div style="text-align:center;">
+          <div style="font-size:24px;font-weight:800;color:#222;" id="modalTime">30</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;">초/문제</div>
+        </div>
+        <div style="width:1px;background:#f0f0f0;"></div>
+        <div style="text-align:center;">
+          <div style="font-size:24px;font-weight:800;color:#e05050;" id="modalPoint">80</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;">통과점수</div>
+        </div>
       </div>
-      <button class="start-btn" onclick="doStart()">시작</button>
+      <button class="start-btn" onclick="doStart()" style="border-radius:14px;font-size:16px;font-weight:700;">시작하기</button>
     </div>
   </div>
 
@@ -898,7 +994,7 @@
   <!-- 알림 팝업 모달 -->
   <div id="notifModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center;padding:24px;">
     <div style="background:white;border-radius:20px;width:100%;max-width:320px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.2);">
-      <div style="background:linear-gradient(135deg,#3BBFBF,#2a9f9f);padding:20px 20px 16px;text-align:center;">
+      <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:20px 20px 16px;text-align:center;">
         <div style="font-size:32px;margin-bottom:8px;">🔔</div>
         <div id="notifModalTitle" style="font-size:17px;font-weight:700;color:white;">알림</div>
       </div>
@@ -917,7 +1013,7 @@
   <!-- 알림 목록 패널 (우측에서 슬라이드) -->
   <div id="notifPanel" style="display:none;position:fixed;inset:0;z-index:400;">
     <div onclick="closeNotifPanel()" style="position:absolute;inset:0;background:rgba(0,0,0,.3);"></div>
-    <div style="position:absolute;top:0;right:0;bottom:0;width:300px;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.15);display:flex;flex-direction:column;">
+    <div style="position:absolute;top:0;right:0;bottom:0;width:300px;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.12);display:flex;flex-direction:column;">
       <div style="padding:16px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
         <div style="font-size:16px;font-weight:700;">🔔 알림함</div>
         <button onclick="closeNotifPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;">✕</button>
@@ -1310,7 +1406,7 @@ window.selectTest = async(testId, testName)=>{
     const mcCount = currentUnitWords.filter(w=>w.testType==='meaning').length;
     const spCount = currentUnitWords.filter(w=>w.testType==='spelling').length;
     document.getElementById('infoModalTitle').textContent = testName;
-    document.getElementById('modalWordCount').textContent = currentUnitWords.length+'개';
+    document.getElementById('modalWordCount').textContent = currentUnitWords.length;
     document.getElementById('modalTime').innerHTML =
       `객관식 <b>10초</b> / 주관식 <b>30초</b>`;
     document.getElementById('modalPoint').textContent =
@@ -1336,9 +1432,9 @@ window.selectUnit = async(unitId,unitName)=>{
 window.startSession = mode=>{
   lastMode=mode;
   document.getElementById('infoModalTitle').textContent=mode==='spelling'?'스펠링 테스트':'뜻 맞추기';
-  document.getElementById('modalWordCount').textContent=currentUnitWords.length+'개';
-  document.getElementById('modalTime').innerHTML=mode==='spelling'?'주관식 <b>30초</b>':'객관식 <b>10초</b>';
-  document.getElementById('modalPoint').textContent='80점 이상';
+  document.getElementById('modalWordCount').textContent=currentUnitWords.length;
+  document.getElementById('modalTime').textContent=mode==='spelling'?'30':'10';
+  document.getElementById('modalPoint').textContent='80';
   document.getElementById('infoModal').classList.remove('hidden');
 };
 
@@ -1474,6 +1570,8 @@ function showQuizQuestion(){
   if(currentQ>=questions.length){showResult();return;}
   const q=questions[currentQ];
   document.getElementById('quizProgress').textContent=(currentQ+1)+'/'+questions.length;
+  const qBar=document.getElementById('quizProgressBar');
+  if(qBar) qBar.style.width=Math.round(((currentQ+1)/questions.length)*100)+'%';
   document.getElementById('quizWord').textContent=q.en;
   const choices=shuffle([q,...shuffle(currentUnitWords.filter(w=>w.en!==q.en)).slice(0,3)]);
   document.getElementById('choicesArea').innerHTML=choices.map((c,i)=>`
@@ -1541,6 +1639,8 @@ function showSpellQuestion(){
   if(spellQ>=spellQuestions.length){showResult();return;}
   const q=spellQuestions[spellQ];
   document.getElementById('spellProgress').textContent=(spellQ+1)+'/'+spellQuestions.length;
+  const sBar=document.getElementById('spellProgressBar');
+  if(sBar) sBar.style.width=Math.round(((spellQ+1)/spellQuestions.length)*100)+'%';
   document.getElementById('spellWord').textContent=q.ko;
   document.getElementById('spellInput').value='';
   document.getElementById('spellHint').textContent='총 '+q.en.length+'글자';
@@ -1745,7 +1845,7 @@ window.switchRankTab=async (tab)=>{
 };
 async function renderRanking(tab){
   const group=userProfile?.group,meUid=currentUser?.uid;
-  const colors=['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
+  const colors=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
   const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
   if(tab==='score'){
@@ -1762,16 +1862,38 @@ async function renderRanking(tab){
     const sorted=[...students].sort((a,b)=>(scoresMap[b.uid]?.best||0)-(scoresMap[a.uid]?.best||0));
     const maxScore=Math.max(...sorted.map(u=>scoresMap[u.uid]?.best||0), 1);
     const nc=['gold','silver','bronze'];
+    // 포디움 업데이트 (top3)
+    const podiumEl=document.getElementById('rankPodium');
+    if(podiumEl && sorted.length>0){
+      const podOrder=[1,0,2]; // 2등,1등,3등 순서로 배치
+      const heights=['36px','52px','24px'];
+      const sizes=['38px','44px','38px'];
+      podiumEl.innerHTML=podOrder.map((idx,pos)=>{
+        const u=sorted[idx]; if(!u) return '';
+        const s=scoresMap[u?.uid]||{best:0};
+        const isFirst=idx===0;
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          ${isFirst?'<div style="font-size:13px;">👑</div>':'<div style="height:18px;"></div>'}
+          <div style="width:${sizes[pos]};height:${sizes[pos]};border-radius:50%;background:rgba(255,255,255,${isFirst?'0.35':'0.22'});display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;">${u.name[0]}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.9);font-weight:600;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${u.name}</div>
+          <div style="background:rgba(255,255,255,${isFirst?'0.3':'0.18'});border-radius:8px 8px 0 0;width:56px;height:${heights[pos]};display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:10px;font-weight:800;color:white;">${idx+1}위</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
     document.getElementById('rankScoreList').innerHTML=sorted.map((u,i)=>{
       const s=scoresMap[u.uid]||{best:0,count:0,total:0};
       const avg = s.count>0 ? Math.round(s.total/s.count) : 0;
       const isMe=u.uid===meUid;
-      return `<div class="rank-item${isMe?' me':''}"><div class="rank-num ${nc[i]||''}">${i+1}</div>
-        <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
-        <div class="rank-info"><div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
-        <div class="rank-sub"><span>최고 ${s.best}점</span><span style="color:#ddd">|</span><span>평균 ${avg}점</span><span style="color:#ddd">|</span><span>${s.count}회</span></div>
-        <div class="rank-bar"><div class="rank-bar-fill" style="width:${Math.round((s.best/maxScore)*100)}%"></div></div></div>
-        <div class="rank-score">${s.best}<span style="font-size:12px;color:#aaa;">점</span></div></div>`;
+      return `<div class="rank-item${isMe?' me':''}">
+        <div class="rank-num ${nc[i]||''}">${i+1}</div>
+        <div class="rank-info">
+          <div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
+          <div style="font-size:11px;color:#aaa;margin-top:1px;">${s.count}회 응시</div>
+        </div>
+        <div class="rank-score">${s.best}<span style="font-size:11px;color:#aaa;font-weight:400;">점</span></div>
+      </div>`;
     }).join('')||'<div class="empty-msg">아직 점수가 없습니다</div>';
   } else {
     // 녹음숙제 제출 현황 (recSubmissions + recHw)
@@ -1794,6 +1916,27 @@ async function renderRanking(tab){
 
     const sorted=[...students].sort((a,b)=>(subMap[b.uid]?.submitted||0)-(subMap[a.uid]?.submitted||0));
     const nc=['gold','silver','bronze'];
+    // 포디움 업데이트 (녹음숙제 탭)
+    const podiumElHw=document.getElementById('rankPodium');
+    if(podiumElHw && sorted.length>0){
+      const podOrder=[1,0,2];
+      const heights=['28px','40px','20px'];
+      const sizes=['32px','38px','32px'];
+      podiumElHw.innerHTML=podOrder.map((idx,pos)=>{
+        const u=sorted[idx]; if(!u) return '';
+        const sm2=subMap[u?.uid]||{submitted:0,total:0};
+        const pct2=sm2.total>0?Math.round((sm2.submitted/sm2.total)*100):0;
+        const isFirst=idx===0;
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+          ${isFirst?'<div style="font-size:13px;">👑</div>':'<div style="height:16px;"></div>'}
+          <div style="width:${sizes[pos]};height:${sizes[pos]};border-radius:50%;background:rgba(255,255,255,${isFirst?'0.35':'0.22'});display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;">${idx+1}</div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.9);font-weight:600;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${u.name}</div>
+          <div style="background:rgba(255,255,255,${isFirst?'0.3':'0.18'});border-radius:6px 6px 0 0;width:48px;height:${heights[pos]};display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:9px;font-weight:800;color:white;">${pct2}%</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
     let h='';
     sorted.forEach((u,i)=>{
       const sm=subMap[u.uid]||{submitted:0,total:0};
@@ -1802,17 +1945,14 @@ async function renderRanking(tab){
       const done=sm.total>0&&sm.submitted>=sm.total;
       h+=`<div class="rank-item${isMe?' me':''}">
         <div class="rank-num ${nc[i]||''}">${i+1}</div>
-        <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
         <div class="rank-info">
           <div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
-          <div class="rank-sub">
-            <span>${sm.submitted}/${sm.total} 제출</span>
-            <span style="color:#ddd">|</span>
-            <span class="hw-badge ${done?'hw-done':'hw-none'}">${done?'완료':'진행중'}</span>
+          <div style="margin-top:5px;height:5px;background:#FFE0D4;border-radius:3px;">
+            <div style="width:${pct}%;height:5px;background:var(--teal);border-radius:3px;transition:width .4s;"></div>
           </div>
-          <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%"></div></div>
+          <div style="font-size:9px;color:#aaa;margin-top:2px;">${sm.submitted}/${sm.total}</div>
         </div>
-        <div class="rank-score">${pct}<span style="font-size:12px;color:#aaa;">%</span></div>
+        <span class="hw-badge ${done?'hw-done':'hw-none'}" style="font-size:11px;flex-shrink:0;">${done?'완료':'진행중'}</span>
       </div>`;
     });
     document.getElementById('rankHwList').innerHTML = h||'<div class="empty-msg">녹음숙제가 없습니다</div>';
@@ -1852,7 +1992,7 @@ async function loadGroups(){
 function renderGroupTags(){
   const el=document.getElementById('groupTagArea'); if(!el)return;
   el.innerHTML=allGroups.map(g=>`
-    <span style="display:inline-flex;align-items:center;gap:5px;background:#e0f5f5;color:var(--teal);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;">
+    <span style="display:inline-flex;align-items:center;gap:5px;background:#FEE4D8;color:var(--teal);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;">
       ${g.name}
       <span onclick="deleteGroup('${g.id}','${g.name}')" style="cursor:pointer;color:#aaa;font-size:11px;line-height:1;">✕</span>
     </span>`).join('')||'<span style="font-size:13px;color:#bbb;">그룹이 없습니다</span>';
@@ -1910,7 +2050,7 @@ async function loadAdminUnits(){
 function renderUnitSelect(){
   const el=document.getElementById('unitItemList');if(!el)return;
   el.innerHTML=adminUnits.map(u=>{
-    const groupBadge=u.group?`<span style="font-size:11px;background:#e0f5f5;color:var(--teal);border-radius:8px;padding:1px 7px;margin-left:6px;">${u.group}</span>`:'';
+    const groupBadge=u.group?`<span style="font-size:11px;background:#FEE4D8;color:var(--teal);border-radius:8px;padding:1px 7px;margin-left:6px;">${u.group}</span>`:'';
     const border=lastSelectedUnitId===u.id?'var(--teal)':'transparent';
     return `<div onclick="selectAdminUnit('${u.id}','${u.name}')" style="background:white;border-radius:10px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 4px rgba(0,0,0,.05);border:2px solid ${border};margin-bottom:6px;">
       <div style="flex:1;min-width:0;">
@@ -2068,7 +2208,7 @@ window.importExcel=async (e)=>{
 
 // ── 학생 관리 ─────────────────────────────────────────────
 async function loadAdminUsers(){
-  const clrs=['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
+  const clrs=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
   const q2 = selectedUserGroupFilter==='all'
     ? query(collection(db,'users'),where('role','==','student'))
     : query(collection(db,'users'),where('role','==','student'),where('group','==',selectedUserGroupFilter));
@@ -2415,13 +2555,13 @@ async function loadPayments(){
         </div>
         <div style="text-align:right;">
           <div style="font-size:16px;font-weight:800;color:var(--teal);">${(p.amount||0).toLocaleString()}원</div>
-          <span style="display:inline-flex;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${p.status==='paid'?'#e0f5f0':p.status==='pending'?'#fff3e0':'#fde8e8'};color:${p.status==='paid'?'#2a9f9f':p.status==='pending'?'#e6820a':'#e05050'};">${slabel[p.status]||'미납'}</span>
+          <span style="display:inline-flex;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${p.status==='paid'?'#FEE4D8':p.status==='pending'?'#fff3e0':'#fde8e8'};color:${p.status==='paid'?'#D85A30':p.status==='pending'?'#e6820a':'#e05050'};">${slabel[p.status]||'미납'}</span>
         </div>
       </div>
       <div style="display:flex;gap:6px;">
-        <button onclick="updatePaymentStatus('${p.id}','paid')" style="flex:1;background:#e0f5f0;color:#2a9f9f;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='paid'?'disabled':''}>납부완료</button>
+        <button onclick="updatePaymentStatus('${p.id}','paid')" style="flex:1;background:#FEE4D8;color:#D85A30;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='paid'?'disabled':''}>납부완료</button>
         <button onclick="updatePaymentStatus('${p.id}','unpaid')" style="flex:1;background:#f0f0f0;color:#888;border:none;border-radius:8px;padding:7px;font-size:12px;font-weight:600;cursor:pointer;" ${p.status==='unpaid'?'disabled':''}>미납</button>
-        <button onclick="startEditPayment('${p.id}')" style="background:#e8f4f4;color:var(--teal);border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">수정</button>
+        <button onclick="startEditPayment('${p.id}')" style="background:#FEE4D8;color:var(--teal);border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">수정</button>
         <button onclick="delPayment('${p.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;padding:4px 8px;font-size:16px;">✕</button>
       </div>
     </div>`).join('')||'<div class="empty-msg">결제 내역이 없습니다</div>';
@@ -2723,7 +2863,7 @@ async function loadSavedPushList(){
             <div style="font-size:11px;color:#bbb;margin-top:4px;">${targetLabel} · ${n.date||''}</div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px;">
-            <button onclick="reuseNotification('${n.id}')" style="background:#e0f5f5;color:var(--teal);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;">재활용</button>
+            <button onclick="reuseNotification('${n.id}')" style="background:#FEE4D8;color:var(--teal);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;">재활용</button>
             <button onclick="delSavedPush('${n.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:16px;padding:4px 6px;">✕</button>
           </div>
         </div>
@@ -2840,6 +2980,8 @@ function showUnscQuestion(){
   _unscBuilt = [];
 
   document.getElementById('unscProgress').textContent = (_unscIdx+1)+'/'+_unscSentences.length;
+  const uBar=document.getElementById('unscProgressBar');
+  if(uBar) uBar.style.width=Math.round(((_unscIdx+1)/_unscSentences.length)*100)+'%';
   document.getElementById('unscMeaning').textContent = q.ko;
 
   const builtEl = document.getElementById('unscBuilt');
@@ -3345,7 +3487,7 @@ function resetRecSlotUI(n, alreadySubmitted, audioUrl){
     }
   } else {
     if(statusEl){ statusEl.textContent='대기'; statusEl.style.background='#f5f5f5'; statusEl.style.color='#aaa'; }
-    if(btnRecord){ btnRecord.style.display=''; btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#3BBFBF'; btnRecord.style.color='white'; }
+    if(btnRecord){ btnRecord.style.display=''; btnRecord.textContent='🎙 녹음'; btnRecord.style.background='#E8714A'; btnRecord.style.color='white'; }
     if(btnConfirm) btnConfirm.style.display='none';
     if(btnSubmit) btnSubmit.style.display='none';
     if(audioWrap) audioWrap.style.display='none';
@@ -3434,6 +3576,11 @@ window.submitRec = async(n) => {
     });
     _recSubmittedSlots[n] = true;
     if(statusEl){ statusEl.textContent='✅ 제출완료'; statusEl.style.background='#d1fae5'; statusEl.style.color='#059669'; }
+    // 단계 표시기 업데이트
+    const stepEl = document.getElementById('recStep'+n);
+    if(stepEl){ stepEl.style.background='#E8714A'; stepEl.style.color='white'; }
+    if(n<3){ const lineEl=document.getElementById('recStepLine'+n); if(lineEl) lineEl.style.width='100%'; }
+    if(n<3){ const nextStep=document.getElementById('recStep'+(n+1)); if(nextStep){ nextStep.style.background='#FEE4D8'; nextStep.style.color='#E8714A'; } }
     if(btnSubmit) btnSubmit.style.display='none';
     // 재녹음 버튼 숨김 (제출 완료 후 재제출 불가)
     const btnRecord = document.getElementById('recBtnRecord'+n);
@@ -3495,27 +3642,41 @@ async function updateRecBadge(){
 }
 
 // ── 모바일 키패드 대응 ────────────────────────────────────
-// 키패드가 올라오면 스펠링 화면 높이를 줄여서 footer(제출버튼)가 항상 보이게
-function adjustSpellingForKeyboard(){
+function adjustForKeyboard(){
+  if(!window.visualViewport) return;
+  const vv = window.visualViewport;
+  const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+
+  // 스펠링 화면: footer가 키패드 위에 위치
   const spelling = document.getElementById('spelling');
-  if(!spelling) return;
-  if(window.visualViewport){
-    const vv = window.visualViewport;
-    const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
-    if(spelling.classList.contains('active')){
-      // 키패드 높이만큼 bottom을 올려서 footer가 키패드 위에 위치
-      spelling.style.bottom = Math.max(0, keyboardHeight) + 'px';
+  if(spelling){
+    spelling.style.bottom = spelling.classList.contains('active') ? keyboardHeight + 'px' : '0';
+  }
+
+  // 로그인 화면: 키패드 높이만큼 카드 하단 패딩 확보
+  const loginCard = document.querySelector('.login-card');
+  const login = document.getElementById('login');
+  if(loginCard && login){
+    if(login.classList.contains('active') && keyboardHeight > 0){
+      loginCard.style.paddingBottom = (keyboardHeight + 24) + 'px';
+      const focused = document.activeElement;
+      if(focused && (focused.id === 'usernameInput' || focused.id === 'passwordInput')){
+        setTimeout(() => focused.scrollIntoView({behavior:'smooth', block:'center'}), 50);
+      }
     } else {
-      spelling.style.bottom = '0';
+      loginCard.style.paddingBottom = '24px';
     }
   }
 }
 
+// 기존 함수명 호환용 alias
+function adjustSpellingForKeyboard(){ adjustForKeyboard(); }
+
 if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', adjustSpellingForKeyboard);
+  window.visualViewport.addEventListener('resize', adjustForKeyboard);
   window.visualViewport.addEventListener('scroll', ()=>{
     window.scrollTo(0, 0);
-    adjustSpellingForKeyboard();
+    adjustForKeyboard();
   });
 }
 
