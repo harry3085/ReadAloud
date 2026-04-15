@@ -3092,21 +3092,7 @@ function renderTestFolderTree(treeData){
   });
 
   if(unassigned.length){
-    html += `
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fafafa;border-bottom:1px solid var(--border);cursor:pointer;"
-          onclick="toggleTreeNode('tc-f-unassigned','tc-ft-unassigned')">
-          <span id="tc-ft-unassigned" style="font-size:11px;color:#aaa;transition:.2s;">›</span>
-          <input type="checkbox" id="tc-fchk-unassigned"
-            onclick="event.stopPropagation();testCheckFolder('unassigned')"
-            style="cursor:pointer;">
-          <span style="font-weight:700;font-size:13px;flex:1;white-space:nowrap;">📂 미배정</span>
-          <span style="font-size:11px;color:#aaa;flex-shrink:0;">${unassigned.length}교재</span>
-        </div>
-        <div id="tc-f-unassigned" style="display:none;">
-          ${unassigned.map(b=>renderBookNode(b,28)).join('')}
-        </div>
-      </div>`;
+    // My Book은 항상 폴더에 배정 - 미배정 교재 표시 안 함
   }
 
   return html || '<div style="padding:16px;text-align:center;color:#bbb;">교재가 없습니다</div>';
