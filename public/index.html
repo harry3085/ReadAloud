@@ -885,6 +885,25 @@
   </div>
 
   <div id="toast"></div>
+
+  <!-- 알림 팝업 모달 -->
+  <div id="notifModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center;padding:24px;">
+    <div style="background:white;border-radius:20px;width:100%;max-width:320px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.2);">
+      <div style="background:linear-gradient(135deg,#3BBFBF,#2a9f9f);padding:20px 20px 16px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">🔔</div>
+        <div id="notifModalTitle" style="font-size:17px;font-weight:700;color:white;">알림</div>
+      </div>
+      <div style="padding:20px 20px 8px;">
+        <div id="notifModalBody" style="font-size:14px;color:#333;line-height:1.7;text-align:center;white-space:pre-wrap;"></div>
+      </div>
+      <div style="padding:12px 20px 20px;">
+        <button id="notifModalBtn"
+          style="width:100%;background:var(--teal);color:white;border:none;border-radius:14px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;">
+          ✓ 확인
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- SheetJS for Excel import -->
@@ -979,6 +998,8 @@ window.doLogin = async () => {
       document.getElementById('greetName').textContent=profile.name+' 님';
       await loadHomeData();
       show('home');
+      // 미확인 알림 팝업 (약간 딜레이)
+      setTimeout(()=>checkUnreadNotifs(), 1500);
       // FCM 토큰 등록 (학생만)
       setTimeout(registerFCMToken, 2000);
       setupForegroundMessage();
@@ -2434,8 +2455,51 @@ function setupForegroundMessage() {
   if(!messaging) return;
   onMessage(messaging, (payload) => {
     const { title, body } = payload.notification || {};
-    showToast('🔔 ' + (title||'') + ': ' + (body||''));
+    // 포그라운드 수신 시 모달 팝업
+    showNotifModal(title||'알림', body||'');
   });
+}
+
+// ── 알림 팝업 모달 ──────────────────────────────────────────
+function showNotifModal(title, body, docId){
+  const overlay = document.getElementById('notifModalOverlay');
+  const titleEl = document.getElementById('notifModalTitle');
+  const bodyEl  = document.getElementById('notifModalBody');
+  const btn     = document.getElementById('notifModalBtn');
+  if(!overlay) return;
+  if(titleEl) titleEl.textContent = title;
+  if(bodyEl)  bodyEl.textContent  = body;
+  overlay.style.display='flex';
+  if(btn){
+    btn.onclick = async() => {
+      overlay.style.display='none';
+      if(docId && currentUser){
+        try{
+          await updateDoc(doc(db,'userNotifications',docId),{read:true});
+        }catch(e){}
+      }
+      // 다음 미확인 알림 확인
+      checkUnreadNotifs();
+    };
+  }
+}
+
+// 앱 진입 시 미확인 알림 확인
+async function checkUnreadNotifs(){
+  if(!currentUser) return;
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
+      where('read','==',false)
+    ));
+    if(snap.empty) return;
+    // 가장 오래된 것부터 순서대로 표시
+    const sorted = snap.docs.sort((a,b)=>(a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0));
+    const first = sorted[0];
+    const d = first.data();
+    showNotifModal(d.title||'알림', d.body||'', first.id);
+  }catch(e){ console.log('알림 확인 실패',e); }
 }
 
 // ── 푸시 알림 발송 (Vercel Function 경유) ─────────────────
