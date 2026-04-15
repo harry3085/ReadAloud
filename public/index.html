@@ -359,7 +359,7 @@
           </div>
           <div id="noticePreview"><div class="empty-msg">공지사항이 없습니다</div></div>
         </div>
-        <div class="notice-card">
+        <div class="notice-card" id="hwFileCard">
           <div class="notice-card-header"><div class="notice-card-title"><div class="icon">📁</div>숙제 파일</div></div>
           <div id="hwFileList"><div class="empty-msg">등록된 파일이 없습니다</div></div>
         </div>
@@ -1112,18 +1112,33 @@ async function loadNoticePreview(){
 
 async function loadHwFiles(){
   const group = userProfile?.group||'';
+  const uid = currentUser?.uid||'';
   const snap = await getDocs(query(collection(db,'hwFiles'),orderBy('createdAt','desc')));
-  const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>f.group==='전체'||f.group===group);
-  const icons={pdf:'📄',docx:'📝',img:'🖼',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼'};
-  const iconCls={pdf:'pdf',docx:'docx',doc:'docx',img:'img',jpg:'img',jpeg:'img',png:'img'};
-  const el = document.getElementById('hwFileList');
-  if(!files.length){el.innerHTML='<div class="empty-msg">등록된 파일이 없습니다</div>';return;}
+  const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>{
+    if(f.group==='전체') return true;
+    if(f.group===group) return true;
+    if(f.targetUid && f.targetUid===uid) return true;
+    return false;
+  });
+
+  // 파일 카드 전체를 숨기거나 표시
+  const card = document.getElementById('hwFileCard');
+  const el   = document.getElementById('hwFileList');
+  if(!files.length){
+    if(card) card.style.display='none';
+    return;
+  }
+  if(card) card.style.display='';
+
+  const icons={pdf:'📄',docx:'📝',img:'🖼',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
+  const iconCls={pdf:'pdf',docx:'docx',doc:'docx',img:'img',jpg:'img',jpeg:'img',png:'img',hwp:'pdf'};
+  if(!el) return;
   el.innerHTML = files.map(f=>`
     <div class="hw-file-item">
       <div class="file-icon ${iconCls[f.type]||'pdf'}">${icons[f.type]||'📄'}</div>
       <div class="file-info">
         <div class="file-name">${f.name}</div>
-        <div class="file-meta"><span class="notice-tag${f.group==='전체'?' all':''}">${f.group}</span><span>${f.date||''}</span></div>
+        <div class="file-meta"><span class="notice-tag${f.group==='전체'?' all':''}">${f.group==='전체'?'전체':f.group}</span><span>${f.date||''}</span></div>
       </div>
       <button class="download-btn" onclick="downloadHwFile('${f.url||''}','${f.name||''}',event)">다운로드</button>
     </div>`).join('');
