@@ -4993,10 +4993,12 @@ async function renderRecAssignStep1(){
   // 반/학생 목록 로드
   const [groupSnap, studentSnap] = await Promise.all([
     getDocs(query(collection(db,'groups'),orderBy('name'))),
-    getDocs(query(collection(db,'users'),where('role','==','student'),orderBy('name')))
+    getDocs(query(collection(db,'users'),where('role','==','student')))
   ]);
   const groups = groupSnap.docs.map(d=>({id:d.id,...d.data()}));
-  const students = studentSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const students = studentSnap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(s=>s.status!=='out')
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 
   document.getElementById('recAssignContent').innerHTML = `
     <div style="display:flex;align-items:center;margin-bottom:20px;gap:0;">
@@ -5201,8 +5203,8 @@ window.loadRecHwDetail = async(hwId, title) => {
     for(const t of targets){
       if(t.type==='student') studentIds.push({uid:t.id, name:t.name, group:''});
       else {
-        const gs = await getDocs(query(collection(db,'users'),where('group','==',t.id),where('role','==','student')));
-        gs.docs.forEach(d=>studentIds.push({uid:d.id, name:d.data().name, group:d.data().group||''}));
+        const gs = await getDocs(query(collection(db,'users'),where('group','==',t.id)));
+        gs.docs.filter(d=>d.data().role==='student').forEach(d=>studentIds.push({uid:d.id, name:d.data().name, group:d.data().group||''}));
       }
     }
     // 중복 제거
