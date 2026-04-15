@@ -594,7 +594,7 @@
   <div id="ranking" class="screen">
     <div class="page-header"><button class="back-btn" onclick="goHome()">‹</button><span class="page-title">랭킹</span><span></span></div>
     <div class="ranking-header-info"><div class="ranking-group-name">소속 그룹</div><div class="ranking-group-title" id="rankingGroupTitle">🏫 그룹</div></div>
-    <div class="ranking-tabs"><div class="ranking-tab active" onclick="switchRankTab('score')">점수 순위</div><div class="ranking-tab" onclick="switchRankTab('hw')">숙제 제출</div></div>
+    <div class="ranking-tabs"><div class="ranking-tab active" onclick="switchRankTab('score')">점수 순위</div><div class="ranking-tab" onclick="switchRankTab('hw')">🎙 녹음숙제</div></div>
     <div class="scroll-content">
       <div id="rankScoreList" class="rank-list" style="padding-bottom:16px;"></div>
       <div id="rankHwList" class="rank-list" style="display:none;padding-bottom:16px;"></div>
@@ -1709,23 +1709,48 @@ async function renderRanking(tab){
         <div class="rank-score">${s.best}<span style="font-size:12px;color:#aaa;">점</span></div></div>`;
     }).join('')||'<div class="empty-msg">아직 점수가 없습니다</div>';
   } else {
-    const hwSnap=await getDocs(query(collection(db,'hwSubmissions'),where('group','==',group)));
-    const hwMap={};hwSnap.docs.forEach(d=>{const s=d.data();hwMap[s.uid]={done:true,order:s.order};});
-    const sub=[...students].filter(u=>hwMap[u.uid]?.done).sort((a,b)=>(hwMap[a.uid]?.order||99)-(hwMap[b.uid]?.order||99));
-    const notSub=[...students].filter(u=>!hwMap[u.uid]?.done);
-    let h='<div class="section-head">✅ 제출 완료 ('+sub.length+'명)</div>';
-    h+=sub.map((u,i)=>{const isMe=u.uid===meUid,o=hwMap[u.uid]?.order||'-';
-      return `<div class="rank-item${isMe?' me':''}"><div class="rank-num gold">${o}</div>
+    // 녹음숙제 제출 현황 (recSubmissions + recHw)
+    const hwSnap = await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc')));
+    const myHws = hwSnap.docs.map(d=>({id:d.id,...d.data()})).filter(hw=>{
+      if(hw.active===false) return false;
+      const targets=hw.targets||[];
+      return targets.some(t=>(t.type==='class'&&t.id===group)||students.some(s=>t.type==='student'&&t.id===s.uid));
+    });
+
+    // 학생별 제출 수 집계
+    const subMap={}; // uid → {submitted: n, total: m}
+    students.forEach(u=>{ subMap[u.uid]={submitted:0,total:myHws.length*3}; });
+    const subSnap = await getDocs(query(collection(db,'recSubmissions')));
+    const hwIds = new Set(myHws.map(h=>h.id));
+    subSnap.docs.forEach(d=>{
+      const s=d.data();
+      if(hwIds.has(s.hwId) && subMap[s.uid]) subMap[s.uid].submitted++;
+    });
+
+    const sorted=[...students].sort((a,b)=>(subMap[b.uid]?.submitted||0)-(subMap[a.uid]?.submitted||0));
+    const nc=['gold','silver','bronze'];
+    let h='';
+    sorted.forEach((u,i)=>{
+      const sm=subMap[u.uid]||{submitted:0,total:0};
+      const isMe=u.uid===meUid;
+      const pct=sm.total>0?Math.round((sm.submitted/sm.total)*100):0;
+      const done=sm.total>0&&sm.submitted>=sm.total;
+      h+=`<div class="rank-item${isMe?' me':''}">
+        <div class="rank-num ${nc[i]||''}">${i+1}</div>
         <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
-        <div class="rank-info"><div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div><div class="rank-sub"><span class="hw-badge hw-done">제출완료</span></div></div>
-        <div class="hw-order">${o}번째</div></div>`;}).join('');
-    h+='<div class="section-head" style="margin-top:16px;">⏳ 미제출 ('+notSub.length+'명)</div>';
-    h+=notSub.map(u=>{const isMe=u.uid===meUid;
-      return `<div class="rank-item${isMe?' me':''}"><div class="rank-num" style="color:#ccc">-</div>
-        <div class="rank-avatar" style="background:#ccc">${u.name[0]}</div>
-        <div class="rank-info"><div class="rank-name" style="color:#aaa">${u.name}${isMe?'<span>(나)</span>':''}</div><div class="rank-sub"><span class="hw-badge hw-none">미제출</span></div></div>
-        <div class="hw-order late">-</div></div>`;}).join('');
-    document.getElementById('rankHwList').innerHTML=h;
+        <div class="rank-info">
+          <div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
+          <div class="rank-sub">
+            <span>${sm.submitted}/${sm.total} 제출</span>
+            <span style="color:#ddd">|</span>
+            <span class="hw-badge ${done?'hw-done':'hw-none'}">${done?'완료':'진행중'}</span>
+          </div>
+          <div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="rank-score">${pct}<span style="font-size:12px;color:#aaa;">%</span></div>
+      </div>`;
+    });
+    document.getElementById('rankHwList').innerHTML = h||'<div class="empty-msg">녹음숙제가 없습니다</div>';
   }
 }
 
