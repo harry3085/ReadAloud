@@ -893,7 +893,7 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
 const firebaseConfig = {
@@ -3170,7 +3170,7 @@ window.submitRec = async(n) => {
   try{
     const fileName = `recHw/${_recCurrentHw.id}/${currentUser.uid}_slot${n}_${Date.now()}.webm`;
     const storageRef = ref(storage, fileName);
-    await uploadBytesResumable(storageRef, _recBlobs[n]);
+    await uploadBytes(storageRef, _recBlobs[n]);
     const url = await getDownloadURL(storageRef);
     // Firestore에 제출 기록
     await addDoc(collection(db,'recSubmissions'),{
