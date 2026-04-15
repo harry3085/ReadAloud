@@ -5491,13 +5491,13 @@ window.loadRecHwDetail = async(hwId, title) => {
 
     // 제출 내역
     const subSnap = await getDocs(query(collection(db,'recSubmissions'),where('hwId','==',hwId)));
-    const subs = {};
+    const subs = {}; // uid → [slot1, slot2, slot3]
     subSnap.docs.forEach(d=>{ const s=d.data(); if(!subs[s.uid])subs[s.uid]=[]; subs[s.uid].push(s); });
 
-    // 피드백 내역
+    // 피드백 내역 (학생별 1개: hwId+uid)
     const fbSnap = await getDocs(query(collection(db,'recFeedbacks'),where('hwId','==',hwId)));
-    const fbs = {}; // uid_slot → feedback
-    fbSnap.docs.forEach(d=>{ const f=d.data(); fbs[f.uid+'_'+f.slot]=f; });
+    const fbs = {}; // uid → {feedback, docId}
+    fbSnap.docs.forEach(d=>{ const f=d.data(); fbs[f.uid]={...f, docId:d.id}; });
 
     // 대상 학생
     const targets = hw.targets||[];
@@ -5512,65 +5512,77 @@ window.loadRecHwDetail = async(hwId, title) => {
     const seen=new Set(); studentIds=studentIds.filter(s=>{if(seen.has(s.uid))return false;seen.add(s.uid);return true;});
     studentIds.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
 
+    const submitted = studentIds.filter(s=>(subs[s.uid]||[]).length>0).length;
+    const full = studentIds.filter(s=>(subs[s.uid]||[]).length>=3).length;
+
     detailEl.innerHTML = `
-      <div style="padding:10px 16px;background:#f0fafa;border-bottom:1px solid var(--border);font-size:12px;color:var(--gray);">
-        총 ${studentIds.length}명 대상 · <span style="font-weight:600;">${(hw.content||'').slice(0,60)}${(hw.content||'').length>60?'...':''}</span>
+      <div style="padding:10px 16px;background:#f0fafa;border-bottom:1px solid var(--border);font-size:12px;color:var(--gray);display:flex;gap:16px;">
+        <span>총 <b>${studentIds.length}</b>명</span>
+        <span>제출 <b style="color:var(--teal);">${submitted}</b>명</span>
+        <span>완료 <b style="color:#059669;">${full}</b>명</span>
+      </div>
+      <!-- 헤더 -->
+      <div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:4px;padding:6px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--gray);">
+        <span>학생</span><span style="text-align:center;">녹음1</span><span style="text-align:center;">녹음2</span><span style="text-align:center;">녹음3</span><span>피드백</span>
       </div>
       ${studentIds.map(s=>{
-        const mySubs=subs[s.uid]||[];
-        const slots=[1,2,3].map(n=>mySubs.find(x=>x.slot===n));
-        const completed=slots.every(x=>x);
-        return `<div style="padding:14px 16px;border-bottom:1px solid #f5f5f5;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-weight:700;font-size:14px;">${s.name} <span style="font-size:11px;color:#bbb;font-weight:400;">${s.group}</span></div>
-            <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;background:${completed?'#d1fae5':'#fef9c3'};color:${completed?'#059669':'#92400e'};">${completed?'✅ 완료':'⏳ 미완료'}</span>
+        const mySubs = subs[s.uid]||[];
+        const slots = [1,2,3].map(n=>mySubs.find(x=>x.slot===n));
+        const completed = slots.every(x=>x);
+        const fb = fbs[s.uid];
+        return `<div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:4px;padding:8px 12px;border-bottom:1px solid #f5f5f5;align-items:center;">
+          <!-- 학생명 -->
+          <div>
+            <div style="font-weight:600;font-size:12px;">${s.name}</div>
+            <div style="font-size:10px;color:#bbb;">${s.group}</div>
+            <span style="font-size:10px;padding:1px 5px;border-radius:8px;font-weight:700;background:${completed?'#d1fae5':'#fef9c3'};color:${completed?'#059669':'#92400e'};">${completed?'완료':'미완료'}</span>
           </div>
-          ${[1,2,3].map(n=>{
-            const sub=slots[n-1];
-            const fb=fbs[s.uid+'_'+n];
-            return `<div style="background:${sub?'#f8fffe':'#f9f9f9'};border-radius:10px;padding:10px 12px;margin-bottom:8px;border:1px solid ${sub?'var(--teal-light)':'#eee'};">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <span style="font-size:12px;font-weight:700;color:${sub?'var(--teal)':'#aaa'};">녹음 ${n}회차</span>
-                ${sub?'<span style="font-size:11px;color:#059669;">✅ 제출완료</span>':'<span style="font-size:11px;color:#bbb;">미제출</span>'}
-              </div>
-              ${sub?`<audio src="${sub.url}" controls style="width:100%;height:32px;margin-bottom:8px;"></audio>`:''}
-              ${sub?`
-                <div style="display:flex;gap:6px;align-items:flex-start;">
-                  <textarea id="fb-${s.uid}-${n}" rows="2" placeholder="피드백 내용 (학생에게 표시됩니다)"
-                    style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;resize:none;outline:none;">${fb?fb.feedback:''}</textarea>
-                  <button onclick="saveRecFeedback('${hwId}','${s.uid}',${n},'${s.name.replace(/'/g,"\\'")}' )"
-                    style="background:var(--teal);color:white;border:none;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">
-                    ${fb?'수정':'저장'}
-                  </button>
-                </div>
-                ${fb?`<div style="font-size:11px;color:#059669;margin-top:4px;">✓ 피드백 저장됨 (${fb.createdAt?.toDate?fb.createdAt.toDate().toLocaleDateString('ko-KR'):'-'})</div>`:''}
-              `:''}
+          <!-- 녹음 1/2/3 (각 1셀) -->
+          ${[1,2,3].map(n=>{ const sub=slots[n-1];
+            return `<div style="text-align:center;">
+              ${sub
+                ? `<audio src="${sub.url}" controls style="width:100%;height:24px;"></audio>`
+                : `<span style="font-size:10px;color:#ccc;">미제출</span>`}
             </div>`;
           }).join('')}
+          <!-- 피드백 -->
+          <div>
+            <div style="display:flex;gap:4px;align-items:flex-start;">
+              <textarea id="fb-${s.uid}" rows="2" placeholder="피드백..."
+                style="flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:11px;resize:none;outline:none;">${fb?fb.feedback:''}</textarea>
+              <button onclick="saveRecFeedback('${hwId}','${s.uid}','${s.name.replace(/'/g,"\\'")}','${fb?fb.docId:''}')"
+                style="background:var(--teal);color:white;border:none;border-radius:6px;padding:4px 6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
+                ${fb?'수정':'저장'}
+              </button>
+            </div>
+            ${fb?`<div style="font-size:10px;color:#059669;margin-top:2px;">✓ ${fb.updatedAt?.toDate?fb.updatedAt.toDate().toLocaleDateString('ko-KR'):'-'}</div>`:''}
+          </div>
         </div>`;
       }).join('')||'<div style="padding:20px;text-align:center;color:#bbb;">대상 학생이 없습니다</div>'}`;
   }catch(e){ detailEl.innerHTML=`<div style="padding:20px;color:#e05050;">불러오기 실패: ${e.message}</div>`; }
 };
 
-window.saveRecFeedback = async(hwId, uid, slot, studentName) => {
-  const val = document.getElementById(`fb-${uid}-${slot}`)?.value.trim();
+window.saveRecFeedback = async(hwId, uid, studentName, docId) => {
+  const val = document.getElementById(`fb-${uid}`)?.value.trim();
   if(!val){ showToast('피드백 내용을 입력하세요.'); return; }
   try{
-    // 기존 피드백 찾기
-    const fbSnap = await getDocs(query(collection(db,'recFeedbacks'),where('hwId','==',hwId),where('uid','==',uid),where('slot','==',slot)));
-    if(fbSnap.empty){
-      await addDoc(collection(db,'recFeedbacks'),{
-        hwId, uid, slot: Number(slot), feedback:val,
-        studentName, teacherId:currentUser.uid,
-        createdAt:serverTimestamp(), updatedAt:serverTimestamp()
+    if(docId){
+      // 기존 피드백 수정
+      await updateDoc(doc(db,'recFeedbacks',docId),{
+        feedback:val, updatedAt:serverTimestamp()
       });
     } else {
-      await updateDoc(fbSnap.docs[0].ref,{feedback:val, updatedAt:serverTimestamp()});
+      // 신규 피드백 저장
+      await addDoc(collection(db,'recFeedbacks'),{
+        hwId, uid, feedback:val,
+        studentName, teacherId:currentUser.uid,
+        read:false,  // 학생 알림용
+        createdAt:serverTimestamp(), updatedAt:serverTimestamp()
+      });
     }
-    showToast(`✅ ${studentName} 녹음${slot} 피드백 저장!`);
-    // 버튼 텍스트 업데이트
-    const btn = document.querySelector(`button[onclick*="saveRecFeedback('${hwId}','${uid}',${slot}"]`);
-    if(btn) btn.textContent='수정';
+    showToast(`✅ ${studentName} 피드백 저장!`);
+    // 저장 버튼 "수정"으로 변경
+    await loadRecHwDetail(hwId, document.getElementById('recStatusTitle')?.textContent?.replace('📄 ',''));
   }catch(e){ showToast('저장 실패: '+e.message); }
 };
 window.viewUnit = (bid, uid, name) => {
