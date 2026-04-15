@@ -364,21 +364,6 @@
           <div id="hwFileList"><div class="empty-msg">등록된 파일이 없습니다</div></div>
         </div>
       </div>
-      <!-- 최근 시험 결과 + 녹음숙제 현황 -->
-      <div class="notice-section" style="margin-top:0;">
-        <div class="notice-card">
-          <div class="notice-card-header">
-            <div class="notice-card-title"><div class="icon">📊</div>최근 시험 결과</div>
-          </div>
-          <div id="recentTestResults"><div class="empty-msg">시험 기록이 없습니다</div></div>
-        </div>
-        <div class="notice-card">
-          <div class="notice-card-header">
-            <div class="notice-card-title"><div class="icon">🎙</div>녹음숙제 현황</div>
-          </div>
-          <div id="recentRecStatus"><div class="empty-msg">배정된 숙제가 없습니다</div></div>
-        </div>
-      </div>
       <div style="height:20px;"></div>
     </div>
   </div>
@@ -1069,7 +1054,7 @@ window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge
 
 // ── 홈 데이터 ─────────────────────────────────────────────
 async function loadHomeData(){
-  await Promise.all([loadNoticePreview(), loadHwFiles(), loadRecentTestResults(), loadRecentRecStatus()]);
+  await Promise.all([loadNoticePreview(), loadHwFiles()]);
   await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge()]);
 }
 
@@ -1107,92 +1092,6 @@ async function updateTestBadge(){
       badge.style.display = 'none';
     }
   }catch(e){ badge.style.display='none'; }
-}
-
-async function loadRecentTestResults(){
-  const el = document.getElementById('recentTestResults');
-  if(!el || !currentUser || !userProfile) return;
-  try{
-    const myUid = currentUser.uid;
-    const myGroup = userProfile.group||'';
-    // 최근 scores (내 uid)
-    const scoreSnap = await getDocs(query(collection(db,'scores'),
-      where('uid','==',myUid), orderBy('date','desc')));
-    const scores = scoreSnap.docs.map(d=>({id:d.id,...d.data()})).slice(0,5);
-    if(!scores.length){ el.innerHTML='<div class="empty-msg">시험 기록이 없습니다</div>'; return; }
-
-    // testId로 시험명 조회
-    const testIds = [...new Set(scores.map(s=>s.testId).filter(Boolean))];
-    const testMap = {};
-    await Promise.all(testIds.map(async id=>{
-      try{
-        const d = await getDoc(doc(db,'tests',id));
-        if(d.exists()) testMap[id] = d.data();
-      }catch(e){}
-    }));
-
-    el.innerHTML = scores.map(s=>{
-      const t = testMap[s.testId]||{};
-      const isUnsc = s.testMode==='unscramble' || t.testMode==='unscramble';
-      const modeIcon = isUnsc ? '🔀' : '📝';
-      const modeLabel = isUnsc ? '언스크램블' : '단어시험';
-      const score = s.score??'-';
-      const scoreColor = score>=80?'#059669':score>=60?'#b45309':'#e05050';
-      const scoreBg   = score>=80?'#d1fae5':score>=60?'#fef9c3':'#fee2e2';
-      const testName  = t.name || s.unitName || '시험';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f5;">
-        <span style="font-size:18px;flex-shrink:0;">${modeIcon}</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${testName}</div>
-          <div style="font-size:11px;color:#aaa;margin-top:1px;">${modeLabel} · ${s.date||''}</div>
-        </div>
-        <span style="font-size:13px;font-weight:700;padding:3px 10px;border-radius:20px;background:${scoreBg};color:${scoreColor};flex-shrink:0;">${score}점</span>
-      </div>`;
-    }).join('');
-  }catch(e){ el.innerHTML='<div class="empty-msg">불러오기 실패</div>'; }
-}
-
-async function loadRecentRecStatus(){
-  const el = document.getElementById('recentRecStatus');
-  if(!el || !currentUser || !userProfile) return;
-  try{
-    const myUid = currentUser.uid;
-    const myGroup = userProfile.group||'';
-    // 내게 배정된 녹음숙제
-    const hwSnap = await getDocs(query(collection(db,'recHw'), orderBy('createdAt','desc')));
-    const allHws = hwSnap.docs.map(d=>({id:d.id,...d.data()}));
-    const myHws = allHws.filter(hw=>{
-      if(hw.active===false) return false;
-      return (hw.targets||[]).some(t=>(t.type==='class'&&t.id===myGroup)||(t.type==='student'&&t.id===myUid));
-    }).slice(0,5);
-
-    if(!myHws.length){ el.innerHTML='<div class="empty-msg">배정된 숙제가 없습니다</div>'; return; }
-
-    // 제출 현황
-    const subSnap = await getDocs(query(collection(db,'recSubmissions'), where('uid','==',myUid)));
-    const submittedMap = {}; // hwId → 제출 수
-    subSnap.docs.forEach(d=>{
-      const s=d.data();
-      submittedMap[s.hwId] = (submittedMap[s.hwId]||0)+1;
-    });
-
-    el.innerHTML = myHws.map(hw=>{
-      const cnt = submittedMap[hw.id]||0;
-      const done = cnt>=3;
-      const statusColor = done?'#059669':cnt>0?'#b45309':'#aaa';
-      const statusBg    = done?'#d1fae5':cnt>0?'#fef9c3':'#f3f4f6';
-      const statusText  = done?'완료':cnt>0?`${cnt}/3 제출`:'미제출';
-      const statusIcon  = done?'✅':cnt>0?'🎙':'⬜';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f5;">
-        <span style="font-size:18px;flex-shrink:0;">${statusIcon}</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hw.title||'녹음숙제'}</div>
-          <div style="font-size:11px;color:#aaa;margin-top:1px;">${hw.dueDate?'마감 '+hw.dueDate:hw.date||''}</div>
-        </div>
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg};color:${statusColor};flex-shrink:0;white-space:nowrap;">${statusText}</span>
-      </div>`;
-    }).join('');
-  }catch(e){ el.innerHTML='<div class="empty-msg">불러오기 실패</div>'; }
 }
 
 async function loadNoticePreview(){
