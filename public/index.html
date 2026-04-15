@@ -930,6 +930,14 @@ function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Mat
 window.show = id => {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // 스펠링 화면 벗어날 때 keyboard offset 초기화
+  if(id !== 'spelling'){
+    const spelling = document.getElementById('spelling');
+    if(spelling) spelling.style.bottom = '0';
+  } else {
+    // 스펠링 진입 시 즉시 조정
+    adjustSpellingForKeyboard();
+  }
 };
 window.closeModal = id => document.getElementById(id).classList.add('hidden');
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
@@ -1673,25 +1681,32 @@ window.switchRankTab=async (tab)=>{
 async function renderRanking(tab){
   const group=userProfile?.group,meUid=currentUser?.uid;
   const colors=['#3BBFBF','#5aabcf','#8b7dd8','#4bc27d','#f5a623','#e05050'];
-  const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group),where('role','==','student')));
-  const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()}));
+  const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group)));
+  const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
   if(tab==='score'){
     const scoresSnap=await getDocs(query(collection(db,'scores'),where('group','==',group)));
     const scoresMap={};
-    scoresSnap.docs.forEach(d=>{const s=d.data();if(!scoresMap[s.uid])scoresMap[s.uid]={spell:0,meaning:0};
-      if(s.mode==='spelling')scoresMap[s.uid].spell=Math.max(scoresMap[s.uid].spell,s.score);
-      if(s.mode==='meaning')scoresMap[s.uid].meaning=Math.max(scoresMap[s.uid].meaning,s.score);});
-    const sorted=[...students].sort((a,b)=>((scoresMap[b.uid]?.spell||0)+(scoresMap[b.uid]?.meaning||0))-((scoresMap[a.uid]?.spell||0)+(scoresMap[a.uid]?.meaning||0)));
-    const maxT=Math.max(...sorted.map(u=>(scoresMap[u.uid]?.spell||0)+(scoresMap[u.uid]?.meaning||0)),1);
+    scoresSnap.docs.forEach(d=>{
+      const s=d.data();
+      if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
+      // 모든 mode 점수 반영 (spelling/meaning/mixed/word/unscramble)
+      if(s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
+      scoresMap[s.uid].count++;
+      scoresMap[s.uid].total += (s.score||0);
+    });
+    const sorted=[...students].sort((a,b)=>(scoresMap[b.uid]?.best||0)-(scoresMap[a.uid]?.best||0));
+    const maxScore=Math.max(...sorted.map(u=>scoresMap[u.uid]?.best||0), 1);
     const nc=['gold','silver','bronze'];
     document.getElementById('rankScoreList').innerHTML=sorted.map((u,i)=>{
-      const s=scoresMap[u.uid]||{spell:0,meaning:0},total=s.spell+s.meaning,avg=Math.round(total/2),isMe=u.uid===meUid;
+      const s=scoresMap[u.uid]||{best:0,count:0,total:0};
+      const avg = s.count>0 ? Math.round(s.total/s.count) : 0;
+      const isMe=u.uid===meUid;
       return `<div class="rank-item${isMe?' me':''}"><div class="rank-num ${nc[i]||''}">${i+1}</div>
         <div class="rank-avatar" style="background:${colors[i%colors.length]}">${u.name[0]}</div>
         <div class="rank-info"><div class="rank-name">${u.name}${isMe?'<span>(나)</span>':''}</div>
-        <div class="rank-sub"><span>스펠링 ${s.spell}</span><span style="color:#ddd">|</span><span>뜻맞추기 ${s.meaning}</span></div>
-        <div class="rank-bar"><div class="rank-bar-fill" style="width:${Math.round((total/(maxT*1.05))*100)}%"></div></div></div>
-        <div class="rank-score">${avg}<span style="font-size:12px;color:#aaa;">점</span></div></div>`;
+        <div class="rank-sub"><span>최고 ${s.best}점</span><span style="color:#ddd">|</span><span>평균 ${avg}점</span><span style="color:#ddd">|</span><span>${s.count}회</span></div>
+        <div class="rank-bar"><div class="rank-bar-fill" style="width:${Math.round((s.best/maxScore)*100)}%"></div></div></div>
+        <div class="rank-score">${s.best}<span style="font-size:12px;color:#aaa;">점</span></div></div>`;
     }).join('')||'<div class="empty-msg">아직 점수가 없습니다</div>';
   } else {
     const hwSnap=await getDocs(query(collection(db,'hwSubmissions'),where('group','==',group)));
@@ -3262,11 +3277,27 @@ async function updateRecBadge(){
 }
 
 // ── 모바일 키패드 대응 ────────────────────────────────────
-// html,body position:fixed 으로 키패드 밀림 방지 완료
-// visualViewport 스크롤 방지 (iOS Safari 대응)
+// 키패드가 올라오면 스펠링 화면 높이를 줄여서 footer(제출버튼)가 항상 보이게
+function adjustSpellingForKeyboard(){
+  const spelling = document.getElementById('spelling');
+  if(!spelling) return;
+  if(window.visualViewport){
+    const vv = window.visualViewport;
+    const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+    if(spelling.classList.contains('active')){
+      // 키패드 높이만큼 bottom을 올려서 footer가 키패드 위에 위치
+      spelling.style.bottom = Math.max(0, keyboardHeight) + 'px';
+    } else {
+      spelling.style.bottom = '0';
+    }
+  }
+}
+
 if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', adjustSpellingForKeyboard);
   window.visualViewport.addEventListener('scroll', ()=>{
     window.scrollTo(0, 0);
+    adjustSpellingForKeyboard();
   });
 }
 
