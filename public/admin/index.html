@@ -1067,7 +1067,8 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
     <div class="page-header">
       <div><div class="page-title">메시지 관리</div><div class="page-sub">학생/그룹에 알림을 보냅니다</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:400px 1fr;gap:16px;">
+    <div style="display:grid;grid-template-columns:380px 1fr;gap:16px;">
+      <!-- 왼쪽: 작성 -->
       <div class="card">
         <div class="card-title">📨 새 메시지 작성</div>
         <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
@@ -1101,9 +1102,18 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
           </div>
         </div>
       </div>
-      <div class="card">
-        <div class="card-title">📋 저장된 메시지 <span style="font-size:12px;color:var(--gray);font-weight:400;">(클릭하면 재활용)</span></div>
-        <div id="savedMsgList"><div class="loading"><div class="spinner"></div>로딩 중</div></div>
+      <!-- 오른쪽: 발송 이력 + 읽음 현황 -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <!-- 발송 이력 -->
+        <div class="card" style="flex:0 0 auto;">
+          <div class="card-title">📋 발송 이력 <span style="font-size:12px;color:var(--gray);font-weight:400;">클릭하면 읽음 현황 확인</span></div>
+          <div id="savedMsgList"><div class="loading"><div class="spinner"></div>로딩 중</div></div>
+        </div>
+        <!-- 읽음 현황 -->
+        <div class="card" style="flex:1;">
+          <div class="card-title" id="msgReadTitle">👁 읽음 현황 <span style="font-size:12px;color:var(--gray);font-weight:400;">위에서 알림을 선택하세요</span></div>
+          <div id="msgReadList"><div style="padding:24px;text-align:center;color:#bbb;font-size:13px;">발송 이력에서 알림을 클릭하세요</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2252,24 +2262,89 @@ async function loadMessages(){
   const el=document.getElementById('savedMsgList');
   try{
     const snap=await getDocs(query(collection(db,'pushNotifications'),orderBy('createdAt','desc')));
-    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">저장된 메시지가 없습니다</div>';return;}
+    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송된 알림이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
       const isStudent=n.target?.startsWith('uid:');
       const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
-      return `<div onclick="reuseMsg('${d.id}')" style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;"
+        onclick="showMsgReadStatus('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
+        onmouseover="this.style.background='#f0fafa'" onmouseout="this.style.background=''">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-          <div style="flex:1;">
-            <div style="font-size:14px;font-weight:600;">${n.title||''}</div>
-            <div style="font-size:12px;color:var(--gray);margin-top:3px;">${(n.body||'').slice(0,60)}${(n.body||'').length>60?'...':''}</div>
-            <div style="font-size:11px;color:#bbb;margin-top:4px;">${targetLabel} · ${n.date||''}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;">${n.title||''}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">${(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:3px;">${targetLabel} · ${n.date||''}</div>
           </div>
-          <button onclick="event.stopPropagation();delMsg('${d.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+          <button onclick="event.stopPropagation();delMsg('${d.id}')" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
         </div>
       </div>`;
     }).join('');
   }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
 }
+
+window.showMsgReadStatus = async(pushId, title) => {
+  const titleEl = document.getElementById('msgReadTitle');
+  const listEl  = document.getElementById('msgReadList');
+  if(!listEl) return;
+  if(titleEl) titleEl.innerHTML = `👁 읽음 현황 <span style="font-size:13px;color:var(--text);font-weight:600;">${title}</span>`;
+  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
+  try{
+    // 이 알림(pushId)에 해당하는 userNotifications 조회
+    const snap = await getDocs(query(collection(db,'userNotifications'),where('pushId','==',pushId)));
+
+    // pushId 없는 경우 (구버전 알림) - createdAt 기준으로 title+body 매칭
+    let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+    if(!notifs.length){
+      // pushId 없는 구버전: title로 fallback
+      const fbSnap = await getDocs(query(collection(db,'userNotifications'),where('title','==',title)));
+      notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+
+    if(!notifs.length){
+      listEl.innerHTML='<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">확인 데이터가 없습니다<br><span style="font-size:11px;">이전 방식으로 발송된 알림입니다</span></div>';
+      return;
+    }
+
+    // uid 목록으로 학생 이름 조회
+    const uids = [...new Set(notifs.map(n=>n.uid))];
+    const userSnap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+    const userMap = {};
+    userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
+
+    const read    = notifs.filter(n=>n.read===true);
+    const unread  = notifs.filter(n=>!n.read);
+    const readPct = notifs.length ? Math.round(read.length/notifs.length*100) : 0;
+
+    listEl.innerHTML = `
+      <!-- 요약 -->
+      <div style="display:flex;gap:12px;padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap;">
+        <span>총 <b>${notifs.length}</b>명</span>
+        <span style="color:#059669;">✅ 읽음 <b>${read.length}</b>명</span>
+        <span style="color:#e05050;">🔴 미읽음 <b>${unread.length}</b>명</span>
+        <span style="margin-left:auto;font-weight:700;color:var(--teal);">${readPct}%</span>
+      </div>
+      <!-- 미읽음 먼저 -->
+      ${unread.length?`
+        <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;color:#e05050;">🔴 미읽음 (${unread.length}명)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;">
+          ${unread.map(n=>`<span style="padding:4px 10px;background:#fee2e2;color:#b91c1c;border-radius:20px;font-size:12px;font-weight:600;">
+            ${userMap[n.uid]?.name||n.uid} <span style="font-size:10px;opacity:.7;">${userMap[n.uid]?.group||''}</span>
+          </span>`).join('')}
+        </div>`:''
+      }
+      <!-- 읽음 -->
+      ${read.length?`
+        <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;color:#059669;">✅ 읽음 (${read.length}명)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;">
+          ${read.map(n=>`<span style="padding:4px 10px;background:#d1fae5;color:#065f46;border-radius:20px;font-size:12px;">
+            ${userMap[n.uid]?.name||n.uid} <span style="font-size:10px;opacity:.7;">${userMap[n.uid]?.group||''}</span>
+          </span>`).join('')}
+        </div>`:''
+      }`;
+  }catch(e){ listEl.innerHTML=`<div style="padding:16px;color:#e05050;">불러오기 실패: ${e.message}</div>`; }
+};
 window.reuseMsg = async(id) => {
   const snap=await getDoc(doc(db,'pushNotifications',id));
   const n=snap.data();if(!n)return;
