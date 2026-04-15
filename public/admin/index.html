@@ -4831,6 +4831,7 @@ window.setStudentMode = (id,mode) => { showToast(mode.toUpperCase()+' 모드 설
 // 녹음숙제 관리
 // ═══════════════════════════════════════════════════════
 let _recFolders = [], _recCurrentFolderId = null;
+window._recCurrentFolderId = null;
 
 // ── 숙제목록 작성 ────────────────────────────────────────
 window.loadRecContent = async() => {
@@ -4846,7 +4847,7 @@ async function loadRecFolders(){
     el.innerHTML = _recFolders.map(f=>`
       <div id="recfolder-${f.id}" onclick="selectRecFolder('${f.id}','${f.name.replace(/'/g,"\\'")}') "
         style="padding:10px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:space-between;"
-        onmouseover="this.style.background='#f5f5f5'" onmouseout="if(_recCurrentFolderId!=='${f.id}')this.style.background=''">
+        onmouseover="this.style.background='#f5f5f5'" onmouseout="if(window._recCurrentFolderId!=='${f.id}')this.style.background=''">
         <span>📁 ${f.name}</span>
         <button onclick="event.stopPropagation();deleteRecFolder('${f.id}','${f.name.replace(/'/g,"\\'")}') " style="background:none;border:none;color:#bbb;cursor:pointer;font-size:14px;">✕</button>
       </div>`).join('') || '<div style="padding:16px;text-align:center;color:#bbb;font-size:13px;">폴더가 없습니다</div>';
@@ -4855,6 +4856,7 @@ async function loadRecFolders(){
 
 window.selectRecFolder = async(folderId, folderName) => {
   _recCurrentFolderId = folderId;
+  window._recCurrentFolderId = folderId;
   document.querySelectorAll('[id^="recfolder-"]').forEach(el=>el.style.background='');
   const row = document.getElementById('recfolder-'+folderId);
   if(row) row.style.background='#e0f5f5';
@@ -4908,7 +4910,7 @@ window.deleteRecFolder = async(id, name) => {
   const snap = await getDocs(query(collection(db,'recContents'),where('folderId','==',id)));
   for(const d of snap.docs) await deleteDoc(d.ref);
   await deleteDoc(doc(db,'recFolders',id));
-  if(_recCurrentFolderId===id){ _recCurrentFolderId=null; document.getElementById('recContentList').innerHTML='<div style="padding:20px;text-align:center;color:#bbb;">폴더를 선택하세요</div>'; }
+  if(_recCurrentFolderId===id){ _recCurrentFolderId=null; window._recCurrentFolderId=null; document.getElementById('recContentList').innerHTML='<div style="padding:20px;text-align:center;color:#bbb;">폴더를 선택하세요</div>'; }
   showToast('삭제됐어요.');
   await loadRecFolders();
 };
