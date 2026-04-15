@@ -1044,9 +1044,16 @@ thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th>No</th><th>반</th><th>이름</th>
-            <th>종류</th><th>교재명</th><th>시험명</th>
-            <th>정답/전체</th><th>점수</th><th>일시</th><th>상세</th>
+            <th>No</th>
+            <th class="sortable" onclick="sortScoreReport('group')">반 <span id="srSort-group"></span></th>
+            <th class="sortable" onclick="sortScoreReport('userName')">이름 <span id="srSort-userName"></span></th>
+            <th class="sortable" onclick="sortScoreReport('mode')">종류 <span id="srSort-mode"></span></th>
+            <th class="sortable" onclick="sortScoreReport('bookName')">교재명 <span id="srSort-bookName"></span></th>
+            <th>시험명</th>
+            <th class="sortable" onclick="sortScoreReport('correct')">정답/전체 <span id="srSort-correct"></span></th>
+            <th class="sortable" onclick="sortScoreReport('score')">점수 <span id="srSort-score"></span></th>
+            <th class="sortable" onclick="sortScoreReport('date')">일시 <span id="srSort-date"></span></th>
+            <th>상세</th>
           </tr></thead>
           <tbody id="scoreReportBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">기간을 선택하고 조회하세요</td></tr></tbody>
         </table>
@@ -2419,12 +2426,85 @@ window.delMsg = async(id) => {
 };
 
 // ── 성적 관리 ────────────────────────────────────────
-function initScoreReport(){
+async function initScoreReport(){
   const today=new Date();
   const from=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   document.getElementById('scoreFrom').value=from;
   document.getElementById('scoreTo').value=today.toISOString().slice(0,10);
+
+  // 반 목록 채우기 (users에서 실제 그룹값 추출)
+  const sel = document.getElementById('scoreClassFilter');
+  if(sel && sel.options.length <= 1){
+    try{
+      const snap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+      const groups = [...new Set(snap.docs.map(d=>d.data().group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+      groups.forEach(g=>{
+        const opt = document.createElement('option');
+        opt.value = g; opt.textContent = g;
+        sel.appendChild(opt);
+      });
+    }catch(e){}
+  }
 }
+let _srData = [];      // 성적리포트 데이터 캐시
+let _srSort = {col:'date', dir:'desc'};  // 기본 최신순
+
+function renderScoreReportRows(){
+  const el = document.getElementById('scoreReportBody');
+  if(!el) return;
+
+  const {col, dir} = _srSort;
+  const sorted = [..._srData].sort((a,b)=>{
+    let av = a[col]??'', bv = b[col]??'';
+    // 숫자형 컬럼
+    if(col==='score'||col==='correct'){
+      av = Number(av)||0; bv = Number(bv)||0;
+      return dir==='asc' ? av-bv : bv-av;
+    }
+    // mode 정렬: unscramble vs word
+    av = av.toString().toLowerCase();
+    bv = bv.toString().toLowerCase();
+    const cmp = av.localeCompare(bv,'ko');
+    return dir==='asc' ? cmp : -cmp;
+  });
+
+  // 헤더 화살표 업데이트
+  ['group','userName','mode','bookName','correct','score','date'].forEach(k=>{
+    const el2 = document.getElementById('srSort-'+k);
+    if(!el2) return;
+    el2.textContent = k===col ? (dir==='asc'?'▲':'▼') : '';
+  });
+
+  const sbadge=v=>v>=80?'badge-green':v>=60?'badge-amber':'badge-red';
+  el.innerHTML = sorted.map((s,i)=>{
+    const isUnsc = s._isUnsc;
+    const modeHtml = isUnsc
+      ? '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀 언스크램블</span>'
+      : '<span class="badge badge-teal" style="font-size:10px;">📝 단어시험</span>';
+    return `<tr style="cursor:pointer;" onclick="showScoreDetail('${s.id}','${s.testId||''}')">
+      <td>${i+1}</td>
+      <td>${s.group||'-'}</td>
+      <td style="font-weight:600;">${s.userName||'-'}</td>
+      <td>${modeHtml}</td>
+      <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${s.bookName||'-'}</td>
+      <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}</td>
+      <td style="text-align:center;">${s.correct||0}/${s.total||0}</td>
+      <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
+      <td style="color:var(--gray);font-size:12px;">${s._dateTime||s.date||''}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showScoreDetail('${s.id}','${s.testId||''}')">상세</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
+}
+
+window.sortScoreReport = (col) => {
+  if(_srSort.col===col){
+    _srSort.dir = _srSort.dir==='asc' ? 'desc' : 'asc';
+  } else {
+    _srSort = {col, dir:'asc'};
+  }
+  renderScoreReportRows();
+};
+
 window.loadScoreReport = async() => {
   const el=document.getElementById('scoreReportBody');
   el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
@@ -2443,37 +2523,38 @@ window.loadScoreReport = async() => {
       if(modeFilter==='unscramble' && !isUnsc) return false;
       return(!from||d>=from)&&(!to||d<=to)&&(!cls||s.group===cls);
     });
-    if(!filtered.length){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';return;}
+    if(!filtered.length){
+      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
+      _srData=[]; return;
+    }
 
-    // testId로 교재명 보완
+    // testId로 교재명·시험명 보완
     const testIds=[...new Set(filtered.map(s=>s.testId).filter(Boolean))];
     const testMap={};
     await Promise.all(testIds.map(async id=>{
       try{ const d=await getDoc(doc(db,'tests',id)); if(d.exists()) testMap[id]=d.data(); }catch(e){}
     }));
 
-    const sbadge=v=>v>=80?'badge-green':v>=60?'badge-amber':'badge-red';
-    el.innerHTML=filtered.map((s,i)=>{
+    // 정렬용 필드 정규화
+    _srData = filtered.map(s=>{
       const t=testMap[s.testId]||{};
       const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble'||t.testMode==='unscramble';
-      const modeHtml=isUnsc
-        ?'<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀 언스크램블</span>'
-        :'<span class="badge badge-teal" style="font-size:10px;">📝 단어시험</span>';
-      const bookName=s.bookName||t.bookName||s.unitName||'-';
-      const testName=s.testName||t.name||'-';
-      return `<tr style="cursor:pointer;" onclick="showScoreDetail('${s.id}','${s.testId||''}')">
-        <td>${i+1}</td>
-        <td>${s.group||'-'}</td>
-        <td style="font-weight:600;">${s.userName||'-'}</td>
-        <td>${modeHtml}</td>
-        <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${bookName}">${bookName}</td>
-        <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${testName}">${testName}</td>
-        <td style="text-align:center;">${s.correct||0}/${s.total||0}</td>
-        <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
-        <td style="color:var(--gray);font-size:12px;">${s.createdAt?.toDate?s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):s.date||''}</td>
-        <td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showScoreDetail('${s.id}','${s.testId||''}')">상세</button></td>
-      </tr>`;
-    }).join('');
+      return {
+        ...s,
+        _isUnsc: isUnsc,
+        bookName: s.bookName||t.bookName||s.unitName||'-',
+        testName: s.testName||t.name||'-',
+        mode: isUnsc?'unscramble':'word',
+        score: s.score||0,
+        correct: s.correct||0,
+        _dateTime: s.createdAt?.toDate
+          ? s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+          : s.date||'',
+      };
+    });
+
+    _srSort = {col:'date', dir:'desc'};
+    renderScoreReportRows();
   }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 };
 
