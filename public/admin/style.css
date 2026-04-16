@@ -72,10 +72,19 @@ html,body{height:100%;overflow:hidden;background:var(--bg);}
 /* ── 테이블 ── */
 .table-wrap{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;font-size:13px;}
-thead th{background:#f8f9fa;color:var(--text);font-weight:600;padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
-tbody td{padding:10px 12px;border-bottom:1px solid #f5f5f5;color:var(--text);vertical-align:middle;}
+thead th{background:#f8f9fa;color:var(--text);font-weight:600;padding:10px 12px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap;font-size:12px;letter-spacing:.3px;}
+tbody td{padding:10px 12px;border-bottom:1px solid #f5f5f5;color:var(--text);vertical-align:middle;font-size:13px;line-height:1.4;}
 tbody tr:hover{background:#fafafa;}
 tbody tr:last-child td{border-bottom:none;}
+
+/* 셀 유틸리티 */
+tbody td.td-link{font-weight:600;color:var(--text);cursor:pointer;}
+tbody td.td-link:hover{color:var(--teal);}
+tbody td.td-main{font-weight:600;color:var(--text);}
+tbody td.td-sub{font-size:12px;color:var(--gray);}
+tbody td.td-mono{font-family:monospace;font-size:12px;color:var(--text);}
+tbody td.td-center{text-align:center;}
+tbody td.td-sm{font-size:12px;}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .badge-teal{background:var(--teal-light);color:var(--teal-dark);}
 .badge-gray{background:#f0f0f0;color:var(--gray);}

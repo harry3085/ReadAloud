@@ -213,7 +213,7 @@ async function loadDashScores(){
         <td>${modeHtml}</td>
         <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc(bookName)}</td>
         <td><span class="badge ${badge}">${pct}점</span></td>
-        <td style="color:var(--gray);font-size:12px;">${s.createdAt?.toDate?s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
+        <td class="td-sub">${s.createdAt?.toDate?s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
       </tr>`;
     }).join('');
   }catch(e){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:12px;">불러오기 실패</td></tr>';}
@@ -423,11 +423,11 @@ async function loadClasses(){
     initPagination('classTableBody', data, (g,i)=>`<tr>
       <td><input type="checkbox" value="${g.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editClass('${g.id}')">${esc(g.name)||'-'}</td>
+      <td class="td-link" onclick="editClass('${g.id}')">${esc(g.name)||'-'}</td>
       <td>${esc(g.teacher)||'-'}</td>
-      <td style="text-align:center;">${g.hideApp?'<span class="badge badge-amber">숨김</span>':'-'}</td>
-      <td style="text-align:center;">${g.allBooks?'<span class="badge badge-blue">허용</span>':'-'}</td>
-      <td style="color:var(--gray);font-size:12px;">${g.createdAt?.toDate?g.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-center">${g.hideApp?'<span class="badge badge-amber">숨김</span>':'-'}</td>
+      <td class="td-center">${g.allBooks?'<span class="badge badge-blue">허용</span>':'-'}</td>
+      <td class="td-sub">${g.createdAt?.toDate?g.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'classPagination', 7);
   }catch(e){document.getElementById('classTableBody').innerHTML='<tr><td colspan="7" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
@@ -486,25 +486,25 @@ function renderStudentTable(status, students){
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
       <td><span class="badge badge-teal">${esc(u.group)||'-'}</span></td>
-      <td style="font-family:monospace;font-size:12px;">${esc(u.username)||'-'}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editStudent('${u.id}')">${esc(u.name)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.birth)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.school)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.grade)||'-'}</td>
+      <td class="td-mono">${esc(u.username)||'-'}</td>
+      <td class="td-link" onclick="editStudent('${u.id}')">${esc(u.name)||'-'}</td>
+      <td class="td-sm">${esc(u.birth)||'-'}</td>
+      <td class="td-sm">${esc(u.school)||'-'}</td>
+      <td class="td-sm">${esc(u.grade)||'-'}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
-      <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, pgId, 10);
   } else {
     initPagination(tbodyId, students, (u,i)=>`<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
-      <td style="font-family:monospace;font-size:12px;">${esc(u.username)||'-'}</td>
+      <td class="td-mono">${esc(u.username)||'-'}</td>
       <td style="font-weight:600;">${esc(u.name)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.birth)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.school)||'-'}</td>
-      <td style="font-size:12px;">${esc(u.grade)||'-'}</td>
-      <td style="color:var(--gray);font-size:12px;">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      <td style="color:var(--gray);font-size:12px;">${u.statusDate||'-'}</td>
+      <td class="td-sm">${esc(u.birth)||'-'}</td>
+      <td class="td-sm">${esc(u.school)||'-'}</td>
+      <td class="td-sm">${esc(u.grade)||'-'}</td>
+      <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-sub">${u.statusDate||'-'}</td>
     </tr>`, pgId, 9);
   }
 }
@@ -822,10 +822,10 @@ window.showUnassignedBooks = async() => {
     initPagination('bookTableBody', unassigned, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
-      <td style="text-align:center;">${b.unitCount||0}</td>
-      <td style="text-align:center;">${b.wordCount||0}</td>
-      <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-link" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
+      <td class="td-center">${b.unitCount||0}</td>
+      <td class="td-center">${b.wordCount||0}</td>
+      <td class="td-sub">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'bookPagination', 6);
   }catch(e){ el.innerHTML='<tr><td colspan="6" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
 };
@@ -854,10 +854,10 @@ window.showFolderBooks = async(folderId, folderName) => {
     initPagination('bookTableBody', folderBooks, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
-      <td style="text-align:center;">${b.unitCount||0}</td>
-      <td style="text-align:center;">${b.wordCount||0}</td>
-      <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-link" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
+      <td class="td-center">${b.unitCount||0}</td>
+      <td class="td-center">${b.wordCount||0}</td>
+      <td class="td-sub">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'bookPagination', 6);
   }catch(e){ el.innerHTML='<tr><td colspan="6" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
 };
@@ -928,9 +928,9 @@ async function loadFolders(){
       style="cursor:pointer;">
       <td onclick="event.stopPropagation();"><input type="checkbox" value="${f.id}" onclick="event.stopPropagation();document.getElementById('folderCheckAll').checked=false;"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;color:var(--text);">📁 ${esc(f.name)}</td>
-      <td style="text-align:center;">${folderBookCount[f.id]||0}</td>
-      <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-main">📁 ${esc(f.name)}</td>
+      <td class="td-center">${folderBookCount[f.id]||0}</td>
+      <td class="td-sub">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'folderPagination', 5);
   }catch(e){ el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
 }
@@ -985,7 +985,7 @@ async function loadNotices(){
         <td>${i+1}</td>
         <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${n.id}','${(n.title||'').replace(/'/g,"\\'")}')">${esc(n.title)||'-'}</td>
         <td><span class="badge badge-teal">${n.target==='all'?'전체':esc(n.target)||'-'}</span></td>
-        <td style="color:var(--gray);font-size:12px;">${esc(n.date)||''}</td>
+        <td class="td-sub">${esc(n.date)||''}</td>
       </tr>`, 'noticePagination', 10);
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
@@ -1035,7 +1035,7 @@ async function loadHwFileAdmin(){
       <td style="font-weight:600;">${esc(f.name)||'-'}</td>
       <td><span class="badge badge-teal">${f.group==='전체'?'전체':esc(f.group)||'-'}</span></td>
       <td>${icons[f.type]||'📄'} ${(f.type||'').toUpperCase()}</td>
-      <td style="color:var(--gray);font-size:12px;">${f.date||''}</td>
+      <td class="td-sub">${f.date||''}</td>
       <td><a href="${f.url||'#'}" target="_blank" class="btn btn-secondary btn-sm">다운로드</a></td>
       <td><button class="btn btn-secondary btn-sm" onclick="editHwFile('${f.id}')">✏️ 수정</button></td>
     </tr>`, 'hwfilePagination', 7);
@@ -1241,9 +1241,9 @@ async function loadPayments(){
       <td>${esc(p.group)||'-'}</td>
       <td>${esc(p.title)||'-'}</td>
       <td style="font-weight:600;">${(p.amount||0).toLocaleString()}원</td>
-      <td style="font-size:12px;">${p.due||'-'}</td>
+      <td class="td-sm">${p.due||'-'}</td>
       <td><span class="badge ${sbadge[p.status]||'badge-gray'}">${slabel[p.status]||'미납'}</span></td>
-      <td style="color:var(--gray);font-size:12px;">${p.memo||'-'}</td>
+      <td class="td-sub">${p.memo||'-'}</td>
     </tr>`, 'paymentPagination', 9);
   }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
@@ -1488,9 +1488,9 @@ function renderScoreReportRows(){
       <td>${modeHtml}</td>
       <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
       <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}</td>
-      <td style="text-align:center;">${s.correct||0}/${s.total||0}</td>
+      <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
-      <td style="color:var(--gray);font-size:12px;">${s._dateTime||s.date||''}</td>
+      <td class="td-sub">${s._dateTime||s.date||''}</td>
       <td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showScoreDetail('${s.id}','${s.testId||''}')">상세</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
@@ -1701,11 +1701,11 @@ window.loadPersonalScore = async(uid) => {
             return `<tr>
               <td>${i+1}</td>
               <td>${modeHtml}</td>
-              <td style="font-size:12px;">${esc(bookName)}</td>
+              <td class="td-sm">${esc(bookName)}</td>
               <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${testName}</td>
               <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
               <td>${s.correct||0}/${s.total||0}</td>
-              <td style="color:var(--gray);font-size:12px;">${s.date||''}</td>
+              <td class="td-sub">${s.date||''}</td>
             </tr>`;
           }).join('')||'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:12px;">응시 내역이 없습니다</td></tr>'}
           </tbody>
@@ -2267,14 +2267,14 @@ window.loadTestList = async() => {
       <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;color:var(--text);">${esc(t.name)||'-'}</td>
+        <td class="td-main">${esc(t.name)||'-'}</td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
-        <td style="font-size:12px;">${esc(t.bookName)||'-'}</td>
-        <td style="text-align:center;">${t.count||0}문제</td>
-        <td style="color:var(--gray);font-size:12px;">${esc(t.date)||''}</td>
+        <td class="td-sm">${esc(t.bookName)||'-'}</td>
+        <td class="td-center">${t.count||0}문제</td>
+        <td class="td-sub">${esc(t.date)||''}</td>
         <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
-        <td style="text-align:center;">
+        <td class="td-center">
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
       </tr>
@@ -4409,8 +4409,8 @@ async function loadRecFolderTable(){
         <td><input type="checkbox" value="${f.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;">📁 ${esc(f.name)}</td>
-        <td style="text-align:center;">${f.hwCount}개</td>
-        <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+        <td class="td-center">${f.hwCount}개</td>
+        <td class="td-sub">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       </tr>`, 'recFolderPagination', 5);
   }catch(e){ el.innerHTML=`<tr><td colspan="5" style="color:#e05050;text-align:center;padding:16px;">불러오기 실패</td></tr>`; }
 }
@@ -4439,9 +4439,9 @@ async function loadRecContentTable(folderId){
       <tr>
         <td><input type="checkbox" value="${c.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editRecContent('${c.id}')">📄 ${esc(c.title)||'제목없음'}</td>
+        <td class="td-link" onclick="editRecContent('${c.id}')">📄 ${esc(c.title)||'제목없음'}</td>
         <td style="color:var(--gray);font-size:12px;max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc((c.content||'').split('\n')[0])}</td>
-        <td style="color:var(--gray);font-size:12px;">${c.createdAt?.toDate?c.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+        <td class="td-sub">${c.createdAt?.toDate?c.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       </tr>`, 'recContentPagination', 5);
   }catch(e){ el.innerHTML=`<tr><td colspan="5" style="color:#e05050;text-align:center;padding:16px;">불러오기 실패</td></tr>`; }
 }
@@ -5013,7 +5013,7 @@ window.loadRecHwDetail = async(hwId, title) => {
       </div>
       <!-- 헤더 -->
       <div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:4px;padding:6px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--gray);">
-        <span>학생</span><span style="text-align:center;">녹음1</span><span style="text-align:center;">녹음2</span><span style="text-align:center;">녹음3</span><span>피드백</span>
+        <span>학생</span><span class="td-center">녹음1</span><span class="td-center">녹음2</span><span class="td-center">녹음3</span><span>피드백</span>
       </div>
       ${studentIds.map(s=>{
         const mySubs = subs[s.uid]||[];
@@ -5029,7 +5029,7 @@ window.loadRecHwDetail = async(hwId, title) => {
           </div>
           <!-- 녹음 1/2/3 (각 1셀) -->
           ${[1,2,3].map(n=>{ const sub=slots[n-1];
-            return `<div style="text-align:center;">
+            return `<div class="td-center">
               ${sub
                 ? `<audio src="${sub.url}" controls style="width:100%;height:24px;"></audio>`
                 : `<span style="font-size:10px;color:#ccc;">미제출</span>`}
