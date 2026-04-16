@@ -151,10 +151,9 @@ tbody tr:last-child td{border-bottom:none;}
 .action-btn.primary:hover{background:var(--teal-dark);}
 
 /* ── 테이블 정렬 ── */
-thead th.sortable{cursor:pointer;user-select:none;}
-thead th.sortable:hover{background:#eef;color:var(--teal);}
-thead th.sort-asc::after{content:' ▲';font-size:10px;color:var(--teal);}
-thead th.sort-desc::after{content:' ▼';font-size:10px;color:var(--teal);}
+thead th.sortable{cursor:pointer;user-select:none;transition:background .15s,color .15s;}
+thead th.sortable:hover{background:#f0f4ff;color:var(--teal);}
+thead th.sortable[data-orig-text]{color:var(--teal);font-weight:700;}
 
 /* ── 시험 대상 선택 트리 ── */
 .target-tree{border:1px solid var(--border);border-radius:8px;overflow:hidden;}

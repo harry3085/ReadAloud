@@ -419,10 +419,10 @@
           <table>
             <thead><tr>
               <th style="width:36px;"><input type="checkbox" id="folderCheckAll" onchange="toggleCheck('folderTableBody',this)"></th>
-              <th>No</th>
-              <th>폴더명</th>
-              <th>교재수</th>
-              <th>등록일</th>
+              <th onclick="sortTable('folderTableBody',1)" class="sortable">No</th>
+              <th onclick="sortTable('folderTableBody',2)" class="sortable">폴더명</th>
+              <th onclick="sortTable('folderTableBody',3)" class="sortable">교재수</th>
+              <th onclick="sortTable('folderTableBody',4)" class="sortable">등록일</th>
             </tr></thead>
             <tbody id="folderTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>
@@ -745,10 +745,10 @@
           <table>
             <thead><tr>
               <th style="width:36px;"><input type="checkbox" id="recContentCheckAll" onchange="toggleCheck('recContentTableBody',this)"></th>
-              <th>No</th>
-              <th>제목</th>
-              <th>내용 미리보기</th>
-              <th>등록일</th>
+              <th onclick="sortTable('recContentTableBody',1)" class="sortable">No</th>
+              <th onclick="sortTable('recContentTableBody',2)" class="sortable">제목</th>
+              <th onclick="sortTable('recContentTableBody',3)" class="sortable">내용 미리보기</th>
+              <th onclick="sortTable('recContentTableBody',4)" class="sortable">등록일</th>
             </tr></thead>
             <tbody id="recContentTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">왼쪽에서 폴더를 선택하세요</td></tr></tbody>
           </table>
@@ -773,10 +773,10 @@
           <table>
             <thead><tr>
               <th style="width:36px;"><input type="checkbox" id="recFolderCheckAll" onchange="toggleCheck('recFolderTableBody',this)"></th>
-              <th>No</th>
-              <th>폴더명</th>
-              <th>숙제수</th>
-              <th>등록일</th>
+              <th onclick="sortTable('recFolderTableBody',1)" class="sortable">No</th>
+              <th onclick="sortTable('recFolderTableBody',2)" class="sortable">폴더명</th>
+              <th onclick="sortTable('recFolderTableBody',3)" class="sortable">숙제수</th>
+              <th onclick="sortTable('recFolderTableBody',4)" class="sortable">등록일</th>
             </tr></thead>
             <tbody id="recFolderTableBody"><tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
           </table>

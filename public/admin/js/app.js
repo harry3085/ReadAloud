@@ -358,6 +358,63 @@ function refreshPagination(tableId, newData){
   renderPage(tableId);
 }
 
+// ── 테이블 컬럼 정렬 ───────────────────────────────────────
+window.sortTable = (tableId, colIdx) => {
+  const s = _pageState[tableId];
+  if (!s) return;
+
+  // onclick 속성으로 클릭된 th를 찾아 실제 cellIndex(=td 위치)를 획득
+  const tbody = document.getElementById(tableId);
+  if (!tbody) return;
+  const thead = tbody.closest('table')?.tHead;
+  if (!thead) return;
+  const ths = thead.querySelectorAll('th');
+  let clickedTh = null;
+  for (const th of ths) {
+    if ((th.getAttribute('onclick') || '').includes(`sortTable('${tableId}',${colIdx})`)) {
+      clickedTh = th; break;
+    }
+  }
+  if (!clickedTh) return;
+  const tdIdx = clickedTh.cellIndex; // th 위치 = td 위치
+
+  // 정렬 방향 토글
+  const sameCol = s.sortCol === colIdx;
+  s.sortDir = (sameCol && s.sortDir === 'asc') ? 'desc' : 'asc';
+  s.sortCol = colIdx;
+
+  // 모든 행을 가상으로 렌더링해 해당 셀의 텍스트를 정렬 키로 추출
+  const temp = document.createElement('tbody');
+  const keys = s.data.map((item, i) => {
+    temp.innerHTML = s.renderRowFn(item, i);
+    return (temp.querySelector('tr')?.cells[tdIdx]?.textContent || '').trim();
+  });
+
+  // 숫자/문자 자동 감지 정렬
+  const indexed = s.data.map((item, i) => ({ item, key: keys[i] }));
+  indexed.sort((a, b) => {
+    const av = a.key, bv = b.key;
+    const an = parseFloat(av.replace(/[^\d.-]/g, ''));
+    const bn = parseFloat(bv.replace(/[^\d.-]/g, ''));
+    const bothNum = !isNaN(an) && !isNaN(bn) && av !== '' && bv !== '';
+    if (bothNum) return s.sortDir === 'asc' ? an - bn : bn - an;
+    return s.sortDir === 'asc'
+      ? av.localeCompare(bv, 'ko')
+      : bv.localeCompare(av, 'ko');
+  });
+  s.data = indexed.map(x => x.item);
+  s.page = 1;
+  renderPage(tableId);
+
+  // 정렬 표시 업데이트 (▲/▼)
+  ths.forEach(th => {
+    if (!th.dataset.origText) th.dataset.origText = th.textContent.trim();
+    th.textContent = th.dataset.origText;
+  });
+  if (!clickedTh.dataset.origText) clickedTh.dataset.origText = clickedTh.textContent.replace(/[▲▼]/g,'').trim();
+  clickedTh.textContent = clickedTh.dataset.origText + (s.sortDir === 'asc' ? ' ▲' : ' ▼');
+};
+
 // ── 클래스 관리 ──────────────────────────────────────
 async function loadClasses(){
   try{
