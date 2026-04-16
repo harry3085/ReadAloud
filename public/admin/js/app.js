@@ -979,16 +979,14 @@ async function loadNotices(){
   try{
     const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
-    el.innerHTML=snap.docs.map((d,i)=>{
-      const n=d.data();
-      return `<tr>
+    const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
+    initPagination('noticeTableBody', notices, (n,i)=>`<tr>
+        <td><input type="checkbox" value="${n.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${d.id}','${(n.title||'').replace(/'/g,'\\\'')}')">${esc(n.title)||'-'}</td>
+        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${n.id}','${(n.title||'').replace(/'/g,"\\'")}')">${esc(n.title)||'-'}</td>
         <td><span class="badge badge-teal">${n.target==='all'?'전체':esc(n.target)||'-'}</span></td>
         <td style="color:var(--gray);font-size:12px;">${esc(n.date)||''}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteNotice('${d.id}')">삭제</button></td>
-      </tr>`;
-    }).join('');
+      </tr>`, 'noticePagination', 10);
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 window.openNoticeModal = async() => {
@@ -1747,44 +1745,6 @@ async function deleteUserFull(uid, name){
     else { showToast('❌ 삭제 실패: '+result.error); return false; }
   } catch(e){ showToast('❌ 삭제 실패: '+e.message); return false; }
 }
-
-// ── 테이블 정렬 엔진 ─────────────────────────────────────
-const _sortState = {}; // {tableId: {col, dir}}
-
-window.sortTable = (tableId, colIdx) => {
-  const s = _pageState[tableId]; if(!s) return;
-  const prev = _sortState[tableId]||{col:-1,dir:'asc'};
-  const dir = (prev.col===colIdx && prev.dir==='asc') ? 'desc' : 'asc';
-  _sortState[tableId] = {col:colIdx, dir};
-
-  // 헤더 클래스 업데이트
-  const table = document.getElementById(tableId)?.closest('table');
-  if(table){
-    table.querySelectorAll('thead th').forEach((th,i)=>{
-      th.classList.remove('sort-asc','sort-desc');
-      if(i===colIdx+1) th.classList.add(dir==='asc'?'sort-asc':'sort-desc'); // +1 체크박스 열 때문
-    });
-  }
-
-  // 데이터 정렬
-  const sorted = [...s.data].sort((a,b)=>{
-    const aEl = document.createElement('div'); aEl.innerHTML = a._row||'';
-    const bEl = document.createElement('div'); bEl.innerHTML = b._row||'';
-    // 렌더된 행에서 텍스트 추출하는 방식 대신 데이터 키 기반 정렬
-    const keys = Object.keys(a);
-    const val = (obj) => {
-      // 컬럼 인덱스로 데이터 접근 (대략적 매핑)
-      const vals = Object.values(obj).filter(v=>typeof v==='string'||typeof v==='number');
-      return (vals[colIdx]||'').toString().toLowerCase();
-    };
-    const av = val(a), bv = val(b);
-    const n = parseFloat(av), m = parseFloat(bv);
-    if(!isNaN(n)&&!isNaN(m)) return dir==='asc'?n-m:m-n;
-    return dir==='asc'?av.localeCompare(bv,'ko'):bv.localeCompare(av,'ko');
-  });
-
-  refreshPagination(tableId, sorted);
-};
 
 // ── 시험 대상 선택 트리 ──────────────────────────────────
 let _testTargets = []; // 선택된 대상 배열 [{type:'class'|'student', id, name, groupName}]
