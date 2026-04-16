@@ -487,7 +487,7 @@ function renderStudentTable(status, students){
       <td>${i+1}</td>
       <td><span class="badge badge-teal">${esc(u.group)||'-'}</span></td>
       <td style="font-family:monospace;font-size:12px;">${esc(u.username)||'-'}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editStudent('${u.id}')">${esc(u.name)||'-'}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editStudent('${u.id}')">${esc(u.name)||'-'}</td>
       <td style="font-size:12px;">${esc(u.birth)||'-'}</td>
       <td style="font-size:12px;">${esc(u.school)||'-'}</td>
       <td style="font-size:12px;">${esc(u.grade)||'-'}</td>
