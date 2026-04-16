@@ -423,7 +423,7 @@ async function loadClasses(){
     initPagination('classTableBody', data, (g,i)=>`<tr>
       <td><input type="checkbox" value="${g.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editClass('${g.id}')">${esc(g.name)||'-'}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editClass('${g.id}')">${esc(g.name)||'-'}</td>
       <td>${esc(g.teacher)||'-'}</td>
       <td style="text-align:center;">${g.hideApp?'<span class="badge badge-amber">숨김</span>':'-'}</td>
       <td style="text-align:center;">${g.allBooks?'<span class="badge badge-blue">허용</span>':'-'}</td>
