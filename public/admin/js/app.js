@@ -3401,38 +3401,56 @@ async function buildFolderBookTree(){
 }
 
 // ── 트리 정렬 상태 ───────────────────────────────────────
-const _treeSortState = { folder: null, book: null, unit: null }; // null=기본, 'asc', 'desc'
+let _treeSortDir = null; // null=기본순, 'asc'=가나다, 'desc'=가나다역순
 
 function sortByName(arr, dir){
   const sorted = [...arr].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
   return dir === 'desc' ? sorted.reverse() : sorted;
 }
 
-window.treeSort = (level) => {
-  const prev = _treeSortState[level];
-  _treeSortState[level] = prev === 'asc' ? 'desc' : 'asc';
+function _getOpenNodeIds(){
+  const open = new Set();
+  document.querySelectorAll('[id^="ws-f-"],[id^="ws-b-"],[id^="pt-f-"],[id^="pt-b-"]').forEach(el=>{
+    if(el.style.display !== 'none') open.add(el.id);
+  });
+  return open;
+}
 
-  // 라벨 ▲▼ 업데이트 (ws/pt 양쪽 헤더 모두)
-  ['folder','book','unit'].forEach(lv => {
-    const base = {folder:'폴더',book:'교재',unit:'Unit'}[lv];
-    const dir = _treeSortState[lv];
-    const text = base + (dir === 'asc' ? ' ▲' : dir === 'desc' ? ' ▼' : '');
-    ['treeSortLabel-'+lv, 'ptTreeSortLabel-'+lv].forEach(id => {
-      const el = document.getElementById(id);
-      if(!el) return;
-      el.textContent = text;
-      el.style.color = dir ? 'var(--teal)' : '';
-      el.style.fontWeight = dir ? '700' : '';
-    });
+function _restoreOpenNodes(openIds){
+  openIds.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.style.display = '';
+    // 화살표도 회전 복원
+    const arrowId = id.replace(/^(ws|pt)-(f|b)-/, (_, p, t) => `${p}-${t==='f'?'ft':'bt'}-`);
+    const arrow = document.getElementById(arrowId);
+    if(arrow) arrow.style.transform = 'rotate(90deg)';
+  });
+}
+
+window.treeSort = () => {
+  _treeSortDir = _treeSortDir === 'asc' ? 'desc' : _treeSortDir === 'desc' ? null : 'asc';
+
+  // 버튼 라벨 업데이트 (양쪽 페이지)
+  const label = _treeSortDir === 'asc' ? '가나다 ▲' : _treeSortDir === 'desc' ? '가나다 ▼' : '가나다순';
+  ['treeSortBtn','ptTreeSortBtn'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = label;
+    el.style.color = _treeSortDir ? 'var(--teal)' : 'var(--gray)';
+    el.style.fontWeight = _treeSortDir ? '700' : '400';
+    el.style.borderColor = _treeSortDir ? 'var(--teal)' : 'var(--border)';
   });
 
-  // 트리 재렌더 (로드된 트리 모두 갱신)
+  // 열린 노드 저장 → 재렌더 → 복원
+  const openIds = _getOpenNodeIds();
   if(window._wsTreeData){
     document.getElementById('bookTreeArea').innerHTML = renderFolderTree(window._wsTreeData, 'ws');
   }
   if(window._ptTreeData){
     document.getElementById('printBookTreeArea').innerHTML = renderFolderTree(window._ptTreeData, 'pt');
   }
+  _restoreOpenNodes(openIds);
 };
 
 // 트리 HTML 생성 (prefix: 'ws' or 'pt' for IDs)
@@ -3441,15 +3459,13 @@ function renderFolderTree(treeData, prefix){
   let html = '';
 
   // 폴더 정렬
-  const sortedFolders = _treeSortState.folder
-    ? sortByName(folders, _treeSortState.folder)
-    : folders;
+  const sortedFolders = _treeSortDir ? sortByName(folders, _treeSortDir) : folders;
 
   // 폴더별 교재
   sortedFolders.forEach(f=>{
     let fBooks = folderMap[f.id]?.books || [];
-    if(!fBooks.length) return; // 교재 없는 폴더 숨김
-    if(_treeSortState.book) fBooks = sortByName(fBooks, _treeSortState.book);
+    if(!fBooks.length) return;
+    if(_treeSortDir) fBooks = sortByName(fBooks, _treeSortDir);
     html += `
       <div>
         <!-- 폴더 행 -->
@@ -3476,7 +3492,7 @@ function renderFolderTree(treeData, prefix){
 
 function renderBookNode(b, prefix, depth){
   const indent = depth * 16;
-  const units = _treeSortState.unit ? sortByName(b.units, _treeSortState.unit) : b.units;
+  const units = _treeSortDir ? sortByName(b.units, _treeSortDir) : b.units;
   return `
     <div>
       <!-- 교재 행 -->

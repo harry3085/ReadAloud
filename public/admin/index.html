@@ -450,13 +450,9 @@
       <!-- 1열: 폴더→교재→Unit 트리 (넓게) -->
       <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
         <div style="padding:10px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;gap:4px;align-items:center;">
-            <span style="color:#aaa;font-size:12px;">📁</span>
-            <span onclick="treeSort('folder')" id="treeSortLabel-folder" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">폴더</span>
-            <span style="color:#ccc;">/</span>
-            <span onclick="treeSort('book')" id="treeSortLabel-book" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">교재</span>
-            <span style="color:#ccc;">/</span>
-            <span onclick="treeSort('unit')" id="treeSortLabel-unit" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">Unit</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span>📁 폴더 / 교재 / Unit</span>
+            <span id="treeSortBtn" onclick="treeSort()" style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:12px;border:1px solid var(--border);background:white;color:var(--gray);font-weight:400;transition:.15s;" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color=this.style.fontWeight==='700'?'var(--teal)':''">가나다순</span>
           </div>
           <div style="display:flex;gap:6px;">
             <span id="wsSelCount" style="font-size:12px;color:var(--teal);font-weight:400;"></span>
@@ -636,13 +632,9 @@
       <!-- 1열: 폴더→교재→Unit 트리 -->
       <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
         <div style="padding:10px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;gap:4px;align-items:center;">
-            <span style="color:#aaa;font-size:12px;">📁</span>
-            <span onclick="treeSort('folder')" id="ptTreeSortLabel-folder" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">폴더</span>
-            <span style="color:#ccc;">/</span>
-            <span onclick="treeSort('book')" id="ptTreeSortLabel-book" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">교재</span>
-            <span style="color:#ccc;">/</span>
-            <span onclick="treeSort('unit')" id="ptTreeSortLabel-unit" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">Unit</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span>📁 폴더 / 교재 / Unit</span>
+            <span id="ptTreeSortBtn" onclick="treeSort()" style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:12px;border:1px solid var(--border);background:white;color:var(--gray);font-weight:400;transition:.15s;" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color=this.style.fontWeight==='700'?'var(--teal)':''">가나다순</span>
           </div>
           <div style="display:flex;gap:6px;">
             <span id="ptSelCount" style="font-size:12px;color:var(--teal);font-weight:400;"></span>
