@@ -2,7 +2,7 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'kunsori-v3';
+const CACHE_NAME = 'kunsori-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -74,15 +74,15 @@ self.addEventListener('fetch', e => {
   // Firebase / API 요청은 항상 네트워크
   if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/')) return;
 
-  // 앱 쉘(HTML, CSS, JS, 아이콘): 캐시 우선, 실패 시 네트워크
+  // 앱 쉘(HTML, CSS, JS, 아이콘): 네트워크 우선, 실패 시 캐시 (배포 즉시 반영)
   const isAppShell = APP_SHELL.some(path => url.endsWith(path) || url === self.location.origin + path);
   if (isAppShell) {
     e.respondWith(
-      caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+      fetch(e.request).then(res => {
         const clone = res.clone();
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
         return res;
-      }))
+      }).catch(() => caches.match(e.request))
     );
     return;
   }
