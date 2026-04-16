@@ -822,7 +822,7 @@ window.showUnassignedBooks = async() => {
     initPagination('bookTableBody', unassigned, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
       <td style="text-align:center;">${b.unitCount||0}</td>
       <td style="text-align:center;">${b.wordCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
@@ -854,7 +854,7 @@ window.showFolderBooks = async(folderId, folderName) => {
     initPagination('bookTableBody', folderBooks, (b,i)=>`<tr>
       <td><input type="checkbox" value="${b.id}"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
+      <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="openBookDetail('${b.id}','${b.name.replace(/'/g,"\\'")}')">📘 ${esc(b.name)}</td>
       <td style="text-align:center;">${b.unitCount||0}</td>
       <td style="text-align:center;">${b.wordCount||0}</td>
       <td style="color:var(--gray);font-size:12px;">${b.createdAt?.toDate?b.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
@@ -928,7 +928,7 @@ async function loadFolders(){
       style="cursor:pointer;">
       <td onclick="event.stopPropagation();"><input type="checkbox" value="${f.id}" onclick="event.stopPropagation();document.getElementById('folderCheckAll').checked=false;"></td>
       <td>${i+1}</td>
-      <td style="font-weight:600;color:var(--teal);">📁 ${esc(f.name)}</td>
+      <td style="font-weight:600;color:var(--text);">📁 ${esc(f.name)}</td>
       <td style="text-align:center;">${folderBookCount[f.id]||0}</td>
       <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
     </tr>`, 'folderPagination', 5);
@@ -2267,7 +2267,7 @@ window.loadTestList = async() => {
       <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;color:var(--teal);">${esc(t.name)||'-'}</td>
+        <td style="font-weight:600;color:var(--text);">${esc(t.name)||'-'}</td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
         <td style="font-size:12px;">${esc(t.bookName)||'-'}</td>
@@ -4439,7 +4439,7 @@ async function loadRecContentTable(folderId){
       <tr>
         <td><input type="checkbox" value="${c.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editRecContent('${c.id}')">📄 ${esc(c.title)||'제목없음'}</td>
+        <td style="font-weight:600;cursor:pointer;color:var(--text);" onclick="editRecContent('${c.id}')">📄 ${esc(c.title)||'제목없음'}</td>
         <td style="color:var(--gray);font-size:12px;max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc((c.content||'').split('\n')[0])}</td>
         <td style="color:var(--gray);font-size:12px;">${c.createdAt?.toDate?c.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       </tr>`, 'recContentPagination', 5);
