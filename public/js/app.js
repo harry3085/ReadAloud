@@ -2221,7 +2221,7 @@ window.speakCurrentWord=()=>{
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
 const screenStack=[];
 const _originalShow=window.show;
-const NO_STACK_SCREENS=new Set(['loading','login','admin']);
+const NO_STACK_SCREENS=new Set(['loading','login']);
 let _exitToast=null; // 종료 안내 토스트 타이머
 
 window.show=id=>{
@@ -2277,8 +2277,6 @@ window.addEventListener('popstate',e=>{
   showToast('한 번 더 누르면 앱이 종료돼요');
   _exitToast=setTimeout(()=>{ _exitToast=null; }, 2500);
 });
-
-window.goHome=()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();updateRecBadge();};
 
 // ── PWA 홈화면 추가 ──────────────────────────────────────
 let _deferredPrompt=null;

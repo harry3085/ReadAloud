@@ -2,8 +2,16 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'kunsori-v2';
-const STATIC = ['/', '/index.html', '/manifest.json'];
+const CACHE_NAME = 'kunsori-v3';
+const APP_SHELL = [
+  '/',
+  '/index.html',
+  '/style.css',
+  '/js/app.js',
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512_.png',
+];
 
 firebase.initializeApp({
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -39,21 +47,46 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
+// 설치: 앱 쉘 캐시
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC)));
+  e.waitUntil(
+    caches.open(CACHE_NAME).then(c => c.addAll(APP_SHELL))
+  );
   self.skipWaiting();
 });
 
+// 활성화: 구버전 캐시 삭제
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-  ));
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
   self.clients.claim();
 });
 
+// 요청 처리
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  if (e.request.url.includes('firestore') || e.request.url.includes('firebase')) return;
-  if (e.request.url.includes('/api/')) return;
+
+  const url = e.request.url;
+
+  // Firebase / API 요청은 항상 네트워크
+  if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/')) return;
+
+  // 앱 쉘(HTML, CSS, JS, 아이콘): 캐시 우선, 실패 시 네트워크
+  const isAppShell = APP_SHELL.some(path => url.endsWith(path) || url === self.location.origin + path);
+  if (isAppShell) {
+    e.respondWith(
+      caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        return res;
+      }))
+    );
+    return;
+  }
+
+  // 그 외: 네트워크 우선, 실패 시 캐시
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });
