@@ -55,14 +55,15 @@ self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
-// 활성화: 구버전 캐시 삭제
+// 활성화: 구버전 캐시 삭제 후 모든 클라이언트에 리로드 요청
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })))
   );
-  self.clients.claim();
 });
 
 // 요청 처리
