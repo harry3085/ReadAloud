@@ -104,5 +104,46 @@ service cloud.firestore {
     match /savedPushList/{pushId} {
       allow read, write: if isAdmin();
     }
+
+    // ── 교재 ─────────────────────────────────────────────
+    match /books/{bookId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /units/{unitId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── 교재 폴더 ─────────────────────────────────────────
+    match /folders/{folderId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── 푸시 알림 목록 (관리자 전용) ─────────────────────
+    match /pushNotifications/{pushId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── 녹음 숙제 콘텐츠 (관리자 전용) ───────────────────
+    match /recContents/{contentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── 녹음 숙제 폴더 (관리자 전용) ─────────────────────
+    match /recFolders/{folderId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── 녹음 피드백 ───────────────────────────────────────
+    match /recFeedbacks/{feedbackId} {
+      allow read: if isOwner(resource.data.uid) || isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
   }
 }
