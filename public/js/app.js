@@ -31,6 +31,10 @@ let adminUnits = [], allGroups = [], allNotices = [];
 let selectedHwFile = null;
 let lastSelectedUnitId = null;
 
+// ── 배지 캐시 (1분 TTL) ────────────────────────────────────
+const _badgeCache = { ts: 0 };
+const BADGE_TTL = 60000;
+
 // ── 유틸 ─────────────────────────────────────────────────
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 window.show = id => {
@@ -47,6 +51,21 @@ window.show = id => {
 };
 window.closeModal = id => document.getElementById(id).classList.add('hidden');
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+
+function showConfirm(title, sub=''){
+  return new Promise(resolve=>{
+    document.getElementById('genericConfirmTitle').textContent=title;
+    document.getElementById('genericConfirmSub').textContent=sub;
+    const modal=document.getElementById('genericConfirmModal');
+    modal.classList.remove('hidden');
+    const ok=document.getElementById('genericConfirmOk');
+    const cancel=document.getElementById('genericConfirmCancel');
+    const done=(val)=>{modal.classList.add('hidden');ok.onclick=null;cancel.onclick=null;resolve(val);};
+    ok.onclick=()=>done(true);
+    cancel.onclick=()=>done(false);
+  });
+}
+function showAlert(msg){showToast(msg);}
 function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);}
 function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
@@ -107,14 +126,21 @@ window.doLogout = async()=>{
   localStorage.removeItem('lastLoginAt');
   show('login');
 };
-window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateTestBadge();updateUnscBadge();updateRecBadge();};
+window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateAllBadges();};
 
 // ── 홈 데이터 ─────────────────────────────────────────────
 async function loadHomeData(){
   await Promise.all([loadNoticePreview(), loadHwFiles()]);
-  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge()]);
+  await updateAllBadges(true);
 }
 
+
+async function updateAllBadges(force=false){
+  const now = Date.now();
+  if(!force && now - _badgeCache.ts < BADGE_TTL) return;
+  _badgeCache.ts = now;
+  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge()]);
+}
 async function updateTestBadge(){
   const badge = document.getElementById('testBadge');
   if(!badge || !currentUser || !userProfile) return;
@@ -203,7 +229,7 @@ async function loadHwFiles(){
 
 window.downloadHwFile = (url,name,e)=>{
   e.stopPropagation();
-  if(!url){alert('파일 URL이 없습니다.');return;}
+  if(!url){showToast('파일 URL이 없습니다.');return;}
   const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.download=name||'download';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
 };
@@ -996,7 +1022,7 @@ window.addGroup=async()=>{
   showToast('그룹 추가됐어요!'); await loadGroups();
 };
 window.deleteGroup=async(id,name)=>{
-  if(!confirm(`"${name}" 그룹을 삭제할까요?`))return;
+  if(!await showConfirm(`"${name}" 그룹을 삭제할까요?`))return;
   await deleteDoc(doc(db,'groups',id));
   showToast('삭제됐어요.'); await loadGroups();
 };
@@ -1041,7 +1067,7 @@ window.addUnit=async()=>{
   selectAdminUnit(docRef.id,name);
 };
 window.deleteUnit=async(unitId,unitName)=>{
-  if(!confirm(`"${unitName}" 단원을 삭제할까요?`))return;
+  if(!await showConfirm(`"${unitName}" 단원을 삭제할까요?`))return;
   await deleteDoc(doc(db,'units',unitId));
   if(lastSelectedUnitId===unitId){lastSelectedUnitId=null;document.getElementById('wordEditorSection').style.display='none';}
   showToast('단원이 삭제됐어요.');await loadAdminUnits();
@@ -1063,7 +1089,7 @@ window.saveUnitEdit=async()=>{
   const unitId=el.dataset.uid;
   const name=document.getElementById('editUnitName').value.trim();
   const group=document.getElementById('editUnitGroup').value||'';
-  if(!name){alert('단원명을 입력하세요.');return;}
+  if(!name){showToast('단원명을 입력하세요.');return;}
   await updateDoc(doc(db,'units',unitId),{name,group});
   document.getElementById('currentUnitLabel').textContent='— '+name;
   showToast('단원이 수정됐어요!');
@@ -1072,10 +1098,10 @@ window.saveUnitEdit=async()=>{
 };
 window.addWord=async()=>{
   const unitId=lastSelectedUnitId;
-  if(!unitId){alert('단원을 먼저 선택하세요.');return;}
+  if(!unitId){showToast('단원을 먼저 선택하세요.');return;}
   const en=document.getElementById('newEng').value.trim();
   const ko=document.getElementById('newKor').value.trim();
-  if(!en||!ko){alert('영어와 한글 뜻을 입력하세요.');return;}
+  if(!en||!ko){showToast('영어와 한글 뜻을 입력하세요.');return;}
   const unit=adminUnits.find(u=>u.id===unitId);
   const words=[...(unit.words||[]),{en,ko}];
   await setDoc(doc(db,'units',unitId),{words},{merge:true});
@@ -1131,15 +1157,15 @@ function renderWordTable(){
 // ── 클립보드/붙여넣기 임포트 ─────────────────────────────
 window.importFromPaste=async()=>{
   const text=document.getElementById('pasteArea').value.trim();
-  if(!text){alert('붙여넣을 내용이 없습니다.');return;}
-  const unitId=lastSelectedUnitId;if(!unitId){alert('단원을 먼저 선택하세요.');return;}
+  if(!text){showToast('붙여넣을 내용이 없습니다.');return;}
+  const unitId=lastSelectedUnitId;if(!unitId){showToast('단원을 먼저 선택하세요.');return;}
   const lines=text.split('\n').filter(l=>l.trim());
   const newWords=[];
   for(const line of lines){
     const parts=line.split('\t');
     if(parts.length>=2){const en=parts[0].trim(),ko=parts[1].trim();if(en&&ko)newWords.push({en,ko});}
   }
-  if(!newWords.length){alert('인식된 단어가 없습니다.\n탭(Tab)으로 구분된 영어-한글 형식이어야 해요.\n(엑셀에서 두 열을 선택 후 복사하면 됩니다)');return;}
+  if(!newWords.length){showToast('탭으로 구분된 영어-한글 형식이어야 해요. (엑셀 두 열 복사)');return;}
   const unit=adminUnits.find(u=>u.id===unitId);
   await setDoc(doc(db,'units',unitId),{words:[...(unit.words||[]),...newWords]},{merge:true});
   document.getElementById('pasteArea').value='';
@@ -1150,21 +1176,21 @@ window.importFromPaste=async()=>{
 window.importExcel=async (e)=>{
   const file=e.target.files[0];if(!file)return;
   const unitId=lastSelectedUnitId;
-  if(!unitId){alert('먼저 단원을 선택하세요.');e.target.value='';return;}
+  if(!unitId){showToast('먼저 단원을 선택하세요.');e.target.value='';return;}
   try{
     const data=await file.arrayBuffer();
     const wb=XLSX.read(data);
     const ws=wb.Sheets[wb.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1});
     const newWords=rows.filter(r=>r[0]&&r[1]).map(r=>({en:String(r[0]).trim(),ko:String(r[1]).trim()}));
-    if(!newWords.length){alert('A열: 영어, B열: 한글 형식으로 입력해주세요.');return;}
+    if(!newWords.length){showToast('A열: 영어, B열: 한글 형식으로 입력해주세요.');return;}
     const unit=adminUnits.find(u=>u.id===unitId);
     const words=[...(unit.words||[]),...newWords];
     await setDoc(doc(db,'units',unitId),{words},{merge:true});
     lastSelectedUnitId=unitId;
     showToast(`✅ ${newWords.length}개 단어가 추가됐어요!`);
     await loadAdminUnits();e.target.value='';
-  }catch(err){alert('엑셀 파일을 읽을 수 없어요: '+err.message);}
+  }catch(err){showToast('엑셀 파일을 읽을 수 없어요: '+err.message);}
 };
 
 // ── 학생 관리 ─────────────────────────────────────────────
@@ -1206,13 +1232,13 @@ window.saveUser=async()=>{
   } else {
     // 신규 추가
     const username=document.getElementById('newUserId').value.trim();
-    if(!username||!name||!pw){alert('아이디, 이름, 비밀번호는 필수입니다.');return;}
-    if(pw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
+    if(!username||!name||!pw){showToast('아이디, 이름, 비밀번호는 필수입니다.');return;}
+    if(pw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
     const email=username+'@kunsori.app';
     try{
       // 중복 확인
       const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
-      if(!dup.empty){alert('이미 사용 중인 아이디입니다.');return;}
+      if(!dup.empty){showToast('이미 사용 중인 아이디입니다.');return;}
       const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
       const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
       let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia(firebaseConfig,'sec');}
@@ -1223,8 +1249,8 @@ window.saveUser=async()=>{
       cancelEditUser();showToast('✅ 학생 계정이 추가됐어요!');await loadAdminUsers();
     }catch(e){
       console.error(e);
-      if(e.code==='auth/email-already-in-use')alert('이미 Auth에 계정이 있습니다.\nFirebase 콘솔 → Authentication에서 해당 계정 삭제 후 재시도하세요.');
-      else alert('계정 생성 실패: '+e.message);
+      if(e.code==='auth/email-already-in-use')showToast('이미 Auth에 계정이 있습니다. Firebase 콘솔에서 삭제 후 재시도하세요.');
+      else showToast('계정 생성 실패: '+e.message);
     }
   }
 };
@@ -1274,12 +1300,12 @@ window.startEditStudent=()=>{
 };
 
 window.deleteCurrentStudent=()=>{
-  if(!_editingStudentId||!_editingStudentData){alert('삭제할 학생 정보가 없습니다.');return;}
+  if(!_editingStudentId||!_editingStudentData){showToast('삭제할 학생 정보가 없습니다.');return;}
   deleteStudent(_editingStudentId, _editingStudentData.name);
 };
 
 window.deleteStudent=async(uid,name)=>{
-  if(!confirm(name+' 학생을 삭제할까요?\nFirestore 계정이 삭제되고 로그인이 차단됩니다.'))return;
+  if(!await showConfirm(name+' 학생을 삭제할까요?', 'Firestore 계정이 삭제되고 로그인이 차단됩니다.'))return;
   try{
     await deleteDoc(doc(db,'users',uid));
     closeModal('studentDetailModal');
@@ -1287,7 +1313,7 @@ window.deleteStudent=async(uid,name)=>{
     await loadAdminUsers();
   }catch(e){
     console.error(e);
-    alert('삭제 실패: '+e.message);
+    showToast('삭제 실패: '+e.message);
   }
 };
 
@@ -1335,7 +1361,7 @@ window.saveNotice=async()=>{
   const title=document.getElementById('noticeTitle').value.trim();
   const content=document.getElementById('noticeContent').value.trim();
   const target=document.getElementById('noticeTarget').value;
-  if(!title||!content){alert('제목과 내용을 입력하세요.');return;}
+  if(!title||!content){showToast('제목과 내용을 입력하세요.');return;}
   const today=new Date().toISOString().slice(0,10);
   const editId=document.getElementById('editingNoticeId').value;
   if(editId){
@@ -1348,7 +1374,7 @@ window.saveNotice=async()=>{
   cancelEditNotice(); await loadAdminNotices();
 };
 window.addNotice=window.saveNotice;
-window.delNotice=async (id)=>{if(!confirm('공지를 삭제할까요?'))return;await deleteDoc(doc(db,'notices',id));showToast('삭제됐어요.');await loadAdminNotices();};
+window.delNotice=async (id)=>{if(!await showConfirm('공지를 삭제할까요?'))return;await deleteDoc(doc(db,'notices',id));showToast('삭제됐어요.');await loadAdminNotices();};
 
 // ── 숙제 파일 (Firebase Storage 직접 업로드) ───────────────
 window.onHwFileSelected=e=>{
@@ -1362,8 +1388,8 @@ window.onHwFileSelected=e=>{
 window.uploadHwFile=async()=>{
   const name=document.getElementById('newFileName').value.trim();
   const group=document.getElementById('newFileGroup').value;
-  if(!name){alert('파일명을 입력하세요.');return;}
-  if(!selectedHwFile){alert('파일을 선택하세요.');return;}
+  if(!name){showToast('파일명을 입력하세요.');return;}
+  if(!selectedHwFile){showToast('파일을 선택하세요.');return;}
   const ext=selectedHwFile.name.split('.').pop().toLowerCase();
   const type=['pdf'].includes(ext)?'pdf':['doc','docx'].includes(ext)?'docx':'img';
   const storageRef=ref(storage,`hwFiles/${Date.now()}_${selectedHwFile.name}`);
@@ -1384,7 +1410,7 @@ window.uploadHwFile=async()=>{
     document.getElementById('hwFileInput').value='';selectedHwFile=null;
     progressEl.style.display='none';progressBar.style.width='0%';
     showToast('✅ 파일이 업로드됐어요!');await loadAdminFiles();
-  }catch(e){progressEl.style.display='none';alert('업로드 실패: '+e.message);}
+  }catch(e){progressEl.style.display='none';showToast('업로드 실패: '+e.message);}
 };
 
 async function loadAdminFiles(){
@@ -1397,7 +1423,7 @@ async function loadAdminFiles(){
   </tr>`).join('');
 }
 window.delFile=async(id,storagePath)=>{
-  if(!confirm('파일을 삭제할까요?'))return;
+  if(!await showConfirm('파일을 삭제할까요?'))return;
   if(storagePath){try{await deleteObject(ref(storage,storagePath));}catch(e){console.log('스토리지 삭제 실패',e);}}
   await deleteDoc(doc(db,'hwFiles',id));showToast('삭제됐어요.');await loadAdminFiles();
 };
@@ -1463,7 +1489,7 @@ window.savePayment=async()=>{
   const due=document.getElementById('paymentDue').value;
   const status=document.getElementById('paymentStatus').value;
   const memo=document.getElementById('paymentMemo').value.trim();
-  if(!title||!amount){alert('항목과 금액을 입력하세요.');return;}
+  if(!title||!amount){showToast('항목과 금액을 입력하세요.');return;}
   if(editId){
     await updateDoc(doc(db,'payments',editId),{title,amount,due,status,memo});
     showToast('✅ 결제 내역이 수정됐어요!');
@@ -1528,7 +1554,7 @@ async function loadPayments(){
     </div>`).join('')||'<div class="empty-msg">결제 내역이 없습니다</div>';
 }
 window.updatePaymentStatus=async(id,status)=>{await updateDoc(doc(db,'payments',id),{status});showToast('상태 변경됐어요.');await loadPayments();};
-window.delPayment=async (id)=>{if(!confirm('삭제할까요?'))return;await deleteDoc(doc(db,'payments',id));showToast('삭제됐어요.');await loadPayments();};
+window.delPayment=async (id)=>{if(!await showConfirm('삭제할까요?'))return;await deleteDoc(doc(db,'payments',id));showToast('삭제됐어요.');await loadPayments();};
 
 // ── 푸시 알림 관리 (개별학생 + 저장/재활용) ──────────────
 window.onPushTypeChange=async()=>{
@@ -1746,7 +1772,7 @@ function getPushFormData() {
 // 저장만 (발송 안 함)
 window.savePushOnly=async()=>{
   const { target, title, body } = getPushFormData();
-  if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
+  if(!title||!body){showToast('제목과 내용을 입력하세요.');return;}
   const today=new Date().toISOString().slice(0,10);
   await addDoc(collection(db,'pushNotifications'),{
     target, title, body, sent:false, date:today, createdAt:serverTimestamp()
@@ -1758,7 +1784,7 @@ window.savePushOnly=async()=>{
 // 발송만 (저장 안 함)
 window.sendPushNotification=async()=>{
   const { target, title, body } = getPushFormData();
-  if(!title||!body){alert('제목과 내용을 입력하세요.');return;}
+  if(!title||!body){showToast('제목과 내용을 입력하세요.');return;}
 
   const btns = document.querySelectorAll('#adminPush .add-btn');
   btns.forEach(b=>{ b.disabled=true; });
@@ -1804,7 +1830,7 @@ window.reuseNotification=async (id)=>{
   document.getElementById('adminPush').scrollTop=0;
 };
 window.delSavedPush=async (id)=>{
-  if(!confirm('삭제할까요?'))return;
+  if(!await showConfirm('삭제할까요?'))return;
   await deleteDoc(doc(db,'pushNotifications',id));
   showToast('삭제됐어요.');await loadSavedPushList();
 };
@@ -2657,14 +2683,14 @@ window.saveMyInfo=async()=>{
   const parentName=document.getElementById('myParentName').value.trim();
   const parentPhone=document.getElementById('myParentPhone').value.trim();
   const newPw=document.getElementById('myNewPw').value.trim();
-  if(!name){alert('이름을 입력하세요.');return;}
+  if(!name){showToast('이름을 입력하세요.');return;}
   try{
     await updateDoc(doc(db,'users',currentUser.uid),{name,parentName,parentPhone});
     userProfile.name=name; userProfile.parentName=parentName; userProfile.parentPhone=parentPhone;
     const greetEl=document.getElementById('greetName');
     if(greetEl) greetEl.textContent=name+' 님';
     if(newPw){
-      if(newPw.length<6){alert('비밀번호는 6자 이상이어야 합니다.');return;}
+      if(newPw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
       await updatePassword(currentUser,newPw);
       showToast('✅ 정보와 비밀번호가 변경됐어요!');
     } else {
@@ -2673,9 +2699,9 @@ window.saveMyInfo=async()=>{
     show('home');
   }catch(e){
     if(e.code==='auth/requires-recent-login'){
-      alert('보안을 위해 재로그인 후 비밀번호를 변경해주세요.');
+      showToast('보안을 위해 재로그인 후 비밀번호를 변경해주세요.');
     } else {
-      alert('저장 실패: '+e.message);
+      showToast('저장 실패: '+e.message);
     }
   }
 };
