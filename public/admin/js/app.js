@@ -3405,15 +3405,50 @@ async function buildFolderBookTree(){
   return { folders, folderMap, unassigned, booksWithUnits };
 }
 
+// ── 트리 정렬 상태 ───────────────────────────────────────
+const _treeSortState = { folder: null, book: null, unit: null }; // null=기본, 'asc', 'desc'
+
+function sortByName(arr, dir){
+  const sorted = [...arr].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+  return dir === 'desc' ? sorted.reverse() : sorted;
+}
+
+window.treeSort = (level) => {
+  const prev = _treeSortState[level];
+  _treeSortState[level] = prev === 'asc' ? 'desc' : 'asc';
+
+  // 라벨 ▲▼ 업데이트
+  ['folder','book','unit'].forEach(lv => {
+    const el = document.getElementById('treeSortLabel-'+lv);
+    if(!el) return;
+    const base = {folder:'폴더',book:'교재',unit:'Unit'}[lv];
+    const dir = _treeSortState[lv];
+    el.textContent = base + (dir === 'asc' ? ' ▲' : dir === 'desc' ? ' ▼' : '');
+    el.style.color = dir ? 'var(--teal)' : '';
+    el.style.fontWeight = dir ? '700' : '';
+  });
+
+  // 트리 재렌더
+  if(window._wsTreeData){
+    document.getElementById('bookTreeArea').innerHTML = renderFolderTree(window._wsTreeData, 'ws');
+  }
+};
+
 // 트리 HTML 생성 (prefix: 'ws' or 'pt' for IDs)
 function renderFolderTree(treeData, prefix){
   const { folders, folderMap, unassigned } = treeData;
   let html = '';
 
+  // 폴더 정렬
+  const sortedFolders = _treeSortState.folder
+    ? sortByName(folders, _treeSortState.folder)
+    : folders;
+
   // 폴더별 교재
-  folders.forEach(f=>{
-    const fBooks = folderMap[f.id]?.books || [];
+  sortedFolders.forEach(f=>{
+    let fBooks = folderMap[f.id]?.books || [];
     if(!fBooks.length) return; // 교재 없는 폴더 숨김
+    if(_treeSortState.book) fBooks = sortByName(fBooks, _treeSortState.book);
     html += `
       <div>
         <!-- 폴더 행 -->
@@ -3440,6 +3475,7 @@ function renderFolderTree(treeData, prefix){
 
 function renderBookNode(b, prefix, depth){
   const indent = depth * 16;
+  const units = _treeSortState.unit ? sortByName(b.units, _treeSortState.unit) : b.units;
   return `
     <div>
       <!-- 교재 행 -->
@@ -3454,7 +3490,7 @@ function renderBookNode(b, prefix, depth){
       </div>
       <!-- Unit 행 -->
       <div id="${prefix}-b-${b.id}" style="display:none;">
-        ${b.units.map(u=>`
+        ${units.map(u=>`
           <div style="display:flex;align-items:center;gap:8px;padding:7px 12px 7px ${12+indent+20}px;border-bottom:1px solid #f5f5f5;cursor:pointer;"
             onclick="treeCheckUnit('${prefix}','${b.id}','${u.id}')">
             <input type="checkbox" id="${prefix}-uchk-${u.id}"
