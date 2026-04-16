@@ -2283,6 +2283,10 @@ window.importStudentExcel = async() => {
   document.getElementById('excelImportBtnWrap').style.display='none';
   if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
+function _testModeLabel(t){
+  if(t.testMode==='unscramble') return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
+  return '<span class="badge badge-teal">📝 단어시험</span>';
+}
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
@@ -2299,21 +2303,16 @@ window.loadTestList = async() => {
       return {...t, attemptCount:ts.length, avgScore:avg};
     });
 
-    const modeLabel = (t) => {
-      if(t.testMode==='unscramble') return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
-      return '<span class="badge badge-teal">📝 단어시험</span>';
-    };
-
-    el.innerHTML = testsWithStats.map((t,i)=>`
+    initPagination('testListBody', testsWithStats, (t,i)=>`
       <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;color:var(--teal);">${esc(t.name)||'-'}</td>
-        <td>${modeLabel(t)}</td>
-        <td><span class="badge badge-teal">${t.targetName||'-'}</span></td>
-        <td style="font-size:12px;">${t.bookName||'-'}</td>
+        <td>${_testModeLabel(t)}</td>
+        <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
+        <td style="font-size:12px;">${esc(t.bookName)||'-'}</td>
         <td style="text-align:center;">${t.count||0}문제</td>
-        <td style="color:var(--gray);font-size:12px;">${t.date||''}</td>
+        <td style="color:var(--gray);font-size:12px;">${esc(t.date)||''}</td>
         <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
         <td style="text-align:center;">
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
@@ -2323,11 +2322,7 @@ window.loadTestList = async() => {
         <td colspan="10" style="padding:0;border-top:none;">
           <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
-      </tr>`).join('');
-
-    // 페이지네이션 숨김
-    const pgEl = document.getElementById('testPagination');
-    if(pgEl) pgEl.innerHTML = `<span class="tbl-page-info">총 ${testsWithStats.length}개</span>`;
+      </tr>`, 'testPagination', 10);
   }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 };
 
@@ -3417,20 +3412,26 @@ window.treeSort = (level) => {
   const prev = _treeSortState[level];
   _treeSortState[level] = prev === 'asc' ? 'desc' : 'asc';
 
-  // 라벨 ▲▼ 업데이트
+  // 라벨 ▲▼ 업데이트 (ws/pt 양쪽 헤더 모두)
   ['folder','book','unit'].forEach(lv => {
-    const el = document.getElementById('treeSortLabel-'+lv);
-    if(!el) return;
     const base = {folder:'폴더',book:'교재',unit:'Unit'}[lv];
     const dir = _treeSortState[lv];
-    el.textContent = base + (dir === 'asc' ? ' ▲' : dir === 'desc' ? ' ▼' : '');
-    el.style.color = dir ? 'var(--teal)' : '';
-    el.style.fontWeight = dir ? '700' : '';
+    const text = base + (dir === 'asc' ? ' ▲' : dir === 'desc' ? ' ▼' : '');
+    ['treeSortLabel-'+lv, 'ptTreeSortLabel-'+lv].forEach(id => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.textContent = text;
+      el.style.color = dir ? 'var(--teal)' : '';
+      el.style.fontWeight = dir ? '700' : '';
+    });
   });
 
-  // 트리 재렌더
+  // 트리 재렌더 (로드된 트리 모두 갱신)
   if(window._wsTreeData){
     document.getElementById('bookTreeArea').innerHTML = renderFolderTree(window._wsTreeData, 'ws');
+  }
+  if(window._ptTreeData){
+    document.getElementById('printBookTreeArea').innerHTML = renderFolderTree(window._ptTreeData, 'pt');
   }
 };
 
@@ -4422,19 +4423,19 @@ async function loadRecFolderTable(){
       el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">폴더가 없습니다</td></tr>';
       return;
     }
-    // 각 폴더의 숙제 수 가져오기
     const counts = await Promise.all(_recFolders.map(async f=>{
       const s = await getDocs(query(collection(db,'recContents'),where('folderId','==',f.id)));
       return s.size;
     }));
-    el.innerHTML = _recFolders.map((f,i)=>`
-      <tr style="cursor:pointer;" onclick="selectRecFolderRow('${f.id}','${f.name.replace(/'/g,"\'")}');this.parentElement.querySelectorAll('tr').forEach(r=>r.style.background='');this.style.background='#e0f5f5';">
+    const foldersWithCount = _recFolders.map((f,i)=>({...f, hwCount:counts[i]}));
+    initPagination('recFolderTableBody', foldersWithCount, (f,i)=>`
+      <tr style="cursor:pointer;" onclick="selectRecFolderRow('${f.id}','${f.name.replace(/'/g,"\\'")}');document.querySelectorAll('#recFolderTableBody tr').forEach(r=>r.style.background='');this.style.background='#FEF2EC';">
         <td><input type="checkbox" value="${f.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;">📁 ${esc(f.name)}</td>
-        <td style="text-align:center;">${counts[i]}개</td>
+        <td style="text-align:center;">${f.hwCount}개</td>
         <td style="color:var(--gray);font-size:12px;">${f.createdAt?.toDate?f.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      </tr>`).join('');
+      </tr>`, 'recFolderPagination', 5);
   }catch(e){ el.innerHTML=`<tr><td colspan="5" style="color:#e05050;text-align:center;padding:16px;">불러오기 실패</td></tr>`; }
 }
 
@@ -4458,14 +4459,14 @@ async function loadRecContentTable(folderId){
       el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">숙제 내용이 없습니다<br>위 + 추가 버튼으로 작성하세요</td></tr>';
       return;
     }
-    el.innerHTML = _recContents.map((c,i)=>`
+    initPagination('recContentTableBody', _recContents, (c,i)=>`
       <tr>
         <td><input type="checkbox" value="${c.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editRecContent('${c.id}')">📄 ${esc(c.title)||'제목없음'}</td>
         <td style="color:var(--gray);font-size:12px;max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc((c.content||'').split('\n')[0])}</td>
         <td style="color:var(--gray);font-size:12px;">${c.createdAt?.toDate?c.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-      </tr>`).join('');
+      </tr>`, 'recContentPagination', 5);
   }catch(e){ el.innerHTML=`<tr><td colspan="5" style="color:#e05050;text-align:center;padding:16px;">불러오기 실패</td></tr>`; }
 }
 

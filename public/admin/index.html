@@ -635,8 +635,15 @@
 
       <!-- 1열: 폴더→교재→Unit 트리 -->
       <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
-        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-          <span>📁 폴더 / 교재 / Unit</span>
+        <div style="padding:10px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;gap:4px;align-items:center;">
+            <span style="color:#aaa;font-size:12px;">📁</span>
+            <span onclick="treeSort('folder')" id="ptTreeSortLabel-folder" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">폴더</span>
+            <span style="color:#ccc;">/</span>
+            <span onclick="treeSort('book')" id="ptTreeSortLabel-book" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">교재</span>
+            <span style="color:#ccc;">/</span>
+            <span onclick="treeSort('unit')" id="ptTreeSortLabel-unit" style="cursor:pointer;padding:3px 7px;border-radius:6px;transition:.15s;" onmouseover="this.style.background='#f0f4ff';this.style.color='var(--teal)'" onmouseout="this.style.background='';this.style.color=''">Unit</span>
+          </div>
           <div style="display:flex;gap:6px;">
             <span id="ptSelCount" style="font-size:12px;color:var(--teal);font-weight:400;"></span>
             <button onclick="clearPrintSelection()" style="background:none;border:none;color:#bbb;cursor:pointer;font-size:11px;">전체 해제</button>
@@ -792,6 +799,7 @@
               <button class="action-btn primary" onclick="openRecFolderModal()">+ 폴더 생성</button>
               <button class="action-btn danger" onclick="deleteSelectedRecFolder()">🗑 삭제</button>
             </div>
+            <div class="tbl-page" id="recFolderPagination"></div>
           </div>
         </div>
       </div>
