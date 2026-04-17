@@ -8,6 +8,7 @@
 - **서비스워커**: `public/sw.js` (FCM 백그라운드 알림 + 앱 쉘 캐시)
 - **FCM SW**: `public/firebase-messaging-sw.js`
 - **Firestore 규칙**: `firestore.rules`
+- **Firestore 인덱스**: `firestore.indexes.json`
 
 ## 배포
 - **Vercel 프로젝트**: `readaloud-app` (harry-kims-projects-2eb6982d)
@@ -43,8 +44,11 @@
 | `payments` | 결제 |
 | `savedPushList` | 저장된 푸시 목록 |
 | `pushNotifications` | 푸시 알림 목록 |
+| `genBooks` | Generator 교재 (관리자 전용) |
+| `genChapters` | Generator 챕터 (관리자 전용) |
+| `genPages` | Generator 페이지 (관리자 전용) |
 
-## 관리자 앱 구조 (`public/admin/js/app.js` ~5200줄)
+## 관리자 앱 구조 (`public/admin/js/app.js` ~6076줄)
 
 ### 핵심 유틸
 ```js
@@ -71,11 +75,9 @@ refreshPagination(tableId)   // 데이터 유지하며 UI 갱신
 ### 테이블 정렬
 ```js
 // thead th에 onclick="sortTable('tableId', colIdx)" 추가 시 자동 작동
-// colIdx는 onclick 속성 매칭으로 th.cellIndex를 찾아 실제 td 위치 사용
 window.sortTable(tableId, colIdx)
 
 // 트리 구조(My Book 출력, 시험지 출력) 전용 단일 토글 정렬
-// _treeSortDir: null → 'asc' → 'desc' → null 순환
 window.treeSort()
 ```
 
@@ -115,30 +117,88 @@ td.td-sm      /* 작은 글자 — 12px */
 
 ### 테이블 정렬 헤더
 ```html
-<!-- sortable 클래스 추가 + onclick -->
 <th onclick="sortTable('tableId', 1)" class="sortable">컬럼명</th>
 ```
+
+## Generator 페이지 (`public/admin/js/app.js` — loadGenerator 이하)
+
+관리자 앱의 콘텐츠 생성 도구. 이미지 OCR → Firestore Book/Chapter/Page 구조로 저장.
+
+### Firestore 스키마
+```
+genBooks   { name, createdAt, createdBy }
+genChapters { name, bookId, bookName, order, createdAt }
+genPages   { title, text, serialNumber, bookId, bookName, chapterId, chapterName,
+             ocrConfidence, ocrProvider, imageUrl, edited, createdAt, createdBy }
+```
+
+### 상태 변수
+```js
+_genPages, _genChapters, _genBooks   // Firestore에서 로드한 전체 데이터
+_genImages                           // 업로드된 이미지 배열
+_genCheckedPages/Chapters/Books      // Set — 체크박스 다중 선택 (툴바 작업용)
+_genActiveBook, _genActiveChapter, _genActivePage  // 행 클릭 네비게이션 상태
+_genPageCur, _genPageSize=20         // Page 목록 페이지네이션
+```
+
+### 인터랙션 설계
+- **체크박스 클릭**: `_genChecked*` Set 업데이트 → 툴바 버튼 활성/비활성
+- **행 클릭**: `_genActive*` 상태 업데이트 → 필터 + 에디터 로드
+  - Book 행 클릭 → Chapter/Page 목록 해당 Book으로 필터
+  - Chapter 행 클릭 → Page 목록 해당 Chapter로 필터
+  - Page 행 클릭 → 좌측 에디터에 내용 로드
+  - 다시 클릭 시 선택 해제 (토글)
+- 활성 행은 `var(--teal-light)` 배경 + `var(--teal)` 글자색으로 하이라이트
+
+### 레이아웃
+- 4컬럼 flexbox: [에디터(500px, 리사이저)] | [Page | Chapter | Book]
+- 에디터 폭 드래그 리사이저: min 250px, max 60%, `localStorage('generator_editor_width')` 저장
+- 높이: `calc(100vh - 280px)`
+
+### OCR
+- `POST /api/ocr` (api/ocr.js) — Google Cloud Vision DOCUMENT_TEXT_DETECTION
+- 이미지 → base64 → API → genPages에 저장
+- 환경변수: `GOOGLE_VISION_KEY` (JSON 또는 base64 인코딩 JSON)
+
+### Firestore 규칙
+```
+match /genBooks/{id}    { allow read, write: if isAdmin(); }
+match /genChapters/{id} { allow read, write: if isAdmin(); }
+match /genPages/{id}    { allow read, write: if isAdmin(); }
+```
+
+## Firestore 복합 인덱스 (`firestore.indexes.json`)
+```json
+recSubmissions: hwId(ASC) + uid(ASC)
+```
+배포: `firebase deploy --only firestore:indexes`
 
 ## 서비스워커 (`public/sw.js`)
 - **캐시명**: `kunsori-v4`
 - **전략**: 앱 쉘(HTML/CSS/JS) = 네트워크 우선 → 캐시 fallback
 - **자동 리로드**: 새 SW 활성화 시 `SW_UPDATED` 메시지 → 클라이언트 자동 리로드
-- `index.html`에서 메시지 수신 후 `window.location.reload()` 처리
 
 ## 보안 규칙 (`firestore.rules`)
 - `isAdmin()`: Firestore에서 users/{uid}.role == 'admin' 확인
 - `isOwner(uid)`: request.auth.uid == uid 확인
 - 대부분 컬렉션: read = 로그인 사용자, write = 관리자 전용
 
+## 주요 버그 수정 이력
+
+### 학생앱 녹음숙제 (2026-04-18)
+- **원인**: `recSubmissions` 규칙이 `isOwner`만 허용하는데, 쿼리에 `uid` 필터 없이 `hwId`만으로 조회 → Firestore가 쿼리 전체 거부
+- **수정**: `loadRecHwList`, `openRecHwDetail`, `updateRecBadge` 3곳에 `where('uid','==',myUid)` 추가
+- **파일**: `public/js/app.js`
+
 ## 작업 규칙 (중요)
 1. **XSS**: 모든 사용자 데이터는 `esc()` 필수
 2. **confirm/alert 금지**: `showConfirm()` / `showToast()` 사용
-3. **테이블**: 반드시 `initPagination` 사용, 직접 innerHTML 할당 금지
+3. **테이블**: 반드시 `initPagination` 사용, 직접 innerHTML 할당 금지 (Generator는 커스텀 렌더 사용)
 4. **색상**: 테이블 글자는 `var(--text)` (검은색), 보조 정보는 `var(--gray)`
 5. **배포**: 변경 후 `git add → git commit → git push origin master → npx vercel --prod --yes`
 
 ## 파일 크기 참고
-- `public/admin/js/app.js`: ~5200줄
-- `public/js/app.js`: ~2764줄
-- `public/admin/index.html`: ~1155줄
+- `public/admin/js/app.js`: ~6076줄
+- `public/js/app.js`: ~2766줄
+- `public/admin/index.html`: ~1284줄
 - `public/index.html`: ~580줄
