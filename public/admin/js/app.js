@@ -5343,65 +5343,93 @@ window.editUnit = async(bid, uid, name) => {
   if(!snap.exists()){ showToast('Unit을 찾을 수 없습니다.'); return; }
   const u = {id:uid, ...snap.data()};
   const words = u.words||[];
-  // 현재 단어를 탭 구분 텍스트로 변환
-  const wordsText = words.map(w=>`${w.en}\t${w.ko}`).join('\n');
+
+  const wordsHtml = words.map((w,i)=>`
+    <tr>
+      <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
+      <td style="padding:4px;">
+        <input data-wi="${i}" data-field="en" value="${esc(w.en||'')}"
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
+      </td>
+      <td style="padding:4px;">
+        <input data-wi="${i}" data-field="ko" value="${esc(w.ko||'')}"
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
+      </td>
+      <td style="padding:4px;text-align:center;">
+        <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+      </td>
+    </tr>`).join('');
 
   showModal(`
     <div style="font-size:16px;font-weight:700;margin-bottom:14px;">✏️ Unit 수정</div>
-    <div style="margin-bottom:10px;">
+    <div style="margin-bottom:12px;">
       <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Unit 이름</div>
       <input id="editUnitName" type="text" value="${u.name.replace(/"/g,'&quot;')}"
-        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;">
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
     </div>
-    <div style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="font-size:12px;color:var(--gray);">단어 목록 (영어↔한글 탭 구분)</div>
-      <span style="font-size:11px;color:var(--teal);">총 <span id="editWordCount">${words.length}</span>개</span>
+    <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:12px;color:var(--gray);font-weight:600;">단어 목록</div>
+      <button onclick="addUnitWordRow()" style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ 추가</button>
     </div>
-    <textarea id="editUnitWords" rows="10"
-      oninput="document.getElementById('editWordCount').textContent=this.value.split('\\n').filter(l=>l.trim()).length"
-      style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;resize:vertical;outline:none;font-family:monospace;"
-      placeholder="영어단어(또는문장)	한글뜻">${wordsText}</textarea>
-    <div style="font-size:11px;color:#bbb;margin-bottom:14px;">※ 엑셀에서 두 열 선택 후 복사·붙여넣기 가능</div>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#f8f9fa;font-size:11px;color:var(--gray);">
+          <th style="padding:6px 4px;text-align:center;width:28px;">No</th>
+          <th style="padding:6px 4px;text-align:left;">영어</th>
+          <th style="padding:6px 4px;text-align:left;">한글</th>
+          <th style="width:28px;"></th>
+        </tr></thead>
+        <tbody id="unitWordList">${wordsHtml}</tbody>
+      </table>
+    </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="viewUnit('${bid}','${uid}','${name.replace(/'/g,"\\'")}');" style="flex:1;justify-content:center;">← 뒤로</button>
-      <button class="btn btn-danger" onclick="deleteUnitConfirm('${bid}','${uid}','${name.replace(/'/g,"\\'")}','${(words.length)}');" style="flex:1;justify-content:center;background:#e05050;color:white;border:none;border-radius:8px;cursor:pointer;padding:9px;">🗑 삭제</button>
+      <button class="btn btn-secondary" onclick="openBookEditModal('${bid}')" style="flex:1;justify-content:center;">← 뒤로</button>
+      <button class="btn btn-danger" onclick="deleteUnitConfirm('${bid}','${uid}','${name.replace(/'/g,"\\'")}','${words.length}');" style="flex:1;justify-content:center;">🗑 삭제</button>
       <button class="btn btn-primary" onclick="saveEditUnit('${bid}','${uid}')" style="flex:2;justify-content:center;">💾 저장</button>
-    </div>
-  `);
+    </div>`);
+  document.getElementById('modalBox').style.width = '700px';
+};
+
+window.addUnitWordRow = () => {
+  const tbody = document.getElementById('unitWordList');
+  if(!tbody) return;
+  const i = tbody.rows.length;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
+    <td style="padding:4px;"><input data-wi="${i}" data-field="en" placeholder="영어"
+      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
+    <td style="padding:4px;"><input data-wi="${i}" data-field="ko" placeholder="한글"
+      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
+    <td style="padding:4px;text-align:center;">
+      <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+    </td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('input').focus();
 };
 
 window.saveEditUnit = async(bid, uid) => {
   const newName = document.getElementById('editUnitName')?.value.trim();
-  const text = document.getElementById('editUnitWords')?.value||'';
   if(!newName){ showToast('Unit 이름을 입력하세요.'); return; }
 
-  const lines = text.split('\n').filter(l=>l.trim());
-  const words = lines.map(l=>{
-    const p = l.split('\t');
-    return { en:(p[0]||'').trim(), ko:(p[1]||'').trim() };
-  }).filter(w=>w.en);
-
+  const rows = document.getElementById('unitWordList')?.querySelectorAll('tr')||[];
+  const words = [];
+  rows.forEach(tr=>{
+    const en = tr.querySelector('[data-field="en"]')?.value.trim()||'';
+    const ko = tr.querySelector('[data-field="ko"]')?.value.trim()||'';
+    if(en||ko) words.push({en, ko});
+  });
   if(!words.length){ showToast('단어를 입력하세요.'); return; }
 
   try{
-    // Unit 수정
     await updateDoc(doc(db,'books',bid,'units',uid),{
-      name: newName,
-      words: words,
-      wordCount: words.length,
-      updatedAt: serverTimestamp()
+      name: newName, words, wordCount: words.length, updatedAt: serverTimestamp()
     });
-    // 교재 wordCount 재계산
     const allUnitsSnap = await getDocs(collection(db,'books',bid,'units'));
     const totalWords = allUnitsSnap.docs.reduce((s,d)=>s+(d.data().wordCount||d.data().words?.length||0),0);
-    await updateDoc(doc(db,'books',bid),{
-      wordCount: totalWords,
-      unitCount: allUnitsSnap.size
-    });
-
+    await updateDoc(doc(db,'books',bid),{ wordCount: totalWords, unitCount: allUnitsSnap.size });
     showToast(`✅ "${newName}" 저장 완료! (${words.length}개 단어)`);
-    closeModal();
-    // 교재 목록 새로고침
+    openBookEditModal(bid);
     await loadBooks();
   }catch(e){ showToast('저장 실패: '+e.message); }
 };
