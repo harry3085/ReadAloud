@@ -2099,7 +2099,7 @@ window.openBookEditModal = async(bookId) => {
       <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
       <button class="btn btn-primary" onclick="saveBookEdit('${bookId}')" style="flex:1;justify-content:center;">저장</button>
     </div>`);
-  document.getElementById('modalBox').style.width = '700px';
+  document.getElementById('modalBox').style.width = '900px';
 };
 window.saveBookEdit = async(id) => {
   const name = document.getElementById('editBookName')?.value.trim();
@@ -5387,7 +5387,7 @@ window.editUnit = async(bid, uid, name) => {
       <button class="btn btn-danger" onclick="deleteUnitConfirm('${bid}','${uid}','${name.replace(/'/g,"\\'")}','${words.length}');" style="flex:1;justify-content:center;">🗑 삭제</button>
       <button class="btn btn-primary" onclick="saveEditUnit('${bid}','${uid}')" style="flex:2;justify-content:center;">💾 저장</button>
     </div>`);
-  document.getElementById('modalBox').style.width = '700px';
+  document.getElementById('modalBox').style.width = '900px';
 };
 
 window.addUnitWordRow = () => {
