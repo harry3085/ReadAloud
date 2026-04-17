@@ -1,0 +1,37 @@
+# Vercel
+.vercel
+
+# 🔐 환경변수 파일 — 절대 업로드 금지
+.env
+.env.local
+.env*.local
+.env.development
+.env.production
+
+# 서비스 계정 JSON 키 — 절대 업로드 금지
+*service-account*.json
+*-credentials.json
+google-vision-key.json
+
+# 🆕 Node 의존성 (용량 커서 GitHub 올리면 안 됨)
+node_modules/
+
+# 🆕 Claude Code 로컬 설정 (올릴 필요 없음)
+.claude/
+
+
+# OS/에디터 파일
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 로그
+*.log
+npm-debug.log*
+
+# 백업/임시 파일
+*.bak
+*.backup
+*.old
+_scratch/
