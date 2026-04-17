@@ -145,5 +145,16 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
+
+    // ── Generator (관리자 전용) ───────────────────────────
+    match /genBooks/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /genChapters/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /genPages/{id} {
+      allow read, write: if isAdmin();
+    }
   }
 }

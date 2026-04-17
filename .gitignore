@@ -35,3 +35,6 @@ npm-debug.log*
 *.backup
 *.old
 _scratch/
+
+# 로컬 테스트 페이지
+public/ocr-test.html

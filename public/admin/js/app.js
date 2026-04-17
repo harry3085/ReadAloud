@@ -72,6 +72,7 @@ const pageLabels = {
   'rec-content':'숙제목록 작성', 'rec-assign':'숙제 생성', 'rec-status':'제출 현황',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
+  generator:'📁 Generator',
 };
 window.goPage = async(id) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -99,6 +100,7 @@ window.goPage = async(id) => {
   else if(id==='rec-status') await loadRecStatus();
   else if(id==='score-report') initScoreReport();
   else if(id==='score-personal') await loadPersonalStudentList();
+  else if(id==='generator') await loadGenerator();
 };
 
 window.toggleNav = (group) => {
@@ -5472,3 +5474,585 @@ window.doDeleteUnit = async(bid, uid, name) => {
   }catch(e){ showToast('삭제 실패: '+e.message); }
 };
 window.moveToFolder = (id) => { showToast('폴더 이동 준비 중...'); };
+
+// ══════════════════════════════════════════════════════════
+// GENERATOR
+// ══════════════════════════════════════════════════════════
+let _genPages = [], _genChapters = [], _genBooks = [];
+let _genImages = [];
+let _genCheckedPages = new Set(), _genCheckedChapters = new Set(), _genCheckedBooks = new Set();
+let _genPageCur = 1;
+const _genPageSize = 20;
+
+let _genResizing = false, _genResizerInited = false;
+function _genInitResizer() {
+  if (_genResizerInited) return;
+  _genResizerInited = true;
+  const panel = document.getElementById('genEditorPanel');
+  const resizer = document.getElementById('genResizer');
+  const grid = document.getElementById('genGrid');
+  if (!panel || !resizer || !grid) return;
+  // 저장된 폭 복원
+  const saved = localStorage.getItem('generator_editor_width');
+  if (saved) panel.style.width = saved + 'px';
+  resizer.addEventListener('mousedown', () => {
+    _genResizing = true;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    resizer.style.background = 'var(--teal)';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!_genResizing) return;
+    const containerLeft = grid.getBoundingClientRect().left;
+    let w = e.clientX - containerLeft - 15;
+    w = Math.max(250, Math.min(w, grid.clientWidth * 0.6));
+    panel.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!_genResizing) return;
+    _genResizing = false;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    resizer.style.background = '';
+    const w = parseInt(panel.style.width);
+    if (w) localStorage.setItem('generator_editor_width', w);
+  });
+}
+
+window.loadGenerator = async () => {
+  _genInitResizer();
+  try {
+    const [pSnap, cSnap, bSnap] = await Promise.all([
+      getDocs(query(collection(db,'genPages'), orderBy('serialNumber','asc'))),
+      getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
+      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+    ]);
+    _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genCheckedPages.clear(); _genCheckedChapters.clear(); _genCheckedBooks.clear();
+    _genPageCur = 1;
+    _genRenderAll();
+  } catch(e) { showToast('Generator 로드 실패: '+e.message); }
+};
+
+function _genRenderAll() {
+  _genRenderBooks();
+  _genRenderChapters();
+  _genRenderPages();
+  _genUpdateEditor();
+}
+
+function _genFilteredChapters() {
+  if (_genCheckedBooks.size === 0) return _genChapters;
+  return _genChapters.filter(c => _genCheckedBooks.has(c.bookId));
+}
+
+function _genFilteredPages() {
+  if (_genCheckedChapters.size > 0)
+    return _genPages.filter(p => _genCheckedChapters.has(p.chapterId));
+  if (_genCheckedBooks.size > 0)
+    return _genPages.filter(p => _genCheckedBooks.has(p.bookId));
+  return _genPages;
+}
+
+function _genRenderBooks() {
+  const el = document.getElementById('genBookList');
+  const cnt = document.getElementById('genBookCount');
+  if (!el) return;
+  if (!_genBooks.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Book이 없습니다</div>';
+    if (cnt) cnt.textContent = '';
+    _genToolbar('book'); return;
+  }
+  if (cnt) cnt.textContent = _genBooks.length + '개';
+  el.innerHTML = _genBooks.map(b => {
+    const chCnt = _genChapters.filter(c=>c.bookId===b.id).length;
+    const pgCnt = _genPages.filter(p=>p.bookId===b.id).length;
+    return `
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
+      <input type="checkbox" data-id="${b.id}" ${_genCheckedBooks.has(b.id)?'checked':''} onchange="genOnBookCheck(this)">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.name)}</div>
+        <div style="font-size:11px;color:var(--gray);">Ch ${chCnt} · Pg ${pgCnt}</div>
+      </div>
+    </label>`;
+  }).join('');
+  _genToolbar('book');
+}
+
+function _genRenderChapters() {
+  const el = document.getElementById('genChapterList');
+  const cnt = document.getElementById('genChapterCount');
+  if (!el) return;
+  const filtered = _genFilteredChapters();
+  if (!filtered.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Chapter가 없습니다</div>';
+    if (cnt) cnt.textContent = '';
+    _genToolbar('chapter'); return;
+  }
+  if (cnt) cnt.textContent = filtered.length + '개';
+  el.innerHTML = filtered.map(c => {
+    const pgCnt = _genPages.filter(p=>p.chapterId===c.id).length;
+    return `
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
+      <input type="checkbox" data-id="${c.id}" ${_genCheckedChapters.has(c.id)?'checked':''} onchange="genOnChapterCheck(this)">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</div>
+        <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};">${c.bookId?esc(c.bookName||''):'미지정'} · Pg ${pgCnt}</div>
+      </div>
+    </label>`;
+  }).join('');
+  _genToolbar('chapter');
+}
+
+function _genRenderPages() {
+  const el = document.getElementById('genPageList');
+  const cnt = document.getElementById('genPageCount');
+  if (!el) return;
+  const filtered = _genFilteredPages();
+  const total = filtered.length;
+  const totalPgs = Math.ceil(total / _genPageSize) || 1;
+  if (_genPageCur > totalPgs) _genPageCur = 1;
+  const start = (_genPageCur-1)*_genPageSize;
+  const slice = filtered.slice(start, start+_genPageSize);
+  if (cnt) cnt.textContent = total + '개';
+  if (!total) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Page가 없습니다</div>';
+    _genRenderPagePaging(0,0); _genToolbar('page'); return;
+  }
+  el.innerHTML = slice.map(p => `
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
+      <input type="checkbox" data-id="${p.id}" ${_genCheckedPages.has(p.id)?'checked':''} onchange="genOnPageCheck(this)">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title||'Page '+p.serialNumber)}</div>
+        <div style="font-size:11px;color:${p.chapterId?'var(--gray)':'#bbb'};font-style:${p.chapterId?'normal':'italic'};">#${p.serialNumber} · ${p.chapterId?esc(p.chapterName||''):'미지정'}</div>
+      </div>
+    </label>`).join('');
+  _genRenderPagePaging(totalPgs, _genPageCur);
+  _genToolbar('page');
+  _genUpdateEditor();
+}
+
+function _genRenderPagePaging(total, cur) {
+  const el = document.getElementById('genPagePagination');
+  if (!el) return;
+  if (total <= 1) { el.innerHTML=''; return; }
+  const s = 'border:1px solid var(--border);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;';
+  let h = '';
+  if (cur>1) h += `<button onclick="genPageGo(${cur-1})" style="${s}background:white;">&#8249;</button>`;
+  for (let i=Math.max(1,cur-2); i<=Math.min(total,cur+2); i++) {
+    const active = i===cur;
+    h += `<button onclick="genPageGo(${i})" style="${s}background:${active?'var(--teal)':'white'};color:${active?'white':'inherit'};border-color:${active?'var(--teal)':'var(--border)'};">${i}</button>`;
+  }
+  if (cur<total) h += `<button onclick="genPageGo(${cur+1})" style="${s}background:white;">&#8250;</button>`;
+  el.innerHTML = h;
+}
+
+window.genPageGo = (n) => { _genPageCur=n; _genRenderPages(); };
+
+function _genToolbar(type) {
+  const cnt = type==='page'?_genCheckedPages.size:type==='chapter'?_genCheckedChapters.size:_genCheckedBooks.size;
+  if (type==='page') {
+    ['genPageEditBtn','genPageMoveBtn','genPageExcludeBtn','genPageDeleteBtn'].forEach((id,i)=>{
+      const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
+    });
+  } else if (type==='chapter') {
+    ['genChapterEditBtn','genChapterMoveBtn','genChapterExcludeBtn','genChapterDeleteBtn'].forEach((id,i)=>{
+      const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
+    });
+  } else {
+    ['genBookEditBtn','genBookDeleteBtn'].forEach((id,i)=>{
+      const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
+    });
+  }
+}
+
+function _genUpdateEditor() {
+  const titleEl = document.getElementById('genEditTitle');
+  const textEl = document.getElementById('genEditText');
+  const pidEl = document.getElementById('genEditPageId');
+  const saveBtn = document.getElementById('genSaveBtn');
+  if (!titleEl) return;
+  if (_genCheckedPages.size !== 1) {
+    titleEl.value=''; titleEl.disabled=true; titleEl.placeholder='Page를 1개 선택하세요';
+    textEl.value=''; textEl.disabled=true;
+    pidEl.value='';
+    if(saveBtn) saveBtn.disabled=true;
+    return;
+  }
+  const pid = [..._genCheckedPages][0];
+  const page = _genPages.find(p=>p.id===pid);
+  if (!page) {
+    titleEl.disabled=true; textEl.disabled=true; if(saveBtn) saveBtn.disabled=true; return;
+  }
+  titleEl.value = page.title||''; titleEl.disabled=false; titleEl.placeholder='';
+  textEl.value = page.text||''; textEl.disabled=false;
+  pidEl.value = pid;
+  if(saveBtn) saveBtn.disabled=false;
+}
+
+window.genOnBookCheck = (cb) => {
+  cb.checked ? _genCheckedBooks.add(cb.dataset.id) : _genCheckedBooks.delete(cb.dataset.id);
+  _genCheckedChapters.clear(); _genPageCur=1;
+  _genRenderBooks(); _genRenderChapters(); _genRenderPages();
+};
+window.genOnChapterCheck = (cb) => {
+  cb.checked ? _genCheckedChapters.add(cb.dataset.id) : _genCheckedChapters.delete(cb.dataset.id);
+  _genPageCur=1;
+  _genRenderChapters(); _genRenderPages();
+};
+window.genOnPageCheck = (cb) => {
+  cb.checked ? _genCheckedPages.add(cb.dataset.id) : _genCheckedPages.delete(cb.dataset.id);
+  _genToolbar('page'); _genUpdateEditor();
+};
+window.genToggleCheckAll = (type, cb) => {
+  if (type==='book') {
+    _genBooks.forEach(b => cb.checked ? _genCheckedBooks.add(b.id) : _genCheckedBooks.delete(b.id));
+    _genRenderAll();
+  } else if (type==='chapter') {
+    _genFilteredChapters().forEach(c => cb.checked ? _genCheckedChapters.add(c.id) : _genCheckedChapters.delete(c.id));
+    _genRenderChapters(); _genRenderPages();
+  } else {
+    _genFilteredPages().forEach(p => cb.checked ? _genCheckedPages.add(p.id) : _genCheckedPages.delete(p.id));
+    _genRenderPages();
+  }
+};
+
+// ── 이미지 업로드 ──
+window.genHandleDrop = (e) => {
+  e.preventDefault();
+  document.getElementById('genDropZone').style.borderColor='var(--border)';
+  genHandleFiles(e.dataTransfer.files);
+};
+window.genHandleFiles = (files) => {
+  [...files].forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      _genImages.push({ base64: ev.target.result.split(',')[1], name: file.name, mimeType: file.type });
+      _genRenderThumbnails();
+    };
+    reader.readAsDataURL(file);
+  });
+};
+function _genRenderThumbnails() {
+  const el = document.getElementById('genThumbnails');
+  if (!el) return;
+  el.innerHTML = _genImages.map((img,i) => `
+    <div style="position:relative;width:72px;flex-shrink:0;">
+      <img src="data:${img.mimeType};base64,${img.base64}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+      <button onclick="genRemoveImage(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#e05050;color:white;cursor:pointer;font-size:10px;padding:0;line-height:1;">x</button>
+      <div style="font-size:9px;color:var(--gray);text-align:center;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(img.name)}</div>
+    </div>`).join('');
+}
+window.genRemoveImage = (i) => { _genImages.splice(i,1); _genRenderThumbnails(); };
+
+// ── OCR 실행 ──
+window.runGenOcr = async () => {
+  if (!_genImages.length) { showToast('이미지를 먼저 업로드하세요.'); return; }
+  const btn = document.getElementById('genOcrBtn');
+  const status = document.getElementById('genOcrStatus');
+  btn.disabled = true;
+  let maxSerial = _genPages.reduce((m,p)=>Math.max(m,p.serialNumber||0),0);
+  let saved = 0;
+  for (let i=0; i<_genImages.length; i++) {
+    if (status) status.textContent = `처리 중... (${i+1}/${_genImages.length})`;
+    try {
+      const res = await fetch('/api/ocr',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({imageBase64:_genImages[i].base64,mimeType:_genImages[i].mimeType}),
+      });
+      const data = await res.json();
+      if (!res.ok||data.error){ showToast(`[${i+1}] OCR 실패: ${data.error||res.status}`); continue; }
+      maxSerial++;
+      await addDoc(collection(db,'genPages'),{
+        title:`Page ${maxSerial}`, serialNumber:maxSerial,
+        chapterId:null, chapterName:'', bookId:null, bookName:'',
+        text:data.text||'', ocrConfidence:(data.confidence||0)/100,
+        ocrProvider:data.provider||'google-vision', imageUrl:'', edited:false,
+        createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+      });
+      saved++;
+    } catch(e){ showToast(`[${i+1}] 오류: ${e.message}`); }
+  }
+  if (status) { status.textContent=`완료! ${saved}개 Page 저장됨`; setTimeout(()=>{ status.textContent=''; },3000); }
+  btn.disabled=false;
+  _genImages=[]; _genRenderThumbnails();
+  await loadGenerator();
+};
+
+// ── Page CRUD ──
+window.genCreatePage = () => {
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">📄 Page 생성</div>
+    <div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목</div>
+      <input id="gnPT" type="text" placeholder="비우면 자동 지정" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">본문</div>
+      <textarea id="gnPX" rows="6" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoCreatePage()" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('gnPT')?.focus(),80);
+};
+window.genDoCreatePage = async () => {
+  const title=document.getElementById('gnPT')?.value.trim();
+  const text=document.getElementById('gnPX')?.value.trim();
+  const maxSerial=_genPages.reduce((m,p)=>Math.max(m,p.serialNumber||0),0)+1;
+  try {
+    await addDoc(collection(db,'genPages'),{
+      title:title||`Page ${maxSerial}`, serialNumber:maxSerial,
+      chapterId:null, chapterName:'', bookId:null, bookName:'',
+      text:text||'', ocrConfidence:0, ocrProvider:'', imageUrl:'', edited:true,
+      createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+    });
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genEditPage = () => {
+  if (_genCheckedPages.size!==1) return;
+  const pid=[..._genCheckedPages][0];
+  const page=_genPages.find(p=>p.id===pid);
+  if (!page) return;
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Page 수정</div>
+    <div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목</div>
+      <input id="gnET" type="text" value="${esc(page.title||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">본문</div>
+      <textarea id="gnEX" rows="10" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">${esc(page.text||'')}</textarea></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoEditPage('${pid}')" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  document.getElementById('modalBox').style.width='700px';
+};
+window.genDoEditPage = async (pid) => {
+  const title=document.getElementById('gnET')?.value.trim();
+  const text=document.getElementById('gnEX')?.value.trim();
+  if (!title){ showToast('제목을 입력하세요.'); return; }
+  try {
+    await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genSavePage = async () => {
+  const pid=document.getElementById('genEditPageId')?.value;
+  const title=document.getElementById('genEditTitle')?.value.trim();
+  const text=document.getElementById('genEditText')?.value;
+  if (!pid||!title){ showToast('제목을 입력하세요.'); return; }
+  try {
+    await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
+    showToast('저장 완료'); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genDeletePages = async () => {
+  if (!_genCheckedPages.size) return;
+  const ok=await showConfirm(`Page ${_genCheckedPages.size}개를 삭제하시겠습니까?`,'삭제된 데이터는 복구할 수 없습니다.');
+  if (!ok) return;
+  try {
+    await Promise.all([..._genCheckedPages].map(id=>deleteDoc(doc(db,'genPages',id))));
+    _genCheckedPages.clear(); await loadGenerator();
+  } catch(e){ showToast('삭제 실패: '+e.message); }
+};
+
+window.genExcludePages = async () => {
+  if (!_genCheckedPages.size) return;
+  try {
+    await Promise.all([..._genCheckedPages].map(id=>updateDoc(doc(db,'genPages',id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
+    showToast('미지정 상태로 변경됨'); await loadGenerator();
+  } catch(e){ showToast('실패: '+e.message); }
+};
+
+window.genMovePages = async () => {
+  if (!_genCheckedPages.size) return;
+  if (!_genChapters.length){ showToast('Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px;">&#8594; Chapter 이동</div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:10px;">${_genCheckedPages.size}개 Page 이동</div>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+      ${_genChapters.map(c=>`
+        <div onclick="genDoMovePages('${c.id}','${c.bookId||''}','${esc(c.bookName||'').replace(/'/g,"&#39;")}','${esc(c.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+          <div style="font-weight:600;font-size:13px;">${esc(c.name)}</div>
+          <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:10px;"><button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;">취소</button></div>`);
+};
+window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
+  try {
+    const ids=[..._genCheckedPages];
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genPages',id),{chapterId,chapterName,bookId:bookId||null,bookName:bookName||''})));
+    closeModal(); _genCheckedPages.clear();
+    showToast(`"${chapterName}"으로 이동 완료`);
+    await loadGenerator();
+  } catch(e){ showToast('실패: '+e.message); }
+};
+
+// ── Chapter CRUD ──
+window.genCreateChapter = () => {
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#128218; Chapter 생성</div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Chapter 이름 *</div>
+      <input id="gnCN" type="text" placeholder="예: Chapter 1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoCreateChapter()" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('gnCN')?.focus(),80);
+};
+window.genDoCreateChapter = async () => {
+  const name=document.getElementById('gnCN')?.value.trim();
+  if (!name){ showToast('이름을 입력하세요.'); return; }
+  try {
+    await addDoc(collection(db,'genChapters'),{
+      name, bookId:null, bookName:'', order:_genChapters.length+1, pageCount:0,
+      createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+    });
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genEditChapter = () => {
+  if (_genCheckedChapters.size!==1) return;
+  const cid=[..._genCheckedChapters][0];
+  const ch=_genChapters.find(c=>c.id===cid);
+  if (!ch) return;
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Chapter 수정</div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Chapter 이름 *</div>
+      <input id="gnCE" type="text" value="${esc(ch.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoEditChapter('${cid}')" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('gnCE')?.focus(),80);
+};
+window.genDoEditChapter = async (cid) => {
+  const name=document.getElementById('gnCE')?.value.trim();
+  if (!name){ showToast('이름을 입력하세요.'); return; }
+  try {
+    await updateDoc(doc(db,'genChapters',cid),{name});
+    await Promise.all(_genPages.filter(p=>p.chapterId===cid).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterName:name})));
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genDeleteChapters = async () => {
+  if (!_genCheckedChapters.size) return;
+  const ok=await showConfirm(`Chapter ${_genCheckedChapters.size}개를 삭제하시겠습니까?`,'삭제 시 소속 Page는 미지정 상태로 돌아갑니다.');
+  if (!ok) return;
+  try {
+    const ids=[..._genCheckedChapters];
+    await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
+    await Promise.all(ids.map(id=>deleteDoc(doc(db,'genChapters',id))));
+    _genCheckedChapters.clear(); await loadGenerator();
+  } catch(e){ showToast('삭제 실패: '+e.message); }
+};
+
+window.genExcludeChapters = async () => {
+  if (!_genCheckedChapters.size) return;
+  const ids=[..._genCheckedChapters];
+  try {
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId:null,bookName:''})));
+    await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})));
+    showToast('Book에서 제외됨'); await loadGenerator();
+  } catch(e){ showToast('실패: '+e.message); }
+};
+
+window.genMoveChapters = async () => {
+  if (!_genCheckedChapters.size) return;
+  if (!_genBooks.length){ showToast('Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px;">&#8594; Book 이동</div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:10px;">${_genCheckedChapters.size}개 Chapter 이동</div>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+      ${_genBooks.map(b=>`
+        <div onclick="genDoMoveChapters('${b.id}','${esc(b.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+          <div style="font-weight:600;font-size:13px;">${esc(b.name)}</div>
+          <div style="font-size:11px;color:var(--gray);">Chapter ${b.chapterCount||0}개</div>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:10px;"><button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;">취소</button></div>`);
+};
+window.genDoMoveChapters = async (bookId,bookName) => {
+  const ids=[..._genCheckedChapters];
+  try {
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId,bookName})));
+    await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId,bookName})));
+    closeModal(); _genCheckedChapters.clear();
+    showToast(`"${bookName}"으로 이동 완료`);
+    await loadGenerator();
+  } catch(e){ showToast('실패: '+e.message); }
+};
+
+// ── Book CRUD ──
+window.genCreateBook = () => {
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#128218; Book 생성</div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Book 이름 *</div>
+      <input id="gnBN" type="text" placeholder="예: 중등 영어 교과서 1-1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoCreateBook()" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('gnBN')?.focus(),80);
+};
+window.genDoCreateBook = async () => {
+  const name=document.getElementById('gnBN')?.value.trim();
+  if (!name){ showToast('이름을 입력하세요.'); return; }
+  try {
+    await addDoc(collection(db,'genBooks'),{
+      name, chapterCount:0, pageCount:0,
+      createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+    });
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genEditBook = () => {
+  if (_genCheckedBooks.size!==1) return;
+  const bid=[..._genCheckedBooks][0];
+  const book=_genBooks.find(b=>b.id===bid);
+  if (!book) return;
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Book 수정</div>
+    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Book 이름 *</div>
+      <input id="gnBE" type="text" value="${esc(book.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="genDoEditBook('${bid}')" style="flex:2;justify-content:center;">저장</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('gnBE')?.focus(),80);
+};
+window.genDoEditBook = async (bid) => {
+  const name=document.getElementById('gnBE')?.value.trim();
+  if (!name){ showToast('이름을 입력하세요.'); return; }
+  try {
+    await updateDoc(doc(db,'genBooks',bid),{name});
+    await Promise.all([
+      ..._genChapters.filter(c=>c.bookId===bid).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookName:name})),
+      ..._genPages.filter(p=>p.bookId===bid).map(p=>updateDoc(doc(db,'genPages',p.id),{bookName:name})),
+    ]);
+    closeModal(); await loadGenerator();
+  } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+window.genDeleteBooks = async () => {
+  if (!_genCheckedBooks.size) return;
+  const ok=await showConfirm(`Book ${_genCheckedBooks.size}개를 삭제하시겠습니까?`,'삭제 시 소속 Chapter/Page는 미지정 상태로 돌아갑니다.');
+  if (!ok) return;
+  try {
+    const ids=[..._genCheckedBooks];
+    await Promise.all([
+      ..._genChapters.filter(c=>ids.includes(c.bookId)).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookId:null,bookName:''})),
+      ..._genPages.filter(p=>ids.includes(p.bookId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})),
+      ...ids.map(id=>deleteDoc(doc(db,'genBooks',id))),
+    ]);
+    _genCheckedBooks.clear(); await loadGenerator();
+  } catch(e){ showToast('삭제 실패: '+e.message); }
+};
