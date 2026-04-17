@@ -2389,9 +2389,165 @@ window.toggleTestProgress = async(testId) => {
       </div>`;
     });
 
+    html += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #eee;text-align:right;">
+      <button class="action-btn primary" onclick="openTestEditModal('${testId}')">✏️ 시험 수정</button>
+    </div>`;
     contentEl.innerHTML = html;
   }catch(e){ contentEl.textContent='불러오기 실패: '+e.message; }
 };
+
+window.openTestEditModal = async(testId) => {
+  const snap = await getDoc(doc(db,'tests',testId));
+  if(!snap.exists()){ showToast('시험 데이터 없음'); return; }
+  const t = snap.data();
+  const isUnsc = t.testMode === 'unscramble';
+
+  const wordsHtml = (t.words||[]).map((w,i)=>`
+    <tr>
+      <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
+      <td style="padding:4px;">
+        <input data-wi="${i}" data-field="en" value="${esc(w.en||'')}"
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
+      </td>
+      <td style="padding:4px;">
+        <input data-wi="${i}" data-field="ko" value="${esc(w.ko||'')}"
+          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
+      </td>
+      <td style="padding:4px;text-align:center;">
+        <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+      </td>
+    </tr>`).join('');
+
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">✏️ 시험 수정</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">시험명</div>
+        <input id="editTestName" value="${esc(t.name||'')}"
+          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">통과점수</div>
+          <input id="editTestPass" type="number" value="${t.passScore||80}" min="0" max="100"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;text-align:center;">
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">활성화</div>
+          <select id="editTestActive" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;">
+            <option value="1" ${t.active!==false?'selected':''}>활성</option>
+            <option value="0" ${t.active===false?'selected':''}>비활성</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+          <span>단어 목록 ${isUnsc?'<span style="color:#b45309;font-size:11px;">(언스크램블: / 로 청크 구분)</span>':''}</span>
+          <button onclick="addEditWordRow()" style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ 추가</button>
+        </div>
+        <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:#f8f9fa;font-size:11px;color:var(--gray);">
+              <th style="padding:6px 4px;text-align:center;width:28px;">No</th>
+              <th style="padding:6px 4px;text-align:left;">영어</th>
+              <th style="padding:6px 4px;text-align:left;">한글</th>
+              <th style="width:28px;"></th>
+            </tr></thead>
+            <tbody id="editWordList">${wordsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="saveTestEdit('${testId}')" style="flex:1;justify-content:center;">저장</button>
+    </div>`);
+};
+
+window.addEditWordRow = () => {
+  const tbody = document.getElementById('editWordList');
+  if(!tbody) return;
+  const i = tbody.rows.length;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
+    <td style="padding:4px;"><input data-wi="${i}" data-field="en" placeholder="영어"
+      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
+    <td style="padding:4px;"><input data-wi="${i}" data-field="ko" placeholder="한글"
+      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
+    <td style="padding:4px;text-align:center;">
+      <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+    </td>`;
+  tbody.appendChild(tr);
+};
+
+window.saveTestEdit = async(testId) => {
+  const name = document.getElementById('editTestName')?.value.trim();
+  if(!name){ showToast('시험명을 입력하세요.'); return; }
+  const passScore = parseInt(document.getElementById('editTestPass')?.value)||80;
+  const active = document.getElementById('editTestActive')?.value === '1';
+
+  // 단어 수집
+  const rows = document.getElementById('editWordList')?.querySelectorAll('tr')||[];
+  const words = [];
+  rows.forEach(tr=>{
+    const en = tr.querySelector('[data-field="en"]')?.value.trim()||'';
+    const ko = tr.querySelector('[data-field="ko"]')?.value.trim()||'';
+    if(en||ko) words.push({en, ko});
+  });
+  if(!words.length){ showToast('단어를 하나 이상 입력하세요.'); return; }
+
+  closeModal();
+
+  // 진행/완료 학생 확인
+  const [compSnap, scoreSnap] = await Promise.all([
+    getDocs(collection(db,'tests',testId,'userCompleted')),
+    getDocs(query(collection(db,'scores'),where('testId','==',testId)))
+  ]);
+  const affectedUids = new Set();
+  compSnap.docs.forEach(d=>affectedUids.add(d.id));
+  scoreSnap.docs.forEach(d=>affectedUids.add(d.data().uid));
+
+  // 시험 데이터 업데이트
+  await updateDoc(doc(db,'tests',testId),{ name, passScore, active, words, updatedAt: serverTimestamp() });
+
+  // 영향받는 학생이 있으면 진도 초기화 + 알림 발송
+  if(affectedUids.size > 0){
+    const confirmed = await showConfirm(
+      `시험 내용이 수정됩니다`,
+      `응시/완료한 학생 ${affectedUids.size}명의 진도가 초기화되고 재응시 알림이 발송됩니다.`
+    );
+    if(!confirmed){
+      showToast('✅ 시험 내용만 수정됐어요 (진도 유지)');
+      await loadTestList();
+      return;
+    }
+
+    // userCompleted 삭제
+    await Promise.all(compSnap.docs.map(d=>deleteDoc(d.ref)));
+
+    // scores 삭제
+    await Promise.all(scoreSnap.docs.map(d=>deleteDoc(d.ref)));
+
+    // 알림 발송
+    await Promise.all([...affectedUids].map(uid=>addDoc(collection(db,'userNotifications'),{
+      uid,
+      title: '📝 시험이 수정됐어요',
+      body: `"${name}" 시험 내용이 수정되어 다시 응시해주세요.`,
+      type: 'test_updated',
+      testId,
+      read: false,
+      createdAt: serverTimestamp()
+    })));
+
+    showToast(`✅ 수정 완료 · ${affectedUids.size}명에게 알림 발송`);
+  } else {
+    showToast('✅ 시험이 수정됐어요.');
+  }
+
+  await loadTestList();
+};
+
 window.reprintTest = async(id) => {
   const snap = await getDoc(doc(db,'tests',id));
   const t = snap.data(); if(!t) return;
