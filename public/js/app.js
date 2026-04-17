@@ -1927,7 +1927,7 @@ let _unscSentences = [];
 let _unscIdx = 0;
 let _unscBuilt = [];
 let _unscTimer = null;
-let _unscTimeLeft = 30;
+let _unscTimeLeft = 60;
 let _unscCorrect = 0, _unscWrong = 0;
 let _unscSubmitted = false;  // 이중 제출 방지 플래그
 
@@ -1940,12 +1940,14 @@ window.startUnscrambleTest = async(testId, testName)=>{
   currentTestName = testName;
 
   const words = _unscTest.words||[];
-  let sentences = words.map(w=>({
-    en: w.en||'',
-    ko: w.ko||'',
-    tokens: (w.en||'').trim().split(/\s+/).filter(Boolean),
-    shuffled: shuffle((w.en||'').trim().split(/\s+/).filter(Boolean))
-  }));
+  let sentences = words.map(w=>{
+    const raw = (w.en||'').trim();
+    // '/' 포함 시 청크(숙어) 단위 분할, 없으면 단어 단위
+    const tokens = raw.includes('/')
+      ? raw.split('/').map(s=>s.trim()).filter(Boolean)
+      : raw.split(/\s+/).filter(Boolean);
+    return { en: tokens.join(' '), ko: w.ko||'', tokens, shuffled: shuffle([...tokens]) };
+  });
   // mix:true면 문제 출제 순서도 랜덤
   if(_unscTest.mix !== false) sentences = shuffle(sentences);
   _unscSentences = sentences;
@@ -2100,7 +2102,7 @@ window.skipUnscramble = ()=>{
 };
 
 function startUnscTimer(){
-  _unscTimeLeft = 30;
+  _unscTimeLeft = 60;
   updateUnscTimerUI();
   _unscTimer = setInterval(()=>{
     _unscTimeLeft--;
@@ -2140,7 +2142,7 @@ function updateUnscTimerUI(){
   const txt = document.getElementById('unscTimerText');
   const arc = document.getElementById('unscTimerArc');
   if(txt) txt.textContent = _unscTimeLeft;
-  if(arc) arc.style.strokeDashoffset = 113*(1-_unscTimeLeft/30);
+  if(arc) arc.style.strokeDashoffset = 113*(1-_unscTimeLeft/60);
 }
 
 async function showUnscResult(){

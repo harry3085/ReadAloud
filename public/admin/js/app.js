@@ -2863,6 +2863,10 @@ window.renderTestStep3 = function(){
             <div>
               <div style="font-size:13px;font-weight:700;color:#b45309;">🔀 언스크램블 문제</div>
               <div style="font-size:11px;color:#92400e;margin-top:2px;">단어(문장)를 섞어놓고 순서대로 클릭하는 문제</div>
+              <div style="font-size:11px;color:#b45309;margin-top:6px;line-height:1.6;background:#fffbeb;border-radius:6px;padding:6px 8px;">
+                💡 <b>청크(숙어) 단위로 나누려면</b> 영어 문장에 <b>/</b> 로 구분하세요<br>
+                예) <span style="font-family:monospace;">I am going / to school / every day</span>
+              </div>
             </div>
           </label>
           <!-- 언스크램블 전용 순서 섞기 옵션 -->
