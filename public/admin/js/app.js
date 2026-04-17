@@ -2048,25 +2048,72 @@ window.deleteSelectedPayment = async() => {
 };
 
 // ── 교재 선택 액션 ──────────────────────────────────
-window.editSelectedBook = () => {
+window.editSelectedBook = async() => {
   const ids = getCheckedIds('bookTableBody');
   if(ids.length !== 1){showToast('수정할 교재를 하나만 선택하세요.');return;}
-  const book = allBooks.find(b=>b.id===ids[0]);
-  if(!book) return;
+  openBookEditModal(ids[0]);
+};
+window.openBookEditModal = async(bookId) => {
+  const bookSnap = await getDoc(doc(db,'books',bookId));
+  if(!bookSnap.exists()){ showToast('교재 데이터 없음'); return; }
+  const book = {id:bookId, ...bookSnap.data()};
+  const unitsSnap = await getDocs(collection(db,'books',bookId,'units'));
+  const units = unitsSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+
+  const unitsHtml = units.length ? units.map(u=>`
+    <tr>
+      <td class="td-main">📖 ${esc(u.name)}</td>
+      <td class="td-center td-sub">${u.wordCount||u.words?.length||0}개</td>
+      <td style="text-align:right;padding:6px 8px;">
+        <button onclick="editUnit('${bookId}','${u.id}','${u.name.replace(/'/g,"\\'")}');document.getElementById('modalBox').style.width='700px';"
+          style="background:none;border:1px solid var(--border);border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;margin-right:4px;">✏️ 수정</button>
+        <button onclick="deleteUnitFromBookEdit('${bookId}','${u.id}','${esc(u.name)}')"
+          style="background:none;border:1px solid #fca5a5;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;color:#dc2626;">🗑</button>
+      </td>
+    </tr>`).join('')
+  : `<tr><td colspan="3" style="text-align:center;color:#bbb;padding:16px;font-size:13px;">Unit이 없습니다</td></tr>`;
+
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:16px;">교재 이름 수정</div>
-    <input id="editBookName" type="text" value="${esc(book.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;margin-bottom:16px;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">📘 교재 수정</div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">교재명</div>
+      <input id="editBookName" value="${esc(book.name)}"
+        style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
+    </div>
+    <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:12px;color:var(--gray);font-weight:600;">Unit 목록 (${units.length}개)</div>
+      <button onclick="addUnit('${bookId}','${esc(book.name)}')"
+        style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ Unit 추가</button>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#f8f9fa;">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--gray);font-weight:600;">Unit명</th>
+          <th style="padding:7px 10px;text-align:center;font-size:11px;color:var(--gray);font-weight:600;width:60px;">단어수</th>
+          <th style="width:120px;"></th>
+        </tr></thead>
+        <tbody id="bookEditUnitList">${unitsHtml}</tbody>
+      </table>
+    </div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="updateBookName('${ids[0]}')" style="flex:1;justify-content:center;">저장</button>
-    </div>
-  `);
+      <button class="btn btn-primary" onclick="saveBookEdit('${bookId}')" style="flex:1;justify-content:center;">저장</button>
+    </div>`);
+  document.getElementById('modalBox').style.width = '700px';
 };
-window.updateBookName = async(id) => {
-  const name = document.getElementById('editBookName').value.trim();
+window.saveBookEdit = async(id) => {
+  const name = document.getElementById('editBookName')?.value.trim();
   if(!name){showToast('교재명을 입력하세요.');return;}
   await updateDoc(doc(db,'books',id),{name});
-  closeModal(); showToast('교재명이 수정됐어요!'); await loadBooks();
+  closeModal(); showToast('교재가 수정됐어요!'); await loadBooks();
+};
+window.deleteUnitFromBookEdit = async(bookId, unitId, unitName) => {
+  if(!await showConfirm(`"${unitName}" Unit을 삭제할까요?`)) return;
+  await deleteDoc(doc(db,'books',bookId,'units',unitId));
+  const tr = document.querySelector(`#bookEditUnitList tr`);
+  // 모달 새로고침
+  openBookEditModal(bookId);
+  showToast('Unit이 삭제됐어요.');
 };
 window.addUnitToSelected = () => {
   const ids = getCheckedIds('bookTableBody');
@@ -2101,6 +2148,27 @@ window.deleteSelectedBook = async() => {
   if(!(await showConfirm(`선택한 ${ids.length}개 교재를 삭제할까요?`)))return;
   for(const id of ids) await deleteDoc(doc(db,'books',id));
   showToast('삭제됐어요.'); await loadBooks();
+};
+window.editSelectedFolder = async() => {
+  const ids = getCheckedIds('folderTableBody');
+  if(ids.length !== 1){showToast('수정할 폴더를 하나만 선택하세요.');return;}
+  const folder = allFolders.find(f=>f.id===ids[0]);
+  if(!folder) return;
+  showModal(`
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">📁 폴더 수정</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">폴더명</div>
+    <input id="editFolderName" value="${esc(folder.name)}"
+      style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
+      <button class="btn btn-primary" onclick="saveFolderEdit('${ids[0]}')" style="flex:1;justify-content:center;">저장</button>
+    </div>`);
+};
+window.saveFolderEdit = async(id) => {
+  const name = document.getElementById('editFolderName')?.value.trim();
+  if(!name){showToast('폴더명을 입력하세요.');return;}
+  await updateDoc(doc(db,'folders',id),{name});
+  closeModal(); showToast('폴더명이 수정됐어요!'); await loadFolders();
 };
 window.deleteSelectedFolder = async() => {
   const ids = getCheckedIds('folderTableBody');
