@@ -1721,7 +1721,15 @@ window.showModal = (html) => {
   document.getElementById('modalOverlay').style.display='flex';
 };
 window.closeModal = () => { document.getElementById('modalOverlay').style.display='none'; document.getElementById('modalBox').style.width=''; };
-document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===document.getElementById('modalOverlay')) closeModal(); });
+// 리사이즈 드래그 후 오버레이에서 mouseup 시 닫히는 문제 방지
+// mousedown 시작이 오버레이일 때만 닫힘
+let _modalMouseDownOnOverlay = false;
+document.getElementById('modalOverlay').addEventListener('mousedown', e => {
+  _modalMouseDownOnOverlay = e.target === document.getElementById('modalOverlay');
+});
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if(_modalMouseDownOnOverlay && e.target === document.getElementById('modalOverlay')) closeModal();
+});
 
 let toastTimer=null;
 window.showToast = (msg) => {
