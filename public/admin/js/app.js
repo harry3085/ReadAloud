@@ -2111,6 +2111,11 @@ window.deleteSelectedFolder = async() => {
 };
 
 // ── 시험 선택 액션 ──────────────────────────────────
+window.editSelectedTest = async() => {
+  const ids = getCheckedIds('testListBody');
+  if(ids.length !== 1){showToast('수정할 시험을 하나만 선택하세요.');return;}
+  openTestEditModal(ids[0]);
+};
 window.reprintSelectedTest = async() => {
   const ids = getCheckedIds('testListBody');
   if(ids.length !== 1){showToast('재출력할 시험을 하나만 선택하세요.');return;}
@@ -2389,9 +2394,6 @@ window.toggleTestProgress = async(testId) => {
       </div>`;
     });
 
-    html += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #eee;text-align:right;">
-      <button class="action-btn primary" onclick="openTestEditModal('${testId}')">✏️ 시험 수정</button>
-    </div>`;
     contentEl.innerHTML = html;
   }catch(e){ contentEl.textContent='불러오기 실패: '+e.message; }
 };
