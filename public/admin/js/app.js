@@ -1720,7 +1720,7 @@ window.showModal = (html) => {
   document.getElementById('modalContent').innerHTML=html;
   document.getElementById('modalOverlay').style.display='flex';
 };
-window.closeModal = () => { document.getElementById('modalOverlay').style.display='none'; };
+window.closeModal = () => { document.getElementById('modalOverlay').style.display='none'; document.getElementById('modalBox').style.width=''; };
 document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===document.getElementById('modalOverlay')) closeModal(); });
 
 let toastTimer=null;
@@ -2464,6 +2464,7 @@ window.openTestEditModal = async(testId) => {
       <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
       <button class="btn btn-primary" onclick="saveTestEdit('${testId}')" style="flex:1;justify-content:center;">저장</button>
     </div>`);
+  document.getElementById('modalBox').style.width = '900px';
 };
 
 window.addEditWordRow = () => {
