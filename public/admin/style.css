@@ -184,5 +184,9 @@ thead th.sortable[data-orig-text]{color:var(--teal);font-weight:700;}
 .ws-opt-btn{padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;flex:1;text-align:center;}
 .ws-opt-btn:hover{border-color:var(--teal);color:var(--teal);}
 .ws-opt-btn.active{background:var(--teal);border-color:var(--teal);color:white;}
+/* ── 모달 리사이즈 ── */
+#modalBox{overflow:auto;}
+#modalBox::-webkit-resizer{border-width:8px;border-style:solid;border-color:transparent var(--teal) var(--teal) transparent;border-radius:0 0 4px 0;}
+
 /* ── 토스트 ── */
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
