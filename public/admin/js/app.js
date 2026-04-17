@@ -5481,6 +5481,7 @@ window.moveToFolder = (id) => { showToast('폴더 이동 준비 중...'); };
 let _genPages = [], _genChapters = [], _genBooks = [];
 let _genImages = [];
 let _genCheckedPages = new Set(), _genCheckedChapters = new Set(), _genCheckedBooks = new Set();
+let _genActiveBook = null, _genActiveChapter = null, _genActivePage = null;
 let _genPageCur = 1;
 const _genPageSize = 20;
 
@@ -5531,6 +5532,7 @@ window.loadGenerator = async () => {
     _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
     _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
     _genCheckedPages.clear(); _genCheckedChapters.clear(); _genCheckedBooks.clear();
+    _genActiveBook = null; _genActiveChapter = null; _genActivePage = null;
     _genPageCur = 1;
     _genRenderAll();
   } catch(e) { showToast('Generator 로드 실패: '+e.message); }
@@ -5544,15 +5546,13 @@ function _genRenderAll() {
 }
 
 function _genFilteredChapters() {
-  if (_genCheckedBooks.size === 0) return _genChapters;
-  return _genChapters.filter(c => _genCheckedBooks.has(c.bookId));
+  if (!_genActiveBook) return _genChapters;
+  return _genChapters.filter(c => c.bookId === _genActiveBook);
 }
 
 function _genFilteredPages() {
-  if (_genCheckedChapters.size > 0)
-    return _genPages.filter(p => _genCheckedChapters.has(p.chapterId));
-  if (_genCheckedBooks.size > 0)
-    return _genPages.filter(p => _genCheckedBooks.has(p.bookId));
+  if (_genActiveChapter) return _genPages.filter(p => p.chapterId === _genActiveChapter);
+  if (_genActiveBook) return _genPages.filter(p => p.bookId === _genActiveBook);
   return _genPages;
 }
 
@@ -5569,14 +5569,15 @@ function _genRenderBooks() {
   el.innerHTML = _genBooks.map(b => {
     const chCnt = _genChapters.filter(c=>c.bookId===b.id).length;
     const pgCnt = _genPages.filter(p=>p.bookId===b.id).length;
+    const active = _genActiveBook === b.id;
     return `
-    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
-      <input type="checkbox" data-id="${b.id}" ${_genCheckedBooks.has(b.id)?'checked':''} onchange="genOnBookCheck(this)">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.name)}</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;background:${active?'var(--teal-light)':''};cursor:pointer;transition:background .1s;" onclick="genClickBook('${b.id}')">
+      <input type="checkbox" data-id="${b.id}" ${_genCheckedBooks.has(b.id)?'checked':''} onchange="genOnBookCheck(this)" onclick="event.stopPropagation()">
+      <div style="flex:1;min-width:0;pointer-events:none;">
+        <div style="font-weight:600;color:${active?'var(--teal)':'var(--text)'};font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.name)}</div>
         <div style="font-size:11px;color:var(--gray);">Ch ${chCnt} · Pg ${pgCnt}</div>
       </div>
-    </label>`;
+    </div>`;
   }).join('');
   _genToolbar('book');
 }
@@ -5594,14 +5595,15 @@ function _genRenderChapters() {
   if (cnt) cnt.textContent = filtered.length + '개';
   el.innerHTML = filtered.map(c => {
     const pgCnt = _genPages.filter(p=>p.chapterId===c.id).length;
+    const active = _genActiveChapter === c.id;
     return `
-    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
-      <input type="checkbox" data-id="${c.id}" ${_genCheckedChapters.has(c.id)?'checked':''} onchange="genOnChapterCheck(this)">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;background:${active?'var(--teal-light)':''};cursor:pointer;transition:background .1s;" onclick="genClickChapter('${c.id}')">
+      <input type="checkbox" data-id="${c.id}" ${_genCheckedChapters.has(c.id)?'checked':''} onchange="genOnChapterCheck(this)" onclick="event.stopPropagation()">
+      <div style="flex:1;min-width:0;pointer-events:none;">
+        <div style="font-weight:600;color:${active?'var(--teal)':'var(--text)'};font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.name)}</div>
         <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};">${c.bookId?esc(c.bookName||''):'미지정'} · Pg ${pgCnt}</div>
       </div>
-    </label>`;
+    </div>`;
   }).join('');
   _genToolbar('chapter');
 }
@@ -5621,14 +5623,17 @@ function _genRenderPages() {
     el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Page가 없습니다</div>';
     _genRenderPagePaging(0,0); _genToolbar('page'); return;
   }
-  el.innerHTML = slice.map(p => `
-    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;">
-      <input type="checkbox" data-id="${p.id}" ${_genCheckedPages.has(p.id)?'checked':''} onchange="genOnPageCheck(this)">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title||'Page '+p.serialNumber)}</div>
+  el.innerHTML = slice.map(p => {
+    const active = _genActivePage === p.id;
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;background:${active?'var(--teal-light)':''};cursor:pointer;transition:background .1s;" onclick="genClickPage('${p.id}')">
+      <input type="checkbox" data-id="${p.id}" ${_genCheckedPages.has(p.id)?'checked':''} onchange="genOnPageCheck(this)" onclick="event.stopPropagation()">
+      <div style="flex:1;min-width:0;pointer-events:none;">
+        <div style="font-weight:600;color:${active?'var(--teal)':'var(--text)'};font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title||'Page '+p.serialNumber)}</div>
         <div style="font-size:11px;color:${p.chapterId?'var(--gray)':'#bbb'};font-style:${p.chapterId?'normal':'italic'};">#${p.serialNumber} · ${p.chapterId?esc(p.chapterName||''):'미지정'}</div>
       </div>
-    </label>`).join('');
+    </div>`;
+  }).join('');
   _genRenderPagePaging(totalPgs, _genPageCur);
   _genToolbar('page');
   _genUpdateEditor();
@@ -5674,14 +5679,14 @@ function _genUpdateEditor() {
   const pidEl = document.getElementById('genEditPageId');
   const saveBtn = document.getElementById('genSaveBtn');
   if (!titleEl) return;
-  if (_genCheckedPages.size !== 1) {
-    titleEl.value=''; titleEl.disabled=true; titleEl.placeholder='Page를 1개 선택하세요';
+  if (!_genActivePage) {
+    titleEl.value=''; titleEl.disabled=true; titleEl.placeholder='Page를 클릭하면 편집할 수 있습니다';
     textEl.value=''; textEl.disabled=true;
     pidEl.value='';
     if(saveBtn) saveBtn.disabled=true;
     return;
   }
-  const pid = [..._genCheckedPages][0];
+  const pid = _genActivePage;
   const page = _genPages.find(p=>p.id===pid);
   if (!page) {
     titleEl.disabled=true; textEl.disabled=true; if(saveBtn) saveBtn.disabled=true; return;
@@ -5694,28 +5699,41 @@ function _genUpdateEditor() {
 
 window.genOnBookCheck = (cb) => {
   cb.checked ? _genCheckedBooks.add(cb.dataset.id) : _genCheckedBooks.delete(cb.dataset.id);
-  _genCheckedChapters.clear(); _genPageCur=1;
-  _genRenderBooks(); _genRenderChapters(); _genRenderPages();
+  _genToolbar('book'); _genRenderBooks();
 };
 window.genOnChapterCheck = (cb) => {
   cb.checked ? _genCheckedChapters.add(cb.dataset.id) : _genCheckedChapters.delete(cb.dataset.id);
-  _genPageCur=1;
-  _genRenderChapters(); _genRenderPages();
+  _genToolbar('chapter'); _genRenderChapters();
 };
 window.genOnPageCheck = (cb) => {
   cb.checked ? _genCheckedPages.add(cb.dataset.id) : _genCheckedPages.delete(cb.dataset.id);
-  _genToolbar('page'); _genUpdateEditor();
+  _genToolbar('page'); _genRenderPages();
+};
+window.genClickBook = (id) => {
+  _genActiveBook = _genActiveBook === id ? null : id;
+  _genActiveChapter = null;
+  _genPageCur = 1;
+  _genRenderBooks(); _genRenderChapters(); _genRenderPages();
+};
+window.genClickChapter = (id) => {
+  _genActiveChapter = _genActiveChapter === id ? null : id;
+  _genPageCur = 1;
+  _genRenderChapters(); _genRenderPages();
+};
+window.genClickPage = (id) => {
+  _genActivePage = _genActivePage === id ? null : id;
+  _genRenderPages();
 };
 window.genToggleCheckAll = (type, cb) => {
   if (type==='book') {
     _genBooks.forEach(b => cb.checked ? _genCheckedBooks.add(b.id) : _genCheckedBooks.delete(b.id));
-    _genRenderAll();
+    _genToolbar('book'); _genRenderBooks();
   } else if (type==='chapter') {
     _genFilteredChapters().forEach(c => cb.checked ? _genCheckedChapters.add(c.id) : _genCheckedChapters.delete(c.id));
-    _genRenderChapters(); _genRenderPages();
+    _genToolbar('chapter'); _genRenderChapters();
   } else {
     _genFilteredPages().forEach(p => cb.checked ? _genCheckedPages.add(p.id) : _genCheckedPages.delete(p.id));
-    _genRenderPages();
+    _genToolbar('page'); _genRenderPages();
   }
 };
 
