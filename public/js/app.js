@@ -2355,8 +2355,8 @@ window.loadRecHwList = async() => {
     await Promise.all(myHws.map(async hw=>{
       try{
         const snap2 = await getDocs(query(collection(db,'recSubmissions'),
-          where('hwId','==',hw.id)));
-        submittedMap.set(hw.id, snap2.docs.map(d=>d.data()).filter(d=>d.uid===myUid).map(d=>d.slot));
+          where('hwId','==',hw.id), where('uid','==',myUid)));
+        submittedMap.set(hw.id, snap2.docs.map(d=>d.data()).map(d=>d.slot));
       }catch(e){ submittedMap.set(hw.id,[]); }
     }));
 
@@ -2408,9 +2408,9 @@ window.openRecHwDetail = async(hwId) => {
   const myUid = currentUser.uid;
 
   // 기존 제출 내역 + URL 저장
-  const subSnap = await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hwId)));
+  const subSnap = await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hwId), where('uid','==',myUid)));
   const submittedUrls = {}; // slot → url
-  subSnap.docs.filter(d=>d.data().uid===myUid).forEach(d=>{
+  subSnap.docs.forEach(d=>{
     _recSubmittedSlots[d.data().slot] = true;
     submittedUrls[d.data().slot] = d.data().url;
   });
@@ -2615,8 +2615,8 @@ async function updateRecBadge(){
     let count = 0;
     await Promise.all(myHws.map(async hw=>{
       try{
-        const s=await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hw.id)));
-        const myCount=s.docs.filter(d=>d.data().uid===myUid).length;
+        const s=await getDocs(query(collection(db,'recSubmissions'), where('hwId','==',hw.id), where('uid','==',myUid)));
+        const myCount=s.docs.length;
         if(myCount<3){ count++; return; }
         // 제출 완료 후 미읽은 피드백 확인
         const fb=await getDocs(query(collection(db,'recFeedbacks'), where('hwId','==',hw.id), where('uid','==',myUid)));
