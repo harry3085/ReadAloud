@@ -1,0 +1,319 @@
+// api/generate-quiz.js
+// Google Gemini 3.1 Flash-Lite (Preview)로 객관식 4지선다 문제를 자동 생성
+// POST body: { pages: [{id, title, text}], count?: number, type?: 'mcq' }
+// Response: { success, questions: [...] }
+//
+// 환경변수: GEMINI_API_KEY (Google AI Studio에서 발급)
+
+// 모델 폴백 체인: Preview가 불안정할 수 있으므로 실패 시 안정판으로 자동 전환
+const GEMINI_MODELS = [
+  'gemini-3.1-flash-lite-preview',  // 1순위 (빠르고 저렴, Preview)
+  'gemini-2.5-flash',                // 2순위 (안정판 폴백)
+];
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+// ─── 문제 타입별 시스템 프롬프트 ───
+const SYSTEM_PROMPTS = {
+  mcq: `You are an English reading comprehension quiz generator for Korean middle/high school students.
+
+Your task is to create 4-choice multiple-choice questions based on given English passages.
+
+RULES:
+1. Questions should test reading comprehension:
+   - Main idea / purpose
+   - Specific details (who, what, when, where, why, how)
+   - Inference (what the author implies)
+   - Vocabulary in context
+   Avoid trivial yes/no questions.
+
+2. Questions must be answerable ONLY from the given passage (no external knowledge needed).
+
+3. For each question:
+   - Write the question in English (natural, grammatically correct)
+   - Provide a Korean translation of the question (for student comprehension aid)
+   - Create exactly 4 answer choices in English
+   - Exactly ONE choice must be correct
+   - Wrong choices (distractors) should be plausible but clearly wrong to a careful reader
+   - Wrong choices should be similar in length and style to the correct answer
+   - Do NOT make wrong choices obviously absurd
+
+4. Difficulty distribution (if generating multiple):
+   - About 30% easy (direct factual)
+   - About 50% medium (requires careful reading)
+   - About 20% hard (requires inference or integration)
+
+5. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "mcq",
+      "question": "What did the character decide to do at the end?",
+      "questionKo": "주인공은 마지막에 무엇을 하기로 결정했나요?",
+      "choices": [
+        { "text": "Come back tomorrow with a flashlight", "isAnswer": true },
+        { "text": "Call her parents immediately", "isAnswer": false },
+        { "text": "Enter the barn right away", "isAnswer": false },
+        { "text": "Tell her teacher the next day", "isAnswer": false }
+      ],
+      "explanation": "The passage says 'They decided to come back tomorrow with a flashlight.'",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+};
+
+module.exports = async function handler(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).end();
+  }
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
+    }
+
+    const { pages, count, type } = req.body || {};
+
+    // ─── 입력 검증 ───
+    if (!Array.isArray(pages) || pages.length === 0) {
+      return res.status(400).json({ error: 'pages array is required' });
+    }
+    if (pages.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 pages per request' });
+    }
+    const targetCount = Math.min(Math.max(parseInt(count) || 5, 1), 20);
+    const quizType = type || 'mcq';
+
+    if (!SYSTEM_PROMPTS[quizType]) {
+      return res.status(400).json({
+        error: `Type "${quizType}" not supported. Supported: ${Object.keys(SYSTEM_PROMPTS).join(', ')}`,
+      });
+    }
+
+    // ─── 본문 전처리 ───
+    const MAX_CHARS_PER_PAGE = 3000;
+    const normalizedPages = pages.map(p => ({
+      id: String(p.id || '').slice(0, 100),
+      title: String(p.title || '').slice(0, 200),
+      text: String(p.text || '').trim().slice(0, MAX_CHARS_PER_PAGE),
+    })).filter(p => p.text.length > 20);
+
+    if (normalizedPages.length === 0) {
+      return res.status(400).json({ error: 'No valid page content (min 20 chars per page)' });
+    }
+
+    // ─── 프롬프트 구성 ───
+    const systemPrompt = SYSTEM_PROMPTS[quizType];
+    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType);
+
+    // ─── Gemini API 호출 (폴백 체인) ───
+    let lastError = null;
+    let usedModel = null;
+    let rawText = null;
+    let usage = null;
+
+    for (const model of GEMINI_MODELS) {
+      try {
+        const result = await callGemini(model, apiKey, systemPrompt, userPrompt);
+        if (result.ok) {
+          usedModel = model;
+          rawText = result.text;
+          usage = result.usage;
+          break;
+        }
+        lastError = result.error;
+        // 4xx는 모델 문제라기보단 입력/할당량 문제일 수 있음 — 폴백해도 소용없을 가능성
+        if (result.status && result.status >= 400 && result.status < 500 && result.status !== 404) {
+          // 404는 모델 이름 오류일 수 있으니 다음 모델로 폴백
+          return res.status(502).json({
+            error: 'AI service error',
+            detail: lastError,
+            model,
+          });
+        }
+      } catch (e) {
+        lastError = e.message;
+        console.warn(`Model ${model} failed, trying next:`, e.message);
+      }
+    }
+
+    if (!rawText) {
+      return res.status(502).json({
+        error: 'All AI models failed',
+        detail: lastError,
+        triedModels: GEMINI_MODELS,
+      });
+    }
+
+    // ─── 응답 파싱 ───
+    const parsed = parseAIResponse(rawText);
+    if (!parsed) {
+      return res.status(502).json({
+        error: 'Failed to parse AI response',
+        rawSnippet: rawText.slice(0, 500),
+        model: usedModel,
+      });
+    }
+
+    // ─── 결과 검증 & 정제 ───
+    const validators = { mcq: validateMCQ };
+    const validated = validators[quizType](parsed.questions || [], normalizedPages);
+
+    return res.status(200).json({
+      success: true,
+      type: quizType,
+      model: usedModel,
+      requestedCount: targetCount,
+      returnedCount: validated.length,
+      questions: validated,
+      usage,
+    });
+  } catch (err) {
+    console.error('generate-quiz error:', err);
+    return res.status(500).json({ error: err.message || 'Internal error' });
+  }
+};
+
+async function callGemini(model, apiKey, systemPrompt, userPrompt) {
+  const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      temperature: 0.7,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      responseMimeType: 'application/json', // JSON 모드
+    },
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Gemini ${model} error:`, res.status, errText.slice(0, 300));
+    return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText.slice(0, 200)}` };
+  }
+
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts || [])
+    .map(p => p.text || '')
+    .join('');
+
+  if (!text) {
+    const finishReason = data.candidates?.[0]?.finishReason;
+    return {
+      ok: false,
+      error: `Empty response (finishReason: ${finishReason || 'unknown'})`,
+    };
+  }
+
+  return { ok: true, text, usage: data.usageMetadata || null };
+}
+
+function buildUserPrompt(pages, count, type) {
+  const passages = pages.map((p, i) =>
+    `[Passage ${i + 1}]\nID: ${p.id}\nTitle: ${p.title}\n---\n${p.text}\n---`
+  ).join('\n\n');
+
+  const typeInstructions = {
+    mcq: `Please generate ${count} 4-choice multiple-choice questions.
+- Distribute questions across all passages (if multiple)
+- Include sourcePageId matching the passage the question is based on
+- Vary difficulty levels`,
+  };
+
+  return `${typeInstructions[type]}
+
+${passages}
+
+Output ONLY the JSON object, nothing else.`;
+}
+
+function parseAIResponse(text) {
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) return null;
+
+  const jsonStr = cleaned.slice(firstBrace, lastBrace + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
+
+function validateMCQ(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const question = String(q.question || '').trim();
+      const questionKo = String(q.questionKo || '').trim();
+      if (!question || question.length < 5) return null;
+
+      if (!Array.isArray(q.choices) || q.choices.length !== 4) return null;
+
+      const choices = q.choices
+        .map(c => {
+          if (!c || typeof c !== 'object') return null;
+          const text = String(c.text || '').trim();
+          if (!text || text.length > 300) return null;
+          return { text, isAnswer: c.isAnswer === true };
+        })
+        .filter(Boolean);
+
+      if (choices.length !== 4) return null;
+
+      // 정답이 정확히 하나인지
+      const answerCount = choices.filter(c => c.isAnswer).length;
+      if (answerCount !== 1) return null;
+
+      // 중복 보기 제거
+      const uniqueTexts = new Set(choices.map(c => c.text.toLowerCase()));
+      if (uniqueTexts.size !== 4) return null;
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId
+        : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty
+        : 'medium';
+
+      return {
+        type: 'mcq',
+        question,
+        questionKo,
+        choices,
+        explanation: String(q.explanation || '').trim().slice(0, 500),
+        sourcePageId,
+        sourcePageTitle,
+        difficulty,
+      };
+    })
+    .filter(Boolean);
+}

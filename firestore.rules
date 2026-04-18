@@ -156,5 +156,16 @@ service cloud.firestore {
     match /genPages/{id} {
       allow read, write: if isAdmin();
     }
+
+    // ── AI 문제 세트 (관리자 전용) ────────────────────────
+    match /genQuestionSets/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── AI 시험 배정 (관리자 작성, 학생 읽기) ─────────────
+    match /genTests/{testId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }
