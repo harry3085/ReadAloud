@@ -5864,7 +5864,10 @@ window.genSavePage = async () => {
   if (!pid||!title){ showToast('제목을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
-    showToast('저장 완료'); await loadGenerator();
+    const page = _genPages.find(p=>p.id===pid);
+    if (page) { page.title = title; page.text = text||''; page.edited = true; }
+    showToast('저장 완료');
+    _genRenderPages();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
