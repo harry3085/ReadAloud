@@ -5892,19 +5892,14 @@ window.genMovePages = async () => {
   showModal(`
     <div style="font-size:16px;font-weight:700;margin-bottom:12px;">&#8594; Chapter 이동</div>
     <div style="font-size:13px;color:var(--gray);margin-bottom:10px;">${_genCheckedPages.size}개 Page 이동</div>
-    <div id="genChapterList" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
       ${_genChapters.map(c=>`
-        <div class="gen-assign-item" data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
-          <div style="font-weight:600;font-size:13px;">${esc(c.name)}</div>
-          <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
+        <div data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" onclick="window.genDoMovePages(this.dataset.cid,this.dataset.bid,this.dataset.bname,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+          <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(c.name)}</div>
+          <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};pointer-events:none;">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
         </div>`).join('')}
     </div>
     <div style="margin-top:10px;"><button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;">취소</button></div>`);
-  document.getElementById('genChapterList').addEventListener('click', e => {
-    const item = e.target.closest('.gen-assign-item');
-    if (!item) return;
-    genDoMovePages(item.dataset.cid, item.dataset.bid, item.dataset.bname, item.dataset.cname);
-  });
 };
 window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
   try {
