@@ -190,6 +190,12 @@ recSubmissions: hwId(ASC) + uid(ASC)
 - **수정**: `loadRecHwList`, `openRecHwDetail`, `updateRecBadge` 3곳에 `where('uid','==',myUid)` 추가
 - **파일**: `public/js/app.js`
 
+### 학생앱 스펠링 시험 모바일 키보드 자동완성 (2026-04-18)
+- **원인**: 숨겨진 `<input type="text">`에 `autocomplete="off"` 등을 설정해도 iOS/Android 키보드의 예측 텍스트(QuickType)는 HTML 속성으로 차단 불가
+- **수정**: `type="text"` → `type="search"` 변경. iOS는 검색 필드에 예측 텍스트 바를 표시하지 않으며, 비밀번호 관리자(열쇠/카드 아이콘)도 트리거하지 않음
+- **시도했으나 부작용 있던 방법**: `type="password"` → 예측 텍스트 차단되지만 iCloud Keychain·Google 비밀번호 관리자 아이콘이 키패드 위에 표시됨
+- **파일**: `public/index.html` line 288
+
 ## 작업 규칙 (중요)
 1. **XSS**: 모든 사용자 데이터는 `esc()` 필수
 2. **confirm/alert 금지**: `showConfirm()` / `showToast()` 사용
