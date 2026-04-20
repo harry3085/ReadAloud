@@ -8223,7 +8223,12 @@ function _tpRender() {
 
       </div>
 
-      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;height:280px;flex-shrink:0;">
+      <!-- 상·하 수직 리사이저 -->
+      <div id="tpVResizer" title="드래그하여 상·하 비율 조정" style="height:8px;cursor:row-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;">
+        <div style="width:40px;height:2px;background:var(--border);border-radius:1px;"></div>
+      </div>
+
+      <div id="tpBottomSection" style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;height:280px;flex-shrink:0;min-height:120px;">
         <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-weight:700;font-size:14px;">${cfg.printOnly ? '🖨 시험지 출력' : '📊 최근 시험'} <span style="color:var(--gray);font-weight:400;font-size:12px;">· ${esc(cfg.kindLabel)} 유형</span></div>
@@ -8249,6 +8254,7 @@ function _tpRender() {
   `;
 
   _tpAttachResizer();
+  _tpAttachVResizer();
 }
 
 function _tpAttachResizer() {
@@ -8279,6 +8285,45 @@ function _tpAttachResizer() {
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  resizer.addEventListener('mouseenter', () => { resizer.style.background = 'var(--teal-light)'; });
+  resizer.addEventListener('mouseleave', () => { resizer.style.background = 'transparent'; });
+}
+
+// 상·하 비율 리사이저 (시험관리 전 서브메뉴 공통)
+function _tpAttachVResizer() {
+  const bottom = document.getElementById('tpBottomSection');
+  const resizer = document.getElementById('tpVResizer');
+  if (!bottom || !resizer) return;
+
+  // 복원
+  const saved = parseInt(localStorage.getItem('test_assign_bottom_height_px'), 10);
+  if (saved && saved >= 120 && saved <= 2000) {
+    bottom.style.height = saved + 'px';
+  }
+
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const container = bottom.parentElement;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev) => {
+      // 마우스 Y 기준 하단 높이 = 컨테이너 하단 - 마우스 Y - 리사이저 높이/2
+      let newH = rect.bottom - ev.clientY;
+      newH = Math.max(120, Math.min(rect.height - 180, newH));  // 상단 최소 180px 보장
+      bottom.style.height = newH + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      try { localStorage.setItem('test_assign_bottom_height_px', String(parseInt(bottom.style.height))); } catch {}
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'row-resize';
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
