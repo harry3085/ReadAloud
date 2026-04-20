@@ -1733,9 +1733,25 @@ window.loadPersonalScore = async(uid) => {
 };
 
 // ── 공통 유틸 ─────────────────────────────────────────
-window.showModal = (html) => {
-  document.getElementById('modalContent').innerHTML=html;
-  document.getElementById('modalOverlay').style.display='flex';
+window.showModal = (html, opts = {}) => {
+  document.getElementById('modalContent').innerHTML = html;
+  const box = document.getElementById('modalBox');
+  if (opts.fullFlex) {
+    // 내부 콘텐츠가 자체 flex-column 으로 푸터를 하단 고정하는 전용 모드
+    box.style.padding = '0';
+    box.style.overflow = 'hidden';
+    box.style.width = '';
+    box.style.maxWidth = '94vw';
+    box.style.height = '90vh';
+    box.style.maxHeight = '90vh';
+  } else {
+    // 기본 스타일 원복 (이전 fullFlex 모달의 잔여 스타일 제거)
+    box.style.padding = '';
+    box.style.overflow = '';
+    box.style.height = '';
+    box.style.maxHeight = '';
+  }
+  document.getElementById('modalOverlay').style.display = 'flex';
 };
 window.closeModal = () => { document.getElementById('modalOverlay').style.display='none'; document.getElementById('modalBox').style.width=''; };
 // 리사이즈 드래그 후 오버레이에서 mouseup 시 닫히는 문제 방지
@@ -7754,32 +7770,32 @@ function _qsRenderEditModal() {
   if (!st) return;
   const typeLabel = { mcq:'객관식', fill_blank:'빈칸채우기' }[st.sourceType] || st.sourceType;
   const html = `
-    <div style="width:min(860px,94vw);max-height:90vh;display:flex;flex-direction:column;">
-      <div style="padding:16px 22px;border-bottom:1px solid var(--border);">
+    <div style="width:min(860px,94vw);height:100%;display:flex;flex-direction:column;min-height:0;">
+      <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:17px;font-weight:700;">✏️ 문제 세트 수정</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
       </div>
 
-      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;">
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;flex-shrink:0;">
         <label style="font-size:11px;font-weight:700;color:var(--gray);">세트 이름</label>
         <input type="text" id="qsEditName" value="${esc(st.name)}"
           style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
       </div>
 
-      <div id="qsEditQuestions" style="padding:14px 22px;flex:1;overflow-y:auto;">
+      <div id="qsEditQuestions" style="padding:14px 22px;flex:1;overflow-y:auto;min-height:0;">
         ${st.questions.map((q,i) => _qsRenderEditQuestion(q,i)).join('')}
       </div>
 
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;background:white;flex-shrink:0;">
         <div style="flex:1;font-size:11px;color:var(--gray);">
-          ${st.sourceType==='fill_blank' ? '※ 문장 내 ___ 개수 = 정답 개수여야 저장됩니다' : '※ 각 문제에 정답(라디오)이 정확히 1개여야 합니다'}
+          ${st.sourceType==='fill_blank' ? '※ 문장 내 ___ 개수 = 정답 개수여야 저장됩니다' : (st.sourceType==='mcq' ? '※ 각 문제에 정답(라디오)이 정확히 1개여야 합니다' : '※ 필수 항목을 모두 입력하세요')}
         </div>
         <button class="btn btn-secondary" onclick="qsCloseEdit()">취소</button>
         <button class="btn btn-primary" onclick="qsSaveEdits()" style="font-weight:700;">💾 저장하기</button>
       </div>
     </div>
   `;
-  showModal(html);
+  showModal(html, { fullFlex: true });
 }
 
 function _qsRenderEditQuestion(q, idx) {
