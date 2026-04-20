@@ -101,6 +101,44 @@ RULES:
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
+  recording: `You are an English reading-aloud exercise generator for Korean middle/high school students.
+
+Your task is to pick sentences from given English passages that students will READ ALOUD and RECORD for pronunciation practice.
+
+RULES:
+1. Pick ONE sentence per question, directly from the passage (unmodified).
+
+2. Prefer sentences that are:
+   - 6 ~ 20 words long (not too short, not too long for single recording)
+   - Complete grammatical sentences (start with capital, end with . ! ?)
+   - Containing varied vocabulary useful for pronunciation practice
+   - Avoiding quoted dialogue unless clean and short
+
+3. Skip: incomplete fragments, headers, page numbers, overly complex technical sentences.
+
+4. questionKo field: Use simple instruction like "다음 문장을 큰 소리로 읽고 녹음하세요." (can vary slightly).
+
+5. Difficulty (by sentence length and vocabulary):
+   - easy: simple common words, 6-10 words
+   - medium: 10-15 words or some complex vocabulary
+   - hard: 15+ words or advanced vocabulary
+
+6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "recording",
+      "sentence": "The young boy learned to read quickly every day.",
+      "questionKo": "다음 문장을 큰 소리로 읽고 녹음하세요.",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+
   fill_blank: `You are an English fill-in-the-blank exercise generator for Korean middle/high school students.
 
 Your task is to create fill-in-the-blank questions based on given English passages.
@@ -256,7 +294,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 결과 검증 & 정제 ───
-    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank, subjective: validateSubjective };
+    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank, subjective: validateSubjective, recording: validateRecording };
     const validated = validators[quizType](parsed.questions || [], normalizedPages);
 
     return res.status(200).json({
@@ -337,6 +375,11 @@ function buildUserPrompt(pages, count, type, opts) {
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
 - Vary difficulty levels.`,
+    recording: `Please generate ${count} read-aloud (recording) sentence questions.
+- Pick sentences directly from the given passages (do NOT modify them).
+- Distribute across all passages (if multiple).
+- Include sourcePageId for the source passage.
+- Prefer 6-20 word sentences with varied pronunciation practice value.`,
   };
 
   return `${typeInstructions[type]}
@@ -497,6 +540,45 @@ function validateSubjective(questions, pages) {
         questionKo,
         sampleAnswerKo,
         explanation: String(q.explanation || '').trim().slice(0, 500),
+        sourcePageId,
+        sourcePageTitle,
+        difficulty,
+      };
+    })
+    .filter(Boolean);
+}
+
+function validateRecording(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const sentence = String(q.sentence || '').trim();
+      if (!sentence || sentence.length < 10 || sentence.length > 300) return null;
+
+      const wordCount = sentence.split(/\s+/).length;
+      if (wordCount < 4 || wordCount > 30) return null;
+
+      const questionKo = String(q.questionKo || '다음 문장을 큰 소리로 읽고 녹음하세요.').trim();
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId
+        : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty
+        : 'medium';
+
+      return {
+        type: 'recording',
+        sentence,
+        questionKo,
         sourcePageId,
         sourcePageTitle,
         difficulty,

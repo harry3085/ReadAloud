@@ -6221,13 +6221,13 @@ const QG_TYPE_OPTIONS = {
     ],
   },
   'recording': {
-    label: '비아숙제',
+    label: '녹음숙제',
     icon: '🎤',
-    enabled: false,
-    phaseLabel: 'Phase 5',
-    noteHint: 'Phase 5 에서 본문 문장 자동 추출이 활성화됩니다. 문제수 기본 1개 (선택된 Page 범위의 문장들을 추출).',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문에서 읽기·녹음에 적합한 문장을 AI 가 선별합니다. (기존 녹음숙제 관리와 별도로 운영)',
     options: [
-      { key:'count',     label:'문제수',   type:'number', default:1, min:1, max:30 },
+      { key:'count',     label:'문제수',   type:'number', default:5, min:1, max:30 },
       { key:'passScore', label:'통과점수', type:'number', default:80, min:0, max:100 },
     ],
   },
@@ -6703,6 +6703,8 @@ window.qgGenerate = async () => {
     await _qgCallFillBlank(opts);
   } else if (type === 'subjective') {
     await _qgCallSubjective(opts);
+  } else if (type === 'recording') {
+    await _qgCallRecording(opts);
   } else {
     showToast('지원되지 않는 유형입니다');
   }
@@ -6963,6 +6965,51 @@ async function _qgCallSubjective(opts) {
   }
 }
 
+// ─── Recording API 호출 (Phase 5) ───
+async function _qgCallRecording(opts) {
+  const btn = document.getElementById('qgGenBtn');
+  const status = document.getElementById('qgStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+
+  const selectedPages = (_genPages||[])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
+
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'recording',
+        customSystemPrompt: _qgGetCustomPrompt('recording') || undefined,
+      }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now()-t0)/1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
+      return;
+    }
+
+    _qgGenerated = data.questions || [];
+    _qgExcluded.clear();
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
+
+    _qgShowResultModal(data);
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ─── 기본 세트 이름: Chapter · PageTitle 조합 ───
 function _qgBuildDefaultName() {
   const pageIds = [...new Set(_qgGenerated.map(q => q.sourcePageId).filter(Boolean))];
@@ -7061,6 +7108,12 @@ function _qgRenderQuestion(q, idx) {
         ${q.sampleAnswerKo ? esc(q.sampleAnswerKo) : '<span style="color:#999;font-style:italic;">(답안 없음 — 시험지에 빈 답란만 표시)</span>'}
       </div>
     `;
+  } else if (q.type === 'recording') {
+    body = `
+      <div style="font-size:11px;color:#7C3AED;font-weight:700;margin-bottom:5px;">🎤 녹음 대상 문장</div>
+      <div style="font-size:14px;line-height:1.7;padding:10px 14px;background:#F5F3FF;border-left:3px solid #8B5CF6;margin-bottom:6px;">${esc(q.sentence)}</div>
+      <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
+    `;
   } else {
     body = `
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${esc(q.question)}</div>
@@ -7075,7 +7128,7 @@ function _qgRenderQuestion(q, idx) {
     `;
   }
 
-  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : '📖';
+  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : q.type==='recording' ? '🎤' : '📖';
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;${excluded?'opacity:0.35;background:#fafafa;':''}">
     <div style="display:flex;gap:10px;align-items:start;">
       <input type="checkbox" ${excluded?'':'checked'} onchange="qgToggleExclude(${idx})" style="margin-top:3px;">
@@ -7877,9 +7930,9 @@ const _TEST_TYPE_CONFIG = {
     kindLabel: '녹음',
     sourceType: 'recording',
     testMode: 'recording-ai',
-    enabled: false,
-    phaseLabel: 'Phase 5',
-    hint: 'Phase 5 에서 AI 녹음 문장 추출·배정이 활성화됩니다. 완성 시 좌측 "🎤 녹음숙제 관리" 섹션을 대체합니다.',
+    enabled: true,
+    phaseLabel: null,
+    hint: 'AI 가 본문에서 녹음 대상 문장을 선별합니다. 기존 "녹음숙제 관리"는 별도로 이어집니다 (두 시스템 병행).',
   },
 };
 
@@ -8770,7 +8823,7 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 // 사용자 정의 프롬프트는 localStorage('ai_prompt_custom_<type>') 에 저장되어
 // 관리자 디바이스별로 독립 관리. 저장된 경우 생성 API 호출 시 동반 전송.
 
-const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective'];
+const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording'];
 const _qgAiPromptDefaults = {};  // API GET 으로 로드 후 캐시
 let _qgPromptEditingType = 'mcq';
 

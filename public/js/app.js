@@ -1110,6 +1110,331 @@ window.quitFillBlank = async () => {
   goHome();
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AI 녹음숙제 (genTests.testMode='recording-ai') - Phase 5
+// 기존 recHw 시스템과 별도. 독립적 화면/로직.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _raState = {
+  test: null,
+  questions: [],
+  currentIdx: 0,
+  recordings: [],
+  mediaRecorder: null,
+  stream: null,
+  chunks: [],
+  isRecording: false,
+  timerInterval: null,
+  timerStart: 0,
+};
+let _raScreenTemplate = null;
+
+window.startRecAi = async (testId, testName) => {
+  try{
+    const snap = await getDoc(doc(db,'genTests',testId));
+    if(!snap.exists()){ showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    const questions = (test.questions || []).filter(q => q.type === 'recording' || q.sentence);
+    if(questions.length === 0){ showToast('녹음할 문장이 없습니다.'); return; }
+
+    // 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 복원
+    const screen = document.getElementById('recAiQuiz');
+    if(screen && _raScreenTemplate && !screen.querySelector('#raProgressBar')){
+      screen.innerHTML = _raScreenTemplate;
+    } else if(screen && !_raScreenTemplate){
+      _raScreenTemplate = screen.innerHTML;
+    }
+
+    _raState = {
+      test,
+      questions,
+      currentIdx: 0,
+      recordings: questions.map(() => null),
+      mediaRecorder: null,
+      stream: null,
+      chunks: [],
+      isRecording: false,
+      timerInterval: null,
+      timerStart: 0,
+    };
+
+    show('recAiQuiz');
+    _raRenderStep();
+  }catch(e){
+    console.error(e);
+    showToast('시험 시작 실패: ' + e.message);
+  }
+};
+
+function _raRenderStep(){
+  const s = _raState;
+  const q = s.questions[s.currentIdx];
+  if(!q) return;
+
+  const pct = Math.round(((s.currentIdx+1) / s.questions.length) * 100);
+  const bar = document.getElementById('raProgressBar');
+  const txt = document.getElementById('raProgressText');
+  if(bar) bar.style.width = pct + '%';
+  if(txt) txt.textContent = `${s.currentIdx+1} / ${s.questions.length}`;
+
+  const qKoEl = document.getElementById('raQuestionKo');
+  if(qKoEl) qKoEl.textContent = q.questionKo || '다음 문장을 큰 소리로 읽고 녹음하세요.';
+  const sentEl = document.getElementById('raSentence');
+  if(sentEl) sentEl.textContent = q.sentence || '';
+
+  _raResetRecordingUI();
+
+  const existing = s.recordings[s.currentIdx];
+  if(existing?.url){
+    const audio = document.getElementById('raAudio');
+    if(audio) audio.src = existing.url;
+    const playback = document.getElementById('raPlaybackArea');
+    if(playback) playback.style.display = 'block';
+    const next = document.getElementById('raNextBtn');
+    if(next){
+      next.disabled = false;
+      next.style.background = s.currentIdx === s.questions.length-1 ? '#059669' : '#8B5CF6';
+      next.style.color = 'white';
+      next.style.cursor = 'pointer';
+      next.textContent = s.currentIdx === s.questions.length-1 ? '제출하기' : '다음';
+    }
+  }
+}
+
+function _raResetRecordingUI(){
+  const btn = document.getElementById('raRecBtn');
+  if(btn){ btn.style.background = '#8B5CF6'; btn.textContent = '🎤'; }
+  const status = document.getElementById('raRecStatus');
+  if(status) status.textContent = '버튼을 눌러 녹음 시작';
+  const timer = document.getElementById('raRecTimer');
+  if(timer) timer.textContent = '00:00';
+  const playback = document.getElementById('raPlaybackArea');
+  if(playback) playback.style.display = 'none';
+  const next = document.getElementById('raNextBtn');
+  if(next){
+    next.disabled = true;
+    next.style.background = '#ddd';
+    next.style.color = '#888';
+    next.style.cursor = 'not-allowed';
+    next.textContent = '녹음 후 다음';
+  }
+}
+
+window.raToggleRecord = async () => {
+  const s = _raState;
+  if(s.isRecording) await _raStopRecording();
+  else await _raStartRecording();
+};
+
+async function _raStartRecording(){
+  const s = _raState;
+  try{
+    s.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
+    s.mediaRecorder = new MediaRecorder(s.stream, { mimeType: mime });
+    s.chunks = [];
+
+    s.mediaRecorder.ondataavailable = (e) => {
+      if(e.data.size > 0) s.chunks.push(e.data);
+    };
+    s.mediaRecorder.onstop = () => _raFinalizeRecording(mime);
+
+    s.mediaRecorder.start();
+    s.isRecording = true;
+    s.timerStart = Date.now();
+
+    const btn = document.getElementById('raRecBtn');
+    if(btn){ btn.style.background = '#dc2626'; btn.textContent = '⏹'; }
+    const status = document.getElementById('raRecStatus');
+    if(status) status.textContent = '녹음 중... 버튼 눌러 종료';
+
+    s.timerInterval = setInterval(() => {
+      const sec = Math.floor((Date.now() - s.timerStart) / 1000);
+      const mm = String(Math.floor(sec/60)).padStart(2,'0');
+      const ss = String(sec%60).padStart(2,'0');
+      const t = document.getElementById('raRecTimer');
+      if(t) t.textContent = `${mm}:${ss}`;
+      if(sec >= 120){ _raStopRecording(); }
+    }, 200);
+  }catch(e){
+    console.error(e);
+    showToast('마이크 접근 실패: ' + (e.message || '권한을 허용해주세요'));
+  }
+}
+
+async function _raStopRecording(){
+  const s = _raState;
+  if(!s.mediaRecorder || !s.isRecording) return;
+  s.mediaRecorder.stop();
+  s.stream?.getTracks()?.forEach(t => t.stop());
+  s.isRecording = false;
+  if(s.timerInterval){ clearInterval(s.timerInterval); s.timerInterval = null; }
+}
+
+function _raFinalizeRecording(mime){
+  const s = _raState;
+  const blob = new Blob(s.chunks, { type: mime });
+  const url = URL.createObjectURL(blob);
+  const duration = Math.floor((Date.now() - s.timerStart) / 1000);
+
+  s.recordings[s.currentIdx] = { audioBlob: blob, duration, url, mime };
+
+  const btn = document.getElementById('raRecBtn');
+  if(btn){ btn.style.background = '#8B5CF6'; btn.textContent = '🎤'; }
+  const status = document.getElementById('raRecStatus');
+  if(status) status.textContent = '✓ 녹음 완료 · 아래 재생해보세요';
+  const audio = document.getElementById('raAudio');
+  if(audio) audio.src = url;
+  const playback = document.getElementById('raPlaybackArea');
+  if(playback) playback.style.display = 'block';
+  const next = document.getElementById('raNextBtn');
+  if(next){
+    next.disabled = false;
+    next.style.background = s.currentIdx === s.questions.length-1 ? '#059669' : '#8B5CF6';
+    next.style.color = 'white';
+    next.style.cursor = 'pointer';
+    next.textContent = s.currentIdx === s.questions.length-1 ? '제출하기' : '다음';
+  }
+}
+
+window.raRestart = () => {
+  const s = _raState;
+  const existing = s.recordings[s.currentIdx];
+  if(existing?.url) URL.revokeObjectURL(existing.url);
+  s.recordings[s.currentIdx] = null;
+  _raResetRecordingUI();
+};
+
+window.raNext = async () => {
+  const s = _raState;
+  if(s.currentIdx < s.questions.length - 1){
+    s.currentIdx++;
+    _raRenderStep();
+  } else {
+    await _raSubmit();
+  }
+};
+
+async function _raSubmit(){
+  const s = _raState;
+  const t = s.test;
+  if(!t || !currentUser) return;
+
+  const missing = s.recordings.findIndex(r => !r);
+  if(missing !== -1){
+    const ok = await showConfirm(`${missing+1}번 문제가 녹음되지 않았어요`, '되돌아가서 녹음하시겠어요?');
+    if(ok){
+      s.currentIdx = missing;
+      _raRenderStep();
+    }
+    return;
+  }
+
+  const screen = document.getElementById('recAiQuiz');
+  const sc = screen?.querySelector('.scroll-content');
+  if(sc){
+    sc.innerHTML = `
+      <div style="padding:60px 20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">⬆️</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">업로드 중...</div>
+        <div id="raUploadProgress" style="font-size:12px;color:var(--gray);">0 / ${s.questions.length}</div>
+      </div>`;
+  }
+
+  try{
+    const storage = getStorage();
+    const uploadedUrls = [];
+    for(let i = 0; i < s.recordings.length; i++){
+      const rec = s.recordings[i];
+      const ext = rec.mime.includes('mp4') ? 'm4a' : 'webm';
+      const path = `recordings/genTests/${t.id}/${currentUser.uid}/q${i+1}_${Date.now()}.${ext}`;
+      const r = ref(storage, path);
+      await uploadBytes(r, rec.audioBlob);
+      const url = await getDownloadURL(r);
+      uploadedUrls.push({ questionIdx: i, sentence: s.questions[i].sentence, url, duration: rec.duration });
+      const prog = document.getElementById('raUploadProgress');
+      if(prog) prog.textContent = `${i+1} / ${s.questions.length}`;
+    }
+
+    const today = new Date().toISOString().slice(0,10);
+
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid,
+      userId: currentUser.uid,
+      userName: userProfile?.name || '',
+      name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id,
+      testName: t.name || '',
+      unitId: t.id,
+      unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'recording-ai',
+      score: 100,
+      correct: s.questions.length,
+      wrong: 0,
+      total: s.questions.length,
+      passed: true,
+      passScore: t.passScore ?? 80,
+      recordings: uploadedUrls,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+
+    try{
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score: 100,
+          date: today,
+          recordings: uploadedUrls,
+          completedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }catch(e){ console.warn('genTest 완료 기록 실패', e); }
+
+    _raRenderResult(uploadedUrls.length);
+  }catch(e){
+    console.error(e);
+    showToast('업로드 실패: ' + e.message);
+    _raRenderStep();
+  }
+}
+
+function _raRenderResult(count){
+  const screen = document.getElementById('recAiQuiz');
+  if(!screen) return;
+  if(!_raScreenTemplate) _raScreenTemplate = screen.innerHTML;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:72px;margin-bottom:12px;">🎉</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">녹음 제출 완료!</div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">${count}개 문장 녹음이 저장되었어요</div>
+      <div style="background:white;border-radius:16px;padding:20px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;">
+        <div style="font-size:12px;color:var(--gray);">선생님이 확인 후 피드백을 주실 거예요</div>
+      </div>
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
+        <button onclick="goRecHw()" style="flex:1;padding:14px;background:#8B5CF6;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">숙제 목록</button>
+      </div>
+    </div>
+  `;
+  updateRecBadge();
+}
+
+window.quitRecAi = async () => {
+  const s = _raState;
+  if(s.isRecording) await _raStopRecording();
+  if(!(await showConfirm('녹음을 중단할까요?','지금까지의 녹음은 저장되지 않습니다.'))) return;
+  s.recordings.forEach(r => r?.url && URL.revokeObjectURL(r.url));
+  goHome();
+};
+
 window.goUnscramble = async()=>{
   const elP=document.getElementById('unscListPending');
   const elC=document.getElementById('unscListCompleted');
@@ -3112,16 +3437,16 @@ window.loadRecHwList = async() => {
   if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
   try{
     const myGroup = userProfile?.group||'', myUid = currentUser?.uid||'';
+
+    // 1) 기존 recHw 로드
     const snap = await getDocs(query(collection(db,'recHw'), orderBy('createdAt','desc')));
     const allHws = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // 내 숙제 필터
     const myHws = allHws.filter(hw=>{
       if(!hw.active && hw.active!==undefined) return false;
       const targets = hw.targets||[];
       return targets.some(t=>(t.type==='class'&&t.id===myGroup)||(t.type==='student'&&t.id===myUid));
     });
-    // 제출 현황 확인
-    const submittedMap = new Map(); // hwId → [slot numbers]
+    const submittedMap = new Map();
     await Promise.all(myHws.map(async hw=>{
       try{
         const snap2 = await getDocs(query(collection(db,'recSubmissions'),
@@ -3130,16 +3455,23 @@ window.loadRecHwList = async() => {
       }catch(e){ submittedMap.set(hw.id,[]); }
     }));
 
-    const pending = myHws.filter(hw=>{
-      const slots = submittedMap.get(hw.id)||[];
-      return slots.length < 3;
-    });
-    const completed = myHws.filter(hw=>{
-      const slots = submittedMap.get(hw.id)||[];
-      return slots.length >= 3;
-    });
+    // 2) AI 녹음 숙제 (Phase 5 신규)
+    let myGen = [];
+    const genCompletedMap = new Map();
+    try{
+      const gSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+      const allGen = gSnap.docs.map(d=>({id:d.id,...d.data()}));
+      myGen = filterMyTests(allGen, myGroup, myUid).filter(t => t.testMode === 'recording-ai');
+      await Promise.all(myGen.map(async t => {
+        try{
+          const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+          if(d.exists()) genCompletedMap.set(t.id, d.data());
+        }catch(e){}
+      }));
+    }catch(e){ console.warn('genTests(recording-ai) 로드 실패', e); }
 
-    const makeCard = (hw, done) => {
+    // 3) 카드 생성 함수
+    const makeRecHwCard = (hw, done) => {
       const slots = submittedMap.get(hw.id)||[];
       const badge = done
         ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
@@ -3147,21 +3479,54 @@ window.loadRecHwList = async() => {
       return `<div class="unit-card" onclick="openRecHwDetail('${hw.id}')">
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div class="unit-name">🎙 ${hw.title||'숙제'}</div>${badge}
+            <div class="unit-name">🎙 ${esc(hw.title||'숙제')}</div>${badge}
           </div>
-          <div class="unit-count">${hw.dueDate?'마감: '+hw.dueDate:''}</div>
+          <div class="unit-count">${hw.dueDate?'마감: '+esc(hw.dueDate):''}</div>
+        </div>
+        <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'✓':'›'}</span>
+      </div>`;
+    };
+    const makeGenCard = (t, done) => {
+      const qCount = t.questionCount || t.questions?.length || 0;
+      const badge = done
+        ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
+        : `<span style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:20px;">AI · ${qCount}문장</span>`;
+      const name = (t.name||'AI 녹음 시험').replace(/'/g,"\\'");
+      return `<div class="unit-card" onclick="startRecAi('${t.id}','${name}')">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="unit-name">🤖 ${esc(t.name||'AI 녹음 시험')}</div>${badge}
+          </div>
+          <div class="unit-count">${esc(t.bookName||'')}${t.date?' · '+esc(t.date):''}</div>
         </div>
         <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'✓':'›'}</span>
       </div>`;
     };
 
-    if(elP) elP.innerHTML = pending.length
-      ? pending.map(hw=>makeCard(hw,false)).join('')
+    // 4) pending / completed 분리 + createdAt 기준 병합 정렬
+    const recHwP = myHws.filter(hw => (submittedMap.get(hw.id)||[]).length < 3);
+    const recHwC = myHws.filter(hw => (submittedMap.get(hw.id)||[]).length >= 3);
+    const genP = myGen.filter(t => !genCompletedMap.has(t.id));
+    const genC = myGen.filter(t => genCompletedMap.has(t.id));
+    const toMs = o => o?.createdAt?.toMillis?.() || 0;
+
+    const pendAll = [
+      ...recHwP.map(hw => ({ms: toMs(hw), html: makeRecHwCard(hw, false)})),
+      ...genP.map(t => ({ms: toMs(t), html: makeGenCard(t, false)})),
+    ].sort((a,b) => b.ms - a.ms);
+    const doneAll = [
+      ...recHwC.map(hw => ({ms: toMs(hw), html: makeRecHwCard(hw, true)})),
+      ...genC.map(t => ({ms: toMs(t), html: makeGenCard(t, true)})),
+    ].sort((a,b) => b.ms - a.ms);
+
+    if(elP) elP.innerHTML = pendAll.length
+      ? pendAll.map(it => it.html).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">진행 중인 숙제가 없습니다.</div>';
-    if(elC) elC.innerHTML = completed.length
-      ? completed.map(hw=>makeCard(hw,true)).join('')
+    if(elC) elC.innerHTML = doneAll.length
+      ? doneAll.map(it => it.html).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div>';
   }catch(e){
+    console.error(e);
     if(elP) elP.innerHTML = `<div class="empty-msg" style="padding:20px;">불러오기 실패</div>`;
   }
 };
@@ -3393,6 +3758,22 @@ async function updateRecBadge(){
         if(!fb.empty && fb.docs[0].data().read===false) count++;
       }catch(e){ count++; }
     }));
+
+    // Phase 5: AI 녹음 숙제 미완료도 합산
+    try{
+      const gSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+      const myGen = filterMyTests(
+        gSnap.docs.map(d=>({id:d.id,...d.data()})),
+        myGroup, myUid
+      ).filter(t => t.testMode === 'recording-ai');
+      await Promise.all(myGen.map(async t => {
+        try{
+          const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+          if(!d.exists()) count++;
+        }catch(e){}
+      }));
+    }catch(e){ console.warn('recBadge genTests 실패', e); }
+
     badge.textContent = count>99?'99+':count;
     badge.style.display = count>0?'flex':'none';
   }catch(e){ badge.style.display='none'; }
