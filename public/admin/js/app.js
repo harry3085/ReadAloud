@@ -151,7 +151,7 @@ async function initDashboard(){
   const now = new Date();
   document.getElementById('dashDate').textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   renderCalendar();
-  await Promise.all([loadDashStats(), loadDashNotices(), loadDashScores(), loadDashStudents(), loadDashRecStatus()]);
+  await Promise.all([loadDashStats(), loadDashNotices(), loadDashScores(), loadDashStudents()]);
 }
 window.refreshDashboard = initDashboard;
 
@@ -231,42 +231,6 @@ async function loadDashScores(){
       </tr>`;
     }).join('');
   }catch(e){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:12px;">불러오기 실패</td></tr>';}
-}
-
-async function loadDashRecStatus(){
-  const el=document.getElementById('dashRecStatus');
-  try{
-    // 최근 배정된 숙제 5개
-    const hwSnap=await getDocs(query(collection(db,'recHw'),orderBy('createdAt','desc'),limit(5)));
-    const hws=hwSnap.docs.map(d=>({id:d.id,...d.data()})).filter(hw=>hw.active!==false);
-    if(!hws.length){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">배정된 숙제가 없습니다</div>';return;}
-
-    // 제출 현황 집계
-    const subSnap=await getDocs(collection(db,'recSubmissions'));
-    const subMap={}; // hwId → Set(uid)
-    subSnap.docs.forEach(d=>{
-      const s=d.data();
-      if(!subMap[s.hwId]) subMap[s.hwId]=new Set();
-      subMap[s.hwId].add(s.uid);
-    });
-
-    el.innerHTML=hws.map(hw=>{
-      const targets=hw.targets||[];
-      const totalStudents=targets.reduce((acc,t)=>acc+(t.type==='class'?999:1),0); // 대략적
-      const submittedUids=subMap[hw.id]?.size||0;
-      const pct=hw.targetCount?Math.round(submittedUids/hw.targetCount*100):null;
-      return `<div style="padding:7px 0;border-bottom:1px solid #f5f5f5;font-size:13px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:15px;">🎙</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(hw.title)||'-'}</div>
-            <div style="font-size:11px;color:var(--gray);">${esc(hw.targetName)||'-'} · 제출 <b style="color:var(--teal);">${submittedUids}</b>명${hw.dueDate?' · 마감 '+hw.dueDate:''}</div>
-          </div>
-          <button onclick="goPage('rec-status')" style="background:none;border:none;color:var(--teal);font-size:12px;cursor:pointer;flex-shrink:0;">확인 ›</button>
-        </div>
-      </div>`;
-    }).join('');
-  }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
 }
 
 async function loadDashStudents(){
