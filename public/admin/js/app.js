@@ -6278,10 +6278,10 @@ function _qgRender() {
   const pages = _qgFilteredPages();
 
   root.innerHTML = `
-    <div style="display:grid;grid-template-columns:220px 220px 1fr 340px;gap:10px;height:calc(100vh - 210px);min-height:520px;">
+    <div id="qgTopRow" style="display:flex;gap:0;height:calc(100vh - 210px);min-height:520px;">
 
       <!-- 1. Book 컬럼 -->
-      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+      <div id="qgBookPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-weight:700;font-size:13px;">📚 Book</div>
@@ -6305,8 +6305,12 @@ function _qgRender() {
         </div>
       </div>
 
+      <div class="qg-resizer" data-idx="0" title="드래그하여 폭 조정" style="width:8px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;">
+        <div style="width:2px;height:40px;background:var(--border);border-radius:1px;"></div>
+      </div>
+
       <!-- 2. Chapter 컬럼 -->
-      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+      <div id="qgChapterPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-weight:700;font-size:13px;">📂 Chapter</div>
@@ -6334,8 +6338,12 @@ function _qgRender() {
         </div>
       </div>
 
+      <div class="qg-resizer" data-idx="1" title="드래그하여 폭 조정" style="width:8px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;">
+        <div style="width:2px;height:40px;background:var(--border);border-radius:1px;"></div>
+      </div>
+
       <!-- 3. Page 컬럼 (체크박스 다중 선택) -->
-      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+      <div id="qgPagePane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개</div>
@@ -6369,8 +6377,12 @@ function _qgRender() {
         </div>
       </div>
 
+      <div class="qg-resizer" data-idx="2" title="드래그하여 폭 조정" style="width:8px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;">
+        <div style="width:2px;height:40px;background:var(--border);border-radius:1px;"></div>
+      </div>
+
       <!-- 4. 설정 컬럼 -->
-      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+      <div id="qgSettingsPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);">
           <div style="font-weight:700;font-size:13px;">⚙️ 설정</div>
           <div style="font-size:10px;color:var(--gray);">문제 유형 선택 후 생성</div>
@@ -6401,6 +6413,62 @@ function _qgRender() {
   `;
 
   _qgRenderOptions(_qgCurrentType);
+  _qgAttachResizers();
+}
+
+// ─── 컬럼 리사이저 (4개 pane = 3개 리사이저) ───
+function _qgAttachResizers() {
+  const row = document.getElementById('qgTopRow');
+  if (!row) return;
+  const paneIds = ['qgBookPane','qgChapterPane','qgPagePane','qgSettingsPane'];
+  const panes = paneIds.map(id => document.getElementById(id));
+  if (panes.some(p => !p)) return;
+
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem('quizgen_col_ratios') || 'null'); } catch { return null; }
+  })();
+  const ratios = (saved && saved.length === 4 && saved.every(n => typeof n === 'number' && n > 0))
+    ? saved.slice() : [25, 25, 25, 25];
+  panes.forEach((p, i) => { p.style.flex = `${ratios[i]} 1 0`; });
+
+  row.querySelectorAll('.qg-resizer').forEach(r => {
+    const i = parseInt(r.getAttribute('data-idx'), 10);
+    r.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const rowWidth = row.getBoundingClientRect().width;
+      const totalGrow = ratios.reduce((a,b)=>a+b, 0);
+      const startA = ratios[i];
+      const startB = ratios[i+1];
+      const sumAB = startA + startB;
+      const MIN = 6;
+      const onMove = (ev) => {
+        const deltaPx = ev.clientX - startX;
+        const deltaGrow = (deltaPx / rowWidth) * totalGrow;
+        let newA = startA + deltaGrow;
+        let newB = startB - deltaGrow;
+        if (newA < MIN) { newA = MIN; newB = sumAB - MIN; }
+        if (newB < MIN) { newB = MIN; newA = sumAB - MIN; }
+        ratios[i] = newA;
+        ratios[i+1] = newB;
+        panes[i].style.flex = `${newA} 1 0`;
+        panes[i+1].style.flex = `${newB} 1 0`;
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        try { localStorage.setItem('quizgen_col_ratios', JSON.stringify(ratios)); } catch {}
+      };
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    r.addEventListener('mouseenter', () => { r.style.background = 'var(--teal-light)'; });
+    r.addEventListener('mouseleave', () => { r.style.background = 'transparent'; });
+  });
 }
 
 // ─── 필터 ───
