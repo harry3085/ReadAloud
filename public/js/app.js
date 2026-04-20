@@ -1140,6 +1140,16 @@ window.startRecAi = async (testId, testName) => {
     // Phase 5.5: schemaV===2 감지 → v2 플로우로 분기
     const firstQ = questions[0];
     if(firstQ?.schemaV === 2){
+      // 이미 완료된 경우 재시험 불가 → 결과 보기로 전환
+      if(currentUser){
+        try{
+          const compSnap = await getDoc(doc(db,'genTests',testId,'userCompleted',currentUser.uid));
+          if(compSnap.exists()){
+            showToast('이미 제출한 시험이에요. 결과를 표시합니다.');
+            return viewRecAiResult(testId);
+          }
+        }catch(e){ console.warn('완료 확인 실패', e); }
+      }
       return _raStartV2(test, firstQ);
     }
 
@@ -1878,6 +1888,53 @@ async function _rv2Submit() {
 
 // 재시도 버튼용 전역 노출
 window._rv2Submit = _rv2Submit;
+
+// 완료된 v2 시험 결과 재조회 (재시험 불가, Feedback 유지)
+window.viewRecAiResult = async (testId) => {
+  try {
+    if (!currentUser) { showToast('로그인이 필요해요'); return; }
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db,'genTests',testId)),
+      getDoc(doc(db,'genTests',testId,'userCompleted',currentUser.uid)),
+    ]);
+    if (!compSnap.exists()) {
+      showToast('완료 기록을 찾을 수 없어요');
+      return;
+    }
+    const completed = compSnap.data();
+    const recordings = completed.recordings || [];
+
+    // Phase 5.5 v2 판정 (audioUrl + score 둘 다 있어야 3회차 결과로 재구성 가능)
+    const isV2 = recordings.length >= 2 && recordings[0]?.audioUrl && recordings[0]?.score !== undefined;
+    if (!isV2) {
+      // Phase 5 구버전 완료 — 간단한 결과 카드만
+      showToast(`완료됨: ${completed.score ?? '-'}점 · ${completed.date || ''}`);
+      return;
+    }
+
+    const test = testSnap.exists() ? testSnap.data() : {};
+    const q = test.questions?.[0] || {};
+    const threshold = q.accuracyThreshold || 70;
+
+    const checkResults = recordings.map((r, i) => ({
+      round: r.round || (i + 1),
+      score: r.score ?? 0,
+      missedWords: r.missedWords || [],
+      note: r.note || '',
+    }));
+
+    const lastRec = recordings[recordings.length - 1];
+    const feedback = lastRec?.feedback || null;
+    const passed = (lastRec?.score ?? 0) >= threshold;
+    const allAudioUrls = recordings.map(r => r.audioUrl || '');
+
+    show('recAiQuiz');
+    _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
+  } catch(e) {
+    console.error(e);
+    showToast('결과 불러오기 실패: ' + e.message);
+  }
+};
 
 function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls) {
   _rv2ResultAudioUrls = allAudioUrls || [];
@@ -4042,14 +4099,18 @@ window.loadRecHwList = async() => {
         ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✅ 완료</span>`
         : `<span style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:20px;">AI · ${qCount}문장</span>`;
       const name = (t.name||'AI 녹음 시험').replace(/'/g,"\\'");
-      return `<div class="unit-card" onclick="startRecAi('${t.id}','${name}')">
+      // 완료된 경우 결과 보기로, 미완료면 풀이 시작
+      const onc = done ? `viewRecAiResult('${t.id}')` : `startRecAi('${t.id}','${name}')`;
+      const hint = done ? '<div style="font-size:10px;color:#059669;margin-top:2px;">결과·피드백 보기</div>' : '';
+      return `<div class="unit-card" onclick="${onc}">
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div class="unit-name">🤖 ${esc(t.name||'AI 녹음 시험')}</div>${badge}
           </div>
           <div class="unit-count">${esc(t.bookName||'')}${t.date?' · '+esc(t.date):''}</div>
+          ${hint}
         </div>
-        <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'✓':'›'}</span>
+        <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'📊':'›'}</span>
       </div>`;
     };
 
