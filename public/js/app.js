@@ -1498,115 +1498,125 @@ function _rv2FormatDuration(seconds) {
   return `${mm}:${ss}`;
 }
 
-function _rv2RenderRoundIndicator() {
-  return `
-    <div style="display:flex;gap:6px;align-items:center;">
-      ${[0, 1, 2].map(i => {
-        const done = _rv2.savedRounds[i] != null;
-        const active = i === _rv2.currentRound && !done;
-        const bg = done ? '#059669' : (active ? '#8B5CF6' : '#E5E7EB');
-        const color = (done || active) ? 'white' : '#9CA3AF';
-        const txt = done ? '✓' : (i+1);
-        const sep = i < 2 ? '<div style="width:10px;height:2px;background:#E5E7EB;"></div>' : '';
-        return `<div style="width:24px;height:24px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${txt}</div>${sep}`;
-      }).join('')}
-    </div>
-  `;
-}
-
-function _rv2StateIdle() {
-  return `
-    <button onclick="rv2StartRecord()"
-      style="width:96px;height:96px;border-radius:50%;border:none;background:#8B5CF6;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 14px rgba(139,92,246,0.35);">
-      🎤
-    </button>
-    <div style="margin-top:14px;font-size:14px;font-weight:700;color:var(--text);">버튼을 눌러 녹음 시작</div>
-    <div id="rv2Timer" style="font-size:11px;color:var(--gray);margin-top:6px;">00:00</div>
-  `;
-}
-
-function _rv2StateRecording() {
-  return `
-    <button onclick="rv2StopRecord()"
-      style="width:96px;height:96px;border-radius:50%;border:none;background:#DC2626;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 20px rgba(220,38,38,0.5);animation:rv2Pulse 1.5s infinite;">
-      ⏹
-    </button>
-    <div style="margin-top:14px;font-size:15px;font-weight:700;color:#DC2626;">녹음 중... (버튼 눌러 종료)</div>
-    <div id="rv2Timer" style="font-size:22px;font-weight:800;color:var(--text);margin-top:6px;font-variant-numeric:tabular-nums;">00:00</div>
-    <style>@keyframes rv2Pulse { 0%,100% { transform:scale(1);} 50% { transform:scale(1.06);} }</style>
-  `;
-}
-
-function _rv2StateTakeReady() {
-  const take = _rv2.currentTake;
-  return `
-    <div style="font-size:32px;margin-bottom:6px;">🎧</div>
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">녹음 완료 · ${_rv2FormatDuration(take.duration)}</div>
-    <audio src="${take.url}" controls preload="auto" style="width:100%;max-width:320px;margin-bottom:10px;"></audio>
-    <button onclick="rv2Retake()" style="padding:8px 16px;background:white;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">🔄 다시 녹음</button>
-  `;
-}
-
+// 기존 녹음숙제(recHwDetail) 스타일로 재구성: 코랄 헤더 + 단계바 + 3개 세로 카드
 function _rv2Render() {
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
-
   const q = _rv2.question;
-  const round = _rv2.currentRound;
-  const isLastRound = round === _RV2_ROUNDS - 1;
-  const totalRounds = _RV2_ROUNDS;
-  const pct = Math.round(((round + (_rv2.currentTake ? 0.5 : 0)) / totalRounds) * 100);
-
-  let stateBody;
-  if (_rv2.isRecording) stateBody = _rv2StateRecording();
-  else if (_rv2.currentTake) stateBody = _rv2StateTakeReady();
-  else stateBody = _rv2StateIdle();
-
-  // 하단 버튼 상태
-  const canProceed = !!_rv2.currentTake && !_rv2.isRecording;
-  const btnLabel = isLastRound ? '📤 제출하기' : '다음 회차 ▶';
-  const btnBg = canProceed ? (isLastRound ? '#059669' : '#8B5CF6') : '#ddd';
-  const btnColor = canProceed ? 'white' : '#888';
-  const btnCursor = canProceed ? 'pointer' : 'not-allowed';
+  const cur = _rv2.currentRound;
 
   screen.innerHTML = `
-    <div class="quiz-header">
-      <button class="quit-btn" onclick="rv2Quit()">✕</button>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.max(5,pct)}%;background:#8B5CF6;"></div></div>
-      <div style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">${round + 1} / ${totalRounds}</div>
+    <!-- 코랄 히어로 헤더 + 숙제 내용 -->
+    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="rv2Quit()">‹</button>
+        <span style="font-size:16px;font-weight:800;color:white;">🤖 AI 녹음숙제</span>
+      </div>
+      <div style="background:rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:600;margin-bottom:6px;">숙제 내용</div>
+        <div style="font-size:14px;color:white;line-height:1.7;white-space:pre-wrap;">${esc(q.instructionKo || '')}</div>
+      </div>
     </div>
 
-    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
+    <!-- 바디 -->
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="scroll-content" style="padding:16px 16px 24px;">
 
-      <!-- 라운드 인디케이터 + 평가 시간 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px;">
-        ${_rv2RenderRoundIndicator()}
-        <span style="font-size:11px;color:var(--gray);">⏱ ${q.evaluationSeconds || 60}초 평가</span>
-      </div>
-
-      <!-- 숙제 내용 (중복 제거 → QUESTION 카드 1개만) -->
-      <div style="background:white;border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:10px;font-weight:700;color:#7C3AED;letter-spacing:0.5px;margin-bottom:8px;">SPEAK · 3회 반복</div>
-        <div style="font-size:14px;color:var(--text);line-height:1.7;">${esc(q.instructionKo || '')}</div>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #eee;font-size:11px;color:var(--gray);">
-          📄 ${q.pageCount||1} Page · 🎯 ${q.accuracyThreshold||70}점 이상 시 AI 피드백
+        <!-- 3단계 진행 표시 -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">
+          ${_rv2RenderStepBar()}
         </div>
-      </div>
 
-      <!-- 녹음 영역 -->
-      <div style="background:white;border-radius:14px;padding:24px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);text-align:center;">
-        ${stateBody}
-      </div>
+        <!-- 3개 회차 카드 -->
+        ${[0,1,2].map(i => _rv2RenderRoundCard(i, cur)).join('')}
 
+      </div>
     </div>
+  `;
+}
 
-    <!-- 하단 다음/제출 버튼 바 -->
-    <div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,0.06);background:#F5F3FF;">
-      <button onclick="rv2SaveRound()" ${canProceed?'':'disabled'}
-        style="width:100%;padding:14px;border:none;border-radius:12px;background:${btnBg};color:${btnColor};font-size:15px;font-weight:700;cursor:${btnCursor};">
-        ${btnLabel}
-      </button>
-      ${canProceed ? `<div style="font-size:10px;color:var(--gray);text-align:center;margin-top:6px;">${isLastRound ? '⚠️ 제출 후 재녹음 불가' : '⚠️ 이 회차는 저장됩니다'}</div>` : ''}
+function _rv2RenderStepBar() {
+  const circleStyle = (i) => {
+    if (_rv2.savedRounds[i] != null) return 'background:#059669;color:white;';
+    if (i === _rv2.currentRound) return 'background:#E8714A;color:white;';
+    return 'background:#FFE0D4;color:#E8714A;';
+  };
+  const content = (i) => _rv2.savedRounds[i] != null ? '✓' : (i+1);
+  const lineFill = (i) => _rv2.savedRounds[i] != null ? 100 : 0;
+  return `
+    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(0)}">${content(0)}</div>
+    <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(0)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>
+    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(1)}">${content(1)}</div>
+    <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(1)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>
+    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(2)}">${content(2)}</div>
+  `;
+}
+
+function _rv2RenderRoundCard(i, cur) {
+  const saved = _rv2.savedRounds[i];
+  const isCurrent = (i === cur) && !saved;
+  const isFuture = (i > cur);
+  const isRecording = isCurrent && _rv2.isRecording;
+  const hasTake = isCurrent && !!_rv2.currentTake;
+  const isLast = (i === 2);
+
+  // 상태 뱃지
+  let statusBadge;
+  if (saved)           statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#d1fae5;color:#059669;font-weight:700;">✓ 저장됨</span>';
+  else if (isRecording) statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#fee2e2;color:#DC2626;font-weight:700;">● 녹음 중</span>';
+  else if (hasTake)     statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#FFF5E5;color:#BA7517;font-weight:700;">녹음 완료</span>';
+  else if (isCurrent)   statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#FFE0D4;color:#E8714A;font-weight:700;">진행 중</span>';
+  else                  statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>';
+
+  // 오디오 영역
+  let audioHtml = '';
+  if (saved) {
+    audioHtml = `<div style="margin-bottom:10px;"><audio src="${saved.url}" controls style="width:100%;height:36px;"></audio></div>`;
+  } else if (hasTake) {
+    audioHtml = `<div style="margin-bottom:10px;"><audio src="${_rv2.currentTake.url}" controls preload="auto" style="width:100%;height:36px;"></audio></div>`;
+  }
+
+  // 버튼 영역
+  let buttonsHtml = '';
+  if (saved) {
+    buttonsHtml = `<div style="text-align:center;font-size:11px;color:var(--gray);padding:4px 0;">✓ 저장 완료 · 되돌릴 수 없어요</div>`;
+  } else if (isRecording) {
+    buttonsHtml = `
+      <div style="display:flex;gap:8px;">
+        <button onclick="rv2StopRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#DC2626;color:white;font-size:13px;font-weight:700;cursor:pointer;">⏹ 녹음 종료</button>
+      </div>
+      <div id="rv2Timer" style="text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px;font-variant-numeric:tabular-nums;">00:00</div>
+    `;
+  } else if (hasTake) {
+    buttonsHtml = `
+      <div style="display:flex;gap:8px;">
+        <button onclick="rv2Retake()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;">🔄 다시</button>
+        <button onclick="rv2SaveRound()" style="flex:1;padding:12px;border-radius:12px;border:none;background:${isLast?'#059669':'#F4936A'};color:white;font-size:13px;font-weight:700;cursor:pointer;">${isLast ? '📤 제출' : '✔ 확인'}</button>
+      </div>
+    `;
+  } else if (isCurrent) {
+    buttonsHtml = `
+      <div style="display:flex;gap:8px;">
+        <button onclick="rv2StartRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#E8714A;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
+      </div>
+    `;
+  } else {
+    buttonsHtml = `
+      <div style="display:flex;gap:8px;">
+        <button disabled style="flex:1;padding:12px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:13px;font-weight:700;cursor:not-allowed;">🎙 녹음</button>
+      </div>
+    `;
+  }
+
+  const cardOpacity = isFuture ? 0.55 : 1;
+  return `
+    <div style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(232,113,74,.08);margin-bottom:12px;opacity:${cardOpacity};">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-weight:700;font-size:14px;color:#222;">녹음 ${i+1}회차</div>
+        ${statusBadge}
+      </div>
+      ${audioHtml}
+      ${buttonsHtml}
     </div>
   `;
 }
