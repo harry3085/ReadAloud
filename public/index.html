@@ -337,23 +337,21 @@
 
     <div style="font-size:11px;color:var(--gray);text-align:center;margin:8px 0 6px;flex-shrink:0;" id="vqInstruction">뜻과 일치하는 한글을 고르세요.</div>
 
-    <!-- 문제 합체 카드 (언스크램블 스타일: 코랄 그라디언트 상단 + 흰 바디) -->
+    <!-- 문제 합체 카드: 상단 주황 헤더(문제) + 하단 흰 바디(답 영역) -->
     <div style="margin:0 16px 10px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(232,113,74,.12);flex-shrink:0;">
-      <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:14px 16px;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:3px;" id="vqLabel">영단어</div>
+      <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:16px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:4px;" id="vqLabel">영단어</div>
         <div id="vqPrompt" style="font-size:22px;font-weight:800;color:white;line-height:1.3;word-break:break-word;"></div>
+        <div id="vqHeaderHint" style="font-size:11px;color:rgba(255,255,255,0.8);margin-top:5px;font-style:italic;display:none;"></div>
       </div>
-      <div style="padding:12px 16px;min-height:40px;" id="vqSubWrap">
-        <div style="font-size:9px;color:var(--teal);font-weight:700;margin-bottom:4px;" id="vqSubLabel">예문</div>
-        <div id="vqSub" style="font-size:13px;color:var(--text);line-height:1.5;font-style:italic;"></div>
+      <div style="padding:14px 16px;min-height:60px;">
+        <!-- MCQ 4지선다 (세로 1·2·3·4) -->
+        <div id="vqChoicesArea" style="display:none;flex-direction:column;gap:8px;"></div>
+        <!-- 스펠링 박스 -->
+        <div class="spell-boxes" id="vqSpellBoxes" style="display:none;padding:4px 0;"></div>
       </div>
     </div>
 
-    <!-- MCQ 보기 (언스크 청크 스타일: flat, 테두리) -->
-    <div id="vqChoicesArea" style="display:none;padding:4px 14px 10px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
-
-    <!-- 스펠링 박스 -->
-    <div class="spell-boxes" id="vqSpellBoxes" style="display:none;"></div>
     <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;">
       <input class="spell-real-input" type="search" id="vqSpellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
     </div>

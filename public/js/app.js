@@ -4744,9 +4744,7 @@ function _vqRenderStep() {
   const instEl = document.getElementById('vqInstruction');
   const labelEl = document.getElementById('vqLabel');
   const promptEl = document.getElementById('vqPrompt');
-  const subWrap = document.getElementById('vqSubWrap');
-  const subLabel = document.getElementById('vqSubLabel');
-  const subEl = document.getElementById('vqSub');
+  const headerHint = document.getElementById('vqHeaderHint');
   const choicesArea = document.getElementById('vqChoicesArea');
   const spellBoxes = document.getElementById('vqSpellBoxes');
 
@@ -4757,29 +4755,28 @@ function _vqRenderStep() {
     if (instEl) instEl.textContent = '뜻에 알맞는 영어 단어를 입력하세요.';
   }
 
-  // 합체 카드: 헤더 라벨 + 큰 질문, 본문 힌트/예문
+  // 주황 헤더: 라벨 + 큰 질문 + (선택적) 힌트
   if (ans.direction === 'en2ko') {
     if (labelEl) labelEl.textContent = '영단어';
     if (promptEl) promptEl.textContent = q.word || '';
-    if (q.example) {
-      if (subWrap) subWrap.style.display = '';
-      if (subLabel) subLabel.textContent = '예문';
-      if (subEl) { subEl.textContent = '“' + q.example + '”'; subEl.style.fontStyle='italic'; subEl.style.color='var(--text)'; }
-    } else if (subWrap) subWrap.style.display = 'none';
+    if (headerHint) {
+      if (q.example) { headerHint.style.display = ''; headerHint.textContent = '“' + q.example + '”'; }
+      else headerHint.style.display = 'none';
+    }
   } else {
     if (labelEl) labelEl.textContent = ans.format === 'short' ? '한글 뜻 (영단어 쓰기)' : '한글 뜻';
     if (promptEl) promptEl.textContent = q.meaning || '';
-    // 스펠링일 때 글자수 힌트 표시
-    if (ans.format === 'short' && subWrap) {
-      subWrap.style.display = '';
-      if (subLabel) subLabel.textContent = '힌트';
-      if (subEl) { subEl.innerHTML = `<span style="color:var(--teal);font-weight:700;">${(q.word||'').length}글자</span>`; subEl.style.fontStyle='normal'; }
-    } else if (subWrap) subWrap.style.display = 'none';
+    if (headerHint) {
+      if (ans.format === 'short') {
+        headerHint.style.display = '';
+        headerHint.textContent = `힌트: ${(q.word||'').length}글자`;
+      } else headerHint.style.display = 'none';
+    }
   }
 
   // MCQ / 스펠 표시 전환
   if (ans.format === 'mcq') {
-    if (choicesArea) { choicesArea.style.display = ''; _vqRenderChoices(ans, choicesArea); }
+    if (choicesArea) { choicesArea.style.display = 'flex'; _vqRenderChoices(ans, choicesArea); }
     if (spellBoxes) spellBoxes.style.display = 'none';
   } else {
     if (spellBoxes) { spellBoxes.style.display = ''; _vqRenderSpellBoxes(ans); }
