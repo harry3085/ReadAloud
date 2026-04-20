@@ -25,12 +25,15 @@
 
 <!-- 사이드바 -->
 <nav class="sidebar">
+  <!-- 초기화면 -->
   <div class="nav-section">
     <div class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       초기화면
     </div>
   </div>
+
+  <!-- 학원 관리 -->
   <div class="nav-section">
     <div class="nav-label">학원 관리</div>
     <div class="nav-item" onclick="goPage('class')" id="nav-class">
@@ -51,8 +54,10 @@
       </div>
     </div>
   </div>
+
+  <!-- 🎨 콘텐츠 제작 -->
   <div class="nav-section">
-    <div class="nav-label">콘텐츠 생성</div>
+    <div class="nav-label">🎨 콘텐츠 제작</div>
     <div class="nav-item" onclick="goPage('generator')" id="nav-generator">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
       Generator
@@ -66,12 +71,16 @@
       문제 세트 목록
     </div>
   </div>
+
+  <!-- 📚 교재 & 시험 -->
   <div class="nav-section">
-    <div class="nav-label">교재 & 테스트</div>
+    <div class="nav-label">📚 교재 & 시험</div>
+
+    <!-- 교재 관리 -->
     <div class="nav-group" id="navgroup-book">
       <div class="nav-item" onclick="toggleNav('book')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-        교재 관리
+        📖 교재 관리
         <span class="nav-toggle">›</span>
       </div>
       <div class="nav-children nav-sub">
@@ -79,22 +88,33 @@
         <div class="nav-item" onclick="goPage('book-allbook')" id="nav-book-allbook">My Book 출력</div>
       </div>
     </div>
+
+    <!-- 시험 관리 (신 구조: 유형별 리빌딩) -->
     <div class="nav-group" id="navgroup-test">
       <div class="nav-item" onclick="toggleNav('test')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        테스트 관리
+        🎯 시험 관리
         <span class="nav-toggle">›</span>
       </div>
       <div class="nav-children nav-sub">
-        <div class="nav-item" onclick="goPage_testCreate()" id="nav-test-create">시험 출제</div>
-        <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">시험 목록</div>
-        <div class="nav-item" onclick="goPage('test-print')" id="nav-test-print">시험지 출력</div>
+        <!-- 유형별 출제 메뉴 -->
+        <div class="nav-item" onclick="goPage_testCreate()" id="nav-test-create">단어시험</div>
+        <div class="nav-item" onclick="goPage('test-unscramble')" id="nav-test-unscramble">언스크램블</div>
+        <div class="nav-item" onclick="goPage('test-blank')" id="nav-test-blank">빈칸채우기</div>
+        <div class="nav-item" onclick="goPage('test-mcq')" id="nav-test-mcq">내용이해_객관식</div>
+        <div class="nav-item" onclick="goPage('test-subj')" id="nav-test-subj">해석하기_주관식</div>
+        <div class="nav-item" onclick="goPage('test-rec-ai')" id="nav-test-rec-ai">녹음숙제</div>
+        <!-- 공통 메뉴 -->
+        <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">📋 시험 목록</div>
+        <div class="nav-item" onclick="goPage('test-print')" id="nav-test-print">🖨 시험지 출력</div>
       </div>
     </div>
+
+    <!-- 녹음숙제 관리 (기존 유지 - Phase 5 까지) -->
     <div class="nav-group" id="navgroup-rec">
       <div class="nav-item" onclick="toggleNav('rec')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-        녹음숙제 관리
+        🎤 녹음숙제 관리
         <span class="nav-toggle">›</span>
       </div>
       <div class="nav-children nav-sub">
@@ -104,10 +124,14 @@
       </div>
     </div>
   </div>
+
+  <!-- 📊 성적 관리 (nav-section 래퍼 복구) -->
+  <div class="nav-section">
+    <div class="nav-label">📊 성적 관리</div>
     <div class="nav-group" id="navgroup-score">
       <div class="nav-item" onclick="toggleNav('score')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        성적 관리
+        성적 분석
         <span class="nav-toggle">›</span>
       </div>
       <div class="nav-children nav-sub">
@@ -116,8 +140,10 @@
       </div>
     </div>
   </div>
+
+  <!-- 💬 커뮤니케이션 -->
   <div class="nav-section">
-    <div class="nav-label">커뮤니케이션</div>
+    <div class="nav-label">💬 커뮤니케이션</div>
     <div class="nav-item" onclick="goPage('message')" id="nav-message">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       메시지 관리
@@ -1210,6 +1236,75 @@
       </div>
     </div>
     <div id="quizSetsRoot"></div>
+  </div>
+
+  <!-- ───────────────────────────────────────────────────────── -->
+  <!-- 시험 관리 유형별 페이지 — Phase 1 플레이스홀더                  -->
+  <!-- 실제 구현은 Phase 2~5에서 진행                                -->
+  <!-- ───────────────────────────────────────────────────────── -->
+
+  <!-- 언스크램블 (Phase 6) -->
+  <div class="page" id="page-test-unscramble">
+    <div class="page-header">
+      <div><div class="page-title">🔀 언스크램블</div><div class="page-sub">문장 순서 맞추기 시험을 배정합니다</div></div>
+    </div>
+    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
+      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
+      <div style="font-size:12px;">Phase 6에서 구현 예정 — 지금은 '단어시험' 메뉴를 사용하세요</div>
+    </div>
+  </div>
+
+  <!-- 빈칸채우기 (Phase 3) -->
+  <div class="page" id="page-test-blank">
+    <div class="page-header">
+      <div><div class="page-title">✏️ 빈칸채우기</div><div class="page-sub">AI가 생성한 빈칸 문제를 학생에게 배정합니다</div></div>
+    </div>
+    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
+      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
+      <div style="font-size:12px;">Phase 3에서 구현 예정</div>
+    </div>
+  </div>
+
+  <!-- 내용이해_객관식 (Phase 2) -->
+  <div class="page" id="page-test-mcq">
+    <div class="page-header">
+      <div><div class="page-title">📝 내용이해_객관식</div><div class="page-sub">AI 객관식 문제를 학생에게 배정합니다</div></div>
+    </div>
+    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
+      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
+      <div style="font-size:12px;">Phase 2에서 구현 예정 — '문제 세트 목록' 에서 생성된 MCQ 세트를 확인할 수 있습니다</div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-secondary" onclick="goPage('quiz-sets')">📋 문제 세트 목록 보기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 해석하기_주관식 (Phase 4) -->
+  <div class="page" id="page-test-subj">
+    <div class="page-header">
+      <div><div class="page-title">✍️ 해석하기_주관식</div><div class="page-sub">시험지 프린트 전용 — 학생이 직접 손으로 해석을 씁니다</div></div>
+    </div>
+    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
+      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
+      <div style="font-size:12px;">Phase 4에서 구현 예정</div>
+    </div>
+  </div>
+
+  <!-- 녹음숙제 (Phase 5 — 기존 '녹음숙제 관리' 섹션을 대체할 예정) -->
+  <div class="page" id="page-test-rec-ai">
+    <div class="page-header">
+      <div><div class="page-title">🎤 녹음숙제</div><div class="page-sub">본문 문장을 AI가 추출해 녹음 숙제로 배정합니다</div></div>
+    </div>
+    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
+      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
+      <div style="font-size:12px;">Phase 5에서 구현 예정 — 완성 시 기존 '🎤 녹음숙제 관리' 섹션을 대체합니다</div>
+      <div style="font-size:12px;margin-top:6px;">지금은 좌측 메뉴 하단 '🎤 녹음숙제 관리' 를 사용하세요</div>
+    </div>
   </div>
 
 </main>

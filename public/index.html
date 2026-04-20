@@ -115,9 +115,17 @@
     <div class="home-body">
     <div class="scroll-content">
       <div class="menu-grid" style="margin-top:28px;">
+        <!-- 1. 단어 테스트 (기존) -->
         <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">lab_profile</span></div>
+        <!-- 2. 언스크램블 (기존) -->
         <div class="menu-card c-blue" onclick="goUnscramble()" style="position:relative;"><span id="unscrambleBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 순서 맞추기</div><div class="card-name">언스크<br>램블</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">shuffle</span></div>
+        <!-- 3. 교재이해 (NEW, Phase 2에서 기능 활성화) -->
+        <div class="menu-card c-orange" onclick="goReadingMcq()" style="position:relative;"><span id="mcqBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">본문 이해 · 객관식</div><div class="card-name">교재<br>이해</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">menu_book</span></div>
+        <!-- 4. 빈칸채우기 (NEW, Phase 3에서 기능 활성화) -->
+        <div class="menu-card c-yellow" onclick="goFillBlank()" style="position:relative;"><span id="blankBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 빈칸 맞추기</div><div class="card-name">빈칸<br>채우기</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">edit_note</span></div>
+        <!-- 5. 녹음숙제 (기존) -->
         <div class="menu-card c-purple" onclick="goRecHw()" style="position:relative;"><span id="recBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">음성 녹음 제출</div><div class="card-name">녹음<br>숙제</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">mic</span></div>
+        <!-- 6. 랭킹 (기존) -->
         <div class="menu-card c-green" onclick="goRanking()"><div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">leaderboard</span></div>
       </div>
       <div class="notice-section">
@@ -193,6 +201,42 @@
       <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
       <div id="unscListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 항목이 없습니다.</div></div>
     </div>
+    </div>
+  </div>
+
+  <!-- 교재이해 (Reading MCQ) 리스트 - Phase 1 플레이스홀더 -->
+  <div id="readingMcqList" class="screen">
+    <div style="background:linear-gradient(150deg,#F59E0B,#D97706);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">교재이해</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">본문을 읽고 객관식 문제에 답하세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="scroll-content" style="padding:48px 20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">🚧</div>
+        <div style="font-size:15px;margin-bottom:6px;color:var(--text);font-weight:600;">준비 중인 기능입니다</div>
+        <div style="font-size:12px;color:var(--gray);">곧 업데이트됩니다</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 빈칸채우기 리스트 - Phase 1 플레이스홀더 -->
+  <div id="fillBlankList" class="screen">
+    <div style="background:linear-gradient(150deg,#EAB308,#CA8A04);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">빈칸채우기</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">문장의 빈칸에 알맞은 단어를 넣으세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="scroll-content" style="padding:48px 20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">🚧</div>
+        <div style="font-size:15px;margin-bottom:6px;color:var(--text);font-weight:600;">준비 중인 기능입니다</div>
+        <div style="font-size:12px;color:var(--gray);">곧 업데이트됩니다</div>
+      </div>
     </div>
   </div>
 

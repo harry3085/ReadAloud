@@ -68,12 +68,18 @@ const pageLabels = {
   'student-active':'재원생 관리', 'student-pause':'휴원생 관리',
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
   'book-mybook':'My Book', 'book-allbook':'My Book 출력',
-  'test-create':'시험 출제', 'test-list':'시험 목록', 'test-print':'시험지 출력',
+  'test-create':'단어시험 출제', 'test-list':'시험 목록', 'test-print':'시험지 출력',
   'rec-content':'숙제목록 작성', 'rec-assign':'숙제 생성', 'rec-status':'제출 현황',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
   generator:'📁 Generator',
   'quiz-generate':'✨ AI 문제 생성', 'quiz-sets':'📋 문제 세트 목록',
+  // Phase 1 플레이스홀더 (Phase 2~6에서 순차 구현)
+  'test-unscramble':'🔀 언스크램블',
+  'test-blank':'✏️ 빈칸채우기',
+  'test-mcq':'📝 내용이해_객관식',
+  'test-subj':'✍️ 해석하기_주관식',
+  'test-rec-ai':'🎤 녹음숙제',
 };
 window.goPage = async(id) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -104,6 +110,12 @@ window.goPage = async(id) => {
   else if(id==='generator') await loadGenerator();
   else if(id==='quiz-generate') await loadQuizGenerate();
   else if(id==='quiz-sets')     await loadQuestionSets();
+  // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
+  else if(id==='test-unscramble') { /* Phase 6 */ }
+  else if(id==='test-blank')      { /* Phase 3 */ }
+  else if(id==='test-mcq')        { /* Phase 2 */ }
+  else if(id==='test-subj')       { /* Phase 4 */ }
+  else if(id==='test-rec-ai')     { /* Phase 5 */ }
 };
 
 window.toggleNav = (group) => {

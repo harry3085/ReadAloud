@@ -166,6 +166,13 @@ service cloud.firestore {
     match /genTests/{testId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+
+      // 학생별 응시 완료 기록
+      match /userCompleted/{userId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId);
+        allow delete: if isAdmin();
+      }
     }
   }
 }

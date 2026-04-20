@@ -340,6 +340,16 @@ window.goUnits = async()=>{
   }
 };
 
+// ─── 교재이해 (Reading MCQ) 카드 — Phase 1 플레이스홀더, Phase 2에서 기능 구현 ───
+window.goReadingMcq = () => {
+  show('readingMcqList');
+};
+
+// ─── 빈칸채우기 카드 — Phase 1 플레이스홀더, Phase 3에서 기능 구현 ───
+window.goFillBlank = () => {
+  show('fillBlankList');
+};
+
 window.goUnscramble = async()=>{
   const elP=document.getElementById('unscListPending');
   const elC=document.getElementById('unscListCompleted');

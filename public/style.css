@@ -54,6 +54,8 @@
     .c-blue{background:linear-gradient(140deg,#EF9F27,#BA7517);}
     .c-purple{background:linear-gradient(140deg,#D4537E,#993556);}
     .c-green{background:linear-gradient(140deg,#F4936A,#E8714A);}
+    .c-orange{background:linear-gradient(140deg,#FB923C,#F97316);}
+    .c-yellow{background:linear-gradient(140deg,#FBBF24,#F59E0B);}
     .notice-section{padding:0 16px 8px;}
     .notice-card{background:white;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:10px;}
     .notice-card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;}
