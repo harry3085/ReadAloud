@@ -6155,29 +6155,29 @@ const QG_TYPE_OPTIONS = {
   'word': {
     label: '단어시험',
     icon: '📝',
-    enabled: false,
-    phaseLabel: 'Phase 6',
-    noteHint: '단어시험은 교재 Unit 단어 데이터 기반이라 AI 를 쓰지 않습니다. Phase 6 에서 좌측 메뉴 "단어시험" 이관이 활성화됩니다.',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문에서 중요 단어를 AI 가 선별해 단어 시험을 만듭니다.',
     options: [
-      { key:'count',       label:'문제수',           type:'number',   default:20, min:1, max:100 },
-      { key:'difficulty',  label:'난이도',           type:'select',   choices:['쉬움','보통','어려움'], default:'보통' },
-      { key:'composition', label:'문제구성',         type:'select',   choices:['혼합','영→한','한→영'], default:'혼합' },
-      { key:'spellRatio',  label:'스펠링비율(%)',    type:'number',   default:30, min:0, max:100 },
-      { key:'mix',         label:'문제섞기',         type:'checkbox', default:true },
-      { key:'passScore',   label:'통과점수',         type:'number',   default:80, min:0, max:100 },
+      { key:'count',      label:'문제수',         type:'number', default:20, min:5, max:50 },
+      { key:'difficulty', label:'난이도(학년)',   type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'shuffleQ',   label:'문제 섞기',      type:'select', choices:['Off','On'], default:'On' },
+      { key:'shuffleA',   label:'정답 섞기',      type:'select', choices:['Off','On'], default:'On' },
+      { key:'passScore',  label:'통과점수',       type:'number', default:80, min:0, max:100 },
     ],
   },
   'unscramble': {
     label: '언스크램블',
     icon: '🔀',
-    enabled: false,
-    phaseLabel: 'Phase 6',
-    noteHint: 'Phase 6 에서 활성화됩니다.',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문 문장을 AI 가 청크 갯수에 맞게 나눠 언스크램블 문제를 만듭니다.',
     options: [
-      { key:'count',          label:'문제수',             type:'number', default:10, min:1, max:30 },
-      { key:'sentenceLength', label:'문장 길이(난이도)',  type:'select', choices:['짧음','보통','김'], default:'보통' },
-      { key:'chunkCount',     label:'청크 갯수',          type:'number', default:4, min:2, max:8 },
-      { key:'passScore',      label:'통과점수',           type:'number', default:80, min:0, max:100 },
+      { key:'count',       label:'문제수',       type:'number', default:10, min:3, max:30 },
+      { key:'difficulty',  label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'chunkCount',  label:'청크 갯수',    type:'number', default:4, min:2, max:8 },
+      { key:'shuffleQ',    label:'문제 섞기',    type:'select', choices:['Off','On'], default:'On' },
+      { key:'passScore',   label:'통과점수',     type:'number', default:80, min:0, max:100 },
     ],
   },
   'fill_blank': {
@@ -6721,6 +6721,10 @@ window.qgGenerate = async () => {
   } else if (type === 'recording') {
     // Phase 5 구 버전 (schemaV 없음) — noAi 플래그가 꺼진 경우에만 도달 (실제 사용 안 함)
     await _qgCallRecording(opts);
+  } else if (type === 'word' || type === 'vocab') {
+    await _qgCallVocab(opts);
+  } else if (type === 'unscramble') {
+    await _qgCallUnscramble(opts);
   } else {
     showToast('지원되지 않는 유형입니다');
   }
@@ -7026,6 +7030,114 @@ async function _qgCallRecording(opts) {
   }
 }
 
+// ─── Vocab API 호출 (Phase 6) ───
+async function _qgCallVocab(opts) {
+  const btn = document.getElementById('qgGenBtn');
+  const status = document.getElementById('qgStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+
+  const selectedPages = (_genPages||[])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
+
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'vocab',
+        difficulty: opts.difficulty,
+        customSystemPrompt: _qgGetCustomPrompt('vocab') || undefined,
+      }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now()-t0)/1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
+      return;
+    }
+
+    _qgGenerated = data.questions || [];
+    _qgExcluded.clear();
+    if (opts.shuffleQ === 'On') _qgGenerated.sort(() => Math.random() - 0.5);
+
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
+
+    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildSetDefaultName('단어시험'), _qgOpts: opts });
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ─── Unscramble API 호출 (Phase 6) ───
+async function _qgCallUnscramble(opts) {
+  const btn = document.getElementById('qgGenBtn');
+  const status = document.getElementById('qgStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+
+  const selectedPages = (_genPages||[])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
+
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'unscramble',
+        difficulty: opts.difficulty,
+        chunkCount: parseInt(opts.chunkCount) || 4,
+        customSystemPrompt: _qgGetCustomPrompt('unscramble') || undefined,
+      }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now()-t0)/1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
+      return;
+    }
+
+    _qgGenerated = data.questions || [];
+    _qgExcluded.clear();
+    if (opts.shuffleQ === 'On') _qgGenerated.sort(() => Math.random() - 0.5);
+
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
+
+    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildSetDefaultName('언스크램블'), _qgOpts: opts });
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 세트 기본명: Book · Chapter · 유형 (Phase 6 공용)
+function _qgBuildSetDefaultName(suffix) {
+  const pageIds = [...new Set(_qgGenerated.map(q => q.sourcePageId).filter(Boolean))];
+  const firstPage = pageIds.length ? (_genPages||[]).find(p => p.id === pageIds[0]) : null;
+  if (!firstPage) return suffix || 'AI 문제 세트';
+  const book = (_genBooks||[]).find(b => b.id === firstPage.bookId);
+  const chapter = (_genChapters||[]).find(c => c.id === firstPage.chapterId);
+  const parts = [book?.name, chapter?.name].filter(Boolean);
+  return parts.join(' · ') + (suffix ? ' · ' + suffix : '');
+}
+
 // ─── 녹음숙제 로컬 생성기 (Phase 5.5) ───
 // API 호출 없이 선택한 Page 의 전체 본문을 1문제로 구성. 3회 반복 녹음 전제.
 function _qgBuildRecordingSet(opts) {
@@ -7241,6 +7353,50 @@ function _qgRenderQuestion(q, idx) {
       <div style="font-size:14px;line-height:1.7;padding:10px 14px;background:#F5F3FF;border-left:3px solid #8B5CF6;margin-bottom:6px;">${esc(q.sentence)}</div>
       <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
     `;
+  } else if (q.type === 'vocab') {
+    body = `
+      <div style="font-size:11px;color:#0ea5e9;font-weight:700;margin-bottom:5px;">📝 단어</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+        <div style="padding:8px 12px;background:#f0f9ff;border-radius:6px;">
+          <div style="font-size:10px;color:#64748b;margin-bottom:2px;">영단어</div>
+          <div style="font-size:15px;font-weight:700;color:#0c4a6e;">${esc(q.word)}</div>
+        </div>
+        <div style="padding:8px 12px;background:#fef3c7;border-radius:6px;">
+          <div style="font-size:10px;color:#92400e;margin-bottom:2px;">뜻</div>
+          <div style="font-size:14px;font-weight:600;color:#78350f;">${esc(q.meaning)}</div>
+        </div>
+      </div>
+      ${q.example ? `
+        <div style="font-size:11px;color:#64748b;padding:6px 10px;background:#f9fafb;border-left:2px solid #d1d5db;margin-top:4px;">
+          <em>${esc(q.example)}</em>
+          ${q.exampleKo ? `<div style="color:#6b7280;margin-top:3px;">↳ ${esc(q.exampleKo)}</div>` : ''}
+        </div>` : ''}
+    `;
+  } else if (q.type === 'unscramble') {
+    const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
+    body = `
+      <div style="font-size:11px;color:#7c3aed;font-weight:700;margin-bottom:5px;">🔀 언스크램블 (${chunks.length}청크)</div>
+      <div style="margin-bottom:6px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">한글 뜻</div>
+        <input type="text" value="${esc(q.meaningKo)}"
+          onchange="_qgEditUnscrambleMeaning(${idx}, this.value)"
+          style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      </div>
+      <div style="margin-bottom:6px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">영문 ('/' 로 청크 구분)</div>
+        <input type="text" value="${esc(q.chunkedSentence)}"
+          onchange="_qgEditUnscrambleChunks(${idx}, this.value)"
+          oninput="_qgPreviewUnscrambleChunks(${idx}, this.value)"
+          style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:monospace;">
+      </div>
+      <div id="qgUnscPreview_${idx}" style="padding:8px 10px;background:#faf5ff;border-radius:4px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">청크 미리보기 (${chunks.length}개)</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--gray);margin-top:4px;">📝 완성: ${esc(chunks.join(' '))}</div>
+      </div>
+    `;
   } else {
     body = `
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${esc(q.question)}</div>
@@ -7255,7 +7411,7 @@ function _qgRenderQuestion(q, idx) {
     `;
   }
 
-  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : q.type==='recording' ? '🎤' : '📖';
+  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : q.type==='recording' ? '🎤' : q.type==='vocab' ? '📝' : q.type==='unscramble' ? '🔀' : '📖';
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;${excluded?'opacity:0.35;background:#fafafa;':''}">
     <div style="display:flex;gap:10px;align-items:start;">
       <input type="checkbox" ${excluded?'':'checked'} onchange="qgToggleExclude(${idx})" style="margin-top:3px;">
@@ -9073,7 +9229,32 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 // 사용자 정의 프롬프트는 localStorage('ai_prompt_custom_<type>') 에 저장되어
 // 관리자 디바이스별로 독립 관리. 저장된 경우 생성 API 호출 시 동반 전송.
 
-const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording'];
+const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording', 'vocab', 'unscramble'];
+
+// ─── 언스크램블 편집 핸들러 (Phase 6) ───
+window._qgEditUnscrambleMeaning = (idx, value) => {
+  if (_qgGenerated[idx]) _qgGenerated[idx].meaningKo = String(value || '').trim();
+};
+window._qgEditUnscrambleChunks = (idx, value) => {
+  if (!_qgGenerated[idx]) return;
+  const chunked = String(value || '').trim();
+  const chunks = chunked.split('/').map(s => s.trim()).filter(Boolean);
+  _qgGenerated[idx].chunkedSentence = chunked;
+  _qgGenerated[idx].sentence = chunks.join(' ').replace(/\s+/g, ' ').trim();
+  _qgGenerated[idx].chunkCount = chunks.length;
+};
+window._qgPreviewUnscrambleChunks = (idx, value) => {
+  const chunks = String(value || '').split('/').map(s => s.trim()).filter(Boolean);
+  const el = document.getElementById(`qgUnscPreview_${idx}`);
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">청크 미리보기 (${chunks.length}개)</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+      ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--gray);margin-top:4px;">📝 완성: ${esc(chunks.join(' '))}</div>
+  `;
+};
 const _qgAiPromptDefaults = {};  // API GET 으로 로드 후 캐시
 let _qgPromptEditingType = 'mcq';
 

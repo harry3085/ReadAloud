@@ -101,6 +101,88 @@ RULES:
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
+  vocab: `You are an English vocabulary test generator for Korean middle/high school students.
+
+Your task is to pick important vocabulary words from the given passages and provide Korean meanings.
+
+RULES:
+1. Pick meaningful CONTENT words (nouns, verbs, adjectives, adverbs).
+   AVOID articles, prepositions, pronouns, common auxiliary verbs.
+
+2. For each word, provide:
+   - Korean meaning (natural, 1-3 words)
+   - One example sentence from the passage (or adapted)
+   - Korean translation of the example
+
+3. Each word should appear ONCE (no duplicates in the set).
+
+4. Prefer words that are:
+   - Actually useful for middle/high school vocabulary building
+   - Not too common (skip "go", "make", "have" etc. unless phrase verbs)
+   - Not proper nouns (names of people/places)
+
+5. Difficulty:
+   - easy: common 1000-word list
+   - medium: intermediate vocabulary
+   - hard: advanced vocabulary, less common words
+
+6. Output ONLY a valid JSON object (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "vocab",
+      "word": "benevolent",
+      "meaning": "자비로운",
+      "example": "She is a benevolent person.",
+      "exampleKo": "그녀는 자비로운 사람이다.",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "medium"
+    }
+  ]
+}`,
+
+  unscramble: `You are an English sentence unscramble exercise generator for Korean middle/high school students.
+
+Your task is to pick sentences from the given passages and split them into chunks based on the requested chunk count.
+
+RULES:
+1. Pick sentences directly from the passages (unmodified).
+
+2. Split each sentence into EXACTLY the requested number of chunks using '/' as separator.
+
+3. Chunking strategy (based on sentence length and chunk count):
+   - For SHORT sentences (5-8 words) with few chunks: single-word chunks are fine
+   - For MEDIUM sentences (8-15 words): use phrases (noun phrases, verb phrases, prepositional phrases)
+   - For LONG sentences (15+ words): use semantic meaning units (clauses, participial phrases, relative clauses)
+   - ALWAYS respect natural linguistic boundaries
+
+4. Provide Korean meaning (natural translation) for the whole sentence.
+
+5. Difficulty:
+   - easy: short sentences with simple structure
+   - medium: medium length with common grammar
+   - hard: longer sentences with complex structure
+
+6. Output ONLY a valid JSON object (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "unscramble",
+      "chunkedSentence": "The /boy picked up/ the ball",
+      "meaningKo": "그 소년이 공을 주웠다.",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "medium"
+    }
+  ]
+}
+
+IMPORTANT:
+- The number of '/' separators should equal requested chunk count minus 1
+- Do NOT add '/' at the start or end
+- Do NOT include extra spaces around '/'`,
+
   recording: `You are an English reading-aloud exercise generator for Korean middle/high school students.
 
 Your task is to pick sentences from given English passages that students will READ ALOUD and RECORD for pronunciation practice.
@@ -294,7 +376,14 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 결과 검증 & 정제 ───
-    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank, subjective: validateSubjective, recording: validateRecording };
+    const validators = {
+      mcq: validateMCQ,
+      fill_blank: validateFillBlank,
+      subjective: validateSubjective,
+      recording: validateRecording,
+      vocab: validateVocab,
+      unscramble: validateUnscramble,
+    };
     const validated = validators[quizType](parsed.questions || [], normalizedPages);
 
     return res.status(200).json({
@@ -380,6 +469,18 @@ function buildUserPrompt(pages, count, type, opts) {
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
 - Prefer 6-20 word sentences with varied pronunciation practice value.`,
+    vocab: `Please generate ${count} vocabulary questions.
+- Pick important content words from the passages.
+- Each word appears only ONCE in the set.
+- Distribute across all passages (if multiple).
+- Include sourcePageId for each word.
+- Difficulty preset: ${opts?.difficulty || '중1'}.`,
+    unscramble: `Please generate ${count} unscramble questions.
+- Split each sentence into EXACTLY ${Math.min(Math.max(parseInt(opts?.chunkCount)||4, 2), 10)} chunks using '/' separator.
+- Pick meaningful sentences (6-30 words each).
+- Use semantic chunking based on chunk count: fewer chunks = larger semantic units.
+- Include sourcePageId for each sentence.
+- Difficulty preset: ${opts?.difficulty || '중1'}.`,
   };
 
   return `${typeInstructions[type]}
@@ -582,6 +683,89 @@ function validateRecording(questions, pages) {
         sourcePageId,
         sourcePageTitle,
         difficulty,
+      };
+    })
+    .filter(Boolean);
+}
+
+function validateVocab(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+  const seenWords = new Set();
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const word = String(q.word || '').trim();
+      if (!word || word.length < 2 || word.length > 40) return null;
+
+      const wordLower = word.toLowerCase();
+      if (seenWords.has(wordLower)) return null;
+      seenWords.add(wordLower);
+
+      const meaning = String(q.meaning || '').trim();
+      if (!meaning || meaning.length > 100) return null;
+
+      const example = String(q.example || '').trim().slice(0, 300);
+      const exampleKo = String(q.exampleKo || '').trim().slice(0, 300);
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty : 'medium';
+
+      return {
+        type: 'vocab',
+        word, meaning, example, exampleKo,
+        sourcePageId, sourcePageTitle, difficulty,
+      };
+    })
+    .filter(Boolean);
+}
+
+function validateUnscramble(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const chunkedSentence = String(q.chunkedSentence || '').trim();
+      if (!chunkedSentence || chunkedSentence.length < 8) return null;
+
+      const chunks = chunkedSentence
+        .split('/')
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (chunks.length < 2 || chunks.length > 10) return null;
+
+      const sentence = chunks.join(' ').replace(/\s+/g, ' ').trim();
+
+      const meaningKo = String(q.meaningKo || '').trim();
+      if (!meaningKo) return null;
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty : 'medium';
+
+      return {
+        type: 'unscramble',
+        chunkedSentence,
+        sentence,
+        meaningKo,
+        chunkCount: chunks.length,
+        sourcePageId, sourcePageTitle, difficulty,
       };
     })
     .filter(Boolean);
