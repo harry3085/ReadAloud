@@ -857,7 +857,8 @@ function _fbRenderStep(){
           oninput="fbUpdateAnswer(${i}, this.value)"
           onkeydown="fbInputKey(event, ${i})"
           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          inputmode="text" maxlength="${letterCount}">`;
+          inputmode="search" data-lpignore="true" data-form-type="other" data-1p-ignore="true"
+          name="noop-fb-${i}" maxlength="${letterCount}">`;
       }
     }
     sentEl.innerHTML = html;
