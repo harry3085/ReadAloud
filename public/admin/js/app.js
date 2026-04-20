@@ -8495,7 +8495,10 @@ window.tpOpenPrintModal = () => {
   const bookName = book?.name || '';
   const chapName = chap?.name || '';
 
-  const defaultTitle = `${cfg.kindLabel} 시험`;
+  // 시험명 기본값 = 선택된 세트 이름 (1개면 그대로, 여러 개면 '첫이름 외 N')
+  const defaultTitle = selectedSets.length === 1
+    ? (selectedSets[0].name || `${cfg.kindLabel} 시험`)
+    : `${selectedSets[0]?.name || cfg.kindLabel} 외 ${selectedSets.length - 1}`;
   const todayStr = new Date().toLocaleDateString('ko-KR');
 
   const html = `
@@ -8546,6 +8549,8 @@ window.tpOpenPrintModal = () => {
   `;
   showModal(html);
   window._tpPrintContext = { questions, bookName, chapName };
+  // 모달 렌더 완료 후 원문 줄 수에 맞춰 답란 조정
+  setTimeout(() => _tpAdjustAnswerLines(), 0);
 };
 
 function _tpBuildPrintHtml(questions, meta) {
@@ -8573,14 +8578,12 @@ function _tpBuildPrintHtml(questions, meta) {
       ${questions.map((q, i) => `
         <div style="margin-bottom:22px;page-break-inside:avoid;">
           <div style="font-size:12px;font-weight:700;margin-bottom:5px;">${i+1}. ${esc(q.questionKo || '위 문장을 우리말로 해석하시오.')}</div>
-          <div style="font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;margin-bottom:8px;">${esc(q.sentence || '')}</div>
+          <div data-fb-sent="${i}" style="font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;margin-bottom:8px;">${esc(q.sentence || '')}</div>
           ${showAnswers && q.sampleAnswerKo
             ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;">
                 <strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}
               </div>`
-            : `<div style="border-bottom:1px solid #aaa;height:28px;"></div>
-               <div style="border-bottom:1px solid #aaa;height:28px;"></div>
-               <div style="border-bottom:1px solid #aaa;height:28px;"></div>`
+            : `<div data-fb-ans="${i}"><div style="border-bottom:1px solid #aaa;height:28px;"></div></div>`
           }
         </div>
       `).join('')}
@@ -8588,6 +8591,24 @@ function _tpBuildPrintHtml(questions, meta) {
       <div style="text-align:center;margin-top:28px;padding-top:10px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>
     </div>
   `;
+}
+
+// 원문 줄 수만큼 답란(28px 선) 채우기 — innerHTML 설정 후 호출
+function _tpAdjustAnswerLines() {
+  const area = document.getElementById('tpPrintArea');
+  if (!area) return;
+  area.querySelectorAll('[data-fb-sent]').forEach(sDiv => {
+    const qIdx = sDiv.getAttribute('data-fb-sent');
+    const ansDiv = area.querySelector(`[data-fb-ans="${qIdx}"]`);
+    if (!ansDiv) return;  // 모범답안 표시 중이면 없음
+    const cs = getComputedStyle(sDiv);
+    const lineHeight = parseFloat(cs.lineHeight) || 22;
+    const inner = sDiv.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const lines = Math.max(1, Math.round(inner / lineHeight));
+    ansDiv.innerHTML = Array.from({length: lines}, () =>
+      '<div style="border-bottom:1px solid #aaa;height:28px;"></div>'
+    ).join('');
+  });
 }
 
 window.tpPrintRefreshPreview = () => {
@@ -8612,6 +8633,8 @@ window.tpPrintRefreshPreview = () => {
     chapName: ctx.chapName,
     showAnswers: !!showAnsEl?.checked,
   });
+  // 원문 줄 수에 맞춰 답란 조정 (모범답안 모드 아닐 때만 효과)
+  setTimeout(() => _tpAdjustAnswerLines(), 0);
 };
 
 window.tpPrintTogglePreview = () => tpPrintRefreshPreview();
