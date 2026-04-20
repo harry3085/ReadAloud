@@ -7577,41 +7577,16 @@ window.qsViewDetail = async (setId) => {
   if (!s) { showToast('세트를 찾을 수 없음'); return; }
 
   const html = `
-    <div style="max-width:700px;">
+    <div style="max-width:720px;">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);">
         <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${esc(s.name)}</div>
         <div style="font-size:12px;color:var(--gray);">
-          ${s.questions?.length||0}문제 · 모델 <code>${esc(s.aiModel||'')}</code>
+          ${s.questions?.length||0}문제 · 유형 <code>${esc(s.sourceType||'-')}</code> · 모델 <code>${esc(s.aiModel||'')}</code>
           ${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
         </div>
       </div>
       <div style="padding:16px 24px;max-height:60vh;overflow-y:auto;">
-        ${(s.questions||[]).map((q, i) => {
-          const diff = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty]||q.difficulty||'-';
-          if (q.type === 'fill_blank') {
-            const parts = (q.sentence||'').split('___');
-            let sentHtml = '';
-            for (let k = 0; k < parts.length; k++) {
-              sentHtml += esc(parts[k]);
-              if (k < parts.length - 1) {
-                const ans = q.blanks?.[k] || '';
-                sentHtml += `<span style="display:inline-block;min-width:40px;padding:1px 6px;margin:0 2px;border-bottom:2px solid #4caf50;background:#e8f5e9;color:#2e7d32;font-weight:700;">${esc(ans)}</span>`;
-              }
-            }
-            return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">✏️ ${i+1}번 · [${esc(diff)}]</div>
-              <div style="font-size:14px;line-height:1.8;margin-bottom:6px;">${sentHtml}</div>
-              <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
-              ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
-            </div>`;
-          }
-          return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
-            <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${i+1}. ${esc(q.question)} <span style="font-size:10px;color:var(--gray);margin-left:6px;">[${esc(diff)}]</span></div>
-            <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">${esc(q.questionKo||'')}</div>
-            ${(q.choices||[]).map((c,j) => `<div style="padding:4px 10px;margin-bottom:2px;font-size:12px;${c.isAnswer?'background:#e8f5e9;color:#2e7d32;font-weight:600;':''}">${['①','②','③','④'][j]} ${esc(c.text)}${c.isAnswer?' ✓':''}</div>`).join('')}
-            ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
-          </div>`;
-        }).join('')}
+        ${(s.questions||[]).map((q, i) => _qsRenderViewCard(q, i)).join('')}
       </div>
       <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;">
         <button class="btn btn-secondary" onclick="closeModal();qsEditSet('${esc(s.id)}')">✏️ 수정하기</button>
@@ -7621,6 +7596,109 @@ window.qsViewDetail = async (setId) => {
   `;
   showModal(html);
 };
+
+// 모든 유형을 대응하는 읽기전용 상세 카드 렌더 (Phase 6)
+function _qsRenderViewCard(q, i) {
+  const diff = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty] || q.difficulty || '-';
+  const icon = q.type==='fill_blank'?'✏️' : q.type==='subjective'?'✍️' : q.type==='recording'?'🎤' : q.type==='vocab'?'📝' : q.type==='unscramble'?'🔀' : '📖';
+  const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번 · [${esc(diff)}]${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
+  const explanation = q.explanation ? `<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>` : '';
+
+  if (q.type === 'fill_blank') {
+    const parts = (q.sentence||'').split('___');
+    let sentHtml = '';
+    for (let k = 0; k < parts.length; k++) {
+      sentHtml += esc(parts[k]);
+      if (k < parts.length - 1) {
+        const ans = q.blanks?.[k] || '';
+        sentHtml += `<span style="display:inline-block;min-width:40px;padding:1px 6px;margin:0 2px;border-bottom:2px solid #4caf50;background:#e8f5e9;color:#2e7d32;font-weight:700;">${esc(ans)}</span>`;
+      }
+    }
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="font-size:14px;line-height:1.8;margin-bottom:6px;">${sentHtml}</div>
+      <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
+      ${explanation}
+    </div>`;
+  }
+
+  if (q.type === 'subjective') {
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="font-size:14px;line-height:1.6;margin-bottom:8px;padding:10px 14px;background:#f8f9fa;border-left:3px solid var(--teal);">${esc(q.sentence||'')}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">${esc(q.questionKo||'')}</div>
+      <div style="font-size:12px;color:#2e7d32;background:#e8f5e9;padding:8px 12px;border-radius:6px;">
+        <div style="font-size:10px;font-weight:700;margin-bottom:3px;">모범 답안 (교사용)</div>
+        ${q.sampleAnswerKo ? esc(q.sampleAnswerKo) : '<span style="color:#999;font-style:italic;">(답안 없음)</span>'}
+      </div>
+      ${explanation}
+    </div>`;
+  }
+
+  if (q.type === 'recording') {
+    if (q.schemaV === 2) {
+      const preview = (q.fullText || '').slice(0, 240) + ((q.fullText||'').length > 240 ? '…' : '');
+      return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+        ${header}
+        <div style="font-size:12px;color:var(--text);padding:8px 12px;background:#fefce8;border-left:3px solid #CA8A04;margin-bottom:8px;">${esc(q.instructionKo||'')}</div>
+        <div style="font-size:13px;line-height:1.6;padding:10px 14px;background:#f5f5f5;border-radius:6px;color:#444;margin-bottom:6px;">${esc(preview)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;">
+          <span style="background:#e0f2fe;padding:3px 10px;border-radius:10px;color:#0369a1;font-weight:600;">📄 ${q.pageCount||1} Page</span>
+          <span style="background:#fce7f3;padding:3px 10px;border-radius:10px;color:#be185d;font-weight:600;">🎯 ${q.accuracyThreshold||70}점</span>
+          <span style="background:#dcfce7;padding:3px 10px;border-radius:10px;color:#166534;font-weight:600;">⏱ ${q.evaluationSeconds||60}초</span>
+          <span style="background:#f3e8ff;padding:3px 10px;border-radius:10px;color:#6b21a8;font-weight:600;">🔁 3회 반복</span>
+        </div>
+      </div>`;
+    }
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="font-size:14px;line-height:1.7;padding:10px 14px;background:#F5F3FF;border-left:3px solid #8B5CF6;margin-bottom:6px;">${esc(q.sentence||'')}</div>
+      <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
+    </div>`;
+  }
+
+  if (q.type === 'vocab') {
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+        <div style="padding:8px 12px;background:#f0f9ff;border-radius:6px;">
+          <div style="font-size:10px;color:#64748b;margin-bottom:2px;">영단어</div>
+          <div style="font-size:15px;font-weight:700;color:#0c4a6e;">${esc(q.word||'')}</div>
+        </div>
+        <div style="padding:8px 12px;background:#fef3c7;border-radius:6px;">
+          <div style="font-size:10px;color:#92400e;margin-bottom:2px;">뜻</div>
+          <div style="font-size:14px;font-weight:600;color:#78350f;">${esc(q.meaning||'')}</div>
+        </div>
+      </div>
+      ${q.example ? `
+        <div style="font-size:11px;color:#64748b;padding:6px 10px;background:#f9fafb;border-left:2px solid #d1d5db;">
+          <em>${esc(q.example)}</em>
+          ${q.exampleKo ? `<div style="color:#6b7280;margin-top:3px;">↳ ${esc(q.exampleKo)}</div>` : ''}
+        </div>` : ''}
+    </div>`;
+  }
+
+  if (q.type === 'unscramble') {
+    const chunks = (q.chunkedSentence||'').split('/').map(s=>s.trim()).filter(Boolean);
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="font-size:13px;color:var(--text);margin-bottom:6px;">${esc(q.meaningKo||'')}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+        ${chunks.map(c => `<span style="padding:4px 10px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;font-weight:600;">${esc(c)}</span>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--gray);padding:4px 8px;background:#f9fafb;border-radius:4px;font-family:monospace;">${esc(chunks.join(' '))}</div>
+    </div>`;
+  }
+
+  // 기본(MCQ)
+  return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+    ${header}
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${esc(q.question||'')}</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">${esc(q.questionKo||'')}</div>
+    ${(q.choices||[]).map((c,j) => `<div style="padding:4px 10px;margin-bottom:2px;font-size:12px;${c.isAnswer?'background:#e8f5e9;color:#2e7d32;font-weight:600;':''}">${['①','②','③','④'][j]} ${esc(c.text||'')}${c.isAnswer?' ✓':''}</div>`).join('')}
+    ${explanation}
+  </div>`;
+}
 
 window.qsRenameSet = async (setId) => {
   const s = _qsList.find(x => x.id === setId);
