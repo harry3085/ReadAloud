@@ -65,6 +65,42 @@ RULES:
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
+  subjective: `You are an English-to-Korean translation exercise generator for Korean middle/high school students.
+
+Your task is to pick meaningful sentences from given English passages and create "translate this sentence" questions for a printed test paper (no auto-grading — students write by hand).
+
+RULES:
+1. Pick ONE sentence per question. Avoid trivial sentences (e.g., "Hello."). Prefer sentences with substantive content.
+
+2. Keep the original sentence from the passage UNMODIFIED. Do not rephrase, shorten, or combine sentences.
+
+3. For each picked sentence, provide a natural Korean translation that a teacher would accept as a model answer (sampleAnswerKo). It should be fluent Korean, not literal word-by-word.
+
+4. questionKo field: Use simple instruction like "위 문장을 우리말로 해석하시오." (can vary slightly).
+
+5. Difficulty (based on sentence complexity, vocabulary, structure):
+   - About 30% easy
+   - About 50% medium
+   - About 20% hard
+
+6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "subjective",
+      "sentence": "The brave knight fought the dragon with great courage.",
+      "questionKo": "위 문장을 우리말로 해석하시오.",
+      "sampleAnswerKo": "용감한 기사는 대단한 용기로 용과 싸웠다.",
+      "explanation": "fought = 싸우다(과거), courage = 용기",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "medium"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+
   fill_blank: `You are an English fill-in-the-blank exercise generator for Korean middle/high school students.
 
 Your task is to create fill-in-the-blank questions based on given English passages.
@@ -206,7 +242,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 결과 검증 & 정제 ───
-    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank };
+    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank, subjective: validateSubjective };
     const validated = validators[quizType](parsed.questions || [], normalizedPages);
 
     return res.status(200).json({
@@ -282,6 +318,11 @@ function buildUserPrompt(pages, count, type, opts) {
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels`,
+    subjective: `Please generate ${count} sentence-translation questions (English → Korean).
+- Pick ONE meaningful sentence per question from the given passages.
+- Distribute across all passages (if multiple).
+- Include sourcePageId for the source passage.
+- Vary difficulty levels.`,
   };
 
   return `${typeInstructions[type]}
@@ -402,6 +443,45 @@ function validateFillBlank(questions, pages) {
         sentence,
         blanks,
         questionKo,
+        explanation: String(q.explanation || '').trim().slice(0, 500),
+        sourcePageId,
+        sourcePageTitle,
+        difficulty,
+      };
+    })
+    .filter(Boolean);
+}
+
+function validateSubjective(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const sentence = String(q.sentence || '').trim();
+      if (!sentence || sentence.length < 8 || sentence.length > 500) return null;
+
+      const sampleAnswerKo = String(q.sampleAnswerKo || '').trim().slice(0, 500);
+      const questionKo = String(q.questionKo || '위 문장을 우리말로 해석하시오.').trim();
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId
+        : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty
+        : 'medium';
+
+      return {
+        type: 'subjective',
+        sentence,
+        questionKo,
+        sampleAnswerKo,
         explanation: String(q.explanation || '').trim().slice(0, 500),
         sourcePageId,
         sourcePageTitle,
