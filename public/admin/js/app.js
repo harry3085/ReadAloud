@@ -1734,22 +1734,42 @@ window.loadPersonalScore = async(uid) => {
 
 // ── 공통 유틸 ─────────────────────────────────────────
 window.showModal = (html, opts = {}) => {
-  document.getElementById('modalContent').innerHTML = html;
+  const mc = document.getElementById('modalContent');
+  mc.innerHTML = html;
   const box = document.getElementById('modalBox');
   if (opts.fullFlex) {
-    // 내부 콘텐츠가 자체 flex-column 으로 푸터를 하단 고정하는 전용 모드
+    // 푸터를 하단 고정 + 내부 영역만 스크롤 하는 전용 모드
     box.style.padding = '0';
     box.style.overflow = 'hidden';
     box.style.width = '';
     box.style.maxWidth = '94vw';
-    box.style.height = '90vh';
-    box.style.maxHeight = '90vh';
+    box.style.height = '80vh';
+    box.style.maxHeight = '92vh';
+    box.style.minHeight = '360px';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    // #modalContent 도 flex item + column 으로 → 자식 div height:100% 동작
+    mc.style.flex = '1';
+    mc.style.minHeight = '0';
+    mc.style.display = 'flex';
+    mc.style.flexDirection = 'column';
+    mc.style.height = '';
+    mc.style.overflow = 'hidden';
   } else {
-    // 기본 스타일 원복 (이전 fullFlex 모달의 잔여 스타일 제거)
+    // 기본 스타일 원복
     box.style.padding = '';
     box.style.overflow = '';
     box.style.height = '';
     box.style.maxHeight = '';
+    box.style.minHeight = '';
+    box.style.display = '';
+    box.style.flexDirection = '';
+    mc.style.flex = '';
+    mc.style.minHeight = '';
+    mc.style.display = '';
+    mc.style.flexDirection = '';
+    mc.style.height = '';
+    mc.style.overflow = '';
   }
   document.getElementById('modalOverlay').style.display = 'flex';
 };
@@ -7593,24 +7613,24 @@ window.qsViewDetail = async (setId) => {
   if (!s) { showToast('세트를 찾을 수 없음'); return; }
 
   const html = `
-    <div style="max-width:720px;">
-      <div style="padding:20px 24px;border-bottom:1px solid var(--border);">
+    <div style="width:min(720px,94vw);flex:1;display:flex;flex-direction:column;min-height:0;">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${esc(s.name)}</div>
         <div style="font-size:12px;color:var(--gray);">
           ${s.questions?.length||0}문제 · 유형 <code>${esc(s.sourceType||'-')}</code> · 모델 <code>${esc(s.aiModel||'')}</code>
           ${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
         </div>
       </div>
-      <div style="padding:16px 24px;max-height:60vh;overflow-y:auto;">
+      <div style="padding:16px 24px;flex:1;overflow-y:auto;min-height:0;">
         ${(s.questions||[]).map((q, i) => _qsRenderViewCard(q, i)).join('')}
       </div>
-      <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;">
+      <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:white;flex-shrink:0;">
         <button class="btn btn-secondary" onclick="closeModal();qsEditSet('${esc(s.id)}')">✏️ 수정하기</button>
         <button class="btn btn-primary" onclick="closeModal()">닫기</button>
       </div>
     </div>
   `;
-  showModal(html);
+  showModal(html, { fullFlex: true });
 };
 
 // 모든 유형을 대응하는 읽기전용 상세 카드 렌더 (Phase 6)
@@ -7770,7 +7790,7 @@ function _qsRenderEditModal() {
   if (!st) return;
   const typeLabel = { mcq:'객관식', fill_blank:'빈칸채우기' }[st.sourceType] || st.sourceType;
   const html = `
-    <div style="width:min(860px,94vw);height:100%;display:flex;flex-direction:column;min-height:0;">
+    <div style="width:min(860px,94vw);flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:17px;font-weight:700;">✏️ 문제 세트 수정</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
