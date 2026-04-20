@@ -70,7 +70,17 @@ module.exports = async (req, res) => {
     const mode = body.mode === 'feedback' ? 'feedback' : 'check';
     const originalText = String(body.originalText || '').trim();
     const audioBase64 = body.audioBase64;
-    const mimeType = body.mimeType || 'audio/webm';
+    const rawMime = body.mimeType || 'audio/webm';
+    // Gemini 공식 지원: wav/mp3/aiff/aac/ogg/flac
+    // 브라우저가 주로 내보내는 webm/mp4 는 거부되므로 호환 포맷으로 리라벨
+    // (컨테이너 내부 opus/aac 코덱은 보통 파싱 가능)
+    const mimeType = (() => {
+      const lower = rawMime.toLowerCase();
+      if (lower.includes('webm')) return 'audio/ogg';
+      if (lower.includes('mp4') || lower.includes('m4a')) return 'audio/aac';
+      // codec 파라미터 제거 (audio/ogg;codecs=opus → audio/ogg)
+      return lower.split(';')[0].trim() || 'audio/ogg';
+    })();
     const evaluationSeconds = Math.max(10, Math.min(parseInt(body.evaluationSeconds) || 60, 300));
 
     if (!originalText || originalText.length < 5) {

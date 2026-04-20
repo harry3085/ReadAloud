@@ -1922,10 +1922,13 @@ function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrl
               </div>
               <span style="font-size:15px;font-weight:700;color:${pass ? '#059669' : '#CA8A04'};">${r.score}점</span>
             </div>
-            ${r.missedWords?.length > 0 && isLast ? `
+            ${r.error ? `
+              <div style="padding:6px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;font-size:11px;color:#DC2626;margin-top:2px;margin-bottom:6px;word-break:break-word;">
+                ⚠️ ${esc(r.note || '평가 실패')}
+              </div>` : (r.missedWords?.length > 0 && isLast ? `
               <div style="padding:6px 12px;background:#fef2f2;border-radius:4px;font-size:11px;color:#DC2626;margin-top:4px;">
                 놓친 단어: ${r.missedWords.map(w => `<strong>${esc(w)}</strong>`).join(', ')}
-              </div>` : ''}
+              </div>` : '')}
           `;
         }).join('')}
       </div>
