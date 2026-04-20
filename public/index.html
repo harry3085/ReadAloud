@@ -288,13 +288,13 @@
         <div id="fbSentence" style="font-size:19px;line-height:1.7;color:var(--text);"></div>
       </div>
 
-      <!-- 숨겨진 입력 영역 (빈칸별 input) — 단어시험 패턴과 동일 -->
-      <div id="fbInputsHolder" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;"></div>
-
       <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:6px;">
         빈칸을 탭하면 입력됩니다
       </div>
     </div>
+
+    <!-- 숨겨진 입력 영역 (뷰포트에 고정 — iOS 자동 스크롤 방지) -->
+    <div id="fbInputsHolder" style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;z-index:-1;"></div>
 
     <div class="quiz-footer" style="border-top:1px solid #f0e8d4;background:#FFFBEB;">
       <div class="timer-circle">

@@ -851,7 +851,10 @@ function _fbRenderStep(){
 
   setTimeout(() => {
     const first = document.getElementById('fb-input-0');
-    if(first) first.focus();
+    if(first){
+      try { first.focus({ preventScroll: true }); } catch(e) { first.focus(); }
+      window.scrollTo(0, 0);
+    }
   }, 50);
 }
 
@@ -892,9 +895,11 @@ window.fbFocusBlank = (blankIdx) => {
   _fbActiveBlank = blankIdx;
   const inp = document.getElementById('fb-input-' + blankIdx);
   if(inp){
-    inp.focus();
-    // 커서를 끝으로 이동
+    // preventScroll: iOS/크롬 자동 스크롤 방지
+    try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
     try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch(e){}
+    // 안전장치: 포커스 직후 페이지 스크롤 위치 복원
+    window.scrollTo(0, 0);
   }
   _fbRefreshBoxes();
 };
