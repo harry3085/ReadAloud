@@ -4693,6 +4693,8 @@ window.startVocab = async (testId, testName) => {
       } else {
         fmt = opts.format;
       }
+      // 스펠링 쓰기는 항상 한글→영어 (알파벳 입력)
+      if (fmt === 'short') dir = 'ko2en';
       const ans = { input: '', direction: dir, format: fmt };
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
@@ -5015,6 +5017,7 @@ let _uqState = {
   questions: [],
   currentIdx: 0,
   answers: [],   // [{placed: [chunkIdx...], chunks: shuffled[]}]
+  feedback: null, // {isCorrect, userSentence, targetSentence} — 피드백 단계
 };
 
 // 기존 goUnscramble 덮어쓰기 (tests 기반 → genTests 기반)
@@ -5095,7 +5098,7 @@ window.startUnscramble2 = async (testId, testName) => {
       return { placed: [], chunks: shuffled };
     });
 
-    _uqState = { test, questions, currentIdx: 0, answers };
+    _uqState = { test, questions, currentIdx: 0, answers, feedback: null };
     show('unscrambleQuiz');
     _uqRenderStep();
   } catch(e) {
@@ -5187,8 +5190,9 @@ function _uqUpdateTimerUI(){
 
 window.uqSkip = () => {
   const s = _uqState;
-  // 현재 답 유지한 채 다음으로 (정답 일치 안 하면 오답)
   _uqStopTimer();
+  // 피드백 중이면 skip 도 다음 문제로
+  s.feedback = null;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
     _uqRenderStep();
@@ -5227,6 +5231,7 @@ function _uqRefreshBuiltAndChunks() {
 
 window.uqTapChunk = (shufIdx) => {
   const s = _uqState;
+  if (s.feedback) return;
   const ans = s.answers[s.currentIdx];
   if (ans.placed.includes(shufIdx)) return;
   ans.placed.push(shufIdx);
@@ -5234,11 +5239,13 @@ window.uqTapChunk = (shufIdx) => {
 };
 
 window.uqRemovePlaced = (pos) => {
+  if (_uqState.feedback) return;
   _uqState.answers[_uqState.currentIdx].placed.splice(pos, 1);
   _uqRefreshBuiltAndChunks();
 };
 
 window.uqReset = () => {
+  if (_uqState.feedback) return;
   _uqState.answers[_uqState.currentIdx].placed = [];
   _uqRefreshBuiltAndChunks();
 };
@@ -5246,15 +5253,70 @@ window.uqReset = () => {
 window.uqNext = async (opts) => {
   _uqStopTimer();
   const s = _uqState;
-  const ans = s.answers[s.currentIdx];
-  if (!(opts && opts.allowPartial) && ans.placed.length !== ans.chunks.length) return;
-  if (s.currentIdx < s.questions.length - 1) {
-    s.currentIdx++;
-    _uqRenderStep();
-  } else {
-    await _uqSubmit();
+
+  // 피드백 화면 → [다음] 클릭 시 다음 문제 진행
+  if (s.feedback) {
+    s.feedback = null;
+    if (s.currentIdx < s.questions.length - 1) {
+      s.currentIdx++;
+      _uqRenderStep();
+    } else {
+      await _uqSubmit();
+    }
+    return;
   }
+
+  // 답 제출 → 채점 + 피드백 화면
+  const ans = s.answers[s.currentIdx];
+  const q = s.questions[s.currentIdx];
+  if (!(opts && opts.allowPartial) && ans.placed.length !== ans.chunks.length) return;
+
+  const userSeq = ans.placed.map(idx => ans.chunks[idx].text);
+  const targetSeq = (q.chunkedSentence || '').split('/').map(x => x.trim()).filter(Boolean);
+  const isCorrect = userSeq.length === targetSeq.length
+    && userSeq.every((c, j) => c === targetSeq[j]);
+
+  s.feedback = {
+    isCorrect,
+    userSentence: userSeq.join(' '),
+    targetSentence: targetSeq.join(' '),
+    meaningKo: q.meaningKo || '',
+  };
+  _uqRenderFeedback();
 };
+
+function _uqRenderFeedback() {
+  const s = _uqState;
+  const fb = s.feedback;
+  if (!fb) return;
+  const builtEl = document.getElementById('uqBuilt');
+  const chunkBox = document.getElementById('uqChunkBox');
+  const submitBtn = document.getElementById('uqSubmitBtn');
+  const isLast = s.currentIdx === s.questions.length - 1;
+
+  if (builtEl) {
+    builtEl.innerHTML = `
+      <div style="text-align:center;padding:8px 4px;">
+        <div style="font-size:36px;margin-bottom:4px;">${fb.isCorrect ? '🎉' : '💪'}</div>
+        <div style="font-size:15px;font-weight:800;color:${fb.isCorrect ? '#059669' : '#DC2626'};margin-bottom:10px;">
+          ${fb.isCorrect ? '정답입니다!' : '아쉬워요'}
+        </div>
+        <div style="font-size:10px;color:var(--gray);margin-bottom:3px;text-align:left;">정답</div>
+        <div style="font-size:14px;font-weight:700;color:#059669;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;text-align:left;">${esc(fb.targetSentence)}</div>
+        ${!fb.isCorrect ? `
+          <div style="font-size:10px;color:var(--gray);margin-top:8px;margin-bottom:3px;text-align:left;">내 답</div>
+          <div style="font-size:13px;color:#DC2626;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;text-align:left;text-decoration:line-through;">${esc(fb.userSentence)}</div>
+        ` : ''}
+      </div>
+    `;
+  }
+  if (chunkBox) chunkBox.innerHTML = '';  // 청크 버튼 숨김
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = isLast ? '완료 ▶' : '다음 문제 ▶';
+    submitBtn.style.opacity = '1';
+  }
+}
 
 async function _uqSubmit() {
   const s = _uqState;
