@@ -6142,6 +6142,7 @@ let _qgSelectedPageIds = new Set();    // AI 생성 화면에서 선택된 Page 
 let _qgGenerated = [];                  // AI 생성 결과 (미리보기용)
 let _qgExcluded = new Set();            // 미리보기에서 제외된 문제 인덱스
 let _qsList = [];                       // 문제 세트 목록 (Firestore에서 로드)
+let _qsEditState = null;                // 수정 중인 세트 (Phase: 세트 내용 편집)
 
 // Phase 2.5: Book/Chapter 드릴다운 필터 + 유형 선택
 let _qgActiveBook = null;     // {id, name} | null
@@ -6782,6 +6783,30 @@ async function _qgCallFillBlank(opts) {
   }
 }
 
+// ─── 기본 세트 이름: Chapter · PageTitle 조합 ───
+function _qgBuildDefaultName() {
+  const pageIds = [...new Set(_qgGenerated.map(q => q.sourcePageId).filter(Boolean))];
+  if (pageIds.length === 0) return 'AI 문제 세트';
+
+  const pages = pageIds.map(pid => (_genPages||[]).find(p => p.id === pid)).filter(Boolean);
+  if (pages.length === 0) return 'AI 문제 세트';
+
+  if (pages.length === 1) {
+    const p = pages[0];
+    const chap = (_genChapters||[]).find(c => c.id === p.chapterId);
+    const parts = [chap?.name, p.title].filter(Boolean);
+    return parts.join(' · ') || 'AI 문제 세트';
+  }
+
+  const chapterIds = [...new Set(pages.map(p => p.chapterId).filter(Boolean))];
+  if (chapterIds.length === 1) {
+    const chap = (_genChapters||[]).find(c => c.id === chapterIds[0]);
+    const firstTitle = pages[0]?.title || '';
+    if (chap) return `${chap.name}${firstTitle ? ' · ' + firstTitle : ''} 외 ${pages.length - 1}`;
+  }
+  return `${pages[0].title || 'AI 문제 세트'} 외 ${pages.length - 1}`;
+}
+
 // ─── 결과 모달 (Phase 2.5) ───
 function _qgShowResultModal(data) {
   if (!_qgGenerated.length) {
@@ -6789,7 +6814,7 @@ function _qgShowResultModal(data) {
     return;
   }
 
-  const defaultName = `AI 문제 세트 ${new Date().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/[^\d]/g,'').slice(0,8)}`;
+  const defaultName = _qgBuildDefaultName();
 
   const html = `
     <div style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -6982,33 +7007,34 @@ function _qsRenderList() {
 
   root.innerHTML = `
     <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-      <table class="data-table" style="width:100%;">
+      <table class="data-table" style="width:100%;table-layout:fixed;">
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th>세트 이름</th>
-            <th style="width:80px;">유형</th>
-            <th style="width:80px;">문제수</th>
-            <th style="width:100px;">모델</th>
-            <th style="width:140px;">생성일</th>
-            <th style="width:180px;">작업</th>
+            <th style="width:260px;">세트 이름</th>
+            <th style="width:110px;">유형</th>
+            <th style="width:90px;">문제수</th>
+            <th style="width:140px;">모델</th>
+            <th style="width:170px;">생성일</th>
+            <th style="width:270px;">작업</th>
           </tr>
         </thead>
         <tbody>
           ${_qsList.map((s, i) => {
             const date = s.createdAt?.toDate ? s.createdAt.toDate() : null;
             const dateStr = date ? date.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
-            const typeLabel = { mcq:'객관식' }[s.sourceType] || s.sourceType || '-';
+            const typeLabel = { mcq:'객관식', fill_blank:'빈칸' }[s.sourceType] || s.sourceType || '-';
             const modelShort = (s.aiModel||'').replace('gemini-','').replace('-preview','');
             return `<tr>
               <td class="td-center td-sub">${i+1}</td>
-              <td class="td-link" onclick="qsViewDetail('${esc(s.id)}')">${esc(s.name||'(이름 없음)')}</td>
+              <td class="td-link" onclick="qsViewDetail('${esc(s.id)}')" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.name||'')}">${esc(s.name||'(이름 없음)')}</td>
               <td class="td-center"><span class="badge" style="background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 8px;border-radius:10px;">${esc(typeLabel)}</span></td>
               <td class="td-center td-main">${s.questionCount||s.questions?.length||0}</td>
-              <td class="td-center td-sub" style="font-family:monospace;font-size:10px;">${esc(modelShort)}</td>
-              <td class="td-sub">${esc(dateStr)}</td>
+              <td class="td-center td-sub" style="font-family:monospace;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(modelShort)}</td>
+              <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(dateStr)}</td>
               <td class="td-center">
                 <button class="action-btn" onclick="qsViewDetail('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">보기</button>
+                <button class="action-btn" onclick="qsEditSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">수정</button>
                 <button class="action-btn" onclick="qsRenameSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">이름</button>
                 <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">삭제</button>
               </td>
@@ -7035,16 +7061,35 @@ window.qsViewDetail = async (setId) => {
       </div>
       <div style="padding:16px 24px;max-height:60vh;overflow-y:auto;">
         ${(s.questions||[]).map((q, i) => {
-          const diff = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty]||q.difficulty;
+          const diff = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty]||q.difficulty||'-';
+          if (q.type === 'fill_blank') {
+            const parts = (q.sentence||'').split('___');
+            let sentHtml = '';
+            for (let k = 0; k < parts.length; k++) {
+              sentHtml += esc(parts[k]);
+              if (k < parts.length - 1) {
+                const ans = q.blanks?.[k] || '';
+                sentHtml += `<span style="display:inline-block;min-width:40px;padding:1px 6px;margin:0 2px;border-bottom:2px solid #4caf50;background:#e8f5e9;color:#2e7d32;font-weight:700;">${esc(ans)}</span>`;
+              }
+            }
+            return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">✏️ ${i+1}번 · [${esc(diff)}]</div>
+              <div style="font-size:14px;line-height:1.8;margin-bottom:6px;">${sentHtml}</div>
+              <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
+              ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
+            </div>`;
+          }
           return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
             <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${i+1}. ${esc(q.question)} <span style="font-size:10px;color:var(--gray);margin-left:6px;">[${esc(diff)}]</span></div>
             <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">${esc(q.questionKo||'')}</div>
             ${(q.choices||[]).map((c,j) => `<div style="padding:4px 10px;margin-bottom:2px;font-size:12px;${c.isAnswer?'background:#e8f5e9;color:#2e7d32;font-weight:600;':''}">${['①','②','③','④'][j]} ${esc(c.text)}${c.isAnswer?' ✓':''}</div>`).join('')}
+            ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
           </div>`;
         }).join('')}
       </div>
-      <div style="padding:16px 24px;border-top:1px solid var(--border);text-align:right;">
-        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+      <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;">
+        <button class="btn btn-secondary" onclick="closeModal();qsEditSet('${esc(s.id)}')">✏️ 수정하기</button>
+        <button class="btn btn-primary" onclick="closeModal()">닫기</button>
       </div>
     </div>
   `;
@@ -7080,6 +7125,198 @@ window.qsDeleteSet = async (setId) => {
     await loadQuestionSets();
   } catch(e) {
     showToast('삭제 실패: '+e.message);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 문제 세트 내용 수정
+// ═══════════════════════════════════════════════════════════════════════════
+
+window.qsEditSet = (setId) => {
+  const s = _qsList.find(x => x.id === setId);
+  if (!s) { showToast('세트를 찾을 수 없음'); return; }
+
+  _qsEditState = {
+    setId: s.id,
+    name: s.name || '',
+    sourceType: s.sourceType || 'mcq',
+    questions: JSON.parse(JSON.stringify(s.questions || [])),
+  };
+  _qsRenderEditModal();
+};
+
+function _qsRenderEditModal() {
+  const st = _qsEditState;
+  if (!st) return;
+  const typeLabel = { mcq:'객관식', fill_blank:'빈칸채우기' }[st.sourceType] || st.sourceType;
+  const html = `
+    <div style="width:min(860px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;">✏️ 문제 세트 수정</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
+      </div>
+
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;">
+        <label style="font-size:11px;font-weight:700;color:var(--gray);">세트 이름</label>
+        <input type="text" id="qsEditName" value="${esc(st.name)}"
+          style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      </div>
+
+      <div id="qsEditQuestions" style="padding:14px 22px;flex:1;overflow-y:auto;">
+        ${st.questions.map((q,i) => _qsRenderEditQuestion(q,i)).join('')}
+      </div>
+
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <div style="flex:1;font-size:11px;color:var(--gray);">
+          ${st.sourceType==='fill_blank' ? '※ 문장 내 ___ 개수 = 정답 개수여야 저장됩니다' : '※ 각 문제에 정답(라디오)이 정확히 1개여야 합니다'}
+        </div>
+        <button class="btn btn-secondary" onclick="qsCloseEdit()">취소</button>
+        <button class="btn btn-primary" onclick="qsSaveEdits()" style="font-weight:700;">💾 저장하기</button>
+      </div>
+    </div>
+  `;
+  showModal(html);
+}
+
+function _qsRenderEditQuestion(q, idx) {
+  const diffLabel = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty] || q.difficulty || '-';
+  const srcLabel = q.sourcePageTitle ? ` · 출처: ${q.sourcePageTitle}` : '';
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <div style="font-size:11px;font-weight:700;color:var(--gray);">${q.type==='fill_blank'?'✏️':'📖'} ${idx+1}번 · 난이도 ${esc(diffLabel)}${esc(srcLabel)}</div>
+  </div>`;
+
+  if (q.type === 'fill_blank') {
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      ${header}
+      <label style="font-size:11px;color:var(--gray);">문장 <span style="color:#CA8A04;">(___는 빈칸 마커)</span></label>
+      <textarea oninput="qsEditUpdate(${idx},'sentence',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.sentence||'')}</textarea>
+      <label style="font-size:11px;color:var(--gray);">빈칸 정답 (쉼표로 구분, 문장 내 ___ 순서대로)</label>
+      <input type="text" value="${esc((q.blanks||[]).join(', '))}"
+        oninput="qsEditUpdate(${idx},'blanks',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">한글 지시</label>
+      <input type="text" value="${esc(q.questionKo||'')}"
+        oninput="qsEditUpdate(${idx},'questionKo',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">해설 (선택)</label>
+      <textarea oninput="qsEditUpdate(${idx},'explanation',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
+    </div>`;
+  }
+
+  // MCQ
+  return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+    ${header}
+    <label style="font-size:11px;color:var(--gray);">영어 질문</label>
+    <textarea oninput="qsEditUpdate(${idx},'question',this.value)" rows="2"
+      style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.question||'')}</textarea>
+    <label style="font-size:11px;color:var(--gray);">한글 번역</label>
+    <input type="text" value="${esc(q.questionKo||'')}"
+      oninput="qsEditUpdate(${idx},'questionKo',this.value)"
+      style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+    <label style="font-size:11px;color:var(--gray);">선택지 <span style="color:#2e7d32;">(라디오 선택 = 정답)</span></label>
+    <div style="margin:4px 0 10px;display:flex;flex-direction:column;gap:5px;">
+      ${(q.choices||[]).map((c,j) => `
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="font-size:13px;color:var(--gray);width:18px;flex-shrink:0;">${['①','②','③','④'][j]||(j+1)}</span>
+          <input type="radio" name="qs-ans-${idx}" ${c.isAnswer?'checked':''} onchange="qsEditSetAnswer(${idx},${j})" style="flex-shrink:0;">
+          <input type="text" value="${esc(c.text||'')}"
+            oninput="qsEditUpdateChoice(${idx},${j},this.value)"
+            style="flex:1;padding:6px 9px;border:1px solid var(--border);border-radius:4px;font-size:12px;${c.isAnswer?'background:#e8f5e9;':''}">
+        </div>
+      `).join('')}
+    </div>
+    <label style="font-size:11px;color:var(--gray);">해설 (선택)</label>
+    <textarea oninput="qsEditUpdate(${idx},'explanation',this.value)" rows="2"
+      style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
+  </div>`;
+}
+
+window.qsEditUpdate = (idx, field, value) => {
+  if (!_qsEditState || !_qsEditState.questions[idx]) return;
+  if (field === 'blanks') {
+    _qsEditState.questions[idx].blanks = value.split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    _qsEditState.questions[idx][field] = value;
+  }
+};
+
+window.qsEditUpdateChoice = (qIdx, cIdx, value) => {
+  if (!_qsEditState || !_qsEditState.questions[qIdx]) return;
+  const q = _qsEditState.questions[qIdx];
+  if (!q.choices || !q.choices[cIdx]) return;
+  q.choices[cIdx].text = value;
+};
+
+window.qsEditSetAnswer = (qIdx, cIdx) => {
+  if (!_qsEditState || !_qsEditState.questions[qIdx]) return;
+  const q = _qsEditState.questions[qIdx];
+  if (!q.choices) return;
+  q.choices.forEach((c, j) => { c.isAnswer = (j === cIdx); });
+  // 라디오 시각 갱신은 브라우저가 처리, 배경색만 다시 칠하기 위해 해당 문제만 재렌더
+  const container = document.getElementById('qsEditQuestions');
+  if (container) {
+    const allDivs = container.children;
+    if (allDivs[qIdx]) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = _qsRenderEditQuestion(q, qIdx);
+      allDivs[qIdx].replaceWith(tmp.firstElementChild);
+    }
+  }
+};
+
+window.qsCloseEdit = async () => {
+  if (!_qsEditState) { closeModal(); return; }
+  if (!(await showConfirm('수정을 취소할까요?','지금까지 변경한 내용이 저장되지 않습니다.'))) return;
+  _qsEditState = null;
+  closeModal();
+};
+
+window.qsSaveEdits = async () => {
+  const st = _qsEditState;
+  if (!st) return;
+  const newName = document.getElementById('qsEditName')?.value.trim();
+  if (!newName) { showToast('세트 이름을 입력하세요'); return; }
+
+  // 검증
+  for (let i = 0; i < st.questions.length; i++) {
+    const q = st.questions[i];
+    if (q.type === 'fill_blank') {
+      const sentence = (q.sentence||'').trim();
+      if (!sentence) { showToast(`${i+1}번: 문장이 비어있음`); return; }
+      const markerCount = (sentence.match(/___/g) || []).length;
+      if (markerCount === 0) { showToast(`${i+1}번: 문장에 ___ 마커가 없습니다`); return; }
+      const blanks = (q.blanks || []).filter(b => b && b.trim());
+      if (blanks.length !== markerCount) {
+        showToast(`${i+1}번: ___ ${markerCount}개 vs 정답 ${blanks.length}개 불일치`);
+        return;
+      }
+    } else {
+      if (!(q.question||'').trim()) { showToast(`${i+1}번: 질문이 비어있음`); return; }
+      const choices = q.choices || [];
+      if (choices.length !== 4) { showToast(`${i+1}번: 선택지는 4개여야 합니다`); return; }
+      const answerCount = choices.filter(c => c.isAnswer).length;
+      if (answerCount !== 1) { showToast(`${i+1}번: 정답이 정확히 1개여야 합니다`); return; }
+      if (choices.some(c => !(c.text||'').trim())) { showToast(`${i+1}번: 빈 선택지가 있습니다`); return; }
+    }
+  }
+
+  if (!(await showConfirm('수정사항을 저장할까요?', `${st.questions.length}문제 업데이트`))) return;
+
+  try {
+    await updateDoc(doc(db,'genQuestionSets',st.setId), {
+      name: newName,
+      questions: st.questions,
+      questionCount: st.questions.length,
+      updatedAt: serverTimestamp(),
+    });
+    showToast(`✓ "${newName}" 저장됨`);
+    _qsEditState = null;
+    closeModal();
+    await loadQuestionSets();
+  } catch(e) {
+    showToast('저장 실패: ' + e.message);
   }
 };
 
