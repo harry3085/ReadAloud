@@ -111,11 +111,11 @@ window.goPage = async(id) => {
   else if(id==='quiz-generate') await loadQuizGenerate();
   else if(id==='quiz-sets')     await loadQuestionSets();
   // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
-  else if(id==='test-unscramble') _renderTestAssignShell('unscramble');
-  else if(id==='test-blank')      _renderTestAssignShell('blank');
-  else if(id==='test-mcq')        await loadMcqAssign();
-  else if(id==='test-subj')       _renderTestAssignShell('subj');
-  else if(id==='test-rec-ai')     _renderTestAssignShell('rec-ai');
+  else if(id==='test-unscramble') await _renderTestAssignDetail('unscramble');
+  else if(id==='test-blank')      await _renderTestAssignDetail('blank');
+  else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
+  else if(id==='test-subj')       await _renderTestAssignDetail('subj');
+  else if(id==='test-rec-ai')     await _renderTestAssignDetail('rec-ai');
 };
 
 window.toggleNav = (group) => {
@@ -7269,29 +7269,50 @@ window.mcqPublish = async () => {
 // Phase 2.2 — Disabled 시험 유형 껍데기 렌더러
 // ──────────────────────────────────────────────
 const _TEST_TYPE_CONFIG = {
+  'mcq': {
+    rootId: 'mcqAssignRoot',
+    kindLabel: '객관식',
+    sourceType: 'mcq',
+    testMode: 'reading-mcq',
+    enabled: true,
+    phaseLabel: null,
+    hint: '본문을 읽고 4지선다로 내용을 확인합니다.',
+  },
   'unscramble': {
     rootId: 'unscrambleAssignRoot',
     kindLabel: '언스크램블',
+    sourceType: 'unscramble',
+    testMode: 'unscramble',
+    enabled: false,
     phaseLabel: 'Phase 6',
-    hint: '문장 순서 맞추기 시험을 배정합니다. 구현 완료 후 활성화됩니다.',
+    hint: 'Phase 6 에서 "단어시험"의 언스크램블 옵션이 이곳 전용 메뉴로 이관됩니다. 지금은 좌측 메뉴 "단어시험"에서 언스크램블 출제 옵션을 사용하세요.',
   },
   'blank': {
     rootId: 'blankAssignRoot',
-    kindLabel: '빈칸채우기',
+    kindLabel: '빈칸',
+    sourceType: 'fill_blank',
+    testMode: 'fill-blank',
+    enabled: false,
     phaseLabel: 'Phase 3',
-    hint: 'AI가 생성한 빈칸 문제를 배정합니다. 구현 완료 후 활성화됩니다.',
+    hint: 'Phase 3 에서 AI 빈칸 문제 생성·배정이 활성화됩니다.',
   },
   'subj': {
     rootId: 'subjAssignRoot',
-    kindLabel: '해석하기_주관식',
+    kindLabel: '주관식',
+    sourceType: 'subjective',
+    testMode: 'subjective',
+    enabled: false,
     phaseLabel: 'Phase 4',
-    hint: '시험지 프린트 전용 주관식 시험입니다. 구현 완료 후 활성화됩니다.',
+    hint: 'Phase 4 에서 AI 해석 문제 생성·시험지 프린트가 활성화됩니다. 학생앱 배정 없이 프린트 전용.',
   },
   'rec-ai': {
     rootId: 'recAiAssignRoot',
-    kindLabel: '녹음숙제',
+    kindLabel: '녹음',
+    sourceType: 'recording',
+    testMode: 'recording-ai',
+    enabled: false,
     phaseLabel: 'Phase 5',
-    hint: 'AI가 추출한 본문 문장으로 녹음 숙제를 배정합니다. 구현 완료 후 활성화됩니다.',
+    hint: 'Phase 5 에서 AI 녹음 문장 추출·배정이 활성화됩니다. 완성 시 좌측 "🎤 녹음숙제 관리" 섹션을 대체합니다.',
   },
 };
 
@@ -7328,3 +7349,603 @@ function _renderTestAssignShell(type) {
       </div>
     </div>`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Phase 2.8 — 시험관리 배정 화면 범용 템플릿
+// ══════════════════════════════════════════════════════════════════════════
+// 5개 서브메뉴(MCQ + 플레이스홀더 4종)가 이 함수 하나로 렌더됨.
+// 유형별 _TEST_TYPE_CONFIG[type].enabled 로 실제 쿼리/배정 가능 여부 판별.
+// Phase 2 loadMcqAssign / Phase 2.2 _renderTestAssignShell 은 호출 지점만 끊기고
+// 함수 자체는 유지 (Phase 6 에서 일괄 정리 예정).
+// ══════════════════════════════════════════════════════════════════════════
+
+let _tpSets = [];                   // 현재 유형의 genQuestionSets
+let _tpGenTests = [];               // 현재 유형의 genTests
+let _tpSelectedSets = new Set();    // 체크된 세트 ID
+let _activeTestType = null;         // 현재 활성 서브메뉴 type
+let _activeTestFolderKey = null;    // null = 전체
+
+async function _renderTestAssignDetail(type) {
+  const cfg = _TEST_TYPE_CONFIG[type];
+  if (!cfg) { console.warn('_renderTestAssignDetail: unknown type', type); return; }
+
+  _activeTestType = type;
+  _activeTestFolderKey = null;
+  _tpSelectedSets.clear();
+
+  if (!_genBooks.length || !_genChapters.length) {
+    try {
+      const [bSnap, cSnap] = await Promise.all([
+        getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+        getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
+      ]);
+      _genBooks = bSnap.docs.map(d => ({id:d.id, ...d.data()}));
+      _genChapters = cSnap.docs.map(d => ({id:d.id, ...d.data()}));
+    } catch(e) { console.warn('gen data load:', e); }
+  }
+
+  if (cfg.enabled && cfg.sourceType) {
+    try {
+      const [setSnap, testSnap] = await Promise.all([
+        getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc'))),
+        getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc'))),
+      ]);
+      // client-side 필터 (복합 인덱스 회피 — Phase 2 MCQ 로딩과 동일 패턴)
+      _tpSets = setSnap.docs.map(d => ({id:d.id, ...d.data()}))
+        .filter(s => (s.sourceType || 'mcq') === cfg.sourceType);
+      _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}))
+        .filter(t => t.testMode === cfg.testMode);
+    } catch(e) {
+      console.error(e);
+      _tpSets = [];
+      _tpGenTests = [];
+      showToast('데이터 로드 실패: '+e.message);
+    }
+  } else {
+    _tpSets = [];
+    _tpGenTests = [];
+  }
+
+  _tpRender();
+
+  if (cfg.enabled && _tpGenTests.length > 0) _tpLoadTestStats();
+}
+
+function _tpRender() {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  const root = document.getElementById(cfg.rootId);
+  if (!root) return;
+
+  const folders = _tpBuildFolders(_tpSets);
+  const filteredSets = _activeTestFolderKey
+    ? _tpSets.filter(s => _tpFolderKeyOf(s) === _activeTestFolderKey)
+    : _tpSets;
+
+  root.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;height:calc(100vh - 180px);min-height:560px;">
+
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:12px;flex:1;min-height:0;">
+
+        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="min-width:0;">
+              <div style="font-weight:700;font-size:14px;">📚 문제 세트 ${_activeTestFolderKey?'<span style="color:var(--teal);font-size:11px;font-weight:500;">(폴더 필터)</span>':''}</div>
+              <div style="font-size:11px;color:var(--gray);">
+                선택 <span style="color:var(--teal);font-weight:700;">${_tpSelectedSets.size}</span>개 · 표시 ${filteredSets.length} / ${_tpSets.length}
+              </div>
+            </div>
+            <div style="display:flex;gap:5px;flex-shrink:0;">
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpSelectAll()" ${!cfg.enabled||filteredSets.length===0?'disabled':''}>전체</button>
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpClearSel()" ${_tpSelectedSets.size===0?'disabled':''}>해제</button>
+              <button class="btn btn-primary" style="font-size:12px;padding:5px 14px;font-weight:700;" onclick="tpOpenPublishModal()" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
+                📝 시험 출제
+              </button>
+            </div>
+          </div>
+          <div style="flex:1;overflow-y:auto;">
+            ${!cfg.enabled
+              ? _tpRenderDisabledState(cfg)
+              : (filteredSets.length === 0
+                  ? _tpRenderNoSets(cfg)
+                  : filteredSets.map(s => _tpRenderSetRow(s)).join('')
+                )
+            }
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);">
+            <div style="font-weight:700;font-size:14px;">📁 폴더</div>
+            <div style="font-size:11px;color:var(--gray);">Book · Chapter 별 자동 분류</div>
+          </div>
+          <div style="flex:1;overflow-y:auto;">
+            ${_tpRenderFolderItem({key:null, name:'전체', count:_tpSets.length}, _activeTestFolderKey === null)}
+            ${folders.length === 0
+              ? '<div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">폴더가 없습니다</div>'
+              : folders.map(f => _tpRenderFolderItem(f, f.key === _activeTestFolderKey)).join('')
+            }
+          </div>
+        </div>
+
+      </div>
+
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;height:280px;flex-shrink:0;">
+        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:14px;">📊 최근 시험 <span style="color:var(--gray);font-weight:400;font-size:12px;">· ${esc(cfg.kindLabel)} 유형만</span></div>
+            <div style="font-size:11px;color:var(--gray);">${_tpGenTests.length}개 · 최근순 · 행 클릭 시 응시 현황</div>
+          </div>
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="_renderTestAssignDetail('${esc(_activeTestType)}')">↻ 새로고침</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;">
+          ${!cfg.enabled
+            ? `<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">${esc(cfg.phaseLabel)} 에서 활성화되면 이곳에 출제된 시험이 표시됩니다</div>`
+            : (_tpGenTests.length === 0
+                ? '<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">아직 출제된 시험이 없습니다. 위에서 문제 세트를 선택하고 [📝 시험 출제] 를 눌러 배정하세요.</div>'
+                : _tpRenderTestsTable()
+              )
+          }
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
+function _tpFolderKeyOf(set) {
+  const sp = (set.sourcePages && set.sourcePages[0]) || {};
+  return `${sp.bookId||''}::${sp.chapterId||''}`;
+}
+
+function _tpBuildFolders(sets) {
+  const map = new Map();
+  sets.forEach(s => {
+    const key = _tpFolderKeyOf(s);
+    if (!map.has(key)) {
+      const sp = (s.sourcePages && s.sourcePages[0]) || {};
+      const book = _genBooks.find(b => b.id === sp.bookId);
+      const chap = _genChapters.find(c => c.id === sp.chapterId);
+      const bookName = book?.name || (sp.bookId ? '(삭제된 책)' : '(책 없음)');
+      const chapName = chap?.name || (sp.chapterId ? '(삭제된 챕터)' : '(챕터 없음)');
+      map.set(key, {
+        key,
+        name: `${bookName} · ${chapName}`,
+        bookId: sp.bookId || '',
+        chapterId: sp.chapterId || '',
+        count: 0,
+      });
+    }
+    map.get(key).count++;
+  });
+  return [...map.values()].sort((a,b) => a.name.localeCompare(b.name, 'ko'));
+}
+
+function _tpRenderFolderItem(f, isActive) {
+  const bg = isActive ? 'background:var(--teal-light);color:var(--teal);' : '';
+  const fontW = isActive ? 'font-weight:700;' : 'font-weight:500;';
+  const onclick = f.key === null
+    ? `tpSelectFolder(null)`
+    : `tpSelectFolder('${esc(f.key)}')`;
+  return `
+    <div onclick="${onclick}"
+      style="padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:12px;${bg}${fontW}display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.key === null ? '📦 전체' : '📁 ' + esc(f.name)}</span>
+      <span style="font-size:10px;color:${isActive?'var(--teal)':'var(--gray)'};flex-shrink:0;">${f.count}개</span>
+    </div>`;
+}
+
+function _tpRenderSetRow(s) {
+  const checked = _tpSelectedSets.has(s.id) ? 'checked' : '';
+  const date = s.createdAt?.toDate ? s.createdAt.toDate() : null;
+  const dateStr = date ? date.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+  const qCount = s.questionCount || s.questions?.length || 0;
+  const sp = (s.sourcePages && s.sourcePages[0]) || {};
+  const book = _genBooks.find(b => b.id === sp.bookId);
+  const chap = _genChapters.find(c => c.id === sp.chapterId);
+  const folderName = [book?.name, chap?.name].filter(Boolean).join(' · ');
+
+  return `
+    <div onclick="tpToggleSet('${esc(s.id)}')"
+      style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;cursor:pointer;${_tpSelectedSets.has(s.id)?'background:#fff8e6;':''}">
+      <input type="checkbox" ${checked} onclick="event.stopPropagation();tpToggleSet('${esc(s.id)}')" style="flex-shrink:0;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'(이름 없음)')}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+          ${qCount}문제 · ${esc(dateStr)}${!_activeTestFolderKey && folderName ? ' · 📁 '+esc(folderName) : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function _tpRenderDisabledState(cfg) {
+  return `
+    <div style="padding:60px 40px;text-align:center;color:var(--gray);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;">
+      <div style="font-size:40px;margin-bottom:12px;">🚧</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">아직 ${esc(cfg.kindLabel)} 문제 세트가 없습니다</div>
+      <div style="font-size:12px;line-height:1.6;max-width:380px;">${esc(cfg.hint)}</div>
+    </div>`;
+}
+
+function _tpRenderNoSets(cfg) {
+  if (_activeTestFolderKey) {
+    return `
+      <div style="padding:40px;text-align:center;color:var(--gray);">
+        <div style="font-size:32px;margin-bottom:10px;">📭</div>
+        <div style="font-size:13px;margin-bottom:10px;">이 폴더에 해당하는 세트가 없습니다</div>
+        <button class="btn btn-secondary" onclick="tpSelectFolder(null)">📦 전체 보기</button>
+      </div>`;
+  }
+  return `
+    <div style="padding:40px;text-align:center;color:var(--gray);">
+      <div style="font-size:32px;margin-bottom:10px;">📭</div>
+      <div style="font-size:13px;margin-bottom:10px;">배정 가능한 ${esc(cfg.kindLabel)} 문제 세트가 없습니다</div>
+      <button class="btn btn-primary" onclick="goPage('quiz-generate')">✨ AI 문제 생성하러 가기</button>
+    </div>`;
+}
+
+function _tpRenderTestsTable() {
+  return `
+    <table style="width:100%;border-collapse:collapse;">
+      <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+        <tr>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);">시험명</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:140px;">대상</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">문항</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">응시</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">평균</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">출제일</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_tpGenTests.map(t => _tpRenderTestRow(t)).join('')}
+      </tbody>
+    </table>`;
+}
+
+function _tpRenderTestRow(t) {
+  const qCount = t.questionCount || t.questions?.length || 0;
+  return `
+    <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}')" id="tp-row-${t.id}">
+      <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.targetName||'-')}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;">${qCount}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
+      <td style="padding:10px 12px;font-size:11px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.date||'')}</td>
+    </tr>
+    <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">
+      <td colspan="6" style="padding:0;">
+        <div id="tp-progress-content-${t.id}" style="padding:10px 16px;font-size:12px;color:var(--gray);">로딩 중...</div>
+      </td>
+    </tr>`;
+}
+
+async function _tpLoadTestStats() {
+  try {
+    const scoresSnap = await getDocs(collection(db,'scores'));
+    const allScores = scoresSnap.docs.map(d => d.data());
+    _tpGenTests.forEach(t => {
+      const ts = allScores.filter(s => s.testId === t.id);
+      const elA = document.getElementById('tp-attempt-' + t.id);
+      const elB = document.getElementById('tp-avg-' + t.id);
+      if (elA) elA.textContent = ts.length || 0;
+      if (elB) {
+        if (ts.length) {
+          const avg = Math.round(ts.reduce((sum,s)=>sum+(s.score||0),0) / ts.length);
+          const cls = avg>=80 ? 'badge-green' : (avg>=60 ? 'badge-amber' : 'badge-red');
+          elB.innerHTML = `<span class="badge ${cls}">${avg}점</span>`;
+        } else {
+          elB.textContent = '-';
+        }
+      }
+    });
+  } catch(e) { console.warn('_tpLoadTestStats', e); }
+}
+
+window.tpSelectFolder = (key) => {
+  _activeTestFolderKey = key;
+  _tpRender();
+};
+
+window.tpToggleSet = (setId) => {
+  if (_tpSelectedSets.has(setId)) _tpSelectedSets.delete(setId);
+  else _tpSelectedSets.add(setId);
+  _tpRender();
+};
+
+window.tpSelectAll = () => {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg?.enabled) return;
+  const filtered = _activeTestFolderKey
+    ? _tpSets.filter(s => _tpFolderKeyOf(s) === _activeTestFolderKey)
+    : _tpSets;
+  filtered.forEach(s => _tpSelectedSets.add(s.id));
+  _tpRender();
+};
+
+window.tpClearSel = () => {
+  _tpSelectedSets.clear();
+  _tpRender();
+};
+
+window.tpOpenPublishModal = async () => {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg?.enabled) return;
+  if (_tpSelectedSets.size === 0) { showToast('문제 세트를 선택하세요'); return; }
+
+  const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
+  const questions = selectedSets.flatMap(s => s.questions || []);
+  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+
+  let students = [];
+  try {
+    const snap = await getDocs(query(
+      collection(db,'users'),
+      where('role','==','student'),
+      where('status','==','active')
+    ));
+    students = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  } catch(e) {
+    showToast('학생 목록 로드 실패: '+e.message);
+    return;
+  }
+
+  const groupMap = {};
+  students.forEach(u => {
+    const g = u.group || '(미지정)';
+    (groupMap[g] = groupMap[g] || []).push(u);
+  });
+  Object.keys(groupMap).forEach(g =>
+    groupMap[g].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'))
+  );
+  const sortedGroups = Object.keys(groupMap).sort((a,b) => a.localeCompare(b, 'ko'));
+
+  window._tpModalTargets = [];
+  const mm = String(new Date().getMonth()+1).padStart(2,'0');
+  const dd = String(new Date().getDate()).padStart(2,'0');
+  const defaultName = `${cfg.kindLabel} 시험 ${mm}-${dd}`;
+
+  const html = `
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;">📝 시험 배정</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">
+          ${esc(cfg.kindLabel)} · ${selectedSets.length}개 세트 · 총 ${questions.length}문제
+        </div>
+      </div>
+
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="margin-bottom:16px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📋 시험 정보</div>
+          <div style="display:grid;grid-template-columns:1fr 110px 140px;gap:8px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명 *</label>
+              <input type="text" id="tpName" value="${esc(defaultName)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--gray);">통과점수</label>
+              <input type="number" id="tpPassScore" value="80" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
+              <input type="date" id="tpDate" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">👥 배정 대상</div>
+          <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+            <span>반/학생을 선택하세요</span>
+          </div>
+          <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+            ${sortedGroups.map(g => `
+              <div style="border-bottom:1px solid #f0f0f0;">
+                <div style="padding:8px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="tpModalToggleGroup('${esc(g)}')">
+                  <input type="checkbox" id="tp-g-${esc(g)}" onclick="event.stopPropagation();tpModalToggleGroup('${esc(g)}')">
+                  <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
+                  <span style="font-size:11px;color:var(--gray);margin-left:auto;">${groupMap[g].length}명</span>
+                </div>
+                <div style="padding:4px 12px 8px;display:flex;flex-wrap:wrap;gap:4px;">
+                  ${groupMap[g].map(u => `
+                    <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:11px;">
+                      <input type="checkbox" id="tp-s-${esc(u.id)}" onchange="tpModalToggleStudent('${esc(u.id)}','${esc(u.name||'')}','${esc(g)}')">
+                      👤 ${esc(u.name||'')}
+                    </label>`).join('')}
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="tpPublish()" style="font-weight:700;">📤 배정하기</button>
+      </div>
+    </div>
+  `;
+  showModal(html);
+  _tpUpdateModalSummary();
+};
+
+window.tpModalToggleGroup = (g) => {
+  const cb = document.getElementById('tp-g-' + g);
+  const exists = window._tpModalTargets.find(t => t.type==='class' && t.id===g);
+  if (exists) {
+    window._tpModalTargets = window._tpModalTargets.filter(t => !(t.type==='class' && t.id===g));
+    if (cb) cb.checked = false;
+  } else {
+    window._tpModalTargets.push({type:'class', id:g, name:g+' 전체', groupName:g});
+    if (cb) cb.checked = true;
+  }
+  _tpUpdateModalSummary();
+};
+
+window.tpModalToggleStudent = (uid, name, group) => {
+  const cb = document.getElementById('tp-s-' + uid);
+  if (!cb) return;
+  if (cb.checked) {
+    if (!window._tpModalTargets.find(t => t.type==='student' && t.id===uid)) {
+      window._tpModalTargets.push({type:'student', id:uid, name, groupName:group});
+    }
+  } else {
+    window._tpModalTargets = window._tpModalTargets.filter(t => !(t.type==='student' && t.id===uid));
+  }
+  _tpUpdateModalSummary();
+};
+
+function _tpUpdateModalSummary() {
+  const el = document.getElementById('tpTargetSummary');
+  if (!el) return;
+  const ts = window._tpModalTargets || [];
+  if (ts.length === 0) {
+    el.innerHTML = '<span>반/학생을 선택하세요</span>';
+    return;
+  }
+  const sorted = [...ts].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'));
+  el.innerHTML = sorted.map(t =>
+    `<span style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:14px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+      ${t.type==='class'?'👥':'👤'} ${esc(t.name)}
+    </span>`
+  ).join('');
+}
+
+window.tpPublish = async () => {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg?.enabled) return;
+
+  const name = document.getElementById('tpName')?.value.trim();
+  const passScore = parseInt(document.getElementById('tpPassScore')?.value) || 80;
+  const date = document.getElementById('tpDate')?.value || new Date().toISOString().slice(0,10);
+  const targets = window._tpModalTargets || [];
+
+  if (!name) { showToast('시험명을 입력하세요'); document.getElementById('tpName')?.focus(); return; }
+  if (targets.length === 0) { showToast('배정 대상을 선택하세요'); return; }
+  if (_tpSelectedSets.size === 0) { showToast('문제 세트가 비어있습니다'); return; }
+
+  const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
+  const questions = selectedSets.flatMap(s => s.questions || []);
+  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+
+  const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
+  if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
+
+  const targetType = (targets.length===1 && targets[0].type==='class') ? 'class' : 'mixed';
+  const targetId = targets.map(t => t.id).join(',');
+  const targetName = targets.length===1 ? targets[0].name : `${targets.length}명/반 선택`;
+  const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
+
+  try {
+    await addDoc(collection(db,'genTests'), {
+      name, academy:'큰소리영어', date,
+      testMode: cfg.testMode,
+      targetType, targetId, targetName, targets: [...targets],
+      active: true,
+      questions,
+      questionCount: questions.length,
+      sourceSetIds: selectedSets.map(s => s.id),
+      sourceSetNames: selectedSets.map(s => s.name || ''),
+      passScore,
+      bookName,
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+    });
+
+    showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
+    window._tpModalTargets = [];
+    closeModal();
+
+    await _renderTestAssignDetail(_activeTestType);
+  } catch(e) {
+    console.error(e);
+    showToast('배정 실패: '+e.message);
+  }
+};
+
+window.tpToggleTestProgress = async (testId) => {
+  const prog = document.getElementById('tp-progress-' + testId);
+  if (!prog) return;
+  const isOpen = prog.getAttribute('data-open') === '1';
+
+  document.querySelectorAll('[id^="tp-progress-"][data-open="1"]').forEach(r => {
+    r.style.display = 'none';
+    r.setAttribute('data-open', '0');
+  });
+  if (isOpen) return;
+
+  prog.style.display = 'table-row';
+  prog.setAttribute('data-open', '1');
+
+  const content = document.getElementById('tp-progress-content-' + testId);
+  if (!content) return;
+  content.innerHTML = '<span style="color:var(--gray);">로딩 중...</span>';
+
+  try {
+    const testDoc = await getDoc(doc(db,'genTests',testId));
+    if (!testDoc.exists()) { content.textContent = '시험 데이터 없음'; return; }
+    const t = testDoc.data();
+    const targets = t.targets || [];
+
+    let studentList = [];
+    for (const tg of targets) {
+      if (tg.type === 'student') {
+        studentList.push({uid:tg.id, name:tg.name, group:''});
+      } else {
+        try {
+          const gs = await getDocs(query(collection(db,'users'), where('group','==',tg.id)));
+          gs.docs.filter(d => d.data().role==='student').forEach(d =>
+            studentList.push({uid:d.id, name:d.data().name, group:d.data().group||''})
+          );
+        } catch(e) {}
+      }
+    }
+
+    const seen = new Set();
+    studentList = studentList.filter(s => {
+      if (seen.has(s.uid)) return false;
+      seen.add(s.uid);
+      return true;
+    });
+
+    const completed = new Map();
+    await Promise.all(studentList.map(async s => {
+      try {
+        const d = await getDoc(doc(db,'genTests',testId,'userCompleted',s.uid));
+        if (d.exists()) completed.set(s.uid, d.data());
+      } catch(e) {}
+    }));
+
+    if (studentList.length === 0) {
+      content.innerHTML = '<div style="padding:8px;color:var(--gray);font-size:12px;">대상 학생 없음</div>';
+      return;
+    }
+
+    const doneCount = completed.size;
+    content.innerHTML = `
+      <div style="padding:8px 4px;">
+        <div style="font-size:11px;color:var(--gray);margin-bottom:6px;padding:0 8px;">
+          응시 ${doneCount} / 총 ${studentList.length} · 미응시 <span style="color:#e65100;font-weight:700;">${studentList.length - doneCount}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:5px;padding:0 4px;">
+          ${studentList.map(s => {
+            const c = completed.get(s.uid);
+            if (c) {
+              return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 9px;font-size:11px;">
+                <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+                <div style="color:#2e7d32;">✓ ${c.score||0}점 · ${esc(c.date||'')}</div>
+              </div>`;
+            }
+            return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 9px;font-size:11px;">
+              <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+              <div style="color:#e65100;">⏳ 대기</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  } catch(e) {
+    content.textContent = '로드 실패: ' + e.message;
+  }
+};
+
+// _renderTestAssignDetail 을 window 에 노출 (onclick="_renderTestAssignDetail(...)" 지원)
+window._renderTestAssignDetail = _renderTestAssignDetail;
