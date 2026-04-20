@@ -1507,25 +1507,21 @@ function _rv2RenderRoundIndicator() {
         const bg = done ? '#059669' : (active ? '#8B5CF6' : '#E5E7EB');
         const color = (done || active) ? 'white' : '#9CA3AF';
         const txt = done ? '✓' : (i+1);
-        const sep = i < 2 ? '<div style="width:12px;height:2px;background:#E5E7EB;"></div>' : '';
-        return `<div style="width:26px;height:26px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${txt}</div>${sep}`;
+        const sep = i < 2 ? '<div style="width:10px;height:2px;background:#E5E7EB;"></div>' : '';
+        return `<div style="width:24px;height:24px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${txt}</div>${sep}`;
       }).join('')}
-      <span style="font-size:12px;color:var(--text);font-weight:600;margin-left:8px;">${_rv2.currentRound + 1}회차</span>
     </div>
   `;
 }
 
-function _rv2StateIdle(round) {
+function _rv2StateIdle() {
   return `
-    <div style="font-size:13px;color:var(--gray);margin-bottom:14px;">
-      ${round === 0 ? '준비되셨다면' : (round + 1) + '회차를'} 시작하세요
-    </div>
     <button onclick="rv2StartRecord()"
       style="width:96px;height:96px;border-radius:50%;border:none;background:#8B5CF6;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 14px rgba(139,92,246,0.35);">
       🎤
     </button>
-    <div style="margin-top:14px;font-size:14px;font-weight:700;color:var(--text);">버튼을 눌러 녹음</div>
-    <div style="font-size:12px;color:var(--gray);margin-top:4px;">실제 책을 보며 지정 범위를 연속으로 읽어주세요</div>
+    <div style="margin-top:14px;font-size:14px;font-weight:700;color:var(--text);">버튼을 눌러 녹음 시작</div>
+    <div id="rv2Timer" style="font-size:11px;color:var(--gray);margin-top:6px;">00:00</div>
   `;
 }
 
@@ -1535,31 +1531,19 @@ function _rv2StateRecording() {
       style="width:96px;height:96px;border-radius:50%;border:none;background:#DC2626;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 20px rgba(220,38,38,0.5);animation:rv2Pulse 1.5s infinite;">
       ⏹
     </button>
-    <div style="margin-top:14px;font-size:15px;font-weight:700;color:#DC2626;">녹음 중...</div>
+    <div style="margin-top:14px;font-size:15px;font-weight:700;color:#DC2626;">녹음 중... (버튼 눌러 종료)</div>
     <div id="rv2Timer" style="font-size:22px;font-weight:800;color:var(--text);margin-top:6px;font-variant-numeric:tabular-nums;">00:00</div>
-    <div style="font-size:11px;color:var(--gray);margin-top:4px;">버튼을 누르면 녹음이 종료됩니다</div>
     <style>@keyframes rv2Pulse { 0%,100% { transform:scale(1);} 50% { transform:scale(1.06);} }</style>
   `;
 }
 
-function _rv2StateTakeReady(isLastRound) {
+function _rv2StateTakeReady() {
   const take = _rv2.currentTake;
   return `
-    <div style="font-size:40px;margin-bottom:8px;">🎧</div>
-    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;">녹음 완료 (${_rv2FormatDuration(take.duration)})</div>
-    <div style="font-size:11px;color:var(--gray);margin-bottom:16px;">재생해서 확인해보세요 · 마음에 안 들면 다시 녹음할 수 있어요</div>
-
-    <audio src="${take.url}" controls preload="auto" style="width:100%;max-width:320px;margin-bottom:14px;"></audio>
-
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-      <button onclick="rv2Retake()" style="padding:10px 18px;background:white;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🔄 다시 녹음</button>
-      <button onclick="rv2SaveRound()" style="padding:10px 20px;background:${isLastRound ? '#059669' : '#8B5CF6'};border:none;border-radius:10px;font-size:13px;font-weight:700;color:white;cursor:pointer;">
-        ${isLastRound ? '📤 저장하고 제출' : '✓ 저장하고 다음 회차로'}
-      </button>
-    </div>
-    <div style="font-size:10px;color:var(--gray);margin-top:10px;">
-      ${isLastRound ? '⚠️ 제출 후 재녹음 불가' : '⚠️ 저장 후 이 회차 되돌릴 수 없어요'}
-    </div>
+    <div style="font-size:32px;margin-bottom:6px;">🎧</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">녹음 완료 · ${_rv2FormatDuration(take.duration)}</div>
+    <audio src="${take.url}" controls preload="auto" style="width:100%;max-width:320px;margin-bottom:10px;"></audio>
+    <button onclick="rv2Retake()" style="padding:8px 16px;background:white;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">🔄 다시 녹음</button>
   `;
 }
 
@@ -1570,41 +1554,59 @@ function _rv2Render() {
   const q = _rv2.question;
   const round = _rv2.currentRound;
   const isLastRound = round === _RV2_ROUNDS - 1;
+  const totalRounds = _RV2_ROUNDS;
+  const pct = Math.round(((round + (_rv2.currentTake ? 0.5 : 0)) / totalRounds) * 100);
 
   let stateBody;
   if (_rv2.isRecording) stateBody = _rv2StateRecording();
-  else if (_rv2.currentTake) stateBody = _rv2StateTakeReady(isLastRound);
-  else stateBody = _rv2StateIdle(round);
+  else if (_rv2.currentTake) stateBody = _rv2StateTakeReady();
+  else stateBody = _rv2StateIdle();
+
+  // 하단 버튼 상태
+  const canProceed = !!_rv2.currentTake && !_rv2.isRecording;
+  const btnLabel = isLastRound ? '📤 제출하기' : '다음 회차 ▶';
+  const btnBg = canProceed ? (isLastRound ? '#059669' : '#8B5CF6') : '#ddd';
+  const btnColor = canProceed ? 'white' : '#888';
+  const btnCursor = canProceed ? 'pointer' : 'not-allowed';
 
   screen.innerHTML = `
     <div class="quiz-header">
       <button class="quit-btn" onclick="rv2Quit()">✕</button>
-      <div style="flex:1;display:flex;align-items:center;gap:8px;padding:0 10px;">
-        ${_rv2RenderRoundIndicator()}
-      </div>
-      <div style="font-size:11px;color:var(--gray);white-space:nowrap;">⏱ ${q.evaluationSeconds || 60}초 평가</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.max(5,pct)}%;background:#8B5CF6;"></div></div>
+      <div style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">${round + 1} / ${totalRounds}</div>
     </div>
 
     <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
 
-      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:10px;font-weight:700;color:#7C3AED;letter-spacing:0.5px;margin-bottom:6px;">READ ALOUD · 3회 반복</div>
-        <div style="font-size:13px;color:var(--text);line-height:1.6;">${esc(q.instructionKo || '')}</div>
+      <!-- 라운드 인디케이터 + 평가 시간 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px;">
+        ${_rv2RenderRoundIndicator()}
+        <span style="font-size:11px;color:var(--gray);">⏱ ${q.evaluationSeconds || 60}초 평가</span>
       </div>
 
-      <div style="background:white;border-radius:14px;padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📖 녹음 범위</div>
-        <div style="font-size:12px;color:var(--text);line-height:1.5;">
-          <span style="color:#7C3AED;font-weight:600;">시작:</span> ${esc(q.startPageTitle||'')} 「${esc(q.startSentence||'')}」<br>
-          <span style="color:#7C3AED;font-weight:600;">종료:</span> ${esc(q.endPageTitle||'')} 「${esc(q.endSentence||'')}」
-          <span style="color:var(--gray);font-size:11px;margin-left:8px;">· ${q.pageCount||1} Page</span>
+      <!-- 숙제 내용 (중복 제거 → QUESTION 카드 1개만) -->
+      <div style="background:white;border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:10px;font-weight:700;color:#7C3AED;letter-spacing:0.5px;margin-bottom:8px;">SPEAK · 3회 반복</div>
+        <div style="font-size:14px;color:var(--text);line-height:1.7;">${esc(q.instructionKo || '')}</div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #eee;font-size:11px;color:var(--gray);">
+          📄 ${q.pageCount||1} Page · 🎯 ${q.accuracyThreshold||70}점 이상 시 AI 피드백
         </div>
       </div>
 
-      <div style="background:white;border-radius:14px;padding:24px 20px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);text-align:center;">
+      <!-- 녹음 영역 -->
+      <div style="background:white;border-radius:14px;padding:24px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);text-align:center;">
         ${stateBody}
       </div>
 
+    </div>
+
+    <!-- 하단 다음/제출 버튼 바 -->
+    <div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,0.06);background:#F5F3FF;">
+      <button onclick="rv2SaveRound()" ${canProceed?'':'disabled'}
+        style="width:100%;padding:14px;border:none;border-radius:12px;background:${btnBg};color:${btnColor};font-size:15px;font-weight:700;cursor:${btnCursor};">
+        ${btnLabel}
+      </button>
+      ${canProceed ? `<div style="font-size:10px;color:var(--gray);text-align:center;margin-top:6px;">${isLastRound ? '⚠️ 제출 후 재녹음 불가' : '⚠️ 이 회차는 저장됩니다'}</div>` : ''}
     </div>
   `;
 }
