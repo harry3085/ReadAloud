@@ -6143,6 +6143,92 @@ let _qgGenerated = [];                  // AI 생성 결과 (미리보기용)
 let _qgExcluded = new Set();            // 미리보기에서 제외된 문제 인덱스
 let _qsList = [];                       // 문제 세트 목록 (Firestore에서 로드)
 
+// Phase 2.5: Book/Chapter 드릴다운 필터 + 유형 선택
+let _qgActiveBook = null;     // {id, name} | null
+let _qgActiveChapter = null;  // {id, name, bookId} | null
+let _qgCurrentType = 'mcq';   // 현재 선택된 문제 유형
+
+// ─── 유형별 옵션 스키마 (Phase 2.5) ───
+// enabled:false 인 유형은 UI에는 보이되 [생성] 클릭 시 "Phase X 이후 구현 예정" 토스트
+const QG_TYPE_OPTIONS = {
+  'word': {
+    label: '단어시험',
+    icon: '📝',
+    enabled: false,
+    phaseLabel: 'Phase 6',
+    noteHint: '단어시험은 교재 Unit 단어 데이터 기반이라 AI 를 쓰지 않습니다. Phase 6 에서 좌측 메뉴 "단어시험" 이관이 활성화됩니다.',
+    options: [
+      { key:'count',       label:'문제수',           type:'number',   default:20, min:1, max:100 },
+      { key:'difficulty',  label:'난이도',           type:'select',   choices:['쉬움','보통','어려움'], default:'보통' },
+      { key:'composition', label:'문제구성',         type:'select',   choices:['혼합','영→한','한→영'], default:'혼합' },
+      { key:'spellRatio',  label:'스펠링비율(%)',    type:'number',   default:30, min:0, max:100 },
+      { key:'mix',         label:'문제섞기',         type:'checkbox', default:true },
+      { key:'passScore',   label:'통과점수',         type:'number',   default:80, min:0, max:100 },
+    ],
+  },
+  'unscramble': {
+    label: '언스크램블',
+    icon: '🔀',
+    enabled: false,
+    phaseLabel: 'Phase 6',
+    noteHint: 'Phase 6 에서 활성화됩니다.',
+    options: [
+      { key:'count',          label:'문제수',             type:'number', default:10, min:1, max:30 },
+      { key:'sentenceLength', label:'문장 길이(난이도)',  type:'select', choices:['짧음','보통','김'], default:'보통' },
+      { key:'chunkCount',     label:'청크 갯수',          type:'number', default:4, min:2, max:8 },
+      { key:'passScore',      label:'통과점수',           type:'number', default:80, min:0, max:100 },
+    ],
+  },
+  'fill_blank': {
+    label: '빈칸채우기',
+    icon: '✏️',
+    enabled: false,
+    phaseLabel: 'Phase 3',
+    noteHint: 'Phase 3 에서 AI 빈칸 문제 생성이 활성화됩니다.',
+    options: [
+      { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:20 },
+      { key:'difficulty',        label:'난이도(학년)',       type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'blanksPerSentence', label:'문장별 빈칸 개수',   type:'number', default:1, min:1, max:5 },
+      { key:'passScore',         label:'통과점수',           type:'number', default:80, min:0, max:100 },
+    ],
+  },
+  'mcq': {
+    label: '내용이해_객관식',
+    icon: '📖',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문을 읽고 4지선다로 내용을 확인합니다.',
+    options: [
+      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:20 },
+      { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
+    ],
+  },
+  'subjective': {
+    label: '해석하기_주관식',
+    icon: '✍️',
+    enabled: false,
+    phaseLabel: 'Phase 4',
+    noteHint: 'Phase 4 에서 활성화됩니다. 시험지 프린트 전용 (학생앱 배정 없음).',
+    options: [
+      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:20 },
+      { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
+    ],
+  },
+  'recording': {
+    label: '비아숙제',
+    icon: '🎤',
+    enabled: false,
+    phaseLabel: 'Phase 5',
+    noteHint: 'Phase 5 에서 본문 문장 자동 추출이 활성화됩니다. 문제수 기본 1개 (선택된 Page 범위의 문장들을 추출).',
+    options: [
+      { key:'count',     label:'문제수',   type:'number', default:1, min:1, max:30 },
+      { key:'passScore', label:'통과점수', type:'number', default:80, min:0, max:100 },
+    ],
+  },
+};
+
 // ─── 라우팅 연결 ───
 // goPage 함수에 이미 generator 케이스가 있으니, 새 메뉴 2개 추가 필요
 // 기존 goPage 함수 내 'else if(id==='generator')' 다음 줄에 아래 2줄 추가:
@@ -6174,44 +6260,108 @@ window.loadQuizGenerate = async () => {
   _qgSelectedPageIds.clear();
   _qgGenerated = [];
   _qgExcluded.clear();
+  // Phase 2.5: 필터 리셋 (유형은 직전 선택 유지)
+  _qgActiveBook = null;
+  _qgActiveChapter = null;
   _qgRender();
 };
 
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 2.5: 4컬럼 레이아웃 (Book | Chapter | Page | 설정)
+// ──────────────────────────────────────────────────────────────────────────
 function _qgRender() {
   const root = document.getElementById('quizGenRoot');
   if (!root) return;
 
-  const pagesWithText = _genPages.filter(p => (p.text||'').trim().length >= 20);
+  const books = _genBooks || [];
+  const chapters = _qgFilteredChapters();
+  const pages = _qgFilteredPages();
 
   root.innerHTML = `
-    <div style="display:flex;gap:16px;">
-      <!-- 좌측: Page 선택 -->
-      <div style="flex:1;background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <div style="display:grid;grid-template-columns:220px 220px 1fr 340px;gap:10px;height:calc(100vh - 210px);min-height:520px;">
+
+      <!-- 1. Book 컬럼 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-weight:700;font-size:14px;">📄 Page 선택</div>
-            <div style="font-size:11px;color:var(--gray);">문제를 만들 Page를 체크하세요 · 선택됨 <span id="qgSelCount">0</span>개</div>
+            <div style="font-weight:700;font-size:13px;">📚 Book</div>
+            <div style="font-size:10px;color:var(--gray);">${books.length}개</div>
           </div>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="qgSelectAll()">전체</button>
-            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="qgSelectNone()">해제</button>
+          ${_qgActiveBook ? `<button style="background:none;border:none;color:var(--gray);cursor:pointer;font-size:11px;" onclick="qgClearBook()">해제</button>` : ''}
+        </div>
+        <div style="flex:1;overflow-y:auto;">
+          ${books.length === 0
+            ? '<div style="padding:16px;text-align:center;color:#bbb;font-size:12px;">Book 이 없습니다</div>'
+            : books.map(b => {
+                const isActive = _qgActiveBook?.id === b.id;
+                const pageCount = (_genPages||[]).filter(p => p.bookId === b.id).length;
+                return `<div onclick="qgSelectBook('${esc(b.id)}')"
+                  style="padding:9px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:12px;${isActive?'background:var(--teal-light);color:var(--teal);font-weight:600;':''}">
+                  <div style="font-weight:${isActive?'700':'500'};">${esc(b.name||'(이름 없음)')}</div>
+                  <div style="font-size:10px;color:${isActive?'var(--teal)':'var(--gray)'};margin-top:2px;">${pageCount}P</div>
+                </div>`;
+              }).join('')
+          }
+        </div>
+      </div>
+
+      <!-- 2. Chapter 컬럼 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:13px;">📂 Chapter</div>
+            <div style="font-size:10px;color:var(--gray);">
+              ${_qgActiveBook ? `${chapters.length}개 · ${esc(_qgActiveBook.name)}` : '모두 표시'}
+            </div>
+          </div>
+          ${_qgActiveChapter ? `<button style="background:none;border:none;color:var(--gray);cursor:pointer;font-size:11px;" onclick="qgClearChapter()">해제</button>` : ''}
+        </div>
+        <div style="flex:1;overflow-y:auto;">
+          ${chapters.length === 0
+            ? `<div style="padding:16px;text-align:center;color:#bbb;font-size:12px;">
+                ${_qgActiveBook ? '이 Book 엔 Chapter 가 없습니다.<br>(Page 컬럼에 Book 의 전체 Page 가 표시됩니다)' : 'Book 을 먼저 선택하세요'}
+              </div>`
+            : chapters.map(c => {
+                const isActive = _qgActiveChapter?.id === c.id;
+                const pageCount = (_genPages||[]).filter(p => p.chapterId === c.id).length;
+                return `<div onclick="qgSelectChapter('${esc(c.id)}')"
+                  style="padding:9px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:12px;${isActive?'background:var(--teal-light);color:var(--teal);font-weight:600;':''}">
+                  <div style="font-weight:${isActive?'700':'500'};">${esc(c.name||'(이름 없음)')}</div>
+                  <div style="font-size:10px;color:${isActive?'var(--teal)':'var(--gray)'};margin-top:2px;">${pageCount}P</div>
+                </div>`;
+              }).join('')
+          }
+        </div>
+      </div>
+
+      <!-- 3. Page 컬럼 (체크박스 다중 선택) -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개</div>
+            <div style="font-size:10px;color:var(--gray);">${pages.length}개 표시 중 (본문 20자 이상만)</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectAll()">전체</button>
+            <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectNone()">해제</button>
           </div>
         </div>
-        <div style="max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
-          ${pagesWithText.length === 0
-            ? '<div style="padding:20px;text-align:center;color:var(--gray);font-size:13px;">사용 가능한 Page가 없습니다. Generator에서 먼저 Page를 만들어주세요.</div>'
-            : pagesWithText.map(p => {
-                const book = _genBooks.find(b=>b.id===p.bookId);
-                const chap = _genChapters.find(c=>c.id===p.chapterId);
-                const path = [book?.name, chap?.name].filter(Boolean).join(' › ');
-                const checked = _qgSelectedPageIds.has(p.id) ? 'checked' : '';
+        <div style="flex:1;overflow-y:auto;">
+          ${pages.length === 0
+            ? '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">표시할 Page 가 없습니다</div>'
+            : pages.map(p => {
+                const checked = _qgSelectedPageIds.has(p.id);
+                const book = books.find(b => b.id === p.bookId);
+                const chap = (_genChapters||[]).find(c => c.id === p.chapterId);
+                const subpath = [book?.name, chap?.name].filter(Boolean).join(' › ');
                 const preview = (p.text||'').slice(0, 80);
-                return `<div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:start;cursor:pointer;" onclick="qgTogglePage('${esc(p.id)}')">
-                  <input type="checkbox" ${checked} onclick="event.stopPropagation();qgTogglePage('${esc(p.id)}')" style="margin-top:3px;">
+                return `<div onclick="qgTogglePage('${esc(p.id)}')"
+                  style="padding:8px 12px;border-bottom:1px solid #f5f5f5;display:flex;gap:10px;align-items:start;cursor:pointer;${checked?'background:#fff8e6;':''}">
+                  <input type="checkbox" ${checked?'checked':''} onclick="event.stopPropagation();qgTogglePage('${esc(p.id)}')" style="margin-top:3px;flex-shrink:0;">
                   <div style="flex:1;min-width:0;">
-                    <div style="font-size:13px;font-weight:600;">${esc(p.title||'Untitled')}</div>
-                    ${path ? `<div style="font-size:11px;color:var(--gray);">${esc(path)}</div>` : ''}
-                    <div style="font-size:11px;color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(preview)}${p.text.length>80?'…':''}</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--text);">${esc(p.title||'Untitled')}</div>
+                    ${subpath ? `<div style="font-size:10px;color:var(--gray);margin-top:1px;">${esc(subpath)}</div>` : ''}
+                    <div style="font-size:10px;color:#aaa;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(preview)}${(p.text||'').length>80?'…':''}</div>
                   </div>
                 </div>`;
               }).join('')
@@ -6219,32 +6369,96 @@ function _qgRender() {
         </div>
       </div>
 
-      <!-- 우측: 설정 & 실행 -->
-      <div style="width:300px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;height:fit-content;">
-        <div style="font-weight:700;font-size:14px;margin-bottom:12px;">⚙️ 설정</div>
+      <!-- 4. 설정 컬럼 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);">
+          <div style="font-weight:700;font-size:13px;">⚙️ 설정</div>
+          <div style="font-size:10px;color:var(--gray);">문제 유형 선택 후 생성</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:14px;">
 
-        <label style="font-size:12px;font-weight:600;">문제 유형</label>
-        <select id="qgType" style="width:100%;padding:8px;margin:4px 0 12px;border:1px solid var(--border);border-radius:4px;">
-          <option value="mcq">객관식 4지선다 (MCQ)</option>
-        </select>
+          <label style="font-size:11px;font-weight:700;color:var(--gray);">문제 유형</label>
+          <select id="qgType" onchange="qgChangeType(this.value)"
+            style="width:100%;padding:8px 10px;margin:4px 0 14px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            ${Object.entries(QG_TYPE_OPTIONS).map(([k,cfg])=>
+              `<option value="${k}" ${k===_qgCurrentType?'selected':''}>${cfg.icon} ${esc(cfg.label)}${cfg.enabled?'':' 🔒'}</option>`
+            ).join('')}
+          </select>
 
-        <label style="font-size:12px;font-weight:600;">문제 수</label>
-        <input type="number" id="qgCount" value="5" min="1" max="20" style="width:100%;padding:8px;margin:4px 0 12px;border:1px solid var(--border);border-radius:4px;">
-        <div style="font-size:11px;color:var(--gray);margin-bottom:12px;">1~20개 · 많을수록 오래 걸립니다</div>
+          <div id="qgTypeNote" style="font-size:11px;color:var(--gray);background:#f8f9fa;border-radius:6px;padding:8px 10px;margin-bottom:14px;line-height:1.5;"></div>
 
-        <button class="btn btn-primary" style="width:100%;" onclick="qgGenerate()" id="qgGenBtn">
-          ✨ AI로 문제 생성
-        </button>
-        <div id="qgStatus" style="margin-top:8px;font-size:12px;color:var(--gray);text-align:center;"></div>
+          <div id="qgOptionsPanel" style="margin-bottom:14px;"></div>
+
+          <button class="btn btn-primary" id="qgGenBtn" onclick="qgGenerate()"
+            style="width:100%;padding:11px;font-size:13px;font-weight:700;">
+            ✨ AI 로 문제 생성
+          </button>
+          <div id="qgStatus" style="margin-top:8px;font-size:11px;color:var(--gray);text-align:center;min-height:16px;"></div>
+        </div>
       </div>
-    </div>
 
-    <!-- 결과 영역 -->
-    <div id="qgResult" style="margin-top:20px;"></div>
+    </div>
   `;
 
-  _qgUpdateSelCount();
+  _qgRenderOptions(_qgCurrentType);
 }
+
+// ─── 필터 ───
+function _qgFilteredChapters() {
+  const all = _genChapters || [];
+  if (!_qgActiveBook) return all;
+  return all.filter(c => c.bookId === _qgActiveBook.id);
+}
+
+function _qgFilteredPages() {
+  let all = (_genPages || []).filter(p => (p.text||'').trim().length >= 20);
+  if (_qgActiveChapter) {
+    all = all.filter(p => p.chapterId === _qgActiveChapter.id);
+  } else if (_qgActiveBook) {
+    all = all.filter(p => p.bookId === _qgActiveBook.id);
+  }
+  return all;
+}
+
+// ─── Book / Chapter 선택 핸들러 ───
+window.qgSelectBook = (bookId) => {
+  const b = (_genBooks||[]).find(x => x.id === bookId);
+  if (!b) return;
+  if (_qgActiveBook?.id === bookId) {
+    _qgActiveBook = null;
+    _qgActiveChapter = null;
+  } else {
+    _qgActiveBook = { id: b.id, name: b.name };
+    _qgActiveChapter = null;
+  }
+  _qgRender();
+};
+
+window.qgSelectChapter = (chapterId) => {
+  const c = (_genChapters||[]).find(x => x.id === chapterId);
+  if (!c) return;
+  if (_qgActiveChapter?.id === chapterId) {
+    _qgActiveChapter = null;
+  } else {
+    _qgActiveChapter = { id: c.id, name: c.name, bookId: c.bookId };
+    if (!_qgActiveBook || _qgActiveBook.id !== c.bookId) {
+      const b = (_genBooks||[]).find(x => x.id === c.bookId);
+      if (b) _qgActiveBook = { id: b.id, name: b.name };
+    }
+  }
+  _qgRender();
+};
+
+window.qgClearBook = () => {
+  _qgActiveBook = null;
+  _qgActiveChapter = null;
+  _qgRender();
+};
+
+window.qgClearChapter = () => {
+  _qgActiveChapter = null;
+  _qgRender();
+};
 
 window.qgTogglePage = (pid) => {
   if (_qgSelectedPageIds.has(pid)) _qgSelectedPageIds.delete(pid);
@@ -6255,7 +6469,7 @@ window.qgTogglePage = (pid) => {
 };
 
 window.qgSelectAll = () => {
-  _genPages.filter(p => (p.text||'').trim().length >= 20).forEach(p => _qgSelectedPageIds.add(p.id));
+  _qgFilteredPages().forEach(p => _qgSelectedPageIds.add(p.id));
   _qgRender();
 };
 
@@ -6269,9 +6483,133 @@ function _qgUpdateSelCount() {
   if (el) el.textContent = _qgSelectedPageIds.size;
 }
 
+// ─── 유형 전환 ───
+window.qgChangeType = (type) => {
+  if (!QG_TYPE_OPTIONS[type]) return;
+  _qgCurrentType = type;
+  _qgRenderOptions(type);
+};
+
+// ─── 옵션 패널 렌더 (localStorage 값 복원) ───
+function _qgRenderOptions(type) {
+  const cfg = QG_TYPE_OPTIONS[type];
+  const panel = document.getElementById('qgOptionsPanel');
+  const noteEl = document.getElementById('qgTypeNote');
+  const btn = document.getElementById('qgGenBtn');
+  if (!panel || !cfg) return;
+
+  if (noteEl) {
+    noteEl.innerHTML = `${cfg.enabled ? '✓' : '🔒'} ${esc(cfg.noteHint)}`;
+    noteEl.style.color = cfg.enabled ? 'var(--gray)' : '#856404';
+    noteEl.style.background = cfg.enabled ? '#f8f9fa' : '#fff8e1';
+  }
+
+  const saved = _qgLoadOpts(type);
+
+  panel.innerHTML = cfg.options.map(opt => {
+    const val = saved[opt.key] !== undefined ? saved[opt.key] : opt.default;
+    const id = 'qgOpt_' + opt.key;
+    const labelRow = `<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;">${esc(opt.label)}</div>`;
+
+    if (opt.type === 'number') {
+      return `<div style="margin-bottom:10px;">
+        ${labelRow}
+        <input type="number" id="${id}" value="${val}"
+          ${opt.min!==undefined?`min="${opt.min}"`:''} ${opt.max!==undefined?`max="${opt.max}"`:''}
+          onchange="qgPersistOpts()"
+          style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+      </div>`;
+    }
+    if (opt.type === 'select') {
+      return `<div style="margin-bottom:10px;">
+        ${labelRow}
+        <select id="${id}" onchange="qgPersistOpts()"
+          style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;">
+          ${(opt.choices||[]).map(c => `<option value="${esc(c)}" ${c===val?'selected':''}>${esc(c)}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    if (opt.type === 'checkbox') {
+      return `<div style="margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;color:var(--text);">
+          <input type="checkbox" id="${id}" ${val?'checked':''} onchange="qgPersistOpts()">
+          ${esc(opt.label)}
+        </label>
+      </div>`;
+    }
+    return '';
+  }).join('');
+
+  if (btn) {
+    if (cfg.enabled) {
+      btn.textContent = '✨ AI 로 문제 생성';
+      btn.style.background = '';
+      btn.style.color = '';
+    } else {
+      btn.textContent = `🔒 ${cfg.phaseLabel} 에서 활성화`;
+      btn.style.background = '#ccc';
+      btn.style.color = '#666';
+    }
+  }
+}
+
+// ─── localStorage 유틸 ───
+function _qgLoadOpts(type) {
+  try {
+    const raw = localStorage.getItem('quizgen_opts_' + type);
+    return raw ? (JSON.parse(raw) || {}) : {};
+  } catch { return {}; }
+}
+
+window.qgPersistOpts = () => {
+  const cfg = QG_TYPE_OPTIONS[_qgCurrentType];
+  if (!cfg) return;
+  const vals = {};
+  cfg.options.forEach(opt => {
+    const el = document.getElementById('qgOpt_' + opt.key);
+    if (!el) return;
+    if (opt.type === 'checkbox') vals[opt.key] = el.checked;
+    else if (opt.type === 'number') {
+      const n = parseFloat(el.value);
+      vals[opt.key] = isNaN(n) ? opt.default : n;
+    } else vals[opt.key] = el.value;
+  });
+  try {
+    localStorage.setItem('quizgen_opts_' + _qgCurrentType, JSON.stringify(vals));
+  } catch(e) {
+    console.warn('qgPersistOpts:', e);
+  }
+};
+
+function _qgCollectOpts(type) {
+  const cfg = QG_TYPE_OPTIONS[type];
+  if (!cfg) return {};
+  const vals = {};
+  cfg.options.forEach(opt => {
+    const el = document.getElementById('qgOpt_' + opt.key);
+    if (!el) { vals[opt.key] = opt.default; return; }
+    if (opt.type === 'checkbox') vals[opt.key] = el.checked;
+    else if (opt.type === 'number') {
+      const n = parseFloat(el.value);
+      vals[opt.key] = isNaN(n) ? opt.default : n;
+    } else vals[opt.key] = el.value;
+  });
+  return vals;
+}
+
+// ─── 생성 버튼 (유형별 분기) ───
 window.qgGenerate = async () => {
+  const type = _qgCurrentType;
+  const cfg = QG_TYPE_OPTIONS[type];
+  if (!cfg) return;
+
+  if (!cfg.enabled) {
+    showToast(`${cfg.label}은(는) ${cfg.phaseLabel} 이후 구현 예정입니다`);
+    return;
+  }
+
   if (_qgSelectedPageIds.size === 0) {
-    showToast('Page를 먼저 선택하세요');
+    showToast('Page 를 먼저 선택하세요');
     return;
   }
   if (_qgSelectedPageIds.size > 10) {
@@ -6279,15 +6617,24 @@ window.qgGenerate = async () => {
     return;
   }
 
-  const count = parseInt(document.getElementById('qgCount').value) || 5;
-  const type = document.getElementById('qgType').value;
+  qgPersistOpts();
+  const opts = _qgCollectOpts(type);
 
+  if (type === 'mcq') {
+    await _qgCallMcq(opts);
+  } else {
+    showToast('지원되지 않는 유형입니다');
+  }
+};
+
+// ─── MCQ API 호출 ───
+async function _qgCallMcq(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
-  btn.disabled = true;
-  status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
-  const selectedPages = _genPages
+  const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
     .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
 
@@ -6296,70 +6643,71 @@ window.qgGenerate = async () => {
     const res = await fetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count, type }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq' }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
-      status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s)</span>`;
-      document.getElementById('qgResult').innerHTML = `
-        <div style="background:#fee;border:1px solid #fcc;color:#c33;padding:12px;border-radius:6px;font-size:13px;">
-          <b>에러:</b> ${esc(data.error||'unknown')}
-          ${data.detail?`<br><small>${esc(data.detail)}</small>`:''}
-        </div>`;
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
       return;
     }
 
     _qgGenerated = data.questions || [];
     _qgExcluded.clear();
-    status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
-    _qgRenderResult(data);
-  } catch (e) {
-    status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
-    document.getElementById('qgResult').innerHTML = `<div style="background:#fee;color:#c33;padding:12px;border-radius:6px;">${esc(e.message)}</div>`;
-  } finally {
-    btn.disabled = false;
-  }
-};
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
-function _qgRenderResult(data) {
-  const el = document.getElementById('qgResult');
+    _qgShowResultModal(data);
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ─── 결과 모달 (Phase 2.5) ───
+function _qgShowResultModal(data) {
   if (!_qgGenerated.length) {
-    el.innerHTML = '<div style="background:#fff3e0;padding:12px;border-radius:6px;color:#e65100;font-size:13px;">AI가 문제를 생성하지 못했습니다. 본문이 너무 짧거나 부적절한 내용일 수 있습니다.</div>';
+    showToast('AI가 문제를 생성하지 못했습니다. 본문이 너무 짧거나 부적절할 수 있습니다.');
     return;
   }
 
   const defaultName = `AI 문제 세트 ${new Date().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/[^\d]/g,'').slice(0,8)}`;
 
-  el.innerHTML = `
-    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div>
-          <div style="font-weight:700;font-size:14px;">🎯 생성 결과 미리보기</div>
-          <div style="font-size:11px;color:var(--gray);">제외할 문제는 체크박스 해제 · 모델: <code>${esc(data.model)}</code></div>
-        </div>
-        <div style="font-size:12px;color:var(--gray);">
-          선택 <span id="qgIncludeCount">${_qgGenerated.length}</span> / ${_qgGenerated.length}
+  const html = `
+    <div style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:16px;font-weight:700;">🎯 AI 생성 결과 미리보기</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+              제외할 문제는 체크박스 해제 · 모델: <code>${esc(data.model||'')}</code> · 선택 <span id="qgIncludeCount">${_qgGenerated.length}</span> / ${_qgGenerated.length}
+            </div>
+          </div>
+          <button onclick="qgDiscardModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);">✕</button>
         </div>
       </div>
 
-      <div style="max-height:500px;overflow-y:auto;margin-bottom:16px;">
-        ${_qgGenerated.map((q, i) => _qgRenderQuestion(q, i)).join('')}
+      <div style="padding:14px 20px;flex:1;overflow-y:auto;">
+        <div id="qgResultList">
+          ${_qgGenerated.map((q,i) => _qgRenderQuestion(q,i)).join('')}
+        </div>
       </div>
 
-      <div style="border-top:1px solid var(--border);padding-top:16px;">
-        <label style="font-weight:600;font-size:13px;">세트 이름</label>
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:#fafafa;">
+        <label style="font-size:12px;font-weight:600;">세트 이름</label>
         <input type="text" id="qgSetName" value="${esc(defaultName)}" placeholder="예: Lesson 3 - 객관식 5문제"
-          style="width:100%;padding:10px;margin:6px 0 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;">
-
+          style="width:100%;padding:9px 12px;margin:5px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         <div style="display:flex;gap:8px;">
           <button class="btn btn-primary" style="flex:1;" onclick="qgSaveSet()">💾 문제 세트로 저장</button>
-          <button class="btn btn-secondary" onclick="qgDiscard()">✖ 버리기</button>
+          <button class="btn btn-secondary" onclick="qgDiscardModal()">✖ 버리기</button>
         </div>
       </div>
     </div>
   `;
+  showModal(html);
 }
 
 function _qgRenderQuestion(q, idx) {
@@ -6393,30 +6741,21 @@ function _qgRenderQuestion(q, idx) {
 window.qgToggleExclude = (idx) => {
   if (_qgExcluded.has(idx)) _qgExcluded.delete(idx);
   else _qgExcluded.add(idx);
-  // 카운트만 갱신 (전체 리렌더 대신)
   const el = document.getElementById('qgIncludeCount');
   if (el) el.textContent = _qgGenerated.length - _qgExcluded.size;
-  // 해당 문제 카드만 opacity 토글
-  _qgRenderResultPartial();
+  const listEl = document.getElementById('qgResultList');
+  if (listEl) {
+    listEl.innerHTML = _qgGenerated.map((q,i) => _qgRenderQuestion(q,i)).join('');
+  }
 };
 
-function _qgRenderResultPartial() {
-  // 간단히 전체 재렌더 (문제 수 20개 이하라 비용 저렴)
-  const data = { model: document.querySelector('#qgResult code')?.textContent || '' };
-  // 재렌더 시 세트 이름 보존
-  const savedName = document.getElementById('qgSetName')?.value;
-  _qgRenderResult({ model: data.model });
-  if (savedName) {
-    const input = document.getElementById('qgSetName');
-    if (input) input.value = savedName;
+window.qgDiscardModal = async () => {
+  if (_qgGenerated.length > 0 && _qgExcluded.size < _qgGenerated.length) {
+    if (!(await showConfirm('생성 결과를 버리시겠어요?', '저장되지 않은 문제가 모두 사라집니다.'))) return;
   }
-}
-
-window.qgDiscard = async () => {
-  if (!(await showConfirm('생성 결과를 버리시겠어요?', '저장되지 않은 문제가 모두 사라집니다.'))) return;
   _qgGenerated = [];
   _qgExcluded.clear();
-  document.getElementById('qgResult').innerHTML = '';
+  closeModal();
 };
 
 window.qgSaveSet = async () => {
@@ -6464,12 +6803,10 @@ window.qgSaveSet = async () => {
       updatedAt: serverTimestamp(),
     });
     showToast(`✓ "${name}" 저장됨 (${finalQuestions.length}문제)`);
-    // 생성 결과 초기화
     _qgGenerated = [];
     _qgExcluded.clear();
-    document.getElementById('qgResult').innerHTML = '';
-    // 세트 목록 페이지로 이동 (선택)
-    setTimeout(() => goPage('quiz-sets'), 500);
+    closeModal();
+    setTimeout(() => goPage('quiz-sets'), 300);
   } catch(e) {
     showToast('저장 실패: '+e.message);
   }
