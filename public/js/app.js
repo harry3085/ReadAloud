@@ -586,11 +586,11 @@ function _mcqRenderStep(){
     choicesEl.innerHTML = (q.choices||[]).map((c, i) => {
       const isSel = selected === i;
       return `
-        <div onclick="mcqSelect(${i})"
-          style="padding:14px 16px;border-radius:12px;background:${isSel?'#fff4e6':'white'};border:2px solid ${isSel?'#F59E0B':'rgba(0,0,0,0.06)'};cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:all 0.15s;">
-          <span style="font-size:15px;font-weight:700;color:${isSel?'#F59E0B':'var(--gray)'};flex-shrink:0;">${labels[i]}</span>
-          <span style="font-size:14px;color:var(--text);line-height:1.5;flex:1;">${esc(c.text||'')}</span>
-        </div>`;
+        <button onclick="mcqSelect(${i})"
+          style="padding:14px 16px;background:${isSel?'var(--teal)':'white'};border:2px solid var(--teal);color:${isSel?'white':'var(--teal)'};border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 4px rgba(232,113,74,0.15);text-align:left;display:flex;gap:10px;align-items:flex-start;">
+          <span style="flex-shrink:0;">${labels[i]}</span>
+          <span style="flex:1;line-height:1.4;font-weight:${isSel?700:600};">${esc(c.text||'')}</span>
+        </button>`;
     }).join('');
   }
 
@@ -598,10 +598,12 @@ function _mcqRenderStep(){
   if(btn){
     const isLast = s.currentIdx === s.questions.length - 1;
     const hasAnswer = s.answers[s.currentIdx] !== null;
-    btn.textContent = isLast ? '제출하기' : '다음';
+    btn.textContent = isLast ? '제출하기 ▶' : '다음 ▶';
     btn.disabled = !hasAnswer;
-    btn.style.background = hasAnswer ? (isLast ? '#059669' : '#F59E0B') : '#ccc';
+    btn.style.background = hasAnswer ? (isLast ? '#059669' : 'var(--teal)') : '#ccc';
+    btn.style.color = 'white';
     btn.style.cursor = hasAnswer ? 'pointer' : 'not-allowed';
+    btn.style.boxShadow = hasAnswer ? '0 2px 8px rgba(232,113,74,.3)' : 'none';
   }
 }
 
@@ -849,7 +851,7 @@ function _fbRenderStep(){
         html += `<span onclick="fbFocusBlank(${i})" style="display:inline-flex;gap:3px;vertical-align:middle;margin:0 4px;cursor:text;">`;
         for(let k = 0; k < letterCount; k++){
           const ch = curVal[k] || '';
-          html += `<span id="fb-box-${i}-${k}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:28px;border:2px solid #ddd;background:white;color:#92400E;border-radius:5px;font-size:17px;font-weight:700;line-height:1;">${esc(ch)}</span>`;
+          html += `<span id="fb-box-${i}-${k}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:28px;border:2px solid #ddd;background:white;color:#D85A30;border-radius:5px;font-size:17px;font-weight:700;line-height:1;">${esc(ch)}</span>`;
         }
         html += `</span>`;
         // 숨은 input (단어시험 패턴)
@@ -900,10 +902,11 @@ function _fbRefreshBoxesForBlank(blankIdx){
     const ch = curVal[k] || '';
     box.textContent = ch;
     if(ch){
-      box.style.borderColor = '#CA8A04';
-      box.style.background = '#FEF3C7';
+      box.style.borderColor = '#E8714A';
+      box.style.background = '#FFF4ED';
+      box.style.color = '#D85A30';
     } else if(isActiveBlank && k === curVal.length){
-      box.style.borderColor = '#CA8A04';
+      box.style.borderColor = '#E8714A';
       box.style.background = 'white';
     } else {
       box.style.borderColor = '#ddd';

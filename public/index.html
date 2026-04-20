@@ -227,27 +227,32 @@
   <div id="readingMcq" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
       <button class="quit-btn" onclick="quitReadingMcq()">✕</button>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="mcqProgressBar" style="width:5%;background:#F59E0B;"></div></div>
-      <div id="mcqProgressText" style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">1 / 1</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="mcqProgressBar" style="width:5%;"></div></div>
+      <div class="progress-pill" id="mcqProgressText">1/10</div>
     </div>
 
-    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
-      <div id="mcqPassageBox" style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:10px;font-weight:700;color:#F59E0B;letter-spacing:0.5px;margin-bottom:6px;">PASSAGE</div>
+    <div class="scroll-content" style="padding:14px 16px;flex:1;overflow-y:auto;">
+      <!-- 본문 카드 (길이 때문에 별도 유지, 코랄 라벨) -->
+      <div id="mcqPassageBox" style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:10px;font-weight:700;color:var(--teal);letter-spacing:0.5px;margin-bottom:6px;">📖 PASSAGE</div>
         <div id="mcqPassage" style="font-size:14px;line-height:1.7;color:#333;white-space:pre-wrap;"></div>
       </div>
 
-      <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:10px;font-weight:700;color:#F59E0B;letter-spacing:0.5px;margin-bottom:6px;">QUESTION</div>
-        <div id="mcqQuestion" style="font-size:15px;font-weight:700;color:var(--text);line-height:1.5;"></div>
-        <div id="mcqQuestionKo" style="font-size:12px;color:var(--gray);margin-top:6px;line-height:1.5;"></div>
+      <!-- 합체 카드: 질문(주황 헤더) + 보기(흰 바디) -->
+      <div style="background:white;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(232,113,74,.12);">
+        <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:16px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:4px;">문제</div>
+          <div id="mcqQuestion" style="font-size:17px;font-weight:800;color:white;line-height:1.4;word-break:break-word;"></div>
+          <div id="mcqQuestionKo" style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:5px;line-height:1.4;"></div>
+        </div>
+        <div style="padding:14px 16px;">
+          <div id="mcqChoices" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
       </div>
-
-      <div id="mcqChoices" style="display:flex;flex-direction:column;gap:10px;"></div>
     </div>
 
     <div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,0.06);background:#FFF8F5;">
-      <button id="mcqNextBtn" style="width:100%;padding:14px;border:none;border-radius:12px;background:#ccc;color:white;font-size:15px;font-weight:700;cursor:not-allowed;" disabled onclick="mcqNext()">다음</button>
+      <button id="mcqNextBtn" class="submit-btn" style="width:100%;background:#ccc;box-shadow:none;" disabled onclick="mcqNext()">다음</button>
     </div>
   </div>
 
@@ -271,24 +276,25 @@
   </div>
 
   <!-- 빈칸채우기 풀이 화면 (Phase 3 신규) -->
-  <div id="fillBlank" class="screen" style="background:#FFFBEB;">
+  <div id="fillBlank" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
       <button class="quit-btn" onclick="quitFillBlank()">✕</button>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="fbProgressBar" style="width:5%;background:#EAB308;"></div></div>
-      <div id="fbProgressText" style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">1 / 1</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="fbProgressBar" style="width:5%;"></div></div>
+      <div class="progress-pill" id="fbProgressText">1/10</div>
     </div>
 
-    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
-      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:10px;font-weight:700;color:#CA8A04;letter-spacing:0.5px;margin-bottom:4px;">QUESTION</div>
-        <div id="fbQuestionKo" style="font-size:14px;color:var(--text);line-height:1.5;"></div>
+    <div class="scroll-content" style="padding:14px 16px;flex:1;overflow-y:auto;">
+      <!-- 합체 카드: 지시(주황 헤더) + 문장·빈칸(흰 바디) -->
+      <div style="background:white;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(232,113,74,.12);">
+        <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:16px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:4px;">지시</div>
+          <div id="fbQuestionKo" style="font-size:16px;font-weight:700;color:white;line-height:1.4;"></div>
+        </div>
+        <div style="padding:16px;">
+          <div id="fbSentence" style="font-size:19px;line-height:1.7;color:var(--text);"></div>
+        </div>
       </div>
-
-      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div id="fbSentence" style="font-size:19px;line-height:1.7;color:var(--text);"></div>
-      </div>
-
-      <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:6px;">
+      <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:8px;">
         빈칸을 탭하면 입력됩니다
       </div>
     </div>
@@ -296,15 +302,15 @@
     <!-- 숨겨진 입력 영역 (뷰포트에 고정 — iOS 자동 스크롤 방지) -->
     <div id="fbInputsHolder" style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;z-index:-1;"></div>
 
-    <div class="quiz-footer" style="border-top:1px solid #f0e8d4;background:#FFFBEB;">
+    <div class="quiz-footer">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
           <circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/>
-          <circle cx="22" cy="22" r="18" fill="none" stroke="#EAB308" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="fbTimerArc" stroke-linecap="round"/>
+          <circle cx="22" cy="22" r="18" fill="none" stroke="#E8714A" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="0" id="fbTimerArc" stroke-linecap="round"/>
         </svg>
-        <div class="timer-text" id="fbTimerText" style="color:#CA8A04;">30</div>
+        <div class="timer-text" id="fbTimerText">30</div>
       </div>
-      <button class="submit-btn" id="fbNextBtn" onclick="fbNext()" style="background:#EAB308;box-shadow:0 2px 8px rgba(234,179,8,0.3);">다음 ▶</button>
+      <button class="submit-btn" id="fbNextBtn" onclick="fbNext()">다음 ▶</button>
       <button class="skip-btn" onclick="fbSkip()">SKIP</button>
     </div>
   </div>
