@@ -113,7 +113,7 @@ window.goPage = async(id) => {
   // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
   else if(id==='test-unscramble') { /* Phase 6 */ }
   else if(id==='test-blank')      { /* Phase 3 */ }
-  else if(id==='test-mcq')        { /* Phase 2 */ }
+  else if(id==='test-mcq')        await loadMcqAssign();
   else if(id==='test-subj')       { /* Phase 4 */ }
   else if(id==='test-rec-ai')     { /* Phase 5 */ }
 };
@@ -2342,46 +2342,77 @@ window.importStudentExcel = async() => {
   if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
 function _testModeLabel(t){
-  if(t.testMode==='unscramble') return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
+  if(t.testMode==='unscramble')
+    return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
+  if(t.testMode==='reading-mcq')
+    return '<span class="badge" style="background:#fff4e6;color:#c2410c;border:1px solid #fed7aa;">📖 독해</span>';
   return '<span class="badge badge-teal">📝 단어시험</span>';
 }
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
-    const snap = await getDocs(query(collection(db,'tests'),orderBy('createdAt','desc')));
-    if(snap.empty){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';return;}
-    const tests = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // tests + genTests 병렬 로드
+    const [snap, gSnap] = await Promise.all([
+      getDocs(query(collection(db,'tests'),orderBy('createdAt','desc'))),
+      getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
+    ]);
+    const tests = snap.docs.map(d=>({id:d.id,_src:'tests',...d.data()}));
+    const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
 
+    if(tests.length===0 && genTests.length===0){
+      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';
+      return;
+    }
+
+    // scores 전체 로드 후 testId 별로 집계 (tests / genTests 공통)
     const scoresSnap = await getDocs(collection(db,'scores'));
     const allScores = scoresSnap.docs.map(d=>d.data());
 
-    const testsWithStats = tests.map(t=>{
+    const attachStats = (t) => {
       const ts = allScores.filter(s=>s.testId===t.id);
       const avg = ts.length ? Math.round(ts.reduce((sum,s)=>sum+(s.score||0),0)/ts.length) : null;
       return {...t, attemptCount:ts.length, avgScore:avg};
-    });
+    };
 
-    initPagination('testListBody', testsWithStats, (t,i)=>`
-      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}',this)" id="test-row-${t.id}">
-        <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}"></td>
+    // 병합 + createdAt desc 재정렬
+    const combined = [...tests, ...genTests]
+      .map(attachStats)
+      .sort((a,b)=>{
+        const at = a.createdAt?.toMillis?.() || 0;
+        const bt = b.createdAt?.toMillis?.() || 0;
+        return bt - at;
+      });
+
+    initPagination('testListBody', combined, (t,i)=>{
+      // 독해 시험(genTests) 은 진행상세(토글) 현재 지원하지 않음 (Phase 2 MVP)
+      const isGen = t._src === 'genTests';
+      const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
+      const bookName = isGen ? (t.sourceSetNames?.join(', ')||'-') : (t.bookName||'-');
+      return `
+      <tr style="cursor:${isGen?'default':'pointer'};" ${isGen?'':`onclick="toggleTestProgress('${t.id}',this)"`} id="test-row-${t.id}">
+        <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
         <td class="td-main">${esc(t.name)||'-'}</td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
-        <td class="td-sm">${esc(t.bookName)||'-'}</td>
-        <td class="td-center">${t.count||0}문제</td>
+        <td class="td-sm">${esc(bookName)}</td>
+        <td class="td-center">${count}문제</td>
         <td class="td-sub">${esc(t.date)||''}</td>
         <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
         <td class="td-center">
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
       </tr>
-      <tr id="progress-${t.id}" style="display:none;background:#f0faff;">
+      ${isGen ? '' : `<tr id="progress-${t.id}" style="display:none;background:#f0faff;">
         <td colspan="10" style="padding:0;border-top:none;">
           <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
-      </tr>`, 'testPagination', 10);
-  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+      </tr>`}`;
+    }, 'testPagination', 10);
+  }catch(e){
+    console.error(e);
+    el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';
+  }
 };
 
 window.toggleTestProgress = async(testId) => {
@@ -6573,5 +6604,292 @@ window.qsDeleteSet = async (setId) => {
     await loadQuestionSets();
   } catch(e) {
     showToast('삭제 실패: '+e.message);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 내용이해_객관식 시험 배정 (Phase 2)
+// ═══════════════════════════════════════════════════════════════════════════
+// genQuestionSets (sourceType='mcq') → 선택 → 대상 지정 → genTests 문서생성
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _mcqSets = [];
+let _mcqSelectedSets = new Set();
+let _mcqTargets = [];
+
+window.loadMcqAssign = async () => {
+  try {
+    const snap = await getDocs(query(
+      collection(db,'genQuestionSets'),
+      where('sourceType','==','mcq'),
+      orderBy('createdAt','desc')
+    ));
+    _mcqSets = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  } catch(e) {
+    console.error(e);
+    showToast('문제 세트 로드 실패: '+e.message);
+    _mcqSets = [];
+  }
+  _mcqSelectedSets.clear();
+  _mcqTargets = [];
+  _mcqRender();
+};
+
+function _mcqRender() {
+  const root = document.getElementById('mcqAssignRoot');
+  if (!root) return;
+
+  if (_mcqSets.length === 0) {
+    root.innerHTML = `
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:48px;text-align:center;color:var(--gray);">
+        <div style="font-size:32px;margin-bottom:10px;">📭</div>
+        <div style="font-size:14px;margin-bottom:6px;">배정 가능한 객관식 문제 세트가 없습니다</div>
+        <div style="font-size:12px;">먼저 'AI 문제 생성' 메뉴에서 객관식 세트를 만들어주세요</div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="goPage('quiz-generate')">✨ AI 문제 생성하러 가기</button>
+      </div>`;
+    return;
+  }
+
+  const selectedCount = _mcqSelectedSets.size;
+  const totalQuestions = _mcqSets
+    .filter(s => _mcqSelectedSets.has(s.id))
+    .reduce((sum, s) => sum + (s.questionCount || s.questions?.length || 0), 0);
+
+  root.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;">
+
+      <!-- 좌측: 문제 세트 리스트 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:14px;">📋 문제 세트 선택</div>
+            <div style="font-size:11px;color:var(--gray);">체크한 세트들의 문제가 하나의 시험으로 합쳐집니다 · ${_mcqSets.length}개 세트</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="mcqSelectAll()">전체</button>
+            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="mcqClearSel()">해제</button>
+          </div>
+        </div>
+        <div style="max-height:calc(100vh - 340px);overflow-y:auto;">
+          ${_mcqSets.map(s => {
+            const checked = _mcqSelectedSets.has(s.id) ? 'checked' : '';
+            const date = s.createdAt?.toDate ? s.createdAt.toDate() : null;
+            const dateStr = date ? date.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+            const qCount = s.questionCount || s.questions?.length || 0;
+            return `
+              <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;cursor:pointer;" onclick="mcqToggleSet('${esc(s.id)}')">
+                <input type="checkbox" ${checked} onclick="event.stopPropagation();mcqToggleSet('${esc(s.id)}')">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;font-weight:600;color:var(--text);">${esc(s.name||'(이름 없음)')}</div>
+                  <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+                    ${qCount}문제 · ${esc(dateStr)}
+                    ${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 우측: 시험 정보 + 대상 -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+
+        <div style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:8px;padding:12px 16px;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">선택된 세트</div>
+          <div style="font-size:20px;font-weight:700;color:var(--teal);">${selectedCount}개 · ${totalQuestions}문제</div>
+        </div>
+
+        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:10px;">📝 시험 정보</div>
+
+          <label style="font-size:12px;font-weight:600;color:var(--text);">시험명 *</label>
+          <input type="text" id="mcqName" placeholder="예: Lesson 3 독해"
+            value="독해 시험 ${new Date().toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit'}).replace(/\./g,'').trim().replace(' ','-')}"
+            style="width:100%;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+
+          <label style="font-size:12px;font-weight:600;color:var(--text);">통과점수</label>
+          <input type="number" id="mcqPassScore" value="80" min="0" max="100"
+            style="width:100%;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+
+          <label style="font-size:12px;font-weight:600;color:var(--text);">출제일</label>
+          <input type="date" id="mcqDate" value="${new Date().toISOString().slice(0,10)}"
+            style="width:100%;padding:8px 10px;margin:4px 0 0;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        </div>
+
+        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:13px;">👥 배정 대상</div>
+            <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="mcqOpenTargetPicker()">+ 반/학생 선택</button>
+          </div>
+          <div id="mcqTargetDisplay" style="min-height:40px;font-size:12px;color:var(--gray);display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            ${_mcqTargets.length ? _mcqTargets.map(t=>`
+              <span style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:14px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+                ${t.type==='class'?'👥':'👤'} ${esc(t.name)}
+                <span style="cursor:pointer;color:var(--gray);" onclick="mcqRemoveTarget('${esc(t.id)}')">×</span>
+              </span>`).join('') : '<span>대상을 선택하세요</span>'}
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="padding:12px;font-size:14px;font-weight:700;" onclick="mcqPublish()">
+          🚀 시험 배정하기
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+window.mcqToggleSet = (setId) => {
+  if (_mcqSelectedSets.has(setId)) _mcqSelectedSets.delete(setId);
+  else _mcqSelectedSets.add(setId);
+  _mcqRender();
+};
+
+window.mcqSelectAll = () => {
+  _mcqSets.forEach(s => _mcqSelectedSets.add(s.id));
+  _mcqRender();
+};
+
+window.mcqClearSel = () => {
+  _mcqSelectedSets.clear();
+  _mcqRender();
+};
+
+window.mcqOpenTargetPicker = async () => {
+  let students = [];
+  try {
+    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    students = snap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e) {
+    showToast('학생 목록 로드 실패: '+e.message);
+    return;
+  }
+
+  const groupMap = {};
+  students.forEach(u => {
+    const g = u.group || '(미지정)';
+    if (!groupMap[g]) groupMap[g] = [];
+    groupMap[g].push(u);
+  });
+  Object.keys(groupMap).forEach(g => groupMap[g].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko')));
+
+  const sortedGroups = Object.keys(groupMap).sort((a,b)=>a.localeCompare(b,'ko'));
+
+  const selClassIds = new Set(_mcqTargets.filter(t=>t.type==='class').map(t=>t.id));
+  const selStudentIds = new Set(_mcqTargets.filter(t=>t.type==='student').map(t=>t.id));
+
+  const html = `
+    <div style="max-width:560px;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:16px;font-weight:700;">👥 배정 대상 선택</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">반 체크 = 반 전체 · 학생 체크 = 개별 지정 (중복 선택시 우선)</div>
+      </div>
+      <div style="padding:12px 22px;max-height:55vh;overflow-y:auto;">
+        ${sortedGroups.map(g => {
+          const cls = selClassIds.has(g) ? 'checked' : '';
+          return `
+            <div style="margin-bottom:10px;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+              <div style="padding:8px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="mcqTpToggleGroup('${esc(g)}')">
+                <input type="checkbox" ${cls} onclick="event.stopPropagation();mcqTpToggleGroup('${esc(g)}')">
+                <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
+                <span style="font-size:11px;color:var(--gray);margin-left:auto;">${groupMap[g].length}명</span>
+              </div>
+              <div style="padding:4px 12px 8px;display:flex;flex-wrap:wrap;gap:4px;">
+                ${groupMap[g].map(u => {
+                  const sc = selStudentIds.has(u.id) ? 'checked' : '';
+                  return `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:11px;">
+                    <input type="checkbox" ${sc} onchange="mcqTpToggleStudent('${esc(u.id)}','${esc(u.name||'')}','${esc(g)}')">
+                    👤 ${esc(u.name||'')}
+                  </label>`;
+                }).join('')}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);text-align:right;">
+        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+      </div>
+    </div>
+  `;
+  showModal(html);
+};
+
+window.mcqTpToggleGroup = (g) => {
+  const exists = _mcqTargets.find(t => t.type==='class' && t.id===g);
+  if (exists) {
+    _mcqTargets = _mcqTargets.filter(t => !(t.type==='class' && t.id===g));
+  } else {
+    _mcqTargets.push({ type:'class', id:g, name:g+' 전체', groupName:g });
+  }
+  mcqOpenTargetPicker();
+  _mcqRender();
+};
+
+window.mcqTpToggleStudent = (uid, name, group) => {
+  const exists = _mcqTargets.find(t => t.type==='student' && t.id===uid);
+  if (exists) {
+    _mcqTargets = _mcqTargets.filter(t => !(t.type==='student' && t.id===uid));
+  } else {
+    _mcqTargets.push({ type:'student', id:uid, name, groupName:group });
+  }
+  _mcqRender();
+};
+
+window.mcqRemoveTarget = (id) => {
+  _mcqTargets = _mcqTargets.filter(t => t.id !== id);
+  _mcqRender();
+};
+
+window.mcqPublish = async () => {
+  const name = document.getElementById('mcqName')?.value.trim();
+  const passScore = parseInt(document.getElementById('mcqPassScore')?.value) || 80;
+  const date = document.getElementById('mcqDate')?.value || new Date().toISOString().slice(0,10);
+
+  if (_mcqSelectedSets.size === 0) { showToast('문제 세트를 1개 이상 선택하세요'); return; }
+  if (!name) { showToast('시험명을 입력하세요'); document.getElementById('mcqName')?.focus(); return; }
+  if (_mcqTargets.length === 0) { showToast('배정 대상을 선택하세요'); return; }
+
+  const selectedSets = _mcqSets.filter(s => _mcqSelectedSets.has(s.id));
+  const questions = selectedSets.flatMap(s => s.questions || []);
+  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+
+  const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${_mcqTargets.length}명/반\n통과점수 ${passScore}점`;
+  if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
+
+  const targetType = (_mcqTargets.length===1 && _mcqTargets[0].type==='class') ? 'class' : 'mixed';
+  const targetId = _mcqTargets.map(t => t.id).join(',');
+  const targetName = _mcqTargets.length===1
+    ? _mcqTargets[0].name
+    : `${_mcqTargets.length}명/반 선택`;
+
+  const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
+
+  try {
+    await addDoc(collection(db,'genTests'), {
+      name,
+      academy: '큰소리영어',
+      date,
+      testMode: 'reading-mcq',
+      targetType, targetId, targetName,
+      targets: [..._mcqTargets],
+      active: true,
+      questions,
+      questionCount: questions.length,
+      sourceSetIds: selectedSets.map(s => s.id),
+      sourceSetNames: selectedSets.map(s => s.name || ''),
+      passScore,
+      bookName,
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+    });
+
+    showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
+
+    _mcqSelectedSets.clear();
+    _mcqTargets = [];
+
+    setTimeout(() => goPage('test-list'), 600);
+  } catch(e) {
+    console.error(e);
+    showToast('배정 실패: '+e.message);
   }
 };

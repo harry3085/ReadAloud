@@ -139,7 +139,7 @@ async function updateAllBadges(force=false){
   const now = Date.now();
   if(!force && now - _badgeCache.ts < BADGE_TTL) return;
   _badgeCache.ts = now;
-  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge()]);
+  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge(), updateMcqBadge()]);
 }
 async function updateTestBadge(){
   const badge = document.getElementById('testBadge');
@@ -168,6 +168,42 @@ async function updateTestBadge(){
       }catch(e){console.warn(e);}
     }));
     const unfinished = myTests.filter(t=>!completedSet.has(t.id)).length;
+    if(unfinished > 0){
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }catch(e){ badge.style.display='none'; }
+}
+
+async function updateMcqBadge(){
+  const badge = document.getElementById('mcqBadge');
+  if(!badge || !currentUser || !userProfile) return;
+  try{
+    const myGroup = userProfile.group||'';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myTests = allTests.filter(t => {
+      if(!t.active && t.active !== undefined) return false;
+      if(t.testMode !== 'reading-mcq') return false;
+      const targets = t.targets || [];
+      if(!targets.length){
+        return (t.targetType==='class'&&t.targetId===myGroup)
+          ||(t.targetType==='student'&&t.targetId===myUid)
+          ||(t.targetId===myGroup);
+      }
+      return targets.some(tg => (tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
+    });
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedSet.add(t.id);
+      }catch(e){ console.warn(e); }
+    }));
+    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
     if(unfinished > 0){
       badge.textContent = unfinished > 99 ? '99+' : unfinished;
       badge.style.display = 'flex';
@@ -340,14 +376,278 @@ window.goUnits = async()=>{
   }
 };
 
-// ─── 교재이해 (Reading MCQ) 카드 — Phase 1 플레이스홀더, Phase 2에서 기능 구현 ───
-window.goReadingMcq = () => {
+// ─── 교재이해 (Reading MCQ) 카드 — Phase 2 구현 ───
+window.goReadingMcq = async () => {
   show('readingMcqList');
+  await loadReadingMcqList();
 };
 
 // ─── 빈칸채우기 카드 — Phase 1 플레이스홀더, Phase 3에서 기능 구현 ───
 window.goFillBlank = () => {
   show('fillBlankList');
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 교재이해 (Reading MCQ) - Phase 2
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _mcqTakeState = {
+  test: null,
+  questions: [],
+  currentIdx: 0,
+  answers: [],
+};
+let _mcqScreenTemplate = null;   // 결과 화면이 innerHTML을 덮어쓰므로 원본 보존
+
+async function loadReadingMcqList(){
+  const elP = document.getElementById('mcqListPending');
+  const elC = document.getElementById('mcqListCompleted');
+  if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+
+  try{
+    const myGroup = userProfile?.group||'';
+    const myUid = currentUser?.uid||'';
+    const snap = await getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t=>t.testMode==='reading-mcq');
+
+    const completedMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedMap.set(t.id, d.data().score??null);
+      }catch(e){ console.warn(e); }
+    }));
+
+    const pending = myTests.filter(t => !completedMap.has(t.id));
+    const completed = myTests.filter(t => completedMap.has(t.id));
+
+    const oc = (id, name) => `startReadingMcq('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+
+    if(elP) elP.innerHTML = pending.length
+      ? pending.map(t=>_mcqMakeCard(t,false,oc(t.id,t.name),null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
+    if(elC) elC.innerHTML = completed.length
+      ? completed.map(t=>_mcqMakeCard(t,true,oc(t.id,t.name),completedMap.get(t.id))).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  }catch(e){
+    console.error(e);
+    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+function _mcqMakeCard(t, isCompleted, onclick, completedScore){
+  const qCount = t.questionCount || t.questions?.length || 0;
+  const passScore = t.passScore ?? 80;
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${esc(t.name||'독해 시험')}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            : `<span style="font-size:11px;background:#fff4e6;color:#F59E0B;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">📖 ${esc(t.bookName||'본문 독해')} · ${qCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+    </div>`;
+}
+
+window.startReadingMcq = async (testId, testName) => {
+  try{
+    const snap = await getDoc(doc(db,'genTests',testId));
+    if(!snap.exists()){ showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    const questions = test.questions || [];
+    if(questions.length === 0){ showToast('문제가 비어있습니다.'); return; }
+
+    _mcqTakeState = {
+      test,
+      questions,
+      currentIdx: 0,
+      answers: new Array(questions.length).fill(null),
+    };
+
+    // 원본 HTML 보존 + 이전 시험 결과 화면이 남아있으면 복원
+    const screen = document.getElementById('readingMcq');
+    if(screen){
+      if(_mcqScreenTemplate === null) _mcqScreenTemplate = screen.innerHTML;
+      else screen.innerHTML = _mcqScreenTemplate;
+    }
+
+    show('readingMcq');
+    _mcqRenderStep();
+  }catch(e){
+    console.error(e);
+    showToast('시험 시작 실패: '+e.message);
+  }
+};
+
+function _mcqRenderStep(){
+  const s = _mcqTakeState;
+  const q = s.questions[s.currentIdx];
+  if(!q) return;
+
+  const pct = Math.round(((s.currentIdx+1) / s.questions.length) * 100);
+  const bar = document.getElementById('mcqProgressBar');
+  const txt = document.getElementById('mcqProgressText');
+  if(bar) bar.style.width = pct+'%';
+  if(txt) txt.textContent = `${s.currentIdx+1} / ${s.questions.length}`;
+
+  const passageBox = document.getElementById('mcqPassageBox');
+  const passageEl = document.getElementById('mcqPassage');
+  if(passageEl){
+    if(q.passage){
+      passageEl.textContent = q.passage;
+      if(passageBox) passageBox.style.display = '';
+    } else if(q.sourcePageTitle){
+      passageEl.textContent = '(본문 출처: ' + q.sourcePageTitle + ')';
+      if(passageBox) passageBox.style.display = '';
+    } else {
+      if(passageBox) passageBox.style.display = 'none';
+    }
+  }
+
+  const qEl = document.getElementById('mcqQuestion');
+  const qKoEl = document.getElementById('mcqQuestionKo');
+  if(qEl) qEl.textContent = q.question || '';
+  if(qKoEl) qKoEl.textContent = q.questionKo || '';
+
+  const choicesEl = document.getElementById('mcqChoices');
+  if(choicesEl){
+    const selected = s.answers[s.currentIdx];
+    const labels = ['①','②','③','④'];
+    choicesEl.innerHTML = (q.choices||[]).map((c, i) => {
+      const isSel = selected === i;
+      return `
+        <div onclick="mcqSelect(${i})"
+          style="padding:14px 16px;border-radius:12px;background:${isSel?'#fff4e6':'white'};border:2px solid ${isSel?'#F59E0B':'rgba(0,0,0,0.06)'};cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:all 0.15s;">
+          <span style="font-size:15px;font-weight:700;color:${isSel?'#F59E0B':'var(--gray)'};flex-shrink:0;">${labels[i]}</span>
+          <span style="font-size:14px;color:var(--text);line-height:1.5;flex:1;">${esc(c.text||'')}</span>
+        </div>`;
+    }).join('');
+  }
+
+  const btn = document.getElementById('mcqNextBtn');
+  if(btn){
+    const isLast = s.currentIdx === s.questions.length - 1;
+    const hasAnswer = s.answers[s.currentIdx] !== null;
+    btn.textContent = isLast ? '제출하기' : '다음';
+    btn.disabled = !hasAnswer;
+    btn.style.background = hasAnswer ? (isLast ? '#059669' : '#F59E0B') : '#ccc';
+    btn.style.cursor = hasAnswer ? 'pointer' : 'not-allowed';
+  }
+}
+
+window.mcqSelect = (choiceIdx) => {
+  _mcqTakeState.answers[_mcqTakeState.currentIdx] = choiceIdx;
+  _mcqRenderStep();
+};
+
+window.mcqNext = async () => {
+  const s = _mcqTakeState;
+  if(s.answers[s.currentIdx] === null) return;
+
+  if(s.currentIdx < s.questions.length - 1){
+    s.currentIdx++;
+    _mcqRenderStep();
+  } else {
+    await _mcqSubmit();
+  }
+};
+
+async function _mcqSubmit(){
+  const s = _mcqTakeState;
+  const t = s.test;
+  if(!t || !currentUser) return;
+
+  let correct = 0;
+  s.questions.forEach((q, i) => {
+    const ansIdx = s.answers[i];
+    const correctIdx = (q.choices || []).findIndex(c => c.isAnswer === true);
+    if(ansIdx === correctIdx) correct++;
+  });
+  const total = s.questions.length;
+  const wrong = total - correct;
+  const score = total ? Math.round((correct / total) * 100) : 0;
+  const passScore = t.passScore ?? 80;
+  const passed = score >= passScore;
+  const today = new Date().toISOString().slice(0,10);
+
+  try{
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid,
+      userId: currentUser.uid,
+      userName: userProfile?.name || '',
+      name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id,
+      testName: t.name || '',
+      unitId: t.id,
+      unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'reading-mcq',
+      score, correct, wrong, total,
+      passed, passScore,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+
+    try{
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score, date: today,
+          completedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }catch(e){ console.warn('genTest 완료 기록 실패', e); }
+  }catch(e){
+    console.error(e);
+    showToast('점수 저장 실패: '+e.message);
+  }
+
+  _mcqRenderResult({ correct, wrong, total, score, passed, passScore });
+}
+
+function _mcqRenderResult({correct, wrong, total, score, passed, passScore}){
+  const screen = document.getElementById('readingMcq');
+  if(!screen) return;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">
+        ${passed ? '통과!' : '아쉬워요'}
+      </div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">
+        통과 기준 ${passScore}점
+      </div>
+      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;min-width:240px;">
+        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#F59E0B'};line-height:1;">${score}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
+        <button onclick="goReadingMcq()" style="flex:1;padding:14px;background:#F59E0B;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      </div>
+    </div>
+  `;
+  updateMcqBadge();
+}
+
+window.quitReadingMcq = async () => {
+  if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  goHome();
 };
 
 window.goUnscramble = async()=>{

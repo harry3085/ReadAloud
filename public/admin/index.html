@@ -1267,19 +1267,16 @@
     </div>
   </div>
 
-  <!-- 내용이해_객관식 (Phase 2) -->
+  <!-- 내용이해_객관식 — AI 객관식 시험 배정 -->
   <div class="page" id="page-test-mcq">
     <div class="page-header">
-      <div><div class="page-title">📝 내용이해_객관식</div><div class="page-sub">AI 객관식 문제를 학생에게 배정합니다</div></div>
-    </div>
-    <div class="card" style="padding:48px;text-align:center;color:var(--gray);">
-      <div style="font-size:40px;margin-bottom:14px;">🚧</div>
-      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">준비 중인 기능입니다</div>
-      <div style="font-size:12px;">Phase 2에서 구현 예정 — '문제 세트 목록' 에서 생성된 MCQ 세트를 확인할 수 있습니다</div>
-      <div style="margin-top:16px;">
-        <button class="btn btn-secondary" onclick="goPage('quiz-sets')">📋 문제 세트 목록 보기</button>
+      <div><div class="page-title">📝 내용이해_객관식</div><div class="page-sub">AI가 생성한 객관식 문제를 학생에게 배정합니다</div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="goPage('quiz-generate')">+ 새 문제 세트 만들기</button>
+        <button class="btn btn-secondary" onclick="loadMcqAssign()">↺ 새로고침</button>
       </div>
     </div>
+    <div id="mcqAssignRoot"></div>
   </div>
 
   <!-- 해석하기_주관식 (Phase 4) -->
