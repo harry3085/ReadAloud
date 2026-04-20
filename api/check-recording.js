@@ -3,11 +3,11 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// 과부하 시 순차 폴백 (generate-quiz.js 패턴)
+// 과부하 시 순차 폴백 (오디오 지원 확인된 모델만)
 const MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-2.5-flash-lite',
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -24,12 +24,16 @@ function extractJson(text) {
   return null;
 }
 
-function isOverloaded(status, data) {
+function isRetryable(status, data) {
+  // 과부하 (재시도하면 다른 모델로 처리됨)
   if (status === 503 || status === 429) return true;
+  // 모델 not found / deprecated → 다른 모델 시도
+  if (status === 404) return true;
   const st = data?.error?.status;
-  if (st === 'UNAVAILABLE' || st === 'RESOURCE_EXHAUSTED') return true;
+  if (st === 'UNAVAILABLE' || st === 'RESOURCE_EXHAUSTED' || st === 'NOT_FOUND') return true;
   const msg = String(data?.error?.message || '').toLowerCase();
   if (msg.includes('overload') || msg.includes('unavailable') || msg.includes('high demand')) return true;
+  if (msg.includes('not found') || msg.includes('not supported')) return true;
   return false;
 }
 
@@ -161,11 +165,11 @@ module.exports = async (req, res) => {
         modelUsed = model;
         if (gres.ok) break;
         lastErrorMsg = gdata?.error?.message || `HTTP ${gres.status}`;
-        if (isOverloaded(gres.status, gdata)) {
-          console.warn(`[check-recording] ${model} overloaded → fallback`);
+        if (isRetryable(gres.status, gdata)) {
+          console.warn(`[check-recording] ${model} ${gres.status} → fallback`, gdata?.error?.message);
           continue;
         }
-        // overload 가 아닌 에러면 더 진행해도 의미 없음
+        // 재시도 불가 에러면 중단
         break;
       } catch (e) {
         lastErrorMsg = e.message || 'fetch failed';
