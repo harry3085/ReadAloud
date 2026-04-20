@@ -66,7 +66,7 @@ function showConfirm(title, sub=''){
   });
 }
 function showAlert(msg){showToast(msg);}
-function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);}
+function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);if(_fbTimer)clearInterval(_fbTimer);}
 function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // ── 드롭다운 ──────────────────────────────────────────────
@@ -691,6 +691,10 @@ window.quitReadingMcq = async () => {
 // 빈칸채우기 (Fill Blank) - Phase 3
 // ═══════════════════════════════════════════════════════════════════════════
 
+let _fbTimer = null;
+let _fbTimeLeft = 30;
+const FB_TIME_PER_Q = 30;
+
 let _fbState = {
   test: null,
   questions: [],
@@ -811,8 +815,9 @@ function _fbRenderStep(){
         const blankAnswer = q.blanks?.[i] || '';
         const letterCount = blankAnswer.length;
         const curVal = curAnswers[i] || '';
-        const width = Math.max(letterCount * 14, 60);
-        html += `<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 3px;">
+        // 글자수만큼 □ 프리뷰가 완전히 보이도록 넉넉한 폭 (char당 ~15px + 여유)
+        const width = Math.max(letterCount * 16 + 20, 80);
+        html += `<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 4px;">
           <input type="text"
             id="fb-input-${i}"
             value="${esc(curVal)}"
@@ -823,8 +828,8 @@ function _fbRenderStep(){
             autocapitalize="off"
             spellcheck="false"
             placeholder="${'□'.repeat(letterCount)}"
-            style="width:${width}px;padding:4px 8px;border:none;border-bottom:2px solid #CA8A04;background:#FEF3C7;font-size:16px;font-weight:700;color:#92400E;text-align:center;outline:none;font-family:inherit;">
-          <span style="font-size:10px;color:#CA8A04;margin-top:2px;">${letterCount}자</span>
+            style="width:${width}px;padding:4px 6px;border:none;border-bottom:2px solid #CA8A04;background:#FEF3C7;font-size:20px;font-weight:700;color:#92400E;text-align:center;outline:none;font-family:inherit;letter-spacing:1px;">
+          <span style="font-size:11px;color:#CA8A04;margin-top:3px;">${letterCount}자</span>
         </span>`;
       }
     }
@@ -834,15 +839,57 @@ function _fbRenderStep(){
   const btn = document.getElementById('fbNextBtn');
   if(btn){
     const isLast = s.currentIdx === s.questions.length - 1;
-    btn.textContent = isLast ? '제출하기' : '다음';
+    btn.textContent = isLast ? '제출 ▶' : '다음 ▶';
     btn.style.background = isLast ? '#059669' : '#EAB308';
   }
+
+  _fbStartTimer();
 
   setTimeout(() => {
     const first = document.getElementById('fb-input-0');
     if(first) first.focus();
   }, 50);
 }
+
+// ─── 타이머 ───
+function _fbStartTimer(){
+  _fbStopTimer();
+  _fbTimeLeft = FB_TIME_PER_Q;
+  _fbUpdateTimerUI();
+  _fbTimer = setInterval(() => {
+    _fbTimeLeft--;
+    _fbUpdateTimerUI();
+    if(_fbTimeLeft <= 0){
+      _fbStopTimer();
+      // 시간 만료 → 현재 입력값 그대로 다음 문제로 (또는 제출)
+      fbNext();
+    }
+  }, 1000);
+}
+
+function _fbStopTimer(){
+  if(_fbTimer){ clearInterval(_fbTimer); _fbTimer = null; }
+}
+
+function _fbUpdateTimerUI(){
+  const txt = document.getElementById('fbTimerText');
+  const arc = document.getElementById('fbTimerArc');
+  if(txt) txt.textContent = _fbTimeLeft;
+  if(arc) arc.style.strokeDashoffset = 113 * (1 - _fbTimeLeft / FB_TIME_PER_Q);
+}
+
+window.fbSkip = async () => {
+  // 현재 문제 답 비우고 다음으로
+  const s = _fbState;
+  if(s.answers[s.currentIdx]) s.answers[s.currentIdx] = s.answers[s.currentIdx].map(() => '');
+  _fbStopTimer();
+  if(s.currentIdx < s.questions.length - 1){
+    s.currentIdx++;
+    _fbRenderStep();
+  } else {
+    await _fbSubmit();
+  }
+};
 
 window.fbUpdateAnswer = (blankIdx, value) => {
   const s = _fbState;
@@ -864,6 +911,7 @@ window.fbInputKey = (event, blankIdx) => {
 };
 
 window.fbNext = async () => {
+  _fbStopTimer();
   const s = _fbState;
   if(s.currentIdx < s.questions.length - 1){
     s.currentIdx++;
@@ -874,6 +922,7 @@ window.fbNext = async () => {
 };
 
 async function _fbSubmit(){
+  _fbStopTimer();
   const s = _fbState;
   const t = s.test;
   if(!t || !currentUser) return;
@@ -988,6 +1037,7 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore}){
 
 window.quitFillBlank = async () => {
   if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  _fbStopTimer();
   goHome();
 };
 
@@ -3289,6 +3339,12 @@ function adjustForKeyboard(){
   const spelling = document.getElementById('spelling');
   if(spelling){
     spelling.style.bottom = spelling.classList.contains('active') ? keyboardHeight + 'px' : '0';
+  }
+
+  // 빈칸채우기 화면: footer(타이머/제출/SKIP)가 키패드 위에 위치
+  const fillBlank = document.getElementById('fillBlank');
+  if(fillBlank){
+    fillBlank.style.bottom = fillBlank.classList.contains('active') ? keyboardHeight + 'px' : '0';
   }
 
   // 로그인 화면: 키패드 높이만큼 카드 하단 패딩 확보
