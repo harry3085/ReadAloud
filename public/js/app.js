@@ -4872,29 +4872,107 @@ window.vqSkip = () => {
   }
 };
 
+// MCQ 선택 → 즉시 정답/오답 피드백 → 자동 다음 (구버전 운영 방식)
 window.vqSelectMcq = (choiceIdx) => {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
+  if (ans._locked) return;  // 피드백 중이면 재클릭 무시
   ans.input = ans.choices[choiceIdx] || '';
-  // 선택지 영역만 다시 그리기 (타이머 리셋 방지)
-  const choicesArea = document.getElementById('vqChoicesArea');
-  if (choicesArea) _vqRenderChoices(ans, choicesArea);
-  _vqUpdateSubmitBtn();
+  ans._locked = true;
+  _vqStopTimer();
+  // 피드백 렌더 (정답=초록, 오답=빨강 + 정답 표시)
+  _vqRenderMcqFeedback(ans);
+  // 자동 진행 (정답 500ms / 오답 900ms)
+  const isCorrect = _vqIsAnsCorrect(s.questions[s.currentIdx], ans);
+  setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 900);
 };
 
+function _vqRenderMcqFeedback(ans) {
+  const s = _vqState;
+  const q = s.questions[s.currentIdx];
+  const correctText = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
+  const container = document.getElementById('vqChoicesArea');
+  if (!container) return;
+  container.innerHTML = ans.choices.map((opt, j) => {
+    const isUser = opt === ans.input;
+    const isCorrect = opt === correctText;
+    let bg = 'white', color = 'var(--text)', border = 'var(--border)', weight = 500;
+    if (isCorrect) { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; weight = 700; }
+    else if (isUser) { bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444'; weight = 700; }
+    return `<div class="choice"
+      style="padding:14px 16px;background:${bg};color:${color};border:2px solid ${border};border-radius:14px;font-size:15px;font-weight:${weight};box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+      ${['①','②','③','④'][j]} ${esc(opt)}${isCorrect?' ✓':(isUser?' ✗':'')}
+    </div>`;
+  }).join('');
+}
+
+function _vqIsAnsCorrect(q, ans) {
+  const user = (ans.input || '').trim().toLowerCase();
+  const target = (ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'')).trim().toLowerCase();
+  return !!user && user === target;
+}
+
+// 스펠링 제출: 정답 체크 + 박스 피드백 + 자동 다음
 window.vqNext = async (opts) => {
   _vqStopTimer();
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
+
+  // 이미 피드백 락 상태면 다음으로
+  if (ans._locked) return _vqAutoNext();
+
   // 시간 만료 시엔 빈 답 허용. 일반 제출은 답 있어야 함
   if (!(opts && opts.allowEmpty) && (!ans.input || !String(ans.input).trim())) return;
+
+  ans._locked = true;
+  const q = s.questions[s.currentIdx];
+  const isCorrect = _vqIsAnsCorrect(q, ans);
+
+  if (ans.format === 'short') {
+    _vqRenderSpellFeedback(ans, isCorrect);
+    setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 1200);
+  } else {
+    // 타이머 만료 시 MCQ 도 피드백 → 자동 다음
+    _vqRenderMcqFeedback(ans);
+    setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 900);
+  }
+};
+
+function _vqRenderSpellFeedback(ans, isCorrect) {
+  const s = _vqState;
+  const q = s.questions[s.currentIdx];
+  const target = ans.direction === 'en2ko' ? (q.meaning || '') : (q.word || '');
+  const len = target.length;
+  const val = ans.input || '';
+  const boxes = document.getElementById('vqSpellBoxes');
+  if (!boxes) return;
+  const boxW = len > 12 ? 26 : len > 8 ? 30 : 34;
+  const fontSize = len > 12 ? 13 : len > 8 ? 15 : 17;
+  boxes.innerHTML = Array.from({length:len},(_,i)=>{
+    const userCh = val[i] || '';
+    const correctCh = target[i] || '';
+    const match = userCh && userCh.toLowerCase() === correctCh.toLowerCase();
+    const bg = match ? '#d1fae5' : (userCh ? '#fee2e2' : '#fef3c7');
+    const color = match ? '#047857' : (userCh ? '#b91c1c' : '#92400e');
+    const border = match ? '#10b981' : (userCh ? '#ef4444' : '#f59e0b');
+    const showCh = isCorrect || match ? (userCh || correctCh) : correctCh;  // 오답 위치도 정답 글자 공개
+    return `<div class="spell-box" style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};">${esc(showCh)}</div>`;
+  }).join('');
+
+  // 토스트로 결과 안내
+  if (isCorrect) showToast('✓ 정답');
+  else showToast('✗ 정답: ' + target);
+}
+
+async function _vqAutoNext() {
+  const s = _vqState;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
     _vqRenderStep();
   } else {
     await _vqSubmit();
   }
-};
+}
 
 async function _vqSubmit() {
   const s = _vqState;
