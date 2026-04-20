@@ -2150,8 +2150,6 @@ window.updateNotice = async(id) => {
   closeModal(); showToast('✅ 공지가 수정됐어요!'); await loadNotices();
 };
 
-};
-
 function printExamPDF(words, examName, academy, date, ptype, qType){
   qType = qType || 'both';
 
