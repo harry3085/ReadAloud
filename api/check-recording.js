@@ -131,6 +131,37 @@ module.exports = async (req, res) => {
       ? buildFeedbackPrompt(originalText, evaluationSeconds)
       : buildCheckPrompt(originalText, evaluationSeconds);
 
+    // responseSchema 로 구조화 출력 강제 → JSON 파싱 실패 원천 차단
+    const responseSchema = mode === 'feedback'
+      ? {
+          type: 'object',
+          properties: {
+            missedWords: { type: 'array', items: { type: 'string' } },
+            weakPronunciation: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  word: { type: 'string' },
+                  issue: { type: 'string' },
+                },
+                required: ['word', 'issue'],
+              },
+            },
+            tips: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['missedWords', 'weakPronunciation', 'tips'],
+        }
+      : {
+          type: 'object',
+          properties: {
+            score: { type: 'integer' },
+            missedWords: { type: 'array', items: { type: 'string' } },
+            note: { type: 'string' },
+          },
+          required: ['score', 'missedWords', 'note'],
+        };
+
     const reqBody = {
       contents: [{
         role: 'user',
@@ -140,47 +171,66 @@ module.exports = async (req, res) => {
         ],
       }],
       generationConfig: {
-        temperature: 0.3,
+        temperature: 0.1,  // 더 결정적
         topP: 0.9,
         maxOutputTokens: mode === 'feedback' ? 800 : 400,
         responseMimeType: 'application/json',
+        responseSchema,
       },
     };
+
+    // 한 모델당 JSON 파싱 포함 2회 시도
+    async function callOnce(model) {
+      const endpoint = `${BASE}/${model}:generateContent?key=${API_KEY}`;
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reqBody),
+      });
+      const d = await r.json();
+      return { r, d };
+    }
 
     const t0 = Date.now();
     let gres = null;
     let gdata = null;
+    let parsed = null;
     let modelUsed = null;
     let lastErrorMsg = '';
+    let lastRaw = '';
 
+    outer:
     for (const model of MODELS) {
-      const endpoint = `${BASE}/${model}:generateContent?key=${API_KEY}`;
-      try {
-        gres = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(reqBody),
-        });
-        gdata = await gres.json();
-        modelUsed = model;
-        if (gres.ok) break;
-        lastErrorMsg = gdata?.error?.message || `HTTP ${gres.status}`;
-        if (isRetryable(gres.status, gdata)) {
-          console.warn(`[check-recording] ${model} ${gres.status} → fallback`, gdata?.error?.message);
-          continue;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const { r, d } = await callOnce(model);
+          gres = r; gdata = d; modelUsed = model;
+          if (!r.ok) {
+            lastErrorMsg = d?.error?.message || `HTTP ${r.status}`;
+            if (isRetryable(r.status, d)) {
+              console.warn(`[check-recording] ${model} ${r.status} → 다음 모델`, lastErrorMsg);
+              continue outer;  // 다음 모델로
+            }
+            break outer;  // 재시도 불가 에러 → 중단
+          }
+          const textPart = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          lastRaw = textPart;
+          const j = extractJson(textPart);
+          if (j) { parsed = j; break outer; }  // 성공
+          // 파싱 실패 → 같은 모델로 1회 재시도
+          console.warn(`[check-recording] ${model} parse fail attempt ${attempt+1}, raw:`, textPart.slice(0, 200));
+        } catch (e) {
+          lastErrorMsg = e.message || 'fetch failed';
+          console.warn(`[check-recording] ${model} exception`, e.message);
         }
-        // 재시도 불가 에러면 중단
-        break;
-      } catch (e) {
-        lastErrorMsg = e.message || 'fetch failed';
-        console.warn(`[check-recording] ${model} exception → fallback`, e.message);
-        continue;
       }
+      // 같은 모델 2회 모두 실패 → 다음 모델
+      console.warn(`[check-recording] ${model} 전체 실패 → 다음 모델`);
     }
     const elapsedMs = Date.now() - t0;
 
     if (!gres || !gres.ok) {
-      console.error('Gemini all models failed:', lastErrorMsg, gdata);
+      console.error('Gemini all models failed:', lastErrorMsg);
       res.status(gres?.status || 502).json({
         success: false,
         error: lastErrorMsg || 'Gemini API error',
@@ -189,18 +239,16 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const textPart = gdata.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const parsed = extractJson(textPart);
     if (!parsed) {
-      // Gemini 가 오디오 인식 실패 시 prose 로 응답하는 케이스
-      console.error('[check-recording] JSON parse failed, raw:', textPart.slice(0, 500));
+      // 모든 모델·재시도에서 파싱 실패
+      console.error('[check-recording] all parses failed, raw:', lastRaw.slice(0, 500));
       res.status(200).json({
         success: true,
         mode,
         score: 0,
         missedWords: [],
-        note: `AI 가 오디오를 해석하지 못했어요 (${modelUsed}). 원본: ${textPart.slice(0, 180)}`,
-        raw: textPart.slice(0, 300),
+        note: `AI 가 오디오를 해석하지 못했어요 (${modelUsed}). 원본: ${lastRaw.slice(0, 180)}`,
+        raw: lastRaw.slice(0, 300),
         elapsedMs,
       });
       return;
