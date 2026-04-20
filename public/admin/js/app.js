@@ -111,11 +111,11 @@ window.goPage = async(id) => {
   else if(id==='quiz-generate') await loadQuizGenerate();
   else if(id==='quiz-sets')     await loadQuestionSets();
   // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
-  else if(id==='test-unscramble') { /* Phase 6 */ }
-  else if(id==='test-blank')      { /* Phase 3 */ }
+  else if(id==='test-unscramble') _renderTestAssignShell('unscramble');
+  else if(id==='test-blank')      _renderTestAssignShell('blank');
   else if(id==='test-mcq')        await loadMcqAssign();
-  else if(id==='test-subj')       { /* Phase 4 */ }
-  else if(id==='test-rec-ai')     { /* Phase 5 */ }
+  else if(id==='test-subj')       _renderTestAssignShell('subj');
+  else if(id==='test-rec-ai')     _renderTestAssignShell('rec-ai');
 };
 
 window.toggleNav = (group) => {
@@ -6927,3 +6927,67 @@ window.mcqPublish = async () => {
     showToast('배정 실패: '+(e?.message || e));
   }
 };
+
+// ──────────────────────────────────────────────
+// Phase 2.2 — Disabled 시험 유형 껍데기 렌더러
+// ──────────────────────────────────────────────
+const _TEST_TYPE_CONFIG = {
+  'unscramble': {
+    rootId: 'unscrambleAssignRoot',
+    kindLabel: '언스크램블',
+    phaseLabel: 'Phase 6',
+    hint: '문장 순서 맞추기 시험을 배정합니다. 구현 완료 후 활성화됩니다.',
+  },
+  'blank': {
+    rootId: 'blankAssignRoot',
+    kindLabel: '빈칸채우기',
+    phaseLabel: 'Phase 3',
+    hint: 'AI가 생성한 빈칸 문제를 배정합니다. 구현 완료 후 활성화됩니다.',
+  },
+  'subj': {
+    rootId: 'subjAssignRoot',
+    kindLabel: '해석하기_주관식',
+    phaseLabel: 'Phase 4',
+    hint: '시험지 프린트 전용 주관식 시험입니다. 구현 완료 후 활성화됩니다.',
+  },
+  'rec-ai': {
+    rootId: 'recAiAssignRoot',
+    kindLabel: '녹음숙제',
+    phaseLabel: 'Phase 5',
+    hint: 'AI가 추출한 본문 문장으로 녹음 숙제를 배정합니다. 구현 완료 후 활성화됩니다.',
+  },
+};
+
+function _renderTestAssignShell(type) {
+  const cfg = _TEST_TYPE_CONFIG[type];
+  if (!cfg) return;
+  const root = document.getElementById(cfg.rootId);
+  if (!root) return;
+  root.innerHTML = `
+    <div style="display:flex;gap:16px;align-items:flex-start;">
+      <!-- 왼쪽: 문제 세트 선택 (disabled) -->
+      <div class="card" style="flex:1;min-width:0;opacity:.45;pointer-events:none;">
+        <div style="font-weight:700;font-size:15px;margin-bottom:12px;">① 문제 세트 선택</div>
+        <div style="border:1px solid var(--border);border-radius:8px;height:320px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--gray);">
+          <div style="font-size:28px;">🔒</div>
+          <div style="font-size:13px;font-weight:600;">${esc(cfg.phaseLabel)} 구현 예정</div>
+          <div style="font-size:12px;text-align:center;max-width:220px;">${esc(cfg.hint)}</div>
+        </div>
+      </div>
+      <!-- 오른쪽: 배정 대상 + 옵션 (disabled) -->
+      <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;opacity:.45;pointer-events:none;">
+        <div class="card">
+          <div style="font-weight:700;font-size:15px;margin-bottom:12px;">② 배정 대상</div>
+          <div style="border:1px dashed var(--border);border-radius:8px;height:120px;display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:12px;">반 또는 학생을 선택하세요</div>
+        </div>
+        <div class="card">
+          <div style="font-weight:700;font-size:15px;margin-bottom:12px;">③ 시험 옵션</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="font-size:13px;color:var(--gray);">시험 이름<input class="form-input" style="margin-top:4px;" placeholder="자동 생성" disabled></label>
+            <label style="font-size:13px;color:var(--gray);">합격 점수<input class="form-input" style="margin-top:4px;" placeholder="70" disabled></label>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" disabled>시험 배정하기</button>
+      </div>
+    </div>`;
+}
