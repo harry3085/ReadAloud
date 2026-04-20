@@ -75,6 +75,7 @@ const pageLabels = {
   generator:'📁 Generator',
   'quiz-generate':'✨ AI 문제 생성', 'quiz-sets':'📋 문제 세트 목록',
   // Phase 1 플레이스홀더 (Phase 2~6에서 순차 구현)
+  'test-word':'📝 단어시험',
   'test-unscramble':'🔀 언스크램블',
   'test-blank':'✏️ 빈칸채우기',
   'test-mcq':'📝 내용이해_객관식',
@@ -111,6 +112,7 @@ window.goPage = async(id) => {
   else if(id==='quiz-generate') await loadQuizGenerate();
   else if(id==='quiz-sets')     await loadQuestionSets();
   // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
+  else if(id==='test-word')       await _renderTestAssignDetail('word');
   else if(id==='test-unscramble') await _renderTestAssignDetail('unscramble');
   else if(id==='test-blank')      await _renderTestAssignDetail('blank');
   else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
@@ -8435,23 +8437,27 @@ window.mcqPublish = async () => {
 // Phase 2.2 — Disabled 시험 유형 껍데기 렌더러
 // ──────────────────────────────────────────────
 const _TEST_TYPE_CONFIG = {
-  'mcq': {
-    rootId: 'mcqAssignRoot',
-    kindLabel: '객관식',
-    sourceType: 'mcq',
-    testMode: 'reading-mcq',
+  'word': {
+    rootId: 'wordAssignRoot',
+    kindLabel: '단어',
+    sourceType: 'vocab',
+    testMode: 'vocab',
     enabled: true,
     phaseLabel: null,
-    hint: '본문을 읽고 4지선다로 내용을 확인합니다.',
+    actions: ['assign', 'print'],
+    gradingMode: 'auto',
+    hint: '단어시험을 학생앱에 배정하거나 종이 시험지로 출력할 수 있습니다.',
   },
   'unscramble': {
     rootId: 'unscrambleAssignRoot',
     kindLabel: '언스크램블',
     sourceType: 'unscramble',
     testMode: 'unscramble',
-    enabled: false,
-    phaseLabel: 'Phase 6',
-    hint: 'Phase 6 에서 "단어시험"의 언스크램블 옵션이 이곳 전용 메뉴로 이관됩니다. 지금은 좌측 메뉴 "단어시험"에서 언스크램블 출제 옵션을 사용하세요.',
+    enabled: true,
+    phaseLabel: null,
+    actions: ['assign', 'print'],
+    gradingMode: 'auto',
+    hint: '문장 청크 재배열 문제를 학생앱에 배정하거나 종이 시험지로 출력합니다.',
   },
   'blank': {
     rootId: 'blankAssignRoot',
@@ -8460,7 +8466,20 @@ const _TEST_TYPE_CONFIG = {
     testMode: 'fill-blank',
     enabled: true,
     phaseLabel: null,
-    hint: '본문 문장의 단어를 가리고 학생이 채우는 시험입니다.',
+    actions: ['assign', 'print'],
+    gradingMode: 'auto',
+    hint: '빈칸채우기를 학생앱에 배정하거나 시험지로 출력합니다.',
+  },
+  'mcq': {
+    rootId: 'mcqAssignRoot',
+    kindLabel: '객관식',
+    sourceType: 'mcq',
+    testMode: 'reading-mcq',
+    enabled: true,
+    phaseLabel: null,
+    actions: ['assign', 'print'],
+    gradingMode: 'auto',
+    hint: '교재이해(객관식)를 학생앱에 배정하거나 시험지로 출력합니다.',
   },
   'subj': {
     rootId: 'subjAssignRoot',
@@ -8469,7 +8488,8 @@ const _TEST_TYPE_CONFIG = {
     testMode: 'subjective',
     enabled: true,
     phaseLabel: null,
-    printOnly: true,
+    actions: ['print'],
+    gradingMode: 'manual',
     hint: '원문 문장 해석 시험지를 프린트합니다. 학생앱 배정은 없습니다.',
   },
   'rec-ai': {
@@ -8479,7 +8499,9 @@ const _TEST_TYPE_CONFIG = {
     testMode: 'recording-ai',
     enabled: true,
     phaseLabel: null,
-    hint: 'AI 가 본문에서 녹음 대상 문장을 선별합니다. 기존 "녹음숙제 관리"는 별도로 이어집니다 (두 시스템 병행).',
+    actions: ['assign'],
+    gradingMode: 'ai',
+    hint: 'Page 단위 3회 반복 녹음을 학생앱에 배정합니다. AI 가 정확도를 평가합니다.',
   },
 };
 
@@ -8557,8 +8579,8 @@ async function _renderTestAssignDetail(type) {
       _tpSets = setSnap.docs.map(d => ({id:d.id, ...d.data()}))
         .filter(s => (s.sourceType || 'mcq') === cfg.sourceType);
 
-      // printOnly 유형은 genTests 조회 생략 (배정 안 하므로)
-      if (cfg.printOnly) {
+      // actions에 'assign' 이 없으면 genTests 조회 생략 (배정 안 하므로)
+      if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
         const testSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
@@ -8607,9 +8629,14 @@ function _tpRender() {
             <div style="display:flex;gap:5px;flex-shrink:0;">
               <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpSelectAll()" ${!cfg.enabled||filteredSets.length===0?'disabled':''}>전체</button>
               <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpClearSel()" ${_tpSelectedSets.size===0?'disabled':''}>해제</button>
-              <button class="btn btn-primary" style="font-size:12px;padding:5px 14px;font-weight:700;" onclick="${cfg.printOnly?'tpOpenPrintModal()':'tpOpenPublishModal()'}" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
-                ${cfg.printOnly ? '🖨 시험지 출력' : '📝 시험 출제'}
-              </button>
+              ${cfg.actions?.includes('assign') ? `
+                <button class="btn btn-primary" style="font-size:12px;padding:5px 14px;font-weight:700;" onclick="tpOpenPublishModal()" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
+                  📝 시험 출제
+                </button>` : ''}
+              ${cfg.actions?.includes('print') ? `
+                <button class="btn ${cfg.actions.includes('assign')?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:5px 14px;font-weight:700;" onclick="tpOpenPrintModal()" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
+                  🖨 시험지 출력
+                </button>` : ''}
             </div>
           </div>
           <div style="flex:1;overflow-y:auto;">
@@ -8651,15 +8678,15 @@ function _tpRender() {
       <div id="tpBottomSection" style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;height:280px;flex-shrink:0;min-height:120px;">
         <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-weight:700;font-size:14px;">${cfg.printOnly ? '🖨 시험지 출력' : '📊 최근 시험'} <span style="color:var(--gray);font-weight:400;font-size:12px;">· ${esc(cfg.kindLabel)} 유형</span></div>
-            <div style="font-size:11px;color:var(--gray);">${cfg.printOnly ? '인쇄 전용 — 출제 이력 저장 없음' : _tpGenTests.length + '개 · 최근순 · 행 클릭 시 응시 현황'}</div>
+            <div style="font-weight:700;font-size:14px;">${cfg.actions?.includes('assign') ? '📊 최근 시험' : '🖨 시험지 출력 전용'} <span style="color:var(--gray);font-weight:400;font-size:12px;">· ${esc(cfg.kindLabel)} 유형</span></div>
+            <div style="font-size:11px;color:var(--gray);">${cfg.actions?.includes('assign') ? _tpGenTests.length + '개 · 최근순 · 행 클릭 시 응시 현황' : '인쇄 전용 — 출제 이력 저장 없음'}</div>
           </div>
-          ${cfg.printOnly ? '' : `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="_renderTestAssignDetail('${esc(_activeTestType)}')">↻ 새로고침</button>`}
+          ${cfg.actions?.includes('assign') ? `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="_renderTestAssignDetail('${esc(_activeTestType)}')">↻ 새로고침</button>` : ''}
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${!cfg.enabled
             ? `<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">${esc(cfg.phaseLabel)} 에서 활성화되면 이곳에 출제된 시험이 표시됩니다</div>`
-            : (cfg.printOnly
+            : (!cfg.actions?.includes('assign')
                 ? '<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">🖨 시험지 전용 유형이라 출제 이력을 저장하지 않습니다. 위에서 세트를 선택하고 [🖨 시험지 출력] 을 누르세요.</div>'
                 : (_tpGenTests.length === 0
                     ? '<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">아직 출제된 시험이 없습니다. 위에서 문제 세트를 선택하고 [📝 시험 출제] 를 눌러 배정하세요.</div>'
@@ -9167,7 +9194,7 @@ window.tpPublish = async () => {
 
 window.tpOpenPrintModal = () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
-  if (!cfg?.enabled || !cfg.printOnly) return;
+  if (!cfg?.enabled || !cfg.actions?.includes('print')) return;
   if (_tpSelectedSets.size === 0) { showToast('문제 세트를 선택하세요'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
@@ -9179,67 +9206,110 @@ window.tpOpenPrintModal = () => {
   const chap = (_genChapters||[]).find(c => c.id === sp.chapterId);
   const bookName = book?.name || '';
   const chapName = chap?.name || '';
+  const sourceType = cfg.sourceType;
 
-  // 시험명 기본값 = 선택된 세트 이름 (1개면 그대로, 여러 개면 '첫이름 외 N')
   const defaultTitle = selectedSets.length === 1
     ? (selectedSets[0].name || `${cfg.kindLabel} 시험`)
     : `${selectedSets[0]?.name || cfg.kindLabel} 외 ${selectedSets.length - 1}`;
   const todayStr = new Date().toLocaleDateString('ko-KR');
 
-  const html = `
-    <div style="width:min(820px,94vw);max-height:92vh;display:flex;flex-direction:column;">
+  // 유형별 추가 옵션 UI
+  const typeOptionsHtml = _tpBuildTypeOptionsUI(sourceType);
 
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;">
+  const html = `
+    <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
+
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;">
         <div>
-          <div style="font-size:16px;font-weight:700;">🖨 시험지 프리뷰</div>
+          <div style="font-size:16px;font-weight:700;">🖨 시험지 프리뷰 · ${esc(cfg.kindLabel)}</div>
           <div style="font-size:11px;color:var(--gray);">${selectedSets.length}개 세트 · 총 ${questions.length}문항 · A4 인쇄 최적화</div>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;">
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;">
-            <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintTogglePreview()"> 모범답안 함께 보기
+            <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintRefreshPreview()"> 답지 보기
           </label>
           <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
           <button class="btn btn-primary" onclick="tpPrintNow()" style="font-size:12px;font-weight:700;">🖨 인쇄</button>
         </div>
       </div>
 
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:#f8f9fa;display:grid;grid-template-columns:1fr 120px 130px;gap:10px;">
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명</label>
-          <input type="text" id="tpPrintTitle" value="${esc(defaultTitle)}"
-            oninput="tpPrintRefreshPreview()"
-            style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+      <div style="padding:12px 20px;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;">
+        <div style="display:grid;grid-template-columns:1fr 120px 130px;gap:10px;margin-bottom:${typeOptionsHtml?'10px':'0'};">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명</label>
+            <input type="text" id="tpPrintTitle" value="${esc(defaultTitle)}"
+              oninput="tpPrintRefreshPreview()"
+              style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">학원명</label>
+            <input type="text" id="tpPrintAcademy" value="큰소리영어"
+              oninput="tpPrintRefreshPreview()"
+              style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
+            <input type="date" id="tpPrintDate" value="${new Date().toISOString().slice(0,10)}"
+              onchange="tpPrintRefreshPreview()"
+              style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+          </div>
         </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--gray);">학원명</label>
-          <input type="text" id="tpPrintAcademy" value="큰소리영어"
-            oninput="tpPrintRefreshPreview()"
-            style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
-          <input type="date" id="tpPrintDate" value="${new Date().toISOString().slice(0,10)}"
-            onchange="tpPrintRefreshPreview()"
-            style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-        </div>
+        ${typeOptionsHtml}
       </div>
 
-      <div style="flex:1;overflow-y:auto;padding:20px;background:#e0e0e0;">
-        <div id="tpPrintArea">${_tpBuildPrintHtml(questions, {
-          title: defaultTitle, academy: '큰소리영어', date: todayStr, bookName, chapName, showAnswers: false
-        })}</div>
+      <div style="flex:1;overflow-y:auto;padding:20px;background:#e0e0e0;min-height:0;">
+        <div id="tpPrintArea"></div>
       </div>
 
     </div>
   `;
-  showModal(html);
-  window._tpPrintContext = { questions, bookName, chapName };
-  // 모달 렌더 완료 후 원문 줄 수에 맞춰 답란 조정
-  setTimeout(() => _tpAdjustAnswerLines(), 0);
+  showModal(html, { fullFlex: true });
+  window._tpPrintContext = { questions, bookName, chapName, sourceType };
+  tpPrintRefreshPreview();
 };
 
+// 유형별 추가 옵션 UI (단어시험에 format/direction 등)
+function _tpBuildTypeOptionsUI(sourceType) {
+  if (sourceType === 'vocab') {
+    return `
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
+          형식:
+          <select id="tpOptVocabFormat" onchange="tpPrintRefreshPreview()"
+            style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <option value="mixed">혼합</option>
+            <option value="short">주관식(스펠링)</option>
+            <option value="mcq">객관식</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
+          방향:
+          <select id="tpOptVocabDirection" onchange="tpPrintRefreshPreview()"
+            style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <option value="mixed">혼합</option>
+            <option value="en2ko">영→한</option>
+            <option value="ko2en">한→영</option>
+          </select>
+        </label>
+      </div>`;
+  }
+  return '';
+}
+
 function _tpBuildPrintHtml(questions, meta) {
-  const { title, academy, date, bookName, chapName, showAnswers } = meta;
+  const { title, academy, date, bookName, chapName, showAnswers, sourceType, typeOpts } = meta;
+
+  // 유형별 렌더러 라우팅
+  const renderers = {
+    subjective: _printRenderSubj,
+    vocab: _printRenderVocab,
+    unscramble: _printRenderUnscramble,
+    fill_blank: _printRenderBlank,
+    mcq: _printRenderMcq,
+  };
+  const renderer = renderers[sourceType] || _printRenderSubj;
+  const body = renderer(questions, { showAnswers, typeOpts: typeOpts || {} });
+
   return `
     <div style="background:white;max-width:720px;margin:0 auto;padding:28px 36px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
       <div style="border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:18px;">
@@ -9260,22 +9330,143 @@ function _tpBuildPrintHtml(questions, meta) {
         </div>
       </div>
 
-      ${questions.map((q, i) => `
-        <div style="margin-bottom:22px;page-break-inside:avoid;">
-          <div style="font-size:12px;font-weight:700;margin-bottom:5px;">${i+1}. ${esc(q.questionKo || '위 문장을 우리말로 해석하시오.')}</div>
-          <div data-fb-sent="${i}" style="font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;margin-bottom:8px;">${esc(q.sentence || '')}</div>
-          ${showAnswers && q.sampleAnswerKo
-            ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;">
-                <strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}
-              </div>`
-            : `<div data-fb-ans="${i}"><div style="border-bottom:1px solid #aaa;height:28px;"></div></div>`
-          }
-        </div>
-      `).join('')}
+      ${body}
 
       <div style="text-align:center;margin-top:28px;padding-top:10px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>
     </div>
   `;
+}
+
+// ─── 유형별 프린트 렌더러 (Phase 6B) ───
+
+function _printRenderSubj(questions, { showAnswers }) {
+  return questions.map((q, i) => `
+    <div style="margin-bottom:22px;page-break-inside:avoid;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:5px;">${i+1}. ${esc(q.questionKo || '위 문장을 우리말로 해석하시오.')}</div>
+      <div data-fb-sent="${i}" style="font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;margin-bottom:8px;">${esc(q.sentence || '')}</div>
+      ${showAnswers && q.sampleAnswerKo
+        ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;"><strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}</div>`
+        : `<div data-fb-ans="${i}"><div style="border-bottom:1px solid #aaa;height:28px;"></div></div>`
+      }
+    </div>
+  `).join('');
+}
+
+function _printRenderVocab(questions, { showAnswers, typeOpts }) {
+  const fmt = typeOpts?.format || 'mixed';         // mixed | short | mcq
+  const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
+
+  return questions.map((q, i) => {
+    let thisDir = dir;
+    if (dir === 'mixed') thisDir = i % 2 === 0 ? 'en2ko' : 'ko2en';
+    let thisFmt = fmt;
+    if (fmt === 'mixed') thisFmt = i % 2 === 0 ? 'short' : 'mcq';
+
+    const question = thisDir === 'en2ko' ? q.word : q.meaning;
+    const answer = thisDir === 'en2ko' ? q.meaning : q.word;
+
+    if (thisFmt === 'short') {
+      return `
+        <div style="margin-bottom:14px;page-break-inside:avoid;display:flex;align-items:center;gap:10px;">
+          <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
+          <div style="font-size:13px;font-weight:600;min-width:140px;">${esc(question)}</div>
+          <div style="flex:1;border-bottom:1px solid #aaa;height:20px;">
+            ${showAnswers ? `<span style="font-size:12px;color:#2e7d32;font-weight:700;">${esc(answer)}</span>` : ''}
+          </div>
+        </div>`;
+    }
+    // MCQ: 같은 방향의 다른 단어 3개를 오답으로
+    const candidates = questions.filter(x => x !== q);
+    const wrongs = candidates.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+    const opts = [answer, ...wrongs.map(w => thisDir === 'en2ko' ? w.meaning : w.word)]
+      .slice().sort(() => Math.random() - 0.5);
+    const correctIdx = opts.indexOf(answer);
+    return `
+      <div style="margin-bottom:16px;page-break-inside:avoid;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(question)}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-left:18px;">
+          ${opts.map((opt, j) => `
+            <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+              ${['①','②','③','④'][j]} ${esc(opt)}${showAnswers && j === correctIdx ? ' ✓' : ''}
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _printRenderUnscramble(questions, { showAnswers }) {
+  return questions.map((q, i) => {
+    const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
+    const shuffled = chunks.slice().sort(() => Math.random() - 0.5);
+    return `
+      <div style="margin-bottom:22px;page-break-inside:avoid;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.meaningKo || '')}</div>
+        <div style="font-size:11px;color:#555;margin-left:20px;margin-bottom:8px;">다음 단어/구를 배열하여 위 뜻의 영문을 쓰시오.</div>
+        <div style="margin-left:20px;border-bottom:1px solid #888;min-height:26px;padding:4px;${showAnswers ? 'background:#f0fdf4;' : ''}">
+          ${showAnswers ? `<span style="font-size:13px;color:#2e7d32;font-weight:700;">${esc(chunks.join(' '))}</span>` : ''}
+        </div>
+        <div style="margin-left:20px;margin-top:8px;padding:8px 10px;background:#f9fafb;border:1px dashed #bbb;border-radius:4px;">
+          <div style="font-size:10px;color:#888;margin-bottom:4px;">단어/구 묶음</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${shuffled.map(c => `<span style="padding:4px 10px;background:white;border:1px solid #bbb;border-radius:4px;font-size:12px;font-family:'Times New Roman',serif;">${esc(c)}</span>`).join('')}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _printRenderBlank(questions, { showAnswers }) {
+  return questions.map((q, i) => {
+    const parts = (q.sentence || '').split('___');
+    let html = '';
+    for (let j = 0; j < parts.length; j++) {
+      html += esc(parts[j]);
+      if (j < parts.length - 1) {
+        const ans = q.blanks?.[j] || '';
+        if (showAnswers) {
+          html += `<span style="display:inline-block;padding:1px 10px;border-bottom:2px solid #2e7d32;color:#2e7d32;font-weight:700;">${esc(ans)}</span>`;
+        } else {
+          const w = Math.max(ans.length * 10, 60);
+          html += `<span style="display:inline-block;border-bottom:1px solid #333;min-width:${w}px;">&nbsp;</span>`;
+        }
+      }
+    }
+    return `
+      <div style="margin-bottom:16px;page-break-inside:avoid;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.')}</div>
+        <div style="font-size:14px;line-height:2;padding:8px 12px;background:#f9fafb;border-left:3px solid #333;margin-left:18px;">${html}</div>
+      </div>`;
+  }).join('');
+}
+
+function _printRenderMcq(questions, { showAnswers }) {
+  // 지문(sourcePageId) 별로 그룹화
+  const grouped = {};
+  questions.forEach(q => {
+    const key = q.sourcePageId || 'default';
+    if (!grouped[key]) grouped[key] = { title: q.sourcePageTitle || '', items: [] };
+    grouped[key].items.push(q);
+  });
+
+  return Object.values(grouped).map((group, gi) => `
+    <div style="margin-bottom:22px;page-break-inside:avoid;">
+      ${group.title ? `<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;padding:4px 8px;background:#f3f4f6;border-radius:4px;">📄 ${esc(group.title)}</div>` : ''}
+      ${group.items.map((q, i) => {
+        const correctIdx = (q.choices || []).findIndex(c => c.isAnswer);
+        return `
+          <div style="margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${gi+1}-${i+1}. ${esc(q.question || '')}</div>
+            ${q.questionKo ? `<div style="font-size:11px;color:#666;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
+              ${(q.choices || []).map((c, j) => `
+                <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+                  ${['①','②','③','④'][j]} ${esc(c.text || '')}${showAnswers && j === correctIdx ? ' ✓' : ''}
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+  `).join('');
 }
 
 // 원문 줄 수만큼 답란(28px 선) 채우기 — innerHTML 설정 후 호출
@@ -9310,6 +9501,13 @@ window.tpPrintRefreshPreview = () => {
     ? new Date(dateEl.value).toLocaleDateString('ko-KR')
     : '';
 
+  // 유형별 옵션 수집
+  const typeOpts = {};
+  if (ctx.sourceType === 'vocab') {
+    typeOpts.format = document.getElementById('tpOptVocabFormat')?.value || 'mixed';
+    typeOpts.direction = document.getElementById('tpOptVocabDirection')?.value || 'mixed';
+  }
+
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
@@ -9317,9 +9515,13 @@ window.tpPrintRefreshPreview = () => {
     bookName: ctx.bookName,
     chapName: ctx.chapName,
     showAnswers: !!showAnsEl?.checked,
+    sourceType: ctx.sourceType,
+    typeOpts,
   });
-  // 원문 줄 수에 맞춰 답란 조정 (모범답안 모드 아닐 때만 효과)
-  setTimeout(() => _tpAdjustAnswerLines(), 0);
+  // 주관식 답란 줄 수 맞추기 (subj 전용)
+  if (ctx.sourceType === 'subjective') {
+    setTimeout(() => _tpAdjustAnswerLines(), 0);
+  }
 };
 
 window.tpPrintTogglePreview = () => tpPrintRefreshPreview();

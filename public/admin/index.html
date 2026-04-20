@@ -98,7 +98,7 @@
       </div>
       <div class="nav-children nav-sub">
         <!-- 유형별 출제 메뉴 -->
-        <div class="nav-item" onclick="goPage_testCreate()" id="nav-test-create">단어시험</div>
+        <div class="nav-item" onclick="goPage('test-word')" id="nav-test-word">단어시험</div>
         <div class="nav-item" onclick="goPage('test-unscramble')" id="nav-test-unscramble">언스크램블</div>
         <div class="nav-item" onclick="goPage('test-blank')" id="nav-test-blank">빈칸채우기</div>
         <div class="nav-item" onclick="goPage('test-mcq')" id="nav-test-mcq">내용이해_객관식</div>
@@ -1243,10 +1243,18 @@
   <!-- 실제 구현은 Phase 2~5에서 진행                                -->
   <!-- ───────────────────────────────────────────────────────── -->
 
+  <!-- 단어시험 (Phase 6) -->
+  <div class="page" id="page-test-word">
+    <div class="page-header">
+      <div><div class="page-title">📝 단어시험</div><div class="page-sub">AI 가 생성한 단어 세트를 배정하거나 시험지로 출력합니다</div></div>
+    </div>
+    <div id="wordAssignRoot"></div>
+  </div>
+
   <!-- 언스크램블 (Phase 6) -->
   <div class="page" id="page-test-unscramble">
     <div class="page-header">
-      <div><div class="page-title">🔀 언스크램블</div><div class="page-sub">문장 순서 맞추기 시험을 배정합니다</div></div>
+      <div><div class="page-title">🔀 언스크램블</div><div class="page-sub">문장 순서 맞추기 시험을 배정하거나 시험지로 출력합니다</div></div>
     </div>
     <div id="unscrambleAssignRoot"></div>
   </div>
