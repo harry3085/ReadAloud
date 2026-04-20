@@ -66,7 +66,7 @@ function showConfirm(title, sub=''){
   });
 }
 function showAlert(msg){showToast(msg);}
-function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);if(_fbTimer)clearInterval(_fbTimer);}
+function clearTimers(){if(timerInterval)clearInterval(timerInterval);if(spellTimer)clearInterval(spellTimer);if(_fbTimer)clearInterval(_fbTimer);if(typeof _vqTimer!=='undefined'&&_vqTimer)clearInterval(_vqTimer);if(typeof _uqTimer!=='undefined'&&_uqTimer)clearInterval(_uqTimer);}
 function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // ── 드롭다운 ──────────────────────────────────────────────
@@ -4452,6 +4452,12 @@ function adjustForKeyboard(){
     fillBlank.style.bottom = fillBlank.classList.contains('active') ? keyboardHeight + 'px' : '0';
   }
 
+  // 단어시험 v2 (스펠링 모드에서 키패드 노출): footer가 키패드 위
+  const vocabQuiz = document.getElementById('vocabQuiz');
+  if(vocabQuiz){
+    vocabQuiz.style.bottom = vocabQuiz.classList.contains('active') ? keyboardHeight + 'px' : '0';
+  }
+
   // 로그인 화면: 키패드 높이만큼 카드 하단 패딩 확보
   const loginCard = document.querySelector('.login-card');
   const login = document.getElementById('login');
@@ -4715,106 +4721,171 @@ window.startVocab = async (testId, testName) => {
   }
 };
 
+// 구버전 스타일 렌더 (quiz-instruction + word-card + choices/spell-boxes + quiz-footer)
+let _vqTimer = null;
+let _vqTimeLeft = 10;
+
 function _vqRenderStep() {
   const s = _vqState;
   const q = s.questions[s.currentIdx];
   if (!q) return;
 
+  // 진행바 + pill
   const pct = Math.round(((s.currentIdx + 1) / s.questions.length) * 100);
   const bar = document.getElementById('vqProgressBar');
-  const txt = document.getElementById('vqProgressText');
+  const pill = document.getElementById('vqProgressText');
   if (bar) bar.style.width = pct + '%';
-  if (txt) txt.textContent = `${s.currentIdx + 1} / ${s.questions.length}`;
+  if (pill) pill.textContent = `${s.currentIdx + 1}/${s.questions.length}`;
 
   const ans = s.answers[s.currentIdx];
-  const dirEl = document.getElementById('vqDirection');
+  const instEl = document.getElementById('vqInstruction');
   const promptEl = document.getElementById('vqPrompt');
   const subEl = document.getElementById('vqSub');
-  const areaEl = document.getElementById('vqAnswerArea');
-  const btn = document.getElementById('vqNextBtn');
+  const choicesArea = document.getElementById('vqChoicesArea');
+  const spellBoxes = document.getElementById('vqSpellBoxes');
+
+  // 지시문 + 큰 질문
+  if (ans.format === 'mcq') {
+    if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '뜻과 일치하는 한글을 고르세요.' : '알맞은 영어 단어를 고르세요.';
+  } else {
+    if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '한글 뜻을 입력하세요.' : '뜻에 알맞는 영어 단어를 입력하세요.';
+  }
 
   if (ans.direction === 'en2ko') {
-    if (dirEl) dirEl.textContent = '영단어 → 한글 뜻';
     if (promptEl) promptEl.textContent = q.word || '';
-    if (subEl) subEl.textContent = q.example ? '“' + q.example + '”' : '';
-  } else {
-    if (dirEl) dirEl.textContent = '한글 뜻 → 영단어';
-    if (promptEl) promptEl.textContent = q.meaning || '';
-    if (subEl) subEl.textContent = '';
-  }
-
-  if (ans.format === 'mcq') {
-    _vqRenderMcq(ans, areaEl);
-  } else {
-    _vqRenderShort(ans, areaEl);
-  }
-
-  _vqUpdateNextBtn();
-}
-
-function _vqRenderMcq(ans, areaEl) {
-  const selected = ans.input;
-  areaEl.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      ${ans.choices.map((opt, j) => `
-        <button onclick="vqSelectMcq(${j})"
-          style="width:100%;padding:14px 16px;background:${selected === opt ? '#0EA5E9' : 'white'};color:${selected === opt ? 'white' : 'var(--text)'};border:1px solid ${selected === opt ? '#0EA5E9' : 'var(--border)'};border-radius:10px;font-size:15px;text-align:left;cursor:pointer;font-weight:${selected === opt ? '700' : '500'};">
-          ${['①','②','③','④'][j]} ${esc(opt)}
-        </button>
-      `).join('')}
-    </div>`;
-}
-
-function _vqRenderShort(ans, areaEl) {
-  const val = ans.input;
-  areaEl.innerHTML = `
-    <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <div style="font-size:11px;color:var(--gray);margin-bottom:8px;">정답을 입력하세요 (Enter = 다음)</div>
-      <input type="text" id="vqShortInput" value="${esc(val)}"
-        oninput="vqUpdateInput(this.value)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();vqNext();}"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        style="width:100%;padding:14px 16px;border:2px solid #0EA5E9;border-radius:10px;font-size:18px;font-weight:700;text-align:center;outline:none;">
-    </div>`;
-  setTimeout(() => {
-    const inp = document.getElementById('vqShortInput');
-    if (inp) {
-      try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
-      window.scrollTo(0, 0);
+    if (subEl) {
+      if (q.example) { subEl.style.display = ''; subEl.textContent = '“' + q.example + '”'; subEl.style.color = 'var(--gray)'; }
+      else subEl.style.display = 'none';
     }
-  }, 50);
+  } else {
+    if (promptEl) promptEl.textContent = q.meaning || '';
+    if (subEl) subEl.style.display = 'none';
+  }
+
+  // MCQ / 스펠 표시 전환
+  if (ans.format === 'mcq') {
+    if (choicesArea) { choicesArea.style.display = ''; _vqRenderChoices(ans, choicesArea); }
+    if (spellBoxes) spellBoxes.style.display = 'none';
+  } else {
+    if (spellBoxes) { spellBoxes.style.display = ''; _vqRenderSpellBoxes(ans); }
+    if (choicesArea) choicesArea.style.display = 'none';
+    // 스펠 input 초기화 + 포커스
+    const inp = document.getElementById('vqSpellInput');
+    if (inp) {
+      inp.value = ans.input || '';
+      setTimeout(() => {
+        try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
+        window.scrollTo(0, 0);
+      }, 50);
+    }
+  }
+
+  _vqUpdateSubmitBtn();
+  _vqStartTimer();
 }
 
-function _vqUpdateNextBtn() {
-  const btn = document.getElementById('vqNextBtn');
+function _vqRenderChoices(ans, container) {
+  const selected = ans.input;
+  container.innerHTML = ans.choices.map((opt, j) => `
+    <div class="choice${selected === opt ? ' selected' : ''}" onclick="vqSelectMcq(${j})"
+      style="padding:14px 16px;background:${selected === opt ? 'var(--teal)' : 'white'};color:${selected === opt ? 'white' : 'var(--text)'};border:1px solid ${selected === opt ? 'var(--teal)' : 'var(--border)'};border-radius:14px;font-size:15px;cursor:pointer;font-weight:${selected === opt ? '700' : '500'};box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+      ${['①','②','③','④'][j]} ${esc(opt)}
+    </div>
+  `).join('');
+}
+
+function _vqRenderSpellBoxes(ans) {
+  const boxes = document.getElementById('vqSpellBoxes');
+  if (!boxes) return;
+  const s = _vqState;
+  const q = s.questions[s.currentIdx];
+  const target = ans.direction === 'en2ko' ? (q.meaning || '') : (q.word || '');
+  const len = target.length;
+  const val = ans.input || '';
+  const boxW = len > 12 ? 26 : len > 8 ? 30 : 34;
+  const fontSize = len > 12 ? 13 : len > 8 ? 15 : 17;
+  boxes.innerHTML = Array.from({length:len},(_,i)=>{
+    const ch = val[i] || '';
+    const cls = ch ? 'spell-box filled' : (i === val.length ? 'spell-box active' : 'spell-box');
+    return `<div class="${cls}" onclick="_vqFocusSpellInput()"
+      style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;">${ch||'_'}</div>`;
+  }).join('');
+}
+
+function _vqUpdateSubmitBtn() {
+  const btn = document.getElementById('vqSubmitBtn');
   if (!btn) return;
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
   const hasInput = !!(ans.input && String(ans.input).trim());
   const isLast = s.currentIdx === s.questions.length - 1;
   btn.disabled = !hasInput;
-  btn.textContent = hasInput ? (isLast ? '제출하기' : '다음 ▶') : (ans.format === 'mcq' ? '답을 선택하세요' : '답을 입력하세요');
-  btn.style.background = hasInput ? (isLast ? '#059669' : '#0EA5E9') : '#ddd';
-  btn.style.color = hasInput ? 'white' : '#888';
-  btn.style.cursor = hasInput ? 'pointer' : 'not-allowed';
+  btn.textContent = isLast ? '완료 ▶' : '제출 ▶';
+  btn.style.opacity = hasInput ? '1' : '0.4';
 }
+
+window._vqFocusSpellInput = () => {
+  const inp = document.getElementById('vqSpellInput');
+  if (inp) {
+    try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
+    window.scrollTo(0, 0);
+  }
+};
+
+// 타이머 (구버전 스타일: MCQ 10초 / 스펠 30초)
+function _vqStartTimer(){
+  _vqStopTimer();
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  const total = ans.format === 'mcq' ? 10 : 30;
+  _vqTimeLeft = total;
+  _vqUpdateTimerUI(total);
+  _vqTimer = setInterval(() => {
+    _vqTimeLeft--;
+    _vqUpdateTimerUI(total);
+    if (_vqTimeLeft <= 0) {
+      _vqStopTimer();
+      // 시간 만료 → 현재 답(또는 공백) 으로 다음
+      vqNext({ allowEmpty: true });
+    }
+  }, 1000);
+}
+function _vqStopTimer(){ if(_vqTimer){ clearInterval(_vqTimer); _vqTimer=null; } }
+function _vqUpdateTimerUI(total){
+  const t = document.getElementById('vqTimerText');
+  const arc = document.getElementById('vqTimerArc');
+  if (t) t.textContent = _vqTimeLeft;
+  if (arc) arc.style.strokeDashoffset = 113 * (1 - _vqTimeLeft / total);
+}
+
+window.vqSkip = () => {
+  const s = _vqState;
+  s.answers[s.currentIdx].input = '';
+  _vqStopTimer();
+  if (s.currentIdx < s.questions.length - 1) {
+    s.currentIdx++;
+    _vqRenderStep();
+  } else {
+    _vqSubmit();
+  }
+};
 
 window.vqSelectMcq = (choiceIdx) => {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
   ans.input = ans.choices[choiceIdx] || '';
-  _vqRenderStep();
+  // 선택지 영역만 다시 그리기 (타이머 리셋 방지)
+  const choicesArea = document.getElementById('vqChoicesArea');
+  if (choicesArea) _vqRenderChoices(ans, choicesArea);
+  _vqUpdateSubmitBtn();
 };
 
-window.vqUpdateInput = (value) => {
-  _vqState.answers[_vqState.currentIdx].input = value;
-  _vqUpdateNextBtn();
-};
-
-window.vqNext = async () => {
+window.vqNext = async (opts) => {
+  _vqStopTimer();
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
-  if (!ans.input || !String(ans.input).trim()) return;
+  // 시간 만료 시엔 빈 답 허용. 일반 제출은 답 있어야 함
+  if (!(opts && opts.allowEmpty) && (!ans.input || !String(ans.input).trim())) return;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
     _vqRenderStep();
@@ -4897,6 +4968,7 @@ function _vqRenderResult({ correct, wrong, total, score, passed, passScore }) {
 
 window.quitVocab = async () => {
   if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  _vqStopTimer();
   goHome();
 };
 
@@ -5039,58 +5111,118 @@ function _uqRenderStep() {
 
   const pct = Math.round(((s.currentIdx + 1) / s.questions.length) * 100);
   const bar = document.getElementById('uqProgressBar');
-  const txt = document.getElementById('uqProgressText');
+  const pill = document.getElementById('uqProgressText');
   if (bar) bar.style.width = pct + '%';
-  if (txt) txt.textContent = `${s.currentIdx + 1} / ${s.questions.length}`;
+  if (pill) pill.textContent = `${s.currentIdx + 1}/${s.questions.length}`;
 
   const meanEl = document.getElementById('uqMeaningKo');
   if (meanEl) meanEl.textContent = q.meaningKo || '';
 
   const ans = s.answers[s.currentIdx];
-  const ansBox = document.getElementById('uqAnswerBox');
+  const builtEl = document.getElementById('uqBuilt');
   const chunkBox = document.getElementById('uqChunkBox');
 
-  // 답안 영역
-  if (ansBox) {
-    ansBox.innerHTML = ans.placed.length === 0
-      ? '<span style="font-size:11px;color:#c0a0e0;padding:8px;">아래에서 청크를 탭해 추가</span>'
-      : ans.placed.map((shufIdx, pos) => {
-          const chunk = ans.chunks[shufIdx];
-          return `<span onclick="uqRemovePlaced(${pos})"
-            style="padding:6px 12px;background:#A855F7;color:white;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;">
-            ${esc(chunk.text)}
-          </span>`;
-        }).join('');
+  // 완성 중인 문장 (구버전 스타일: 인라인 텍스트, 개별 청크 탭으로 제거)
+  if (builtEl) {
+    if (ans.placed.length === 0) {
+      builtEl.innerHTML = '<span style="color:#c0a0c0;font-size:12px;">아래 청크를 순서대로 탭하세요</span>';
+    } else {
+      builtEl.innerHTML = ans.placed.map((shufIdx, pos) => {
+        const chunk = ans.chunks[shufIdx];
+        return `<span onclick="uqRemovePlaced(${pos})"
+          style="display:inline-block;padding:2px 8px;margin:2px 3px;background:var(--teal);color:white;border-radius:6px;cursor:pointer;user-select:none;">${esc(chunk.text)}</span>`;
+      }).join(' ');
+    }
   }
 
-  // 청크 풀
+  // 섞인 청크 버튼 (구버전 스타일)
   if (chunkBox) {
     const used = new Set(ans.placed);
     chunkBox.innerHTML = ans.chunks.map((chunk, shufIdx) => {
       const isUsed = used.has(shufIdx);
       return `<button onclick="uqTapChunk(${shufIdx})" ${isUsed?'disabled':''}
-        style="padding:8px 14px;background:${isUsed?'#f3f4f6':'white'};border:1px solid ${isUsed?'#e5e7eb':'#A855F7'};color:${isUsed?'#aaa':'#6b21a8'};border-radius:8px;font-size:14px;font-weight:600;cursor:${isUsed?'not-allowed':'pointer'};font-family:inherit;${isUsed?'text-decoration:line-through;':''}">
-        ${esc(chunk.text)}
-      </button>`;
+        style="padding:10px 14px;background:${isUsed?'#f3f4f6':'white'};border:2px solid ${isUsed?'#e5e7eb':'var(--teal)'};color:${isUsed?'#aaa':'var(--teal)'};border-radius:10px;font-size:15px;font-weight:700;cursor:${isUsed?'not-allowed':'pointer'};font-family:inherit;${isUsed?'text-decoration:line-through;opacity:0.5;':''}box-shadow:${isUsed?'none':'0 2px 4px rgba(232,113,74,0.15)'};">${esc(chunk.text)}</button>`;
     }).join('');
   }
 
-  _uqUpdateNextBtn();
+  _uqUpdateSubmitBtn();
+  _uqStartTimer();
 }
 
-function _uqUpdateNextBtn() {
-  const btn = document.getElementById('uqNextBtn');
+function _uqUpdateSubmitBtn() {
+  const btn = document.getElementById('uqSubmitBtn');
   if (!btn) return;
   const s = _uqState;
   const ans = s.answers[s.currentIdx];
-  const total = ans.chunks.length;
-  const done = ans.placed.length === total;
+  const done = ans.placed.length === ans.chunks.length;
   const isLast = s.currentIdx === s.questions.length - 1;
   btn.disabled = !done;
-  btn.textContent = done ? (isLast ? '제출하기' : '다음 ▶') : `청크 ${ans.placed.length}/${total} 배열 중`;
-  btn.style.background = done ? (isLast ? '#059669' : '#A855F7') : '#ddd';
-  btn.style.color = done ? 'white' : '#888';
-  btn.style.cursor = done ? 'pointer' : 'not-allowed';
+  btn.textContent = isLast ? '완료 ▶' : '제출 ▶';
+  btn.style.opacity = done ? '1' : '0.4';
+}
+
+// 타이머 (구버전 30초)
+let _uqTimer = null;
+let _uqTimeLeft = 30;
+function _uqStartTimer(){
+  _uqStopTimer();
+  _uqTimeLeft = 30;
+  _uqUpdateTimerUI();
+  _uqTimer = setInterval(() => {
+    _uqTimeLeft--;
+    _uqUpdateTimerUI();
+    if (_uqTimeLeft <= 0) {
+      _uqStopTimer();
+      uqNext({ allowPartial: true });
+    }
+  }, 1000);
+}
+function _uqStopTimer(){ if(_uqTimer){ clearInterval(_uqTimer); _uqTimer=null; } }
+function _uqUpdateTimerUI(){
+  const t = document.getElementById('uqTimerText');
+  const arc = document.getElementById('uqTimerArc');
+  if (t) t.textContent = _uqTimeLeft;
+  if (arc) arc.style.strokeDashoffset = 113 * (1 - _uqTimeLeft / 30);
+}
+
+window.uqSkip = () => {
+  const s = _uqState;
+  // 현재 답 유지한 채 다음으로 (정답 일치 안 하면 오답)
+  _uqStopTimer();
+  if (s.currentIdx < s.questions.length - 1) {
+    s.currentIdx++;
+    _uqRenderStep();
+  } else {
+    _uqSubmit();
+  }
+};
+
+// 부분 갱신 (타이머 재시작 안 함)
+function _uqRefreshBuiltAndChunks() {
+  const s = _uqState;
+  const ans = s.answers[s.currentIdx];
+  const builtEl = document.getElementById('uqBuilt');
+  const chunkBox = document.getElementById('uqChunkBox');
+  if (builtEl) {
+    if (ans.placed.length === 0) {
+      builtEl.innerHTML = '<span style="color:#c0a0c0;font-size:12px;">아래 청크를 순서대로 탭하세요</span>';
+    } else {
+      builtEl.innerHTML = ans.placed.map((shufIdx, pos) => {
+        const chunk = ans.chunks[shufIdx];
+        return `<span onclick="uqRemovePlaced(${pos})"
+          style="display:inline-block;padding:2px 8px;margin:2px 3px;background:var(--teal);color:white;border-radius:6px;cursor:pointer;user-select:none;">${esc(chunk.text)}</span>`;
+      }).join(' ');
+    }
+  }
+  if (chunkBox) {
+    const used = new Set(ans.placed);
+    chunkBox.innerHTML = ans.chunks.map((chunk, shufIdx) => {
+      const isUsed = used.has(shufIdx);
+      return `<button onclick="uqTapChunk(${shufIdx})" ${isUsed?'disabled':''}
+        style="padding:10px 14px;background:${isUsed?'#f3f4f6':'white'};border:2px solid ${isUsed?'#e5e7eb':'var(--teal)'};color:${isUsed?'#aaa':'var(--teal)'};border-radius:10px;font-size:15px;font-weight:700;cursor:${isUsed?'not-allowed':'pointer'};font-family:inherit;${isUsed?'text-decoration:line-through;opacity:0.5;':''}box-shadow:${isUsed?'none':'0 2px 4px rgba(232,113,74,0.15)'};">${esc(chunk.text)}</button>`;
+    }).join('');
+  }
+  _uqUpdateSubmitBtn();
 }
 
 window.uqTapChunk = (shufIdx) => {
@@ -5098,24 +5230,24 @@ window.uqTapChunk = (shufIdx) => {
   const ans = s.answers[s.currentIdx];
   if (ans.placed.includes(shufIdx)) return;
   ans.placed.push(shufIdx);
-  _uqRenderStep();
+  _uqRefreshBuiltAndChunks();
 };
 
 window.uqRemovePlaced = (pos) => {
-  const s = _uqState;
-  s.answers[s.currentIdx].placed.splice(pos, 1);
-  _uqRenderStep();
+  _uqState.answers[_uqState.currentIdx].placed.splice(pos, 1);
+  _uqRefreshBuiltAndChunks();
 };
 
 window.uqReset = () => {
   _uqState.answers[_uqState.currentIdx].placed = [];
-  _uqRenderStep();
+  _uqRefreshBuiltAndChunks();
 };
 
-window.uqNext = async () => {
+window.uqNext = async (opts) => {
+  _uqStopTimer();
   const s = _uqState;
   const ans = s.answers[s.currentIdx];
-  if (ans.placed.length !== ans.chunks.length) return;
+  if (!(opts && opts.allowPartial) && ans.placed.length !== ans.chunks.length) return;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
     _uqRenderStep();
@@ -5200,6 +5332,7 @@ function _uqRenderResult({ correct, wrong, total, score, passed, passScore }) {
 
 window.quitUnscramble2 = async () => {
   if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  _uqStopTimer();
   goHome();
 };
 
@@ -5235,3 +5368,34 @@ async function updateUnscBadge2() {
 // 기존 updateTestBadge / updateUnscBadge 호출 지점을 v2 로 연결
 window.updateTestBadge = updateVocabBadge;
 window.updateUnscBadge = updateUnscBadge2;
+
+// 스펠 input 이벤트 (숨은 input 에 타이핑 → boxes 업데이트)
+(function bindVocabSpell(){
+  const inp = document.getElementById('vqSpellInput');
+  if (!inp) return;
+  inp.addEventListener('input', function(){
+    const s = _vqState;
+    if (!s.answers || !s.questions[s.currentIdx]) return;
+    const ans = s.answers[s.currentIdx];
+    if (ans.format !== 'short') return;
+    const q = s.questions[s.currentIdx];
+    const target = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
+    let v = this.value;
+    // 영어 방향이면 영문자/공백만
+    if (ans.direction === 'ko2en') v = v.toLowerCase().replace(/[^a-z\s'-]/g,'');
+    if (v.length > target.length) v = v.slice(0, target.length);
+    this.value = v;
+    ans.input = v;
+    _vqRenderSpellBoxes(ans);
+    _vqUpdateSubmitBtn();
+  });
+  inp.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const ans = _vqState.answers[_vqState.currentIdx];
+      if (ans && ans.input && String(ans.input).trim()) vqNext();
+    }
+  });
+  const boxes = document.getElementById('vqSpellBoxes');
+  if (boxes) boxes.addEventListener('click', _vqFocusSpellInput);
+})();
