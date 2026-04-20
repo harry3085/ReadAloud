@@ -1137,6 +1137,12 @@ window.startRecAi = async (testId, testName) => {
     const questions = (test.questions || []).filter(q => q.type === 'recording' || q.sentence);
     if(questions.length === 0){ showToast('녹음할 문장이 없습니다.'); return; }
 
+    // Phase 5.5: schemaV===2 감지 → v2 플로우로 분기
+    const firstQ = questions[0];
+    if(firstQ?.schemaV === 2){
+      return _raStartV2(test, firstQ);
+    }
+
     // 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 복원
     const screen = document.getElementById('recAiQuiz');
     if(screen && _raScreenTemplate && !screen.querySelector('#raProgressBar')){
@@ -1434,6 +1440,509 @@ window.quitRecAi = async () => {
   s.recordings.forEach(r => r?.url && URL.revokeObjectURL(r.url));
   goHome();
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 녹음숙제 v2 — Page 단위 3회 반복 + 배치 제출 + 조건부 피드백 (Phase 5.5)
+// 상태 머신: IDLE → RECORDING → TAKE_READY → [Retake|Save] → 다음 회차 or SUBMITTING → RESULT
+// ═══════════════════════════════════════════════════════════════════════════
+
+const _RV2_ROUNDS = 3;
+
+let _rv2 = {
+  test: null,
+  question: null,
+  currentRound: 0,
+  savedRounds: [],
+  currentTake: null,
+  stream: null,
+  mediaRecorder: null,
+  chunks: [],
+  isRecording: false,
+  timerInterval: null,
+  timerStart: 0,
+};
+let _rv2ResultAudioUrls = [];
+
+function _raStartV2(test, question) {
+  _rv2 = {
+    test,
+    question,
+    currentRound: 0,
+    savedRounds: [],
+    currentTake: null,
+    stream: null,
+    mediaRecorder: null,
+    chunks: [],
+    isRecording: false,
+    timerInterval: null,
+    timerStart: 0,
+  };
+  show('recAiQuiz');
+  _rv2Render();
+}
+
+function _rv2FormatDuration(seconds) {
+  const s = Math.round(seconds || 0);
+  const mm = String(Math.floor(s/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  return `${mm}:${ss}`;
+}
+
+function _rv2RenderRoundIndicator() {
+  return `
+    <div style="display:flex;gap:6px;align-items:center;">
+      ${[0, 1, 2].map(i => {
+        const done = _rv2.savedRounds[i] != null;
+        const active = i === _rv2.currentRound && !done;
+        const bg = done ? '#059669' : (active ? '#8B5CF6' : '#E5E7EB');
+        const color = (done || active) ? 'white' : '#9CA3AF';
+        const txt = done ? '✓' : (i+1);
+        const sep = i < 2 ? '<div style="width:12px;height:2px;background:#E5E7EB;"></div>' : '';
+        return `<div style="width:26px;height:26px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${txt}</div>${sep}`;
+      }).join('')}
+      <span style="font-size:12px;color:var(--text);font-weight:600;margin-left:8px;">${_rv2.currentRound + 1}회차</span>
+    </div>
+  `;
+}
+
+function _rv2StateIdle(round) {
+  return `
+    <div style="font-size:13px;color:var(--gray);margin-bottom:14px;">
+      ${round === 0 ? '준비되셨다면' : (round + 1) + '회차를'} 시작하세요
+    </div>
+    <button onclick="rv2StartRecord()"
+      style="width:96px;height:96px;border-radius:50%;border:none;background:#8B5CF6;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 14px rgba(139,92,246,0.35);">
+      🎤
+    </button>
+    <div style="margin-top:14px;font-size:14px;font-weight:700;color:var(--text);">버튼을 눌러 녹음</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:4px;">실제 책을 보며 지정 범위를 연속으로 읽어주세요</div>
+  `;
+}
+
+function _rv2StateRecording() {
+  return `
+    <button onclick="rv2StopRecord()"
+      style="width:96px;height:96px;border-radius:50%;border:none;background:#DC2626;color:white;font-size:36px;cursor:pointer;box-shadow:0 4px 20px rgba(220,38,38,0.5);animation:rv2Pulse 1.5s infinite;">
+      ⏹
+    </button>
+    <div style="margin-top:14px;font-size:15px;font-weight:700;color:#DC2626;">녹음 중...</div>
+    <div id="rv2Timer" style="font-size:22px;font-weight:800;color:var(--text);margin-top:6px;font-variant-numeric:tabular-nums;">00:00</div>
+    <div style="font-size:11px;color:var(--gray);margin-top:4px;">버튼을 누르면 녹음이 종료됩니다</div>
+    <style>@keyframes rv2Pulse { 0%,100% { transform:scale(1);} 50% { transform:scale(1.06);} }</style>
+  `;
+}
+
+function _rv2StateTakeReady(isLastRound) {
+  const take = _rv2.currentTake;
+  return `
+    <div style="font-size:40px;margin-bottom:8px;">🎧</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;">녹음 완료 (${_rv2FormatDuration(take.duration)})</div>
+    <div style="font-size:11px;color:var(--gray);margin-bottom:16px;">재생해서 확인해보세요 · 마음에 안 들면 다시 녹음할 수 있어요</div>
+
+    <audio src="${take.url}" controls preload="auto" style="width:100%;max-width:320px;margin-bottom:14px;"></audio>
+
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button onclick="rv2Retake()" style="padding:10px 18px;background:white;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🔄 다시 녹음</button>
+      <button onclick="rv2SaveRound()" style="padding:10px 20px;background:${isLastRound ? '#059669' : '#8B5CF6'};border:none;border-radius:10px;font-size:13px;font-weight:700;color:white;cursor:pointer;">
+        ${isLastRound ? '📤 저장하고 제출' : '✓ 저장하고 다음 회차로'}
+      </button>
+    </div>
+    <div style="font-size:10px;color:var(--gray);margin-top:10px;">
+      ${isLastRound ? '⚠️ 제출 후 재녹음 불가' : '⚠️ 저장 후 이 회차 되돌릴 수 없어요'}
+    </div>
+  `;
+}
+
+function _rv2Render() {
+  const screen = document.getElementById('recAiQuiz');
+  if (!screen) return;
+
+  const q = _rv2.question;
+  const round = _rv2.currentRound;
+  const isLastRound = round === _RV2_ROUNDS - 1;
+
+  let stateBody;
+  if (_rv2.isRecording) stateBody = _rv2StateRecording();
+  else if (_rv2.currentTake) stateBody = _rv2StateTakeReady(isLastRound);
+  else stateBody = _rv2StateIdle(round);
+
+  screen.innerHTML = `
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="rv2Quit()">✕</button>
+      <div style="flex:1;display:flex;align-items:center;gap:8px;padding:0 10px;">
+        ${_rv2RenderRoundIndicator()}
+      </div>
+      <div style="font-size:11px;color:var(--gray);white-space:nowrap;">⏱ ${q.evaluationSeconds || 60}초 평가</div>
+    </div>
+
+    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
+
+      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:10px;font-weight:700;color:#7C3AED;letter-spacing:0.5px;margin-bottom:6px;">READ ALOUD · 3회 반복</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6;">${esc(q.instructionKo || '')}</div>
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📖 녹음 범위</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5;">
+          <span style="color:#7C3AED;font-weight:600;">시작:</span> ${esc(q.startPageTitle||'')} 「${esc(q.startSentence||'')}」<br>
+          <span style="color:#7C3AED;font-weight:600;">종료:</span> ${esc(q.endPageTitle||'')} 「${esc(q.endSentence||'')}」
+          <span style="color:var(--gray);font-size:11px;margin-left:8px;">· ${q.pageCount||1} Page</span>
+        </div>
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:24px 20px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);text-align:center;">
+        ${stateBody}
+      </div>
+
+    </div>
+  `;
+}
+
+window.rv2StartRecord = async () => {
+  try {
+    _rv2.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
+    _rv2.mediaRecorder = new MediaRecorder(_rv2.stream, { mimeType: mime });
+    _rv2.chunks = [];
+    _rv2.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _rv2.chunks.push(e.data); };
+    _rv2.mediaRecorder.onstop = () => _rv2AfterStop(mime);
+    _rv2.mediaRecorder.start();
+    _rv2.isRecording = true;
+    _rv2.timerStart = Date.now();
+    _rv2Render();
+
+    _rv2.timerInterval = setInterval(() => {
+      const sec = Math.floor((Date.now() - _rv2.timerStart) / 1000);
+      const el = document.getElementById('rv2Timer');
+      if (el) el.textContent = _rv2FormatDuration(sec);
+    }, 250);
+  } catch(e) {
+    console.error(e);
+    showToast('마이크 접근 실패: ' + (e.message || '권한을 허용해주세요'));
+  }
+};
+
+window.rv2StopRecord = () => {
+  if (!_rv2.mediaRecorder || !_rv2.isRecording) return;
+  _rv2.mediaRecorder.stop();
+  _rv2.stream?.getTracks()?.forEach(t => t.stop());
+  _rv2.isRecording = false;
+  if (_rv2.timerInterval) { clearInterval(_rv2.timerInterval); _rv2.timerInterval = null; }
+};
+
+function _rv2AfterStop(mime) {
+  const blob = new Blob(_rv2.chunks, { type: mime });
+  const url = URL.createObjectURL(blob);
+  const duration = Math.floor((Date.now() - _rv2.timerStart) / 1000);
+  if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
+  _rv2.currentTake = { blob, url, mime, duration };
+  _rv2Render();
+}
+
+window.rv2Retake = () => {
+  if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
+  _rv2.currentTake = null;
+  _rv2Render();
+};
+
+window.rv2SaveRound = async () => {
+  if (!_rv2.currentTake) return;
+  _rv2.savedRounds.push(_rv2.currentTake);
+  _rv2.currentTake = null;
+  if (_rv2.currentRound === _RV2_ROUNDS - 1) {
+    await _rv2Submit();
+    return;
+  }
+  _rv2.currentRound++;
+  _rv2Render();
+};
+
+window.rv2Quit = async () => {
+  if (_rv2.isRecording) {
+    _rv2.mediaRecorder?.stop();
+    _rv2.stream?.getTracks()?.forEach(t => t.stop());
+    _rv2.isRecording = false;
+    if (_rv2.timerInterval) { clearInterval(_rv2.timerInterval); _rv2.timerInterval = null; }
+  }
+  const hasProgress = _rv2.savedRounds.length > 0 || _rv2.currentTake != null;
+  if (hasProgress) {
+    if (!(await showConfirm('녹음을 중단할까요?', '지금까지의 녹음은 저장되지 않습니다.'))) return;
+  }
+  _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
+  if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
+  goHome();
+};
+
+function _rv2BlobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+function _rv2ShowSubmitting(title, subtitle) {
+  const screen = document.getElementById('recAiQuiz');
+  if (!screen) return;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:52px;margin-bottom:16px;">🤖</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(title)}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:18px;">${esc(subtitle)}</div>
+      <div style="width:200px;height:4px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+        <div style="width:40%;height:100%;background:linear-gradient(90deg,#8B5CF6,#6366F1);animation:rv2Slide 1.3s ease-in-out infinite;"></div>
+      </div>
+      <style>@keyframes rv2Slide { 0%{margin-left:-40%;} 100%{margin-left:100%;} }</style>
+    </div>
+  `;
+}
+
+async function _rv2Submit() {
+  if (_rv2.savedRounds.length !== _RV2_ROUNDS) {
+    showToast('3회 녹음이 모두 필요합니다');
+    return;
+  }
+  const t = _rv2.test;
+  const q = _rv2.question;
+  const threshold = q.accuracyThreshold || 70;
+  const evalSec = q.evaluationSeconds || 60;
+  if (!currentUser) { showToast('로그인이 필요해요'); return; }
+
+  _rv2ShowSubmitting('🎤 녹음 업로드 중...', '3개 파일 Storage 에 저장');
+
+  try {
+    const storage = getStorage();
+    const uploadResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
+      const ext = r.mime.includes('mp4') ? 'm4a' : 'webm';
+      const path = `recordings/genTests/${t.id}/${currentUser.uid}/r${i+1}_${Date.now()}.${ext}`;
+      const fileRef = ref(storage, path);
+      await uploadBytes(fileRef, r.blob);
+      const url = await getDownloadURL(fileRef);
+      return { round: i + 1, audioUrl: url, duration: r.duration };
+    }));
+
+    _rv2ShowSubmitting('🤖 AI 평가 중...', '3개 녹음을 동시에 평가해요 (10~15초)');
+
+    const checkResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
+      try {
+        const base64 = await _rv2BlobToBase64(r.blob);
+        const res = await fetch('/api/check-recording', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'check',
+            originalText: q.fullText,
+            audioBase64: base64,
+            mimeType: r.mime,
+            evaluationSeconds: evalSec,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          return { round: i + 1, score: 0, missedWords: [], note: '평가 실패', error: true };
+        }
+        return { round: i + 1, score: data.score, missedWords: data.missedWords || [], note: data.note || '' };
+      } catch(e) {
+        return { round: i + 1, score: 0, missedWords: [], note: '네트워크 에러', error: true };
+      }
+    }));
+
+    const lastResult = checkResults[_RV2_ROUNDS - 1];
+    const lastScore = lastResult.score;
+    const passed = lastScore >= threshold;
+
+    let feedback = null;
+    if (passed && !lastResult.error) {
+      _rv2ShowSubmitting('💬 상세 피드백 생성 중...', '마지막 녹음이 임계점을 통과했어요!');
+      try {
+        const base64 = await _rv2BlobToBase64(_rv2.savedRounds[_RV2_ROUNDS - 1].blob);
+        const fbRes = await fetch('/api/check-recording', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'feedback',
+            originalText: q.fullText,
+            audioBase64: base64,
+            mimeType: _rv2.savedRounds[_RV2_ROUNDS - 1].mime,
+            evaluationSeconds: evalSec,
+          }),
+        });
+        const fbData = await fbRes.json();
+        if (fbRes.ok && fbData.success) {
+          feedback = {
+            missedWords: fbData.missedWords || [],
+            weakPronunciation: fbData.weakPronunciation || [],
+            tips: fbData.tips || [],
+          };
+        }
+      } catch(e) { console.warn('feedback failed', e); }
+    }
+
+    _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
+    const today = new Date().toISOString().slice(0,10);
+
+    const recordingsDetail = uploadResults.map((u, i) => ({
+      ...u,
+      score: checkResults[i].score,
+      missedWords: checkResults[i].missedWords,
+      note: checkResults[i].note,
+      ...(i === _RV2_ROUNDS - 1 && feedback ? { feedback } : {}),
+    }));
+
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid,
+      userId: currentUser.uid,
+      userName: userProfile?.name || '',
+      name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id,
+      testName: t.name || '',
+      unitId: t.id,
+      unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'recording-ai',
+      score: lastScore,
+      correct: passed ? 1 : 0,
+      wrong: passed ? 0 : 1,
+      total: 1,
+      passed,
+      passScore: threshold,
+      recordings: recordingsDetail,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+
+    try {
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score: lastScore,
+          date: today,
+          recordings: recordingsDetail,
+          completedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+
+    _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
+    const allAudioUrls = uploadResults.map(u => u.audioUrl);
+    _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
+  } catch(e) {
+    console.error(e);
+    showToast('제출 실패: ' + e.message);
+    _rv2Render();
+  }
+}
+
+function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls) {
+  _rv2ResultAudioUrls = allAudioUrls || [];
+  const screen = document.getElementById('recAiQuiz');
+  if (!screen) return;
+
+  const lastScore = checkResults[_RV2_ROUNDS - 1].score;
+  const avg = Math.round(checkResults.reduce((s, r) => s + (r.score || 0), 0) / checkResults.length);
+  const emoji = passed ? '🎉' : '💪';
+  const headline = passed ? '훌륭해요!' : '아깝네요!';
+  const subline = passed
+    ? 'AI 피드백을 확인해보세요'
+    : `마지막 녹음이 임계점(${threshold}점)에 미달해 상세 피드백은 제공되지 않아요`;
+
+  screen.innerHTML = `
+    <div style="flex:1;overflow-y:auto;padding:20px 16px;">
+
+      <div style="background:white;border-radius:16px;padding:24px 20px;box-shadow:0 2px 12px rgba(0,0,0,0.08);text-align:center;margin-bottom:14px;">
+        <div style="font-size:56px;margin-bottom:6px;">${emoji}</div>
+        <div style="font-size:20px;font-weight:800;color:var(--text);">${headline}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.5;">${esc(subline)}</div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;">
+          <div>
+            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">최종 (3회차)</div>
+            <div style="font-size:28px;font-weight:800;color:${passed ? '#059669' : '#CA8A04'};line-height:1;">${lastScore}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">3회 평균</div>
+            <div style="font-size:28px;font-weight:800;color:var(--text);line-height:1;">${avg}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">📊 회차별 점수</div>
+        ${checkResults.map((r, i) => {
+          const isLast = i === _RV2_ROUNDS - 1;
+          const pass = r.score >= threshold;
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;${i < _RV2_ROUNDS - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="width:22px;height:22px;border-radius:50%;background:${pass ? '#d1fae5' : '#fef3c7'};color:${pass ? '#059669' : '#CA8A04'};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${r.round}</span>
+                <span style="font-size:13px;${isLast ? 'font-weight:700;color:var(--text);' : 'color:var(--gray);'}">${isLast ? '마지막 녹음 (피드백 대상)' : r.round + '회차'}</span>
+              </div>
+              <span style="font-size:15px;font-weight:700;color:${pass ? '#059669' : '#CA8A04'};">${r.score}점</span>
+            </div>
+            ${r.missedWords?.length > 0 && isLast ? `
+              <div style="padding:6px 12px;background:#fef2f2;border-radius:4px;font-size:11px;color:#DC2626;margin-top:4px;">
+                놓친 단어: ${r.missedWords.map(w => `<strong>${esc(w)}</strong>`).join(', ')}
+              </div>` : ''}
+          `;
+        }).join('')}
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:10px;">🎧 내 녹음 다시 듣기</div>
+        ${checkResults.map((r, i) => {
+          const isLast = i === _RV2_ROUNDS - 1;
+          const audioUrl = _rv2ResultAudioUrls[i] || '';
+          return `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${i < _RV2_ROUNDS - 1 ? '8px' : '0'};">
+              <span style="width:22px;height:22px;border-radius:50%;background:${isLast ? '#8B5CF6' : '#E5E7EB'};color:${isLast ? 'white' : '#6B7280'};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${r.round}</span>
+              <audio src="${esc(audioUrl)}" controls preload="none" style="flex:1;height:32px;"></audio>
+              <span style="font-size:11px;color:var(--gray);min-width:36px;text-align:right;">${r.score}점</span>
+            </div>
+          `;
+        }).join('')}
+        <div style="font-size:10px;color:var(--gray);margin-top:8px;text-align:center;">3회차(보라)가 피드백 대상 녹음이에요</div>
+      </div>
+
+      ${passed && feedback ? `
+        <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백 (3회차 기준)</div>
+          ${feedback.missedWords?.length ? `
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어</div>
+              <div style="font-size:12px;">
+                ${feedback.missedWords.map(w => `<span style="background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;">${esc(w)}</span>`).join('')}
+              </div>
+            </div>` : ''}
+          ${feedback.weakPronunciation?.length ? `
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">🔊 발음 개선</div>
+              ${feedback.weakPronunciation.map(p => `
+                <div style="font-size:12px;padding:6px 10px;background:#fef3c7;border-left:2px solid #CA8A04;margin-bottom:4px;border-radius:3px;">
+                  <strong>${esc(p.word)}</strong> → ${esc(p.issue)}
+                </div>`).join('')}
+            </div>` : ''}
+          ${feedback.tips?.length ? `
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">💡 개선 팁</div>
+              ${feedback.tips.map(t => `<div style="font-size:12px;color:var(--text);padding:5px 0;line-height:1.5;">• ${esc(t)}</div>`).join('')}
+            </div>` : ''}
+        </div>
+      ` : ''}
+
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:#8B5CF6;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">홈으로</button>
+      </div>
+    </div>
+  `;
+  updateRecBadge();
+}
 
 window.goUnscramble = async()=>{
   const elP=document.getElementById('unscListPending');

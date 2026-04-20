@@ -6225,10 +6225,11 @@ const QG_TYPE_OPTIONS = {
     icon: '🎤',
     enabled: true,
     phaseLabel: null,
-    noteHint: '본문에서 읽기·녹음에 적합한 문장을 AI 가 선별합니다. (기존 녹음숙제 관리와 별도로 운영)',
+    noAi: true,  // Phase 5.5: AI 호출 없이 로컬 생성
+    noteHint: '선택한 Page 의 전체 문장을 학생이 3회 반복 녹음합니다. AI 가 정확도를 평가하고, 마지막(3회차) 녹음이 임계점을 넘으면 상세 피드백을 제공합니다.',
     options: [
-      { key:'count',     label:'문제수',   type:'number', default:5, min:1, max:30 },
-      { key:'passScore', label:'통과점수', type:'number', default:80, min:0, max:100 },
+      { key:'accuracyThreshold', label:'정확도 임계값 (점)', type:'number', default:70, min:50, max:95 },
+      { key:'evaluationSeconds', label:'평가 구간 (초)',     type:'number', default:60, min:30, max:180 },
     ],
   },
 };
@@ -6618,14 +6619,18 @@ function _qgRenderOptions(type) {
   }).join('');
 
   if (btn) {
-    if (cfg.enabled) {
-      btn.textContent = '✨ AI 로 문제 생성';
-      btn.style.background = '';
-      btn.style.color = '';
-    } else {
+    if (!cfg.enabled) {
       btn.textContent = `🔒 ${cfg.phaseLabel} 에서 활성화`;
       btn.style.background = '#ccc';
       btn.style.color = '#666';
+    } else if (cfg.noAi) {
+      btn.textContent = '📝 문제 세트 만들기';
+      btn.style.background = '';
+      btn.style.color = '';
+    } else {
+      btn.textContent = '✨ AI 로 문제 생성';
+      btn.style.background = '';
+      btn.style.color = '';
     }
   }
 }
@@ -6697,6 +6702,16 @@ window.qgGenerate = async () => {
   qgPersistOpts();
   const opts = _qgCollectOpts(type);
 
+  // Phase 5.5: noAi 플래그 — API 호출 없이 로컬 생성
+  if (cfg.noAi) {
+    if (type === 'recording') {
+      _qgBuildRecordingSet(opts);
+    } else {
+      showToast('지원되지 않는 로컬 생성 유형입니다');
+    }
+    return;
+  }
+
   if (type === 'mcq') {
     await _qgCallMcq(opts);
   } else if (type === 'fill_blank') {
@@ -6704,6 +6719,7 @@ window.qgGenerate = async () => {
   } else if (type === 'subjective') {
     await _qgCallSubjective(opts);
   } else if (type === 'recording') {
+    // Phase 5 구 버전 (schemaV 없음) — noAi 플래그가 꺼진 경우에만 도달 (실제 사용 안 함)
     await _qgCallRecording(opts);
   } else {
     showToast('지원되지 않는 유형입니다');
@@ -7010,6 +7026,104 @@ async function _qgCallRecording(opts) {
   }
 }
 
+// ─── 녹음숙제 로컬 생성기 (Phase 5.5) ───
+// API 호출 없이 선택한 Page 의 전체 본문을 1문제로 구성. 3회 반복 녹음 전제.
+function _qgBuildRecordingSet(opts) {
+  if (_qgSelectedPageIds.size === 0) {
+    showToast('Page 를 선택하세요');
+    return;
+  }
+
+  const status = document.getElementById('qgStatus');
+  if (status) status.innerHTML = '📝 문제 세트 구성 중...';
+
+  const pages = (_genPages || [])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .sort((a, b) => {
+      const ao = (a.chapterOrder ?? 0) * 10000 + (a.order ?? 0);
+      const bo = (b.chapterOrder ?? 0) * 10000 + (b.order ?? 0);
+      return ao - bo;
+    });
+
+  if (pages.length === 0) {
+    if (status) status.innerHTML = '<span style="color:#c33;">❌ Page 로드 실패</span>';
+    return;
+  }
+
+  const firstPage = pages[0];
+  const lastPage = pages[pages.length - 1];
+  const book = (_genBooks||[]).find(b => b.id === firstPage.bookId);
+  const chapter = (_genChapters||[]).find(c => c.id === firstPage.chapterId);
+  const bookName = book?.name || '';
+  const chapterName = chapter?.name || '';
+
+  const fullText = pages
+    .map(p => (p.text || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join(' ');
+
+  if (fullText.length < 20) {
+    showToast('선택한 Page 의 본문이 너무 짧습니다');
+    if (status) status.innerHTML = '<span style="color:#c33;">❌ 본문 부족</span>';
+    return;
+  }
+
+  const startSentence = _qgExtractFirstSentence((firstPage.text || '').trim());
+  const endSentence = _qgExtractLastSentence((lastPage.text || '').trim());
+
+  const instructionKo =
+    `${firstPage.title || '첫 페이지'}「${startSentence}」부터 ` +
+    `${lastPage.title || '마지막 페이지'}「${endSentence}」까지 ` +
+    `실제 책을 보며 연속으로 3회 반복 녹음하세요.`;
+
+  const question = {
+    type: 'recording',
+    schemaV: 2,
+    roundsRequired: 3,
+    pageCount: pages.length,
+    startPageTitle: firstPage.title || '',
+    startSentence,
+    endPageTitle: lastPage.title || '',
+    endSentence,
+    fullText,
+    instructionKo,
+    questionKo: instructionKo,
+    accuracyThreshold: parseInt(opts.accuracyThreshold) || 70,
+    evaluationSeconds: parseInt(opts.evaluationSeconds) || 60,
+    sourcePageId: firstPage.id,
+    sourcePageTitle: firstPage.title || '',
+    difficulty: 'medium',
+  };
+
+  const defaultSetName = [bookName, chapterName].filter(Boolean).join(' · ') || '녹음숙제';
+
+  _qgGenerated = [question];
+  _qgExcluded.clear();
+
+  if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ 즉시 생성 · 1문제 · ${fullText.length}자</span>`;
+
+  _qgShowResultModal({
+    questions: _qgGenerated,
+    model: '로컬 생성 (Page 기반)',
+    requestedCount: 1,
+    defaultName: defaultSetName,
+  });
+}
+
+function _qgExtractFirstSentence(text) {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  const match = clean.match(/^[^.!?]{5,200}[.!?]/);
+  if (match) return match[0].trim().slice(0, 120);
+  return clean.slice(0, 80);
+}
+
+function _qgExtractLastSentence(text) {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  const sentences = clean.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length >= 5);
+  if (sentences.length === 0) return clean.slice(-80);
+  return sentences[sentences.length - 1].slice(0, 120);
+}
+
 // ─── 기본 세트 이름: Chapter · PageTitle 조합 ───
 function _qgBuildDefaultName() {
   const pageIds = [...new Set(_qgGenerated.map(q => q.sourcePageId).filter(Boolean))];
@@ -7041,7 +7155,7 @@ function _qgShowResultModal(data) {
     return;
   }
 
-  const defaultName = _qgBuildDefaultName();
+  const defaultName = data.defaultName || _qgBuildDefaultName();
 
   const html = `
     <div style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -7106,6 +7220,19 @@ function _qgRenderQuestion(q, idx) {
       <div style="font-size:12px;color:#2e7d32;background:#e8f5e9;padding:8px 12px;border-radius:6px;">
         <div style="font-size:10px;font-weight:700;color:#2e7d32;margin-bottom:3px;">모범 답안 (교사용)</div>
         ${q.sampleAnswerKo ? esc(q.sampleAnswerKo) : '<span style="color:#999;font-style:italic;">(답안 없음 — 시험지에 빈 답란만 표시)</span>'}
+      </div>
+    `;
+  } else if (q.type === 'recording' && q.schemaV === 2) {
+    const preview = (q.fullText || '').slice(0, 240) + ((q.fullText||'').length > 240 ? '…' : '');
+    body = `
+      <div style="font-size:11px;color:#CA8A04;font-weight:700;margin-bottom:5px;">🎤 Page 단위 녹음숙제 (3회 반복)</div>
+      <div style="font-size:12px;color:var(--text);padding:8px 12px;background:#fefce8;border-left:3px solid #CA8A04;margin-bottom:8px;">${esc(q.instructionKo || '')}</div>
+      <div style="font-size:13px;line-height:1.6;padding:10px 14px;background:#f5f5f5;border-radius:6px;color:#444;margin-bottom:6px;">${esc(preview)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;">
+        <span style="background:#e0f2fe;padding:3px 10px;border-radius:10px;color:#0369a1;font-weight:600;">📄 ${q.pageCount||1} Page</span>
+        <span style="background:#fce7f3;padding:3px 10px;border-radius:10px;color:#be185d;font-weight:600;">🎯 ${q.accuracyThreshold||70}점</span>
+        <span style="background:#dcfce7;padding:3px 10px;border-radius:10px;color:#166534;font-weight:600;">⏱ ${q.evaluationSeconds||60}초</span>
+        <span style="background:#f3e8ff;padding:3px 10px;border-radius:10px;color:#6b21a8;font-weight:600;">🔁 3회 반복</span>
       </div>
     `;
   } else if (q.type === 'recording') {
@@ -8402,6 +8529,28 @@ window.tpOpenPublishModal = async () => {
           </div>
         </div>
 
+        ${cfg.testMode === 'recording-ai' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
+          ? `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
+              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 평가 옵션 (반별 조정 가능)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">정확도 임계값</label>
+                  <input type="number" id="tpRecThreshold" min="50" max="95"
+                    value="${selectedSets[0]?.questions?.[0]?.accuracyThreshold || 70}"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">3회차가 이 점수 이상일 때만 피드백</div>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">평가 구간 (초)</label>
+                  <input type="number" id="tpRecEvalSec" min="30" max="180"
+                    value="${selectedSets[0]?.questions?.[0]?.evaluationSeconds || 60}"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">녹음 중 N초만 AI 가 평가</div>
+                </div>
+              </div>
+            </div>`
+          : ''}
+
         <div style="margin-bottom:12px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">👥 배정 대상</div>
           <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
@@ -8495,6 +8644,18 @@ window.tpPublish = async () => {
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+
+  // Phase 5.5: recording-ai v2 의 경우 배정 모달에서 임계값·평가 시간 override
+  if (cfg.testMode === 'recording-ai' && questions.some(q => q.schemaV === 2)) {
+    const threshold = parseInt(document.getElementById('tpRecThreshold')?.value);
+    const evalSec = parseInt(document.getElementById('tpRecEvalSec')?.value);
+    if (!isNaN(threshold) && threshold >= 50 && threshold <= 95) {
+      questions.forEach(q => { if (q.schemaV === 2) q.accuracyThreshold = threshold; });
+    }
+    if (!isNaN(evalSec) && evalSec >= 30 && evalSec <= 180) {
+      questions.forEach(q => { if (q.schemaV === 2) q.evaluationSeconds = evalSec; });
+    }
+  }
 
   const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
   if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
@@ -8797,6 +8958,44 @@ window.tpToggleTestProgress = async (testId) => {
           ${studentList.map(s => {
             const c = completed.get(s.uid);
             if (c) {
+              const cfgC = _TEST_TYPE_CONFIG[_activeTestType];
+              const recs = c.recordings || [];
+              const isRecV2 = cfgC?.testMode === 'recording-ai' && recs.length >= 2 && recs[0]?.audioUrl;
+              if (isRecV2) {
+                const last = recs[recs.length - 1];
+                const fb = last?.feedback;
+                return `
+                  <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                      <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
+                      <div style="display:flex;gap:6px;align-items:center;">
+                        <span style="font-size:10px;color:var(--gray);">평균 ${_tpAvgScore(recs)}점</span>
+                        <span style="color:${last.score >= 70 ? '#059669' : '#CA8A04'};font-weight:700;">최종 ${last.score}점</span>
+                      </div>
+                    </div>
+                    ${recs.map((r, i) => `
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="width:20px;height:20px;border-radius:50%;background:${i === recs.length-1 ? '#8B5CF6' : '#E5E7EB'};color:${i === recs.length-1 ? 'white' : '#6B7280'};display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${i+1}</span>
+                        <audio src="${esc(r.audioUrl)}" controls preload="none" style="flex:1;height:28px;"></audio>
+                        <span style="font-size:11px;color:${r.score >= 70 ? '#059669' : '#CA8A04'};font-weight:700;min-width:40px;text-align:right;">${r.score}점</span>
+                      </div>
+                    `).join('')}
+                    <div style="font-size:10px;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
+                      ${esc(c.date || '')} · 3회 반복 녹음
+                    </div>
+                    ${fb ? `
+                      <details style="margin-top:8px;">
+                        <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (3회차)</summary>
+                        <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
+                          ${fb.missedWords?.length ? `<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
+                          ${fb.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`${esc(p.word)} (${esc(p.issue)})`).join(' · ')}</div>` : ''}
+                          ${fb.tips?.length ? `<div style="margin-top:3px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
+                        </div>
+                      </details>
+                    ` : '<div style="font-size:10px;color:var(--gray);margin-top:6px;">마지막 회차가 임계점 미달 → 피드백 없음</div>'}
+                  </div>
+                `;
+              }
               return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 9px;font-size:11px;">
                 <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                 <div style="color:#2e7d32;">✓ ${c.score||0}점 · ${esc(c.date||'')}</div>
@@ -8813,6 +9012,12 @@ window.tpToggleTestProgress = async (testId) => {
     content.textContent = '로드 실패: ' + e.message;
   }
 };
+
+function _tpAvgScore(recordings) {
+  if (!recordings?.length) return 0;
+  const sum = recordings.reduce((s, r) => s + (r.score || 0), 0);
+  return Math.round(sum / recordings.length);
+}
 
 // _renderTestAssignDetail 을 window 에 노출 (onclick="_renderTestAssignDetail(...)" 지원)
 window._renderTestAssignDetail = _renderTestAssignDetail;
