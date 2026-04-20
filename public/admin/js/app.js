@@ -7785,8 +7785,9 @@ function _qsRenderEditModal() {
 function _qsRenderEditQuestion(q, idx) {
   const diffLabel = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty] || q.difficulty || '-';
   const srcLabel = q.sourcePageTitle ? ` · 출처: ${q.sourcePageTitle}` : '';
+  const icon = q.type==='fill_blank'?'✏️' : q.type==='subjective'?'✍️' : q.type==='recording'?'🎤' : q.type==='vocab'?'📝' : q.type==='unscramble'?'🔀' : '📖';
   const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <div style="font-size:11px;font-weight:700;color:var(--gray);">${q.type==='fill_blank'?'✏️':'📖'} ${idx+1}번 · 난이도 ${esc(diffLabel)}${esc(srcLabel)}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--gray);">${icon} ${idx+1}번 · 난이도 ${esc(diffLabel)}${esc(srcLabel)}</div>
   </div>`;
 
   if (q.type === 'fill_blank') {
@@ -7806,6 +7807,112 @@ function _qsRenderEditQuestion(q, idx) {
       <label style="font-size:11px;color:var(--gray);">해설 (선택)</label>
       <textarea oninput="qsEditUpdate(${idx},'explanation',this.value)" rows="2"
         style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
+    </div>`;
+  }
+
+  if (q.type === 'subjective') {
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      ${header}
+      <label style="font-size:11px;color:var(--gray);">원문 (영어)</label>
+      <textarea oninput="qsEditUpdate(${idx},'sentence',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.sentence||'')}</textarea>
+      <label style="font-size:11px;color:var(--gray);">한글 지시문</label>
+      <input type="text" value="${esc(q.questionKo||'')}"
+        oninput="qsEditUpdate(${idx},'questionKo',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">모범 답안 (교사용 · 한글 해석)</label>
+      <textarea oninput="qsEditUpdate(${idx},'sampleAnswerKo',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;background:#f0fdf4;">${esc(q.sampleAnswerKo||'')}</textarea>
+      <label style="font-size:11px;color:var(--gray);">해설 (선택)</label>
+      <textarea oninput="qsEditUpdate(${idx},'explanation',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
+    </div>`;
+  }
+
+  if (q.type === 'vocab') {
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      ${header}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <label style="font-size:11px;color:var(--gray);">영단어</label>
+          <input type="text" value="${esc(q.word||'')}"
+            oninput="qsEditUpdate(${idx},'word',this.value)"
+            style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:700;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--gray);">뜻</label>
+          <input type="text" value="${esc(q.meaning||'')}"
+            oninput="qsEditUpdate(${idx},'meaning',this.value)"
+            style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+        </div>
+      </div>
+      <label style="font-size:11px;color:var(--gray);display:block;margin-top:10px;">예문 (영어, 선택)</label>
+      <input type="text" value="${esc(q.example||'')}"
+        oninput="qsEditUpdate(${idx},'example',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-style:italic;">
+      <label style="font-size:11px;color:var(--gray);">예문 한글 번역 (선택)</label>
+      <input type="text" value="${esc(q.exampleKo||'')}"
+        oninput="qsEditUpdate(${idx},'exampleKo',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+    </div>`;
+  }
+
+  if (q.type === 'unscramble') {
+    const chunks = (q.chunkedSentence||'').split('/').map(s=>s.trim()).filter(Boolean);
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      ${header}
+      <label style="font-size:11px;color:var(--gray);">한글 뜻</label>
+      <input type="text" value="${esc(q.meaningKo||'')}"
+        oninput="qsEditUpdate(${idx},'meaningKo',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">영문 <span style="color:#7c3aed;">('/' 로 청크 구분)</span></label>
+      <input type="text" value="${esc(q.chunkedSentence||'')}"
+        oninput="qsEditUnscrambleEdit(${idx}, this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:monospace;">
+      <div id="qsEditUnscPreview_${idx}" style="padding:8px 10px;background:#faf5ff;border-radius:4px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">청크 미리보기 (${chunks.length}개)</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (q.type === 'recording') {
+    if (q.schemaV === 2) {
+      return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+        ${header}
+        <label style="font-size:11px;color:var(--gray);">지시문 (학생에게 표시)</label>
+        <textarea oninput="qsEditUpdate(${idx},'instructionKo',this.value)" rows="3"
+          style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.instructionKo||'')}</textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:11px;color:var(--gray);">정확도 임계값 (점)</label>
+            <input type="number" value="${q.accuracyThreshold||70}" min="50" max="95"
+              oninput="qsEditUpdate(${idx},'accuracyThreshold',parseInt(this.value)||70)"
+              style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--gray);">평가 구간 (초)</label>
+            <input type="number" value="${q.evaluationSeconds||60}" min="30" max="180"
+              oninput="qsEditUpdate(${idx},'evaluationSeconds',parseInt(this.value)||60)"
+              style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+          </div>
+        </div>
+        <label style="font-size:11px;color:var(--gray);">전체 본문 (AI 평가 대상, 수정 신중)</label>
+        <textarea oninput="qsEditUpdate(${idx},'fullText',this.value)" rows="4"
+          style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.fullText||'')}</textarea>
+      </div>`;
+    }
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      ${header}
+      <label style="font-size:11px;color:var(--gray);">녹음 대상 문장</label>
+      <textarea oninput="qsEditUpdate(${idx},'sentence',this.value)" rows="2"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.sentence||'')}</textarea>
+      <label style="font-size:11px;color:var(--gray);">한글 지시문</label>
+      <input type="text" value="${esc(q.questionKo||'')}"
+        oninput="qsEditUpdate(${idx},'questionKo',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:13px;">
     </div>`;
   }
 
@@ -7836,6 +7943,25 @@ function _qsRenderEditQuestion(q, idx) {
       style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
   </div>`;
 }
+
+// 수정 모달 전용 언스크램블 편집 (chunked + sentence + chunkCount 동시 갱신 + 프리뷰)
+window.qsEditUnscrambleEdit = (idx, value) => {
+  if (!_qsEditState || !_qsEditState.questions[idx]) return;
+  const chunked = String(value || '').trim();
+  const chunks = chunked.split('/').map(s => s.trim()).filter(Boolean);
+  _qsEditState.questions[idx].chunkedSentence = chunked;
+  _qsEditState.questions[idx].sentence = chunks.join(' ').replace(/\s+/g, ' ').trim();
+  _qsEditState.questions[idx].chunkCount = chunks.length;
+  const el = document.getElementById(`qsEditUnscPreview_${idx}`);
+  if (el) {
+    el.innerHTML = `
+      <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">청크 미리보기 (${chunks.length}개)</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
+      </div>
+    `;
+  }
+};
 
 window.qsEditUpdate = (idx, field, value) => {
   if (!_qsEditState || !_qsEditState.questions[idx]) return;
@@ -7883,7 +8009,7 @@ window.qsSaveEdits = async () => {
   const newName = document.getElementById('qsEditName')?.value.trim();
   if (!newName) { showToast('세트 이름을 입력하세요'); return; }
 
-  // 검증
+  // 검증 — 유형별
   for (let i = 0; i < st.questions.length; i++) {
     const q = st.questions[i];
     if (q.type === 'fill_blank') {
@@ -7896,7 +8022,27 @@ window.qsSaveEdits = async () => {
         showToast(`${i+1}번: ___ ${markerCount}개 vs 정답 ${blanks.length}개 불일치`);
         return;
       }
+    } else if (q.type === 'subjective') {
+      if (!(q.sentence||'').trim()) { showToast(`${i+1}번: 원문이 비어있음`); return; }
+      // sampleAnswerKo 는 선택 항목
+    } else if (q.type === 'vocab') {
+      if (!(q.word||'').trim()) { showToast(`${i+1}번: 영단어가 비어있음`); return; }
+      if (!(q.meaning||'').trim()) { showToast(`${i+1}번: 뜻이 비어있음`); return; }
+    } else if (q.type === 'unscramble') {
+      const chunked = (q.chunkedSentence||'').trim();
+      if (!chunked) { showToast(`${i+1}번: 영문이 비어있음`); return; }
+      const chunks = chunked.split('/').map(s=>s.trim()).filter(Boolean);
+      if (chunks.length < 2) { showToast(`${i+1}번: 청크가 최소 2개 필요합니다`); return; }
+      if (!(q.meaningKo||'').trim()) { showToast(`${i+1}번: 한글 뜻이 비어있음`); return; }
+    } else if (q.type === 'recording') {
+      if (q.schemaV === 2) {
+        if (!(q.fullText||'').trim()) { showToast(`${i+1}번: 본문이 비어있음`); return; }
+        if (!(q.instructionKo||'').trim()) { showToast(`${i+1}번: 지시문이 비어있음`); return; }
+      } else {
+        if (!(q.sentence||'').trim()) { showToast(`${i+1}번: 녹음 문장이 비어있음`); return; }
+      }
     } else {
+      // MCQ (기본)
       if (!(q.question||'').trim()) { showToast(`${i+1}번: 질문이 비어있음`); return; }
       const choices = q.choices || [];
       if (choices.length !== 4) { showToast(`${i+1}번: 선택지는 4개여야 합니다`); return; }
