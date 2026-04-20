@@ -284,12 +284,15 @@
         <div id="fbQuestionKo" style="font-size:14px;color:var(--text);line-height:1.5;"></div>
       </div>
 
-      <div style="background:white;border-radius:14px;padding:20px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div id="fbSentence" style="font-size:20px;line-height:2.4;color:var(--text);"></div>
+      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div id="fbSentence" style="font-size:19px;line-height:1.7;color:var(--text);"></div>
       </div>
 
-      <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:8px;">
-        각 빈칸 아래 숫자는 글자 수입니다
+      <!-- 숨겨진 입력 영역 (빈칸별 input) — 단어시험 패턴과 동일 -->
+      <div id="fbInputsHolder" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;"></div>
+
+      <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:6px;">
+        빈칸을 탭하면 입력됩니다
       </div>
     </div>
 

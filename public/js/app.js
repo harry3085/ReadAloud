@@ -694,6 +694,7 @@ window.quitReadingMcq = async () => {
 let _fbTimer = null;
 let _fbTimeLeft = 30;
 const FB_TIME_PER_Q = 30;
+let _fbActiveBlank = 0;   // 현재 포커스 중인 빈칸 idx
 
 let _fbState = {
   test: null,
@@ -805,36 +806,39 @@ function _fbRenderStep(){
   if(qKoEl) qKoEl.textContent = q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.';
 
   const sentEl = document.getElementById('fbSentence');
+  const holder = document.getElementById('fbInputsHolder');
   if(sentEl){
     const parts = (q.sentence||'').split('___');
     const curAnswers = s.answers[s.currentIdx] || [];
     let html = '';
+    let inputsHtml = '';
+    const totalBlanks = parts.length - 1;
     for(let i = 0; i < parts.length; i++){
       html += esc(parts[i]);
-      if(i < parts.length - 1){
-        const blankAnswer = q.blanks?.[i] || '';
-        const letterCount = blankAnswer.length;
+      if(i < totalBlanks){
+        const letterCount = (q.blanks?.[i] || '').length;
         const curVal = curAnswers[i] || '';
-        // 글자수만큼 □ 프리뷰가 완전히 보이도록 넉넉한 폭 (char당 ~15px + 여유)
-        const width = Math.max(letterCount * 16 + 20, 80);
-        html += `<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 4px;">
-          <input type="text"
-            id="fb-input-${i}"
-            value="${esc(curVal)}"
-            oninput="fbUpdateAnswer(${i}, this.value)"
-            onkeydown="fbInputKey(event, ${i})"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="${'□'.repeat(letterCount)}"
-            style="width:${width}px;padding:4px 6px;border:none;border-bottom:2px solid #CA8A04;background:#FEF3C7;font-size:20px;font-weight:700;color:#92400E;text-align:center;outline:none;font-family:inherit;letter-spacing:1px;">
-          <span style="font-size:11px;color:#CA8A04;margin-top:3px;">${letterCount}자</span>
-        </span>`;
+        // 인라인 박스 그룹 (탭하면 해당 빈칸 포커스)
+        html += `<span onclick="fbFocusBlank(${i})" style="display:inline-flex;gap:3px;vertical-align:middle;margin:0 4px;cursor:text;">`;
+        for(let k = 0; k < letterCount; k++){
+          const ch = curVal[k] || '';
+          html += `<span id="fb-box-${i}-${k}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:28px;border:2px solid #ddd;background:white;color:#92400E;border-radius:5px;font-size:17px;font-weight:700;line-height:1;">${esc(ch)}</span>`;
+        }
+        html += `</span>`;
+        // 숨은 input (단어시험 패턴)
+        inputsHtml += `<input type="search" id="fb-input-${i}" value="${esc(curVal)}"
+          oninput="fbUpdateAnswer(${i}, this.value)"
+          onkeydown="fbInputKey(event, ${i})"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          inputmode="text" maxlength="${letterCount}">`;
       }
     }
     sentEl.innerHTML = html;
+    if(holder) holder.innerHTML = inputsHtml;
   }
+
+  _fbActiveBlank = 0;
+  _fbRefreshBoxes();
 
   const btn = document.getElementById('fbNextBtn');
   if(btn){
@@ -850,6 +854,50 @@ function _fbRenderStep(){
     if(first) first.focus();
   }, 50);
 }
+
+// 단일 빈칸 박스 시각 갱신
+function _fbRefreshBoxesForBlank(blankIdx){
+  const s = _fbState;
+  const q = s.questions[s.currentIdx];
+  if(!q) return;
+  const letterCount = (q.blanks?.[blankIdx] || '').length;
+  const curVal = (s.answers[s.currentIdx] || [])[blankIdx] || '';
+  const isActiveBlank = (_fbActiveBlank === blankIdx);
+  for(let k = 0; k < letterCount; k++){
+    const box = document.getElementById(`fb-box-${blankIdx}-${k}`);
+    if(!box) continue;
+    const ch = curVal[k] || '';
+    box.textContent = ch;
+    if(ch){
+      box.style.borderColor = '#CA8A04';
+      box.style.background = '#FEF3C7';
+    } else if(isActiveBlank && k === curVal.length){
+      box.style.borderColor = '#CA8A04';
+      box.style.background = 'white';
+    } else {
+      box.style.borderColor = '#ddd';
+      box.style.background = 'white';
+    }
+  }
+}
+
+function _fbRefreshBoxes(){
+  const q = _fbState.questions[_fbState.currentIdx];
+  if(!q) return;
+  const blankCount = (q.blanks || []).length;
+  for(let i = 0; i < blankCount; i++) _fbRefreshBoxesForBlank(i);
+}
+
+window.fbFocusBlank = (blankIdx) => {
+  _fbActiveBlank = blankIdx;
+  const inp = document.getElementById('fb-input-' + blankIdx);
+  if(inp){
+    inp.focus();
+    // 커서를 끝으로 이동
+    try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch(e){}
+  }
+  _fbRefreshBoxes();
+};
 
 // ─── 타이머 ───
 function _fbStartTimer(){
@@ -893,20 +941,36 @@ window.fbSkip = async () => {
 
 window.fbUpdateAnswer = (blankIdx, value) => {
   const s = _fbState;
+  const q = s.questions[s.currentIdx];
+  if(!q) return;
+  const letterCount = (q.blanks?.[blankIdx] || '').length;
+  // 영문/공백만 허용, 최대 letterCount
+  value = String(value||'').toLowerCase().replace(/[^a-z\s'-]/g, '').slice(0, letterCount);
   if(!s.answers[s.currentIdx]) s.answers[s.currentIdx] = [];
   s.answers[s.currentIdx][blankIdx] = value;
+  const inp = document.getElementById('fb-input-' + blankIdx);
+  if(inp && inp.value !== value) inp.value = value;
+  _fbRefreshBoxesForBlank(blankIdx);
+
+  // 빈칸이 꽉 차면 다음 빈칸으로 자동 이동
+  if(value.length === letterCount && letterCount > 0){
+    const totalBlanks = (q.blanks||[]).length;
+    if(blankIdx < totalBlanks - 1){
+      setTimeout(() => fbFocusBlank(blankIdx + 1), 120);
+    }
+  }
 };
 
 window.fbInputKey = (event, blankIdx) => {
-  if(event.key !== 'Enter') return;
-  event.preventDefault();
-  const q = _fbState.questions[_fbState.currentIdx];
-  const total = (q.blanks||[]).length;
-  if(blankIdx < total - 1){
-    const nxt = document.getElementById('fb-input-' + (blankIdx+1));
-    if(nxt) nxt.focus();
-  } else {
-    fbNext();
+  if(event.key === 'Enter' || event.key === 'Tab'){
+    event.preventDefault();
+    const q = _fbState.questions[_fbState.currentIdx];
+    const total = (q.blanks||[]).length;
+    if(blankIdx < total - 1){
+      fbFocusBlank(blankIdx + 1);
+    } else {
+      fbNext();
+    }
   }
 };
 
