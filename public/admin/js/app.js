@@ -6849,31 +6849,55 @@ window.mcqRemoveTarget = (id) => {
 };
 
 window.mcqPublish = async () => {
-  const name = document.getElementById('mcqName')?.value.trim();
-  const passScore = parseInt(document.getElementById('mcqPassScore')?.value) || 80;
-  const date = document.getElementById('mcqDate')?.value || new Date().toISOString().slice(0,10);
-
-  if (_mcqSelectedSets.size === 0) { showToast('문제 세트를 1개 이상 선택하세요'); return; }
-  if (!name) { showToast('시험명을 입력하세요'); document.getElementById('mcqName')?.focus(); return; }
-  if (_mcqTargets.length === 0) { showToast('배정 대상을 선택하세요'); return; }
-
-  const selectedSets = _mcqSets.filter(s => _mcqSelectedSets.has(s.id));
-  const questions = selectedSets.flatMap(s => s.questions || []);
-  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
-
-  const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${_mcqTargets.length}명/반\n통과점수 ${passScore}점`;
-  if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
-
-  const targetType = (_mcqTargets.length===1 && _mcqTargets[0].type==='class') ? 'class' : 'mixed';
-  const targetId = _mcqTargets.map(t => t.id).join(',');
-  const targetName = _mcqTargets.length===1
-    ? _mcqTargets[0].name
-    : `${_mcqTargets.length}명/반 선택`;
-
-  const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
+  console.log('[mcqPublish] 호출됨', {
+    selectedSetIds: [..._mcqSelectedSets],
+    targets: _mcqTargets,
+  });
 
   try {
-    await addDoc(collection(db,'genTests'), {
+    const name = document.getElementById('mcqName')?.value.trim();
+    const passScore = parseInt(document.getElementById('mcqPassScore')?.value) || 80;
+    const date = document.getElementById('mcqDate')?.value || new Date().toISOString().slice(0,10);
+
+    if (_mcqSelectedSets.size === 0) {
+      console.warn('[mcqPublish] 중단: 선택된 세트 없음');
+      showToast('문제 세트를 1개 이상 선택하세요');
+      return;
+    }
+    if (!name) {
+      console.warn('[mcqPublish] 중단: 시험명 없음');
+      showToast('시험명을 입력하세요');
+      document.getElementById('mcqName')?.focus();
+      return;
+    }
+    if (_mcqTargets.length === 0) {
+      console.warn('[mcqPublish] 중단: 배정 대상 없음');
+      showToast('배정 대상을 선택하세요');
+      return;
+    }
+
+    const selectedSets = _mcqSets.filter(s => _mcqSelectedSets.has(s.id));
+    const questions = selectedSets.flatMap(s => s.questions || []);
+    console.log('[mcqPublish] 합쳐진 문제 수:', questions.length);
+    if (questions.length === 0) {
+      showToast('선택된 세트에 문제가 없습니다');
+      return;
+    }
+
+    const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${_mcqTargets.length}명/반\n통과점수 ${passScore}점`;
+    const confirmed = await showConfirm(`"${name}" 시험을 배정할까요?`, summary);
+    console.log('[mcqPublish] showConfirm 결과:', confirmed);
+    if (!confirmed) return;
+
+    const targetType = (_mcqTargets.length===1 && _mcqTargets[0].type==='class') ? 'class' : 'mixed';
+    const targetId = _mcqTargets.map(t => t.id).join(',');
+    const targetName = _mcqTargets.length===1
+      ? _mcqTargets[0].name
+      : `${_mcqTargets.length}명/반 선택`;
+
+    const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
+
+    const docRef = await addDoc(collection(db,'genTests'), {
       name,
       academy: '큰소리영어',
       date,
@@ -6890,6 +6914,7 @@ window.mcqPublish = async () => {
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
     });
+    console.log('[mcqPublish] genTests 저장 완료 id=', docRef.id);
 
     showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
 
@@ -6898,7 +6923,7 @@ window.mcqPublish = async () => {
 
     setTimeout(() => goPage('test-list'), 600);
   } catch(e) {
-    console.error(e);
-    showToast('배정 실패: '+e.message);
+    console.error('[mcqPublish] 실패', e);
+    showToast('배정 실패: '+(e?.message || e));
   }
 };
