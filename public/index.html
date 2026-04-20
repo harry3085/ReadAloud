@@ -123,6 +123,8 @@
         <div class="menu-card c-orange" onclick="goReadingMcq()" style="position:relative;"><span id="mcqBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">본문 이해 · 객관식</div><div class="card-name">교재<br>이해</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">menu_book</span></div>
         <!-- 4. 빈칸채우기 (NEW, Phase 3에서 기능 활성화) -->
         <div class="menu-card c-yellow" onclick="goFillBlank()" style="position:relative;"><span id="blankBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 빈칸 맞추기</div><div class="card-name">빈칸<br>채우기</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">edit_note</span></div>
+        <!-- 5. 녹음숙제 (AI) -->
+        <div class="menu-card c-purple" onclick="goRecAi()" style="position:relative;"><span id="recBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">AI 발음 평가</div><div class="card-name">녹음<br>숙제</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">mic</span></div>
         <!-- 6. 랭킹 (기존) -->
         <div class="menu-card c-green" onclick="goRanking()"><div><div class="card-label">그룹 순위</div><div class="card-name">랭킹</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">leaderboard</span></div>
       </div>
@@ -396,6 +398,25 @@
       <button class="reset-btn" onclick="uqReset()" title="초기화" style="opacity:0.3;">R</button>
       <button class="submit-btn" id="uqSubmitBtn" onclick="uqNext()" disabled>제출 ▶</button>
       <button class="skip-btn" onclick="uqSkip()">SKIP</button>
+    </div>
+  </div>
+
+  <!-- AI 녹음숙제 목록 -->
+  <div id="recAiList" class="screen">
+    <div style="background:linear-gradient(150deg,#8B5CF6,#6D28D9);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">녹음 숙제</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">문장을 또박또박 읽어 녹음하고 AI 피드백을 받으세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="scroll-content" style="padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">진행 중 / 미완료</div>
+        <div id="raListPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
+        <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
+        <div id="raListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div></div>
+      </div>
     </div>
   </div>
 

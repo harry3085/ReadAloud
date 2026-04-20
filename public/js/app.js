@@ -166,7 +166,7 @@ async function updateAllBadges(force=false){
   const now = Date.now();
   if(!force && now - _badgeCache.ts < BADGE_TTL) return;
   _badgeCache.ts = now;
-  await Promise.all([updateTestBadge(), updateUnscBadge(), updateMcqBadge(), updateFbBadge()]);
+  await Promise.all([updateTestBadge(), updateUnscBadge(), updateMcqBadge(), updateFbBadge(), updateRecBadge()]);
 }
 async function updateTestBadge(){
   const badge = document.getElementById('testBadge');
@@ -1108,8 +1108,84 @@ window.quitFillBlank = async () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI 녹음숙제 (genTests.testMode='recording-ai') - Phase 5
-// 기존 recHw 시스템과 별도. 독립적 화면/로직.
 // ═══════════════════════════════════════════════════════════════════════════
+
+window.goRecAi = async () => {
+  show('recAiList');
+  await loadRecAiList();
+};
+
+async function loadRecAiList(){
+  const elP = document.getElementById('raListPending');
+  const elC = document.getElementById('raListCompleted');
+  if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  try{
+    const myGroup = userProfile?.group || '';
+    const myUid = currentUser?.uid || '';
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording-ai');
+
+    const completedMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedMap.set(t.id, d.data().score ?? null);
+      }catch(e){}
+    }));
+
+    const pending = myTests.filter(t => !completedMap.has(t.id));
+    const completed = myTests.filter(t => completedMap.has(t.id));
+    const mk = (t, done, score) => {
+      const qCount = t.questionCount || t.questions?.length || 0;
+      const name = (t.name||'AI 녹음 시험').replace(/'/g,"\\'");
+      const onc = done ? `viewRecAiResult('${t.id}')` : `startRecAi('${t.id}','${name}')`;
+      const badge = done
+        ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${score!=null?' '+score+'점':''}</span>`
+        : `<span style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:20px;">AI · ${qCount}문장</span>`;
+      return `<div class="unit-card" onclick="${onc}">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="unit-name">🎙 ${esc(t.name||'AI 녹음 시험')}</div>${badge}
+          </div>
+          <div class="unit-count">${esc(t.bookName||'')}${t.date?' · '+esc(t.date):''}</div>
+        </div>
+        <span class="unit-arrow" style="color:${done?'#059669':''};">${done?'📊':'›'}</span>
+      </div>`;
+    };
+
+    if(elP) elP.innerHTML = pending.length
+      ? pending.map(t => mk(t,false,null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 숙제가 없습니다.</div>';
+    if(elC) elC.innerHTML = completed.length
+      ? completed.map(t => mk(t,true,completedMap.get(t.id))).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div>';
+  }catch(e){
+    console.error(e);
+    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+async function updateRecBadge(){
+  const badge = document.getElementById('recBadge');
+  if(!badge || !currentUser || !userProfile) return;
+  try{
+    const myGroup = userProfile.group || '';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const mine = filterMyTests(snap.docs.map(d=>({id:d.id,...d.data()})), myGroup, myUid)
+      .filter(t => t.testMode === 'recording-ai');
+    let count = 0;
+    await Promise.all(mine.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(!d.exists()) count++;
+      }catch(e){}
+    }));
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = count > 0 ? 'flex' : 'none';
+  }catch(e){ badge.style.display = 'none'; }
+}
 
 let _raState = {
   test: null,
