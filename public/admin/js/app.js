@@ -6410,6 +6410,11 @@ function _qgRender() {
             ✨ AI 로 문제 생성
           </button>
           <div id="qgStatus" style="margin-top:8px;font-size:11px;color:var(--gray);text-align:center;min-height:16px;"></div>
+
+          <button class="btn btn-secondary" onclick="qgOpenPromptModal()"
+            style="width:100%;padding:7px;font-size:11px;margin-top:10px;" id="qgPromptBtn">
+            📋 AI 프롬프트 보기 / 수정
+          </button>
         </div>
       </div>
 
@@ -6719,7 +6724,7 @@ async function _qgCallMcq(opts) {
     const res = await fetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq' }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -6772,6 +6777,7 @@ async function _qgCallFillBlank(opts) {
         count: opts.count,
         type: 'fill_blank',
         blanksPerSentence: opts.blanksPerSentence,
+        customSystemPrompt: _qgGetCustomPrompt('fill_blank') || undefined,
       }),
     });
     const data = await res.json();
@@ -6933,7 +6939,7 @@ async function _qgCallSubjective(opts) {
     const res = await fetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective' }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -8757,3 +8763,151 @@ window.tpToggleTestProgress = async (testId) => {
 
 // _renderTestAssignDetail 을 window 에 노출 (onclick="_renderTestAssignDetail(...)" 지원)
 window._renderTestAssignDetail = _renderTestAssignDetail;
+
+// ══════════════════════════════════════════════════════════════════════════
+// AI 프롬프트 보기 / 수정 (유형별 시스템 프롬프트 커스터마이징)
+// ══════════════════════════════════════════════════════════════════════════
+// 사용자 정의 프롬프트는 localStorage('ai_prompt_custom_<type>') 에 저장되어
+// 관리자 디바이스별로 독립 관리. 저장된 경우 생성 API 호출 시 동반 전송.
+
+const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective'];
+const _qgAiPromptDefaults = {};  // API GET 으로 로드 후 캐시
+let _qgPromptEditingType = 'mcq';
+
+function _qgGetCustomPrompt(type) {
+  try { return localStorage.getItem('ai_prompt_custom_' + type) || ''; }
+  catch { return ''; }
+}
+
+function _qgSetCustomPrompt(type, value) {
+  try {
+    if (value && value.trim()) localStorage.setItem('ai_prompt_custom_' + type, value);
+    else localStorage.removeItem('ai_prompt_custom_' + type);
+  } catch(e) { console.warn(e); }
+}
+
+async function _qgFetchDefaultPrompt(type) {
+  if (_qgAiPromptDefaults[type]) return _qgAiPromptDefaults[type];
+  try {
+    const res = await fetch('/api/generate-quiz?type=' + encodeURIComponent(type));
+    const data = await res.json();
+    if (data.success && data.prompt) {
+      _qgAiPromptDefaults[type] = data.prompt;
+      return data.prompt;
+    }
+  } catch(e) { console.warn('prompt fetch:', e); }
+  return '';
+}
+
+window.qgOpenPromptModal = async () => {
+  _qgPromptEditingType = _qgAiPromptTypes.includes(_qgCurrentType) ? _qgCurrentType : 'mcq';
+
+  const html = `
+    <div style="width:min(820px,94vw);max-height:92vh;display:flex;flex-direction:column;">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:16px;font-weight:700;">📋 AI 프롬프트 편집</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">
+          유형별 시스템 프롬프트를 확인·수정합니다. 저장 시 이 브라우저에만 적용 (localStorage).
+        </div>
+      </div>
+
+      <div id="qgPromptTabs" style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;"></div>
+
+      <div style="padding:12px 20px 6px;flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;">
+        <div id="qgPromptStatus" style="font-size:11px;color:var(--gray);margin-bottom:8px;">로딩 중...</div>
+        <textarea id="qgPromptText" rows="20"
+          style="width:100%;flex:1;min-height:320px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,Consolas,monospace;line-height:1.5;resize:vertical;"></textarea>
+        <div style="font-size:10px;color:var(--gray);margin-top:6px;">
+          💡 팁: 규칙·출력 JSON 형식을 바꾸면 파싱 실패로 이어질 수 있습니다. 수정 후 "AI 문제 생성" 으로 실제 테스트하세요.
+        </div>
+      </div>
+
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;">
+        <button class="btn btn-secondary" onclick="qgResetPrompt()" style="font-size:12px;">↺ 기본값으로 복원</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
+          <button class="btn btn-primary" onclick="qgSavePrompt()" style="font-size:12px;font-weight:700;">💾 저장</button>
+        </div>
+      </div>
+    </div>
+  `;
+  showModal(html);
+  _qgRenderPromptTabs();
+  await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
+};
+
+function _qgRenderPromptTabs() {
+  const tabs = document.getElementById('qgPromptTabs');
+  if (!tabs) return;
+  tabs.innerHTML = _qgAiPromptTypes.map(t => {
+    const cfg = QG_TYPE_OPTIONS[t];
+    const active = t === _qgPromptEditingType;
+    const hasCustom = !!_qgGetCustomPrompt(t);
+    return `<button onclick="qgSwitchPromptTab('${t}')" class="btn ${active?'btn-primary':'btn-secondary'}" style="font-size:12px;padding:5px 12px;">
+      ${cfg.icon} ${esc(cfg.label)}${hasCustom?' <span style="color:#c47;">●</span>':''}
+    </button>`;
+  }).join('');
+}
+
+async function _qgLoadPromptIntoTextarea(type) {
+  const textarea = document.getElementById('qgPromptText');
+  const status = document.getElementById('qgPromptStatus');
+  if (!textarea || !status) return;
+
+  const custom = _qgGetCustomPrompt(type);
+  if (custom) {
+    textarea.value = custom;
+    status.innerHTML = '<span style="color:#c47;font-weight:700;">● 사용자 정의 프롬프트 활성 (저장됨)</span>';
+    return;
+  }
+  status.innerHTML = '기본값 로딩 중...';
+  textarea.value = '';
+  const def = await _qgFetchDefaultPrompt(type);
+  textarea.value = def || '';
+  if (def) {
+    status.innerHTML = '<span style="color:var(--gray);">기본 프롬프트 — 수정 후 [저장] 하면 이 유형에만 적용됩니다</span>';
+  } else {
+    status.innerHTML = '<span style="color:#c33;">기본 프롬프트 로드 실패</span>';
+  }
+}
+
+window.qgSwitchPromptTab = async (type) => {
+  if (!_qgAiPromptTypes.includes(type)) return;
+  _qgPromptEditingType = type;
+  _qgRenderPromptTabs();
+  await _qgLoadPromptIntoTextarea(type);
+};
+
+window.qgSavePrompt = () => {
+  const textarea = document.getElementById('qgPromptText');
+  if (!textarea) return;
+  const val = (textarea.value || '').trim();
+  if (val.length < 20) {
+    showToast('프롬프트가 너무 짧습니다 (최소 20자)');
+    return;
+  }
+  const def = (_qgAiPromptDefaults[_qgPromptEditingType] || '').trim();
+  const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
+  if (def && val === def) {
+    _qgSetCustomPrompt(_qgPromptEditingType, '');
+    showToast(`${label}: 기본값과 동일 → 사용자 정의 해제`);
+  } else {
+    _qgSetCustomPrompt(_qgPromptEditingType, val);
+    showToast(`✓ ${label} 프롬프트 저장됨`);
+  }
+  _qgRenderPromptTabs();
+  _qgLoadPromptIntoTextarea(_qgPromptEditingType);
+};
+
+window.qgResetPrompt = async () => {
+  const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
+  if (!_qgGetCustomPrompt(_qgPromptEditingType)) {
+    showToast('이미 기본값 사용 중');
+    return;
+  }
+  if (!(await showConfirm('기본값으로 복원?', `${label}의 사용자 정의가 삭제됩니다.`))) return;
+  _qgSetCustomPrompt(_qgPromptEditingType, '');
+  showToast('기본값으로 복원됨');
+  _qgRenderPromptTabs();
+  await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
+};

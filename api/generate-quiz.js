@@ -144,9 +144,20 @@ Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSO
 
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(204).end();
+  }
+  // GET: 기본 프롬프트 조회 (관리자 UI에서 편집용)
+  if (req.method === 'GET') {
+    const t = req.query?.type;
+    if (t) {
+      if (SYSTEM_PROMPTS[t]) {
+        return res.status(200).json({ success: true, type: t, prompt: SYSTEM_PROMPTS[t] });
+      }
+      return res.status(400).json({ error: `Unknown type: ${t}` });
+    }
+    return res.status(200).json({ success: true, prompts: SYSTEM_PROMPTS });
   }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -158,7 +169,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { pages, count, type } = req.body || {};
+    const { pages, count, type, customSystemPrompt } = req.body || {};
 
     // ─── 입력 검증 ───
     if (!Array.isArray(pages) || pages.length === 0) {
@@ -189,7 +200,10 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 프롬프트 구성 ───
-    const systemPrompt = SYSTEM_PROMPTS[quizType];
+    // 사용자 정의 프롬프트가 있으면 우선 사용 (최소 길이 20자)
+    const systemPrompt = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim().length >= 20)
+      ? customSystemPrompt.trim()
+      : SYSTEM_PROMPTS[quizType];
     const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, req.body || {});
 
     // ─── Gemini API 호출 (폴백 체인) ───
