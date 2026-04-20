@@ -1738,13 +1738,14 @@ window.showModal = (html, opts = {}) => {
   mc.innerHTML = html;
   const box = document.getElementById('modalBox');
   if (opts.fullFlex) {
-    // 푸터를 하단 고정 + 내부 영역만 스크롤 하는 전용 모드
+    // 푸터를 하단 고정 + 내부 영역만 스크롤 + resize 추적 전용 모드
     box.style.padding = '0';
     box.style.overflow = 'hidden';
-    box.style.width = '';
-    box.style.maxWidth = '94vw';
-    box.style.height = '80vh';
-    box.style.maxHeight = '92vh';
+    box.style.width = opts.width || 'min(860px, 94vw)';   // 시작 폭 (사용자 resize 가능)
+    box.style.maxWidth = '96vw';
+    box.style.height = opts.height || '80vh';             // 시작 높이 (사용자 resize 가능)
+    box.style.maxHeight = '96vh';
+    box.style.minWidth = '360px';
     box.style.minHeight = '360px';
     box.style.display = 'flex';
     box.style.flexDirection = 'column';
@@ -1759,8 +1760,11 @@ window.showModal = (html, opts = {}) => {
     // 기본 스타일 원복
     box.style.padding = '';
     box.style.overflow = '';
+    box.style.width = '';
+    box.style.maxWidth = '';
     box.style.height = '';
     box.style.maxHeight = '';
+    box.style.minWidth = '';
     box.style.minHeight = '';
     box.style.display = '';
     box.style.flexDirection = '';
@@ -7613,7 +7617,7 @@ window.qsViewDetail = async (setId) => {
   if (!s) { showToast('세트를 찾을 수 없음'); return; }
 
   const html = `
-    <div style="width:min(720px,94vw);flex:1;display:flex;flex-direction:column;min-height:0;">
+    <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${esc(s.name)}</div>
         <div style="font-size:12px;color:var(--gray);">
@@ -7790,7 +7794,7 @@ function _qsRenderEditModal() {
   if (!st) return;
   const typeLabel = { mcq:'객관식', fill_blank:'빈칸채우기' }[st.sourceType] || st.sourceType;
   const html = `
-    <div style="width:min(860px,94vw);flex:1;display:flex;flex-direction:column;min-height:0;">
+    <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:17px;font-weight:700;">✏️ 문제 세트 수정</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
