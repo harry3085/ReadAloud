@@ -139,7 +139,7 @@ async function updateAllBadges(force=false){
   const now = Date.now();
   if(!force && now - _badgeCache.ts < BADGE_TTL) return;
   _badgeCache.ts = now;
-  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge(), updateMcqBadge()]);
+  await Promise.all([updateTestBadge(), updateUnscBadge(), updateRecBadge(), updateMcqBadge(), updateFbBadge()]);
 }
 async function updateTestBadge(){
   const badge = document.getElementById('testBadge');
@@ -188,6 +188,42 @@ async function updateMcqBadge(){
     const myTests = allTests.filter(t => {
       if(!t.active && t.active !== undefined) return false;
       if(t.testMode !== 'reading-mcq') return false;
+      const targets = t.targets || [];
+      if(!targets.length){
+        return (t.targetType==='class'&&t.targetId===myGroup)
+          ||(t.targetType==='student'&&t.targetId===myUid)
+          ||(t.targetId===myGroup);
+      }
+      return targets.some(tg => (tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
+    });
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedSet.add(t.id);
+      }catch(e){ console.warn(e); }
+    }));
+    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
+    if(unfinished > 0){
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }catch(e){ badge.style.display='none'; }
+}
+
+async function updateFbBadge(){
+  const badge = document.getElementById('blankBadge');
+  if(!badge || !currentUser || !userProfile) return;
+  try{
+    const myGroup = userProfile.group||'';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const myTests = allTests.filter(t => {
+      if(!t.active && t.active !== undefined) return false;
+      if(t.testMode !== 'fill-blank') return false;
       const targets = t.targets || [];
       if(!targets.length){
         return (t.targetType==='class'&&t.targetId===myGroup)
@@ -382,9 +418,10 @@ window.goReadingMcq = async () => {
   await loadReadingMcqList();
 };
 
-// ─── 빈칸채우기 카드 — Phase 1 플레이스홀더, Phase 3에서 기능 구현 ───
-window.goFillBlank = () => {
+// ─── 빈칸채우기 카드 (Phase 3 활성화) ───
+window.goFillBlank = async () => {
   show('fillBlankList');
+  await loadFillBlankList();
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -646,6 +683,310 @@ function _mcqRenderResult({correct, wrong, total, score, passed, passScore}){
 }
 
 window.quitReadingMcq = async () => {
+  if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  goHome();
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 빈칸채우기 (Fill Blank) - Phase 3
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _fbState = {
+  test: null,
+  questions: [],
+  currentIdx: 0,
+  answers: [],
+};
+let _fbScreenTemplate = null;  // 결과 화면이 innerHTML 덮어쓰므로 원본 캐시
+
+async function loadFillBlankList(){
+  const elP = document.getElementById('fbListPending');
+  const elC = document.getElementById('fbListCompleted');
+  if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+
+  try{
+    const myGroup = userProfile?.group || '';
+    const myUid = currentUser?.uid || '';
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'fill-blank');
+
+    const completedMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try{
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if(d.exists()) completedMap.set(t.id, d.data().score ?? null);
+      }catch(e){ console.warn(e); }
+    }));
+
+    const pending = myTests.filter(t => !completedMap.has(t.id));
+    const completed = myTests.filter(t => completedMap.has(t.id));
+
+    const oc = (id, name) => `startFillBlank('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+
+    if(elP) elP.innerHTML = pending.length
+      ? pending.map(t => _fbMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
+    if(elC) elC.innerHTML = completed.length
+      ? completed.map(t => _fbMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  }catch(e){
+    console.error(e);
+    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+function _fbMakeCard(t, isCompleted, onclick, completedScore){
+  const qCount = t.questionCount || t.questions?.length || 0;
+  const passScore = t.passScore ?? 80;
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${esc(t.name||'빈칸 시험')}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            : `<span style="font-size:11px;background:#fefce8;color:#CA8A04;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">✏️ ${esc(t.bookName||'빈칸 채우기')} · ${qCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+    </div>`;
+}
+
+window.startFillBlank = async (testId, testName) => {
+  try{
+    const snap = await getDoc(doc(db,'genTests',testId));
+    if(!snap.exists()){ showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    const questions = (test.questions || []).filter(q => q.type === 'fill_blank' || q.blanks);
+    if(questions.length === 0){ showToast('문제가 비어있습니다.'); return; }
+
+    // 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 복원
+    const screen = document.getElementById('fillBlank');
+    if(screen && _fbScreenTemplate && !screen.querySelector('#fbProgressBar')){
+      screen.innerHTML = _fbScreenTemplate;
+    } else if(screen && !_fbScreenTemplate){
+      _fbScreenTemplate = screen.innerHTML;
+    }
+
+    _fbState = {
+      test,
+      questions,
+      currentIdx: 0,
+      answers: questions.map(q => new Array((q.blanks||[]).length).fill('')),
+    };
+
+    show('fillBlank');
+    _fbRenderStep();
+  }catch(e){
+    console.error(e);
+    showToast('시험 시작 실패: ' + e.message);
+  }
+};
+
+function _fbRenderStep(){
+  const s = _fbState;
+  const q = s.questions[s.currentIdx];
+  if(!q) return;
+
+  const pct = Math.round(((s.currentIdx+1) / s.questions.length) * 100);
+  const bar = document.getElementById('fbProgressBar');
+  const txt = document.getElementById('fbProgressText');
+  if(bar) bar.style.width = pct + '%';
+  if(txt) txt.textContent = `${s.currentIdx+1} / ${s.questions.length}`;
+
+  const qKoEl = document.getElementById('fbQuestionKo');
+  if(qKoEl) qKoEl.textContent = q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.';
+
+  const sentEl = document.getElementById('fbSentence');
+  if(sentEl){
+    const parts = (q.sentence||'').split('___');
+    const curAnswers = s.answers[s.currentIdx] || [];
+    let html = '';
+    for(let i = 0; i < parts.length; i++){
+      html += esc(parts[i]);
+      if(i < parts.length - 1){
+        const blankAnswer = q.blanks?.[i] || '';
+        const letterCount = blankAnswer.length;
+        const curVal = curAnswers[i] || '';
+        const width = Math.max(letterCount * 14, 60);
+        html += `<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 3px;">
+          <input type="text"
+            id="fb-input-${i}"
+            value="${esc(curVal)}"
+            oninput="fbUpdateAnswer(${i}, this.value)"
+            onkeydown="fbInputKey(event, ${i})"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="${'□'.repeat(letterCount)}"
+            style="width:${width}px;padding:4px 8px;border:none;border-bottom:2px solid #CA8A04;background:#FEF3C7;font-size:16px;font-weight:700;color:#92400E;text-align:center;outline:none;font-family:inherit;">
+          <span style="font-size:10px;color:#CA8A04;margin-top:2px;">${letterCount}자</span>
+        </span>`;
+      }
+    }
+    sentEl.innerHTML = html;
+  }
+
+  const btn = document.getElementById('fbNextBtn');
+  if(btn){
+    const isLast = s.currentIdx === s.questions.length - 1;
+    btn.textContent = isLast ? '제출하기' : '다음';
+    btn.style.background = isLast ? '#059669' : '#EAB308';
+  }
+
+  setTimeout(() => {
+    const first = document.getElementById('fb-input-0');
+    if(first) first.focus();
+  }, 50);
+}
+
+window.fbUpdateAnswer = (blankIdx, value) => {
+  const s = _fbState;
+  if(!s.answers[s.currentIdx]) s.answers[s.currentIdx] = [];
+  s.answers[s.currentIdx][blankIdx] = value;
+};
+
+window.fbInputKey = (event, blankIdx) => {
+  if(event.key !== 'Enter') return;
+  event.preventDefault();
+  const q = _fbState.questions[_fbState.currentIdx];
+  const total = (q.blanks||[]).length;
+  if(blankIdx < total - 1){
+    const nxt = document.getElementById('fb-input-' + (blankIdx+1));
+    if(nxt) nxt.focus();
+  } else {
+    fbNext();
+  }
+};
+
+window.fbNext = async () => {
+  const s = _fbState;
+  if(s.currentIdx < s.questions.length - 1){
+    s.currentIdx++;
+    _fbRenderStep();
+  } else {
+    await _fbSubmit();
+  }
+};
+
+async function _fbSubmit(){
+  const s = _fbState;
+  const t = s.test;
+  if(!t || !currentUser) return;
+
+  let totalBlanks = 0;
+  let correctBlanks = 0;
+  const detail = [];
+
+  s.questions.forEach((q, i) => {
+    const blanks = q.blanks || [];
+    const ans = s.answers[i] || [];
+    let qCorrect = 0;
+    blanks.forEach((correct, j) => {
+      totalBlanks++;
+      const user = (ans[j] || '').trim().toLowerCase();
+      const target = String(correct || '').trim().toLowerCase();
+      if(user && user === target){
+        correctBlanks++;
+        qCorrect++;
+      }
+    });
+    detail.push({correct: qCorrect, total: blanks.length});
+  });
+
+  const score = totalBlanks ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
+  const passScore = t.passScore ?? 80;
+  const passed = score >= passScore;
+  const today = new Date().toISOString().slice(0,10);
+
+  try{
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid,
+      userId: currentUser.uid,
+      userName: userProfile?.name || '',
+      name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id,
+      testName: t.name || '',
+      unitId: t.id,
+      unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'fill-blank',
+      score,
+      correct: correctBlanks,
+      wrong: totalBlanks - correctBlanks,
+      total: totalBlanks,
+      passed, passScore,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+
+    try{
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score, date: today,
+          completedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }catch(e){ console.warn('genTest 완료 기록 실패', e); }
+  }catch(e){
+    console.error(e);
+    showToast('점수 저장 실패: ' + e.message);
+  }
+
+  _fbRenderResult({
+    correct: correctBlanks,
+    wrong: totalBlanks - correctBlanks,
+    total: totalBlanks,
+    score, passed, passScore,
+    detail,
+  });
+}
+
+function _fbRenderResult({correct, wrong, total, score, passed, passScore}){
+  const screen = document.getElementById('fillBlank');
+  if(!screen) return;
+  // 원본 템플릿 저장 (아직 저장 안됐으면)
+  if(!_fbScreenTemplate) _fbScreenTemplate = screen.innerHTML;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">
+        ${passed ? '통과!' : '아쉬워요'}
+      </div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">
+        통과 기준 ${passScore}점
+      </div>
+      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
+        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#CA8A04'};line-height:1;">${score}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체 빈칸</div></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:20px;max-width:340px;">
+        ※ 각 빈칸 = 1점씩 부분점수로 채점됩니다
+      </div>
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
+        <button onclick="goFillBlank()" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      </div>
+    </div>
+  `;
+  updateFbBadge();
+}
+
+window.quitFillBlank = async () => {
   if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
   goHome();
 };

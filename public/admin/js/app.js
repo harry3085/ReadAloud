@@ -6182,9 +6182,9 @@ const QG_TYPE_OPTIONS = {
   'fill_blank': {
     label: '빈칸채우기',
     icon: '✏️',
-    enabled: false,
-    phaseLabel: 'Phase 3',
-    noteHint: 'Phase 3 에서 AI 빈칸 문제 생성이 활성화됩니다.',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문 문장에서 단어를 가리고 빈칸을 채우는 문제를 만듭니다.',
     options: [
       { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:20 },
       { key:'difficulty',        label:'난이도(학년)',       type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
@@ -6690,6 +6690,8 @@ window.qgGenerate = async () => {
 
   if (type === 'mcq') {
     await _qgCallMcq(opts);
+  } else if (type === 'fill_blank') {
+    await _qgCallFillBlank(opts);
   } else {
     showToast('지원되지 않는 유형입니다');
   }
@@ -6712,6 +6714,51 @@ async function _qgCallMcq(opts) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq' }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now()-t0)/1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
+      return;
+    }
+
+    _qgGenerated = data.questions || [];
+    _qgExcluded.clear();
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
+
+    _qgShowResultModal(data);
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ─── Fill-blank API 호출 (Phase 3) ───
+async function _qgCallFillBlank(opts) {
+  const btn = document.getElementById('qgGenBtn');
+  const status = document.getElementById('qgStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+
+  const selectedPages = (_genPages||[])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
+
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'fill_blank',
+        blanksPerSentence: opts.blanksPerSentence,
+      }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -6783,22 +6830,46 @@ function _qgRenderQuestion(q, idx) {
   const diffLabel = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty] || q.difficulty;
   const diffColor = {easy:'#2e7d32',medium:'#e65100',hard:'#c62828'}[q.difficulty] || '#888';
   const diffBg = {easy:'#e8f5e9',medium:'#fff3e0',hard:'#ffebee'}[q.difficulty] || '#f5f5f5';
+
+  let body = '';
+  if (q.type === 'fill_blank') {
+    const parts = (q.sentence||'').split('___');
+    let sentHtml = '';
+    for (let i = 0; i < parts.length; i++) {
+      sentHtml += esc(parts[i]);
+      if (i < parts.length - 1) {
+        const ans = q.blanks?.[i] || '';
+        sentHtml += `<span style="display:inline-block;min-width:50px;padding:1px 8px;margin:0 2px;border-bottom:2px solid #4caf50;background:#e8f5e9;color:#2e7d32;font-weight:700;font-size:12px;">${esc(ans)}</span>`;
+      }
+    }
+    body = `
+      <div style="font-size:14px;line-height:1.8;margin-bottom:6px;">${sentHtml}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">${esc(q.questionKo||'')}</div>
+      <div style="font-size:11px;color:#666;background:#f5f5f5;padding:5px 10px;border-radius:4px;">정답 ${(q.blanks||[]).length}개: ${(q.blanks||[]).map(b => `<code style="background:#fff;padding:1px 6px;border-radius:3px;color:#2e7d32;font-weight:700;">${esc(b)}</code>`).join(' · ')}</div>
+    `;
+  } else {
+    body = `
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${esc(q.question)}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">${esc(q.questionKo)}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${(q.choices||[]).map((c,j) => `
+          <div style="padding:6px 10px;border-radius:4px;font-size:12px;${c.isAnswer?'background:#e8f5e9;border:1px solid #4caf50;font-weight:600;':'background:#f5f5f5;'}">
+            ${['①','②','③','④'][j]} ${esc(c.text)}${c.isAnswer?' ✓':''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;${excluded?'opacity:0.35;background:#fafafa;':''}">
     <div style="display:flex;gap:10px;align-items:start;">
       <input type="checkbox" ${excluded?'':'checked'} onchange="qgToggleExclude(${idx})" style="margin-top:3px;">
       <div style="flex:1;">
         <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px;">
-          <div style="font-size:14px;font-weight:600;">${idx+1}. ${esc(q.question)}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--gray);">${idx+1}. ${q.type==='fill_blank'?'✏️':'📖'}</div>
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${diffBg};color:${diffColor};font-weight:600;margin-left:8px;flex-shrink:0;">${esc(diffLabel)}</span>
         </div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">${esc(q.questionKo)}</div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          ${q.choices.map((c,j) => `
-            <div style="padding:6px 10px;border-radius:4px;font-size:12px;${c.isAnswer?'background:#e8f5e9;border:1px solid #4caf50;font-weight:600;':'background:#f5f5f5;'}">
-              ${['①','②','③','④'][j]} ${esc(c.text)}${c.isAnswer?' ✓':''}
-            </div>
-          `).join('')}
-        </div>
+        ${body}
         ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
         <div style="font-size:10px;color:#aaa;margin-top:6px;font-family:monospace;">출처: ${esc(q.sourcePageTitle||q.sourcePageId)}</div>
       </div>
@@ -7360,9 +7431,9 @@ const _TEST_TYPE_CONFIG = {
     kindLabel: '빈칸',
     sourceType: 'fill_blank',
     testMode: 'fill-blank',
-    enabled: false,
-    phaseLabel: 'Phase 3',
-    hint: 'Phase 3 에서 AI 빈칸 문제 생성·배정이 활성화됩니다.',
+    enabled: true,
+    phaseLabel: null,
+    hint: '본문 문장의 단어를 가리고 학생이 채우는 시험입니다.',
   },
   'subj': {
     rootId: 'subjAssignRoot',

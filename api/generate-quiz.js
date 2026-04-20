@@ -64,6 +64,46 @@ RULES:
 }
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+
+  fill_blank: `You are an English fill-in-the-blank exercise generator for Korean middle/high school students.
+
+Your task is to create fill-in-the-blank questions based on given English passages.
+
+RULES:
+1. Each question is ONE sentence from the passage (or slightly modified for clarity).
+
+2. Mark 1-K words as blanks per sentence, where K is given by the user (blanksPerSentence option).
+   Prefer meaningful CONTENT words: nouns, main verbs, adjectives, adverbs.
+   AVOID masking: articles (a/an/the), prepositions, pronouns, common auxiliary verbs (is/are/was).
+
+3. Replace each blank word with exactly "___" (three underscores) in the sentence field.
+   Keep surrounding punctuation and capitalization intact.
+
+4. List the blank answers in order as they appear in the sentence, inside the "blanks" array.
+   Use the exact form from the passage (matching case/number/tense).
+
+5. Difficulty distribution (if generating multiple):
+   - About 30% easy (short, common words)
+   - About 50% medium (content words requiring comprehension)
+   - About 20% hard (less common words, inference required)
+
+6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "fill_blank",
+      "sentence": "The young ___ quickly ___ the letter to his friend.",
+      "blanks": ["boy", "sent"],
+      "questionKo": "문장의 빈칸에 알맞은 단어를 쓰세요.",
+      "explanation": "본문에서 a young boy가 친구에게 편지를 보내는 장면",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 };
 
 module.exports = async function handler(req, res) {
@@ -114,7 +154,7 @@ module.exports = async function handler(req, res) {
 
     // ─── 프롬프트 구성 ───
     const systemPrompt = SYSTEM_PROMPTS[quizType];
-    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType);
+    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, req.body || {});
 
     // ─── Gemini API 호출 (폴백 체인) ───
     let lastError = null;
@@ -166,7 +206,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 결과 검증 & 정제 ───
-    const validators = { mcq: validateMCQ };
+    const validators = { mcq: validateMCQ, fill_blank: validateFillBlank };
     const validated = validators[quizType](parsed.questions || [], normalizedPages);
 
     return res.status(200).json({
@@ -225,13 +265,20 @@ async function callGemini(model, apiKey, systemPrompt, userPrompt) {
   return { ok: true, text, usage: data.usageMetadata || null };
 }
 
-function buildUserPrompt(pages, count, type) {
+function buildUserPrompt(pages, count, type, opts) {
   const passages = pages.map((p, i) =>
     `[Passage ${i + 1}]\nID: ${p.id}\nTitle: ${p.title}\n---\n${p.text}\n---`
   ).join('\n\n');
 
+  const blanksPerSentence = Math.min(Math.max(parseInt(opts?.blanksPerSentence) || 1, 1), 5);
+
   const typeInstructions = {
     mcq: `Please generate ${count} 4-choice multiple-choice questions.
+- Distribute questions across all passages (if multiple)
+- Include sourcePageId matching the passage the question is based on
+- Vary difficulty levels`,
+    fill_blank: `Please generate ${count} fill-in-the-blank questions.
+- Each question should mask approximately ${blanksPerSentence} word(s) per sentence (blanksPerSentence=${blanksPerSentence}).
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels`,
@@ -309,6 +356,52 @@ function validateMCQ(questions, pages) {
         question,
         questionKo,
         choices,
+        explanation: String(q.explanation || '').trim().slice(0, 500),
+        sourcePageId,
+        sourcePageTitle,
+        difficulty,
+      };
+    })
+    .filter(Boolean);
+}
+
+function validateFillBlank(questions, pages) {
+  if (!Array.isArray(questions)) return [];
+
+  const validPageIds = new Set(pages.map(p => p.id));
+  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+
+  return questions
+    .map(q => {
+      if (!q || typeof q !== 'object') return null;
+
+      const sentence = String(q.sentence || '').trim();
+      if (!sentence || sentence.length < 8) return null;
+
+      const markerCount = (sentence.match(/___/g) || []).length;
+      if (markerCount < 1 || markerCount > 5) return null;
+
+      if (!Array.isArray(q.blanks) || q.blanks.length !== markerCount) return null;
+
+      const blanks = q.blanks.map(b => String(b || '').trim());
+      if (blanks.some(b => !b || b.length > 40)) return null;
+
+      const questionKo = String(q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.').trim();
+
+      const sourcePageId = validPageIds.has(q.sourcePageId)
+        ? q.sourcePageId
+        : (pages[0]?.id || '');
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+
+      const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty
+        : 'medium';
+
+      return {
+        type: 'fill_blank',
+        sentence,
+        blanks,
+        questionKo,
         explanation: String(q.explanation || '').trim().slice(0, 500),
         sourcePageId,
         sourcePageTitle,
