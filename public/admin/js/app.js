@@ -6619,12 +6619,21 @@ let _mcqTargets = [];
 
 window.loadMcqAssign = async () => {
   try {
+    // where('sourceType',…) + orderBy(createdAt) 복합 쿼리는 과거 저장 데이터의
+    // sourceType 필드 편차(미입력/대소문자/다른 표기) 및 복합 인덱스 부재에 취약.
+    // 전체 로드 후 클라이언트에서 MCQ 계열만 필터한다.
     const snap = await getDocs(query(
       collection(db,'genQuestionSets'),
-      where('sourceType','==','mcq'),
       orderBy('createdAt','desc')
     ));
-    _mcqSets = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    _mcqSets = snap.docs
+      .map(d => ({ id:d.id, ...d.data() }))
+      .filter(s => {
+        const t = String(s.sourceType || '').toLowerCase();
+        // sourceType 이 없으면 MCQ 로 간주(현재 AI 문제 생성은 MCQ 단일 유형)
+        if (!t) return true;
+        return t === 'mcq' || t.includes('multiple') || t.includes('choice') || t === '객관식';
+      });
   } catch(e) {
     console.error(e);
     showToast('문제 세트 로드 실패: '+e.message);
