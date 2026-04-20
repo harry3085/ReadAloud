@@ -1753,8 +1753,10 @@ async function _rv2Submit() {
           console.warn(`[rv2Submit] check ${i+1} failed`, res.status, data);
           return { round: i + 1, score: 0, missedWords: [], note: `평가 실패: ${data?.error || res.status}`, error: true };
         }
-        console.log(`[rv2Submit] check ${i+1} score=${data.score}`);
-        return { round: i + 1, score: data.score, missedWords: data.missedWords || [], note: data.note || '' };
+        // 서버가 200 을 주지만 score=0 + note 가 있는 케이스 (JSON 파싱 실패, 오디오 인식 실패 등)
+        const isError = data.score === 0 && /해석하지 못|오디오 인식|평가 실패|Failed/i.test(data.note || '');
+        console.log(`[rv2Submit] check ${i+1} score=${data.score}${isError?' (err)':''}`);
+        return { round: i + 1, score: data.score, missedWords: data.missedWords || [], note: data.note || '', error: isError };
       } catch(e) {
         console.error(`[rv2Submit] check ${i+1} exception`, e);
         return { round: i + 1, score: 0, missedWords: [], note: '네트워크 에러: '+(e.message||''), error: true };

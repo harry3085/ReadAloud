@@ -3,8 +3,35 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = 'gemini-2.5-flash';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+// 과부하 시 순차 폴백 (generate-quiz.js 패턴)
+const MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+function extractJson(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch {}
+  let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try { return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+  return null;
+}
+
+function isOverloaded(status, data) {
+  if (status === 503 || status === 429) return true;
+  const st = data?.error?.status;
+  if (st === 'UNAVAILABLE' || st === 'RESOURCE_EXHAUSTED') return true;
+  const msg = String(data?.error?.message || '').toLowerCase();
+  if (msg.includes('overload') || msg.includes('unavailable') || msg.includes('high demand')) return true;
+  return false;
+}
 
 function buildCheckPrompt(originalText, evaluationSeconds) {
   return `You are evaluating a student's English reading recording.
@@ -117,34 +144,62 @@ module.exports = async (req, res) => {
     };
 
     const t0 = Date.now();
-    const gres = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reqBody),
-    });
-    const gdata = await gres.json();
+    let gres = null;
+    let gdata = null;
+    let modelUsed = null;
+    let lastErrorMsg = '';
+
+    for (const model of MODELS) {
+      const endpoint = `${BASE}/${model}:generateContent?key=${API_KEY}`;
+      try {
+        gres = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqBody),
+        });
+        gdata = await gres.json();
+        modelUsed = model;
+        if (gres.ok) break;
+        lastErrorMsg = gdata?.error?.message || `HTTP ${gres.status}`;
+        if (isOverloaded(gres.status, gdata)) {
+          console.warn(`[check-recording] ${model} overloaded → fallback`);
+          continue;
+        }
+        // overload 가 아닌 에러면 더 진행해도 의미 없음
+        break;
+      } catch (e) {
+        lastErrorMsg = e.message || 'fetch failed';
+        console.warn(`[check-recording] ${model} exception → fallback`, e.message);
+        continue;
+      }
+    }
     const elapsedMs = Date.now() - t0;
 
-    if (!gres.ok) {
-      console.error('Gemini error:', gdata);
-      res.status(gres.status).json({
+    if (!gres || !gres.ok) {
+      console.error('Gemini all models failed:', lastErrorMsg, gdata);
+      res.status(gres?.status || 502).json({
         success: false,
-        error: gdata.error?.message || 'Gemini API error',
+        error: lastErrorMsg || 'Gemini API error',
+        modelTried: MODELS.join(','),
       });
       return;
     }
 
     const textPart = gdata.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    let parsed;
-    try {
-      parsed = JSON.parse(textPart);
-    } catch (e) {
-      const cleaned = textPart.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-      try { parsed = JSON.parse(cleaned); }
-      catch (e2) {
-        res.status(500).json({ success: false, error: 'Failed to parse Gemini response', raw: textPart.slice(0, 300) });
-        return;
-      }
+    const parsed = extractJson(textPart);
+    if (!parsed) {
+      // Gemini 가 오디오 인식 실패 시 prose 로 응답하는 케이스
+      console.error('[check-recording] JSON parse failed, raw:', textPart.slice(0, 500));
+      res.status(200).json({
+        success: true,
+        mode,
+        score: 0,
+        missedWords: [],
+        note: `AI 가 오디오를 해석하지 못했어요 (${modelUsed}). 원본: ${textPart.slice(0, 180)}`,
+        raw: textPart.slice(0, 300),
+        elapsedMs,
+      });
+      return;
     }
 
     if (mode === 'check') {
