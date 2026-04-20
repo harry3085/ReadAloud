@@ -9268,7 +9268,7 @@ window.tpOpenPrintModal = () => {
   tpPrintRefreshPreview();
 };
 
-// 유형별 추가 옵션 UI (단어시험에 format/direction 등)
+// 유형별 추가 옵션 UI (단어시험에 format/direction/columns 등)
 function _tpBuildTypeOptionsUI(sourceType) {
   if (sourceType === 'vocab') {
     return `
@@ -9289,6 +9289,14 @@ function _tpBuildTypeOptionsUI(sourceType) {
             <option value="mixed">혼합</option>
             <option value="en2ko">영→한</option>
             <option value="ko2en">한→영</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
+          단수:
+          <select id="tpOptVocabColumns" onchange="tpPrintRefreshPreview()"
+            style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <option value="1">1단</option>
+            <option value="2">2단 (좌우 분할)</option>
           </select>
         </label>
       </div>`;
@@ -9355,8 +9363,22 @@ function _printRenderSubj(questions, { showAnswers }) {
 function _printRenderVocab(questions, { showAnswers, typeOpts }) {
   const fmt = typeOpts?.format || 'mixed';         // mixed | short | mcq
   const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
+  const cols = parseInt(typeOpts?.columns) === 2 ? 2 : 1;
+  const narrow = cols === 2;
 
-  return questions.map((q, i) => {
+  // 2단일 때는 폰트/여백/MCQ 레이아웃 축소
+  const fSize = narrow ? 11 : 13;
+  const choiceFSize = narrow ? 10 : 12;
+  const itemMb = narrow ? 8 : 14;
+  const qMinWidth = narrow ? 70 : 140;
+  const lineH = narrow ? 16 : 20;
+  const leftPad = narrow ? 10 : 18;
+  // 2단이면 각 행이 1열, 1단이면 4지선다가 2x2
+  const choiceGridStyle = narrow
+    ? 'display:flex;flex-direction:column;gap:2px;'
+    : 'display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;';
+
+  const items = questions.map((q, i) => {
     let thisDir = dir;
     if (dir === 'mixed') thisDir = i % 2 === 0 ? 'en2ko' : 'ko2en';
     let thisFmt = fmt;
@@ -9365,33 +9387,40 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
     const question = thisDir === 'en2ko' ? q.word : q.meaning;
     const answer = thisDir === 'en2ko' ? q.meaning : q.word;
 
+    const wrap = `margin-bottom:${itemMb}px;break-inside:avoid;page-break-inside:avoid;`;
+
     if (thisFmt === 'short') {
       return `
-        <div style="margin-bottom:14px;page-break-inside:avoid;display:flex;align-items:center;gap:10px;">
-          <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
-          <div style="font-size:13px;font-weight:600;min-width:140px;">${esc(question)}</div>
-          <div style="flex:1;border-bottom:1px solid #aaa;height:20px;">
-            ${showAnswers ? `<span style="font-size:12px;color:#2e7d32;font-weight:700;">${esc(answer)}</span>` : ''}
+        <div style="${wrap}display:flex;align-items:center;gap:8px;">
+          <div style="font-size:${fSize}px;font-weight:700;min-width:22px;">${i+1}.</div>
+          <div style="font-size:${fSize}px;font-weight:600;min-width:${qMinWidth}px;">${esc(question)}</div>
+          <div style="flex:1;border-bottom:1px solid #aaa;height:${lineH}px;">
+            ${showAnswers ? `<span style="font-size:${fSize-1}px;color:#2e7d32;font-weight:700;">${esc(answer)}</span>` : ''}
           </div>
         </div>`;
     }
-    // MCQ: 같은 방향의 다른 단어 3개를 오답으로
+    // MCQ: 같은 방향 다른 단어 3개를 오답으로
     const candidates = questions.filter(x => x !== q);
     const wrongs = candidates.slice().sort(() => Math.random() - 0.5).slice(0, 3);
     const opts = [answer, ...wrongs.map(w => thisDir === 'en2ko' ? w.meaning : w.word)]
       .slice().sort(() => Math.random() - 0.5);
     const correctIdx = opts.indexOf(answer);
     return `
-      <div style="margin-bottom:16px;page-break-inside:avoid;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(question)}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-left:18px;">
+      <div style="${wrap}">
+        <div style="font-size:${fSize}px;font-weight:700;margin-bottom:3px;">${i+1}. ${esc(question)}</div>
+        <div style="${choiceGridStyle}margin-left:${leftPad}px;">
           ${opts.map((opt, j) => `
-            <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+            <div style="font-size:${choiceFSize}px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
               ${['①','②','③','④'][j]} ${esc(opt)}${showAnswers && j === correctIdx ? ' ✓' : ''}
             </div>`).join('')}
         </div>
       </div>`;
   }).join('');
+
+  if (cols === 2) {
+    return `<div style="column-count:2;column-gap:24px;column-fill:auto;">${items}</div>`;
+  }
+  return items;
 }
 
 function _printRenderUnscramble(questions, { showAnswers }) {
@@ -9506,6 +9535,7 @@ window.tpPrintRefreshPreview = () => {
   if (ctx.sourceType === 'vocab') {
     typeOpts.format = document.getElementById('tpOptVocabFormat')?.value || 'mixed';
     typeOpts.direction = document.getElementById('tpOptVocabDirection')?.value || 'mixed';
+    typeOpts.columns = parseInt(document.getElementById('tpOptVocabColumns')?.value) || 1;
   }
 
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
