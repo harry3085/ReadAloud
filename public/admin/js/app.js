@@ -7424,9 +7424,9 @@ function _tpRender() {
   root.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:12px;height:calc(100vh - 180px);min-height:560px;">
 
-      <div style="display:grid;grid-template-columns:1fr 280px;gap:12px;flex:1;min-height:0;">
+      <div id="tpTopRow" style="display:flex;gap:0;flex:1;min-height:0;">
 
-        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div id="tpSetsPane" style="flex:1 1 50%;min-width:200px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
           <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="min-width:0;">
               <div style="font-weight:700;font-size:14px;">📚 문제 세트 ${_activeTestFolderKey?'<span style="color:var(--teal);font-size:11px;font-weight:500;">(폴더 필터)</span>':''}</div>
@@ -7453,7 +7453,11 @@ function _tpRender() {
           </div>
         </div>
 
-        <div style="background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
+        <div id="tpResizer" title="드래그하여 폭 조정" style="width:8px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;">
+          <div style="width:2px;height:40px;background:var(--border);border-radius:1px;"></div>
+        </div>
+
+        <div id="tpFoldersPane" style="flex:1 1 50%;min-width:200px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
           <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);">
             <div style="font-weight:700;font-size:14px;">📁 폴더</div>
             <div style="font-size:11px;color:var(--gray);">Book · Chapter 별 자동 분류</div>
@@ -7490,6 +7494,44 @@ function _tpRender() {
 
     </div>
   `;
+
+  _tpAttachResizer();
+}
+
+function _tpAttachResizer() {
+  const row = document.getElementById('tpTopRow');
+  const setsPane = document.getElementById('tpSetsPane');
+  const resizer = document.getElementById('tpResizer');
+  if (!row || !setsPane || !resizer) return;
+
+  const saved = parseFloat(localStorage.getItem('test_assign_sets_ratio'));
+  if (saved && saved > 0.15 && saved < 0.85) {
+    setsPane.style.flex = `0 0 calc(${saved*100}% - 4px)`;
+  }
+
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const onMove = (ev) => {
+      let ratio = (ev.clientX - rect.left) / rect.width;
+      ratio = Math.max(0.2, Math.min(0.85, ratio));
+      setsPane.style.flex = `0 0 calc(${ratio*100}% - 4px)`;
+      try { localStorage.setItem('test_assign_sets_ratio', String(ratio)); } catch {}
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  resizer.addEventListener('mouseenter', () => { resizer.style.background = 'var(--teal-light)'; });
+  resizer.addEventListener('mouseleave', () => { resizer.style.background = 'transparent'; });
 }
 
 function _tpFolderKeyOf(set) {
