@@ -9043,6 +9043,45 @@ window.tpOpenPublishModal = async () => {
             </div>`
           : ''}
 
+        ${cfg.testMode === 'vocab'
+          ? `<div style="margin-bottom:14px;padding:10px 12px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">
+              <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">📝 단어시험 풀이 옵션 (학생앱 적용)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">형식</label>
+                  <select id="tpVocabFormat" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                    <option value="mixed" selected>혼합</option>
+                    <option value="short">주관식(스펠링)</option>
+                    <option value="mcq">객관식</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">방향</label>
+                  <select id="tpVocabDirection" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                    <option value="mixed" selected>혼합</option>
+                    <option value="en2ko">영→한</option>
+                    <option value="ko2en">한→영</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">객관식 비율 (%)</label>
+                  <input type="number" id="tpVocabMcqRatio" value="50" min="0" max="100"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">혼합 형식일 때만 반영</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
+                  <input type="checkbox" id="tpVocabShuffleQ" checked> 문제 순서 섞기
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
+                  <input type="checkbox" id="tpVocabShuffleChoices" checked> 보기(4지문) 섞기
+                </label>
+              </div>
+              <div style="font-size:10px;color:var(--gray);margin-top:6px;">※ 학생이 풀 때마다 매번 새로 섞이며, 재시험 시에도 다시 섞입니다</div>
+            </div>`
+          : ''}
+
         <div style="margin-bottom:12px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">👥 배정 대상</div>
           <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
@@ -9149,6 +9188,18 @@ window.tpPublish = async () => {
     }
   }
 
+  // Phase 6B: vocab 풀이 옵션 (학생앱에서 매번 적용)
+  let vocabOptions = null;
+  if (cfg.testMode === 'vocab') {
+    vocabOptions = {
+      format: document.getElementById('tpVocabFormat')?.value || 'mixed',         // mixed | short | mcq
+      direction: document.getElementById('tpVocabDirection')?.value || 'mixed',   // mixed | en2ko | ko2en
+      mcqRatio: Math.max(0, Math.min(100, parseInt(document.getElementById('tpVocabMcqRatio')?.value) || 50)),
+      shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
+      shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
+    };
+  }
+
   const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
   if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
 
@@ -9173,6 +9224,7 @@ window.tpPublish = async () => {
       sourceSetNames: selectedSets.map(s => s.name || ''),
       passScore,
       bookName,
+      ...(vocabOptions ? { vocabOptions } : {}),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
     });

@@ -4576,3 +4576,662 @@ onAuthStateChanged(auth, async (user)=>{
   // 로그인 안 된 상태 → 로그인 화면
   setTimeout(()=>_originalShow('login'), 1200);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 6C: 단어시험 v2 (vocab) — genTests(testMode='vocab') 기반
+// vocabOptions 를 읽어 매 시작마다 format/direction/shuffle 적용
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _rngShuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+let _vqState = {
+  test: null,
+  questions: [],
+  currentIdx: 0,
+  answers: [],   // [{input, direction, format, choices?, correctIdx?}]
+  opts: null,
+};
+
+window.goVocab = async () => {
+  show('vocabList');
+  await loadVocabList();
+};
+
+async function loadVocabList() {
+  const elP = document.getElementById('vqListPending');
+  const elC = document.getElementById('vqListCompleted');
+  if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  try {
+    const myGroup = userProfile?.group || '';
+    const myUid = currentUser?.uid || '';
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'vocab');
+
+    const completedMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try {
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if (d.exists()) completedMap.set(t.id, d.data().score ?? null);
+      } catch(e) {}
+    }));
+
+    const pending = myTests.filter(t => !completedMap.has(t.id));
+    const completed = myTests.filter(t => completedMap.has(t.id));
+    const oc = (id, name) => `startVocab('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+
+    if (elP) elP.innerHTML = pending.length
+      ? pending.map(t => _vqMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
+    if (elC) elC.innerHTML = completed.length
+      ? completed.map(t => _vqMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  } catch(e) {
+    console.error(e);
+    if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+function _vqMakeCard(t, isCompleted, onclick, completedScore) {
+  const qCount = t.questionCount || t.questions?.length || 0;
+  const passScore = t.passScore ?? 80;
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${esc(t.name||'단어 시험')}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            : `<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">📝 ${esc(t.bookName||'단어 시험')} · ${qCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+    </div>`;
+}
+
+window.startVocab = async (testId, testName) => {
+  try {
+    const snap = await getDoc(doc(db,'genTests',testId));
+    if (!snap.exists()) { showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    let questions = (test.questions || []).filter(q => q.type === 'vocab');
+    if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+
+    // vocabOptions (기본값 제공)
+    const opts = Object.assign(
+      { format:'mixed', direction:'mixed', mcqRatio:50, shuffleQ:true, shuffleChoices:true },
+      test.vocabOptions || {}
+    );
+
+    // 1) 문제 순서 섞기 (재풀이 시에도 매번 새로)
+    if (opts.shuffleQ) questions = _rngShuffle(questions);
+
+    // 2) 각 문제에 format/direction 배정
+    const answers = questions.map((q, i) => {
+      // direction
+      let dir = opts.direction;
+      if (dir === 'mixed') dir = i % 2 === 0 ? 'en2ko' : 'ko2en';
+      // format
+      let fmt;
+      if (opts.format === 'mixed') {
+        fmt = Math.random() * 100 < opts.mcqRatio ? 'mcq' : 'short';
+      } else {
+        fmt = opts.format;
+      }
+      const ans = { input: '', direction: dir, format: fmt };
+      // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
+      if (fmt === 'mcq') {
+        const correctText = dir === 'en2ko' ? q.meaning : q.word;
+        const pool = questions.filter(x => x !== q);
+        const wrongs = _rngShuffle(pool).slice(0, 3)
+          .map(w => dir === 'en2ko' ? w.meaning : w.word)
+          .filter(x => x && x !== correctText);
+        // 부족하면 채우기
+        while (wrongs.length < 3) wrongs.push('—');
+        let choices = [correctText, ...wrongs.slice(0, 3)];
+        if (opts.shuffleChoices) choices = _rngShuffle(choices);
+        ans.choices = choices;
+        ans.correctIdx = choices.indexOf(correctText);
+      }
+      return ans;
+    });
+
+    _vqState = { test, questions, currentIdx: 0, answers, opts };
+
+    show('vocabQuiz');
+    _vqRenderStep();
+  } catch(e) {
+    console.error(e);
+    showToast('시험 시작 실패: ' + e.message);
+  }
+};
+
+function _vqRenderStep() {
+  const s = _vqState;
+  const q = s.questions[s.currentIdx];
+  if (!q) return;
+
+  const pct = Math.round(((s.currentIdx + 1) / s.questions.length) * 100);
+  const bar = document.getElementById('vqProgressBar');
+  const txt = document.getElementById('vqProgressText');
+  if (bar) bar.style.width = pct + '%';
+  if (txt) txt.textContent = `${s.currentIdx + 1} / ${s.questions.length}`;
+
+  const ans = s.answers[s.currentIdx];
+  const dirEl = document.getElementById('vqDirection');
+  const promptEl = document.getElementById('vqPrompt');
+  const subEl = document.getElementById('vqSub');
+  const areaEl = document.getElementById('vqAnswerArea');
+  const btn = document.getElementById('vqNextBtn');
+
+  if (ans.direction === 'en2ko') {
+    if (dirEl) dirEl.textContent = '영단어 → 한글 뜻';
+    if (promptEl) promptEl.textContent = q.word || '';
+    if (subEl) subEl.textContent = q.example ? '“' + q.example + '”' : '';
+  } else {
+    if (dirEl) dirEl.textContent = '한글 뜻 → 영단어';
+    if (promptEl) promptEl.textContent = q.meaning || '';
+    if (subEl) subEl.textContent = '';
+  }
+
+  if (ans.format === 'mcq') {
+    _vqRenderMcq(ans, areaEl);
+  } else {
+    _vqRenderShort(ans, areaEl);
+  }
+
+  _vqUpdateNextBtn();
+}
+
+function _vqRenderMcq(ans, areaEl) {
+  const selected = ans.input;
+  areaEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${ans.choices.map((opt, j) => `
+        <button onclick="vqSelectMcq(${j})"
+          style="width:100%;padding:14px 16px;background:${selected === opt ? '#0EA5E9' : 'white'};color:${selected === opt ? 'white' : 'var(--text)'};border:1px solid ${selected === opt ? '#0EA5E9' : 'var(--border)'};border-radius:10px;font-size:15px;text-align:left;cursor:pointer;font-weight:${selected === opt ? '700' : '500'};">
+          ${['①','②','③','④'][j]} ${esc(opt)}
+        </button>
+      `).join('')}
+    </div>`;
+}
+
+function _vqRenderShort(ans, areaEl) {
+  const val = ans.input;
+  areaEl.innerHTML = `
+    <div style="background:white;border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:8px;">정답을 입력하세요 (Enter = 다음)</div>
+      <input type="text" id="vqShortInput" value="${esc(val)}"
+        oninput="vqUpdateInput(this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();vqNext();}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        style="width:100%;padding:14px 16px;border:2px solid #0EA5E9;border-radius:10px;font-size:18px;font-weight:700;text-align:center;outline:none;">
+    </div>`;
+  setTimeout(() => {
+    const inp = document.getElementById('vqShortInput');
+    if (inp) {
+      try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
+      window.scrollTo(0, 0);
+    }
+  }, 50);
+}
+
+function _vqUpdateNextBtn() {
+  const btn = document.getElementById('vqNextBtn');
+  if (!btn) return;
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  const hasInput = !!(ans.input && String(ans.input).trim());
+  const isLast = s.currentIdx === s.questions.length - 1;
+  btn.disabled = !hasInput;
+  btn.textContent = hasInput ? (isLast ? '제출하기' : '다음 ▶') : (ans.format === 'mcq' ? '답을 선택하세요' : '답을 입력하세요');
+  btn.style.background = hasInput ? (isLast ? '#059669' : '#0EA5E9') : '#ddd';
+  btn.style.color = hasInput ? 'white' : '#888';
+  btn.style.cursor = hasInput ? 'pointer' : 'not-allowed';
+}
+
+window.vqSelectMcq = (choiceIdx) => {
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  ans.input = ans.choices[choiceIdx] || '';
+  _vqRenderStep();
+};
+
+window.vqUpdateInput = (value) => {
+  _vqState.answers[_vqState.currentIdx].input = value;
+  _vqUpdateNextBtn();
+};
+
+window.vqNext = async () => {
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  if (!ans.input || !String(ans.input).trim()) return;
+  if (s.currentIdx < s.questions.length - 1) {
+    s.currentIdx++;
+    _vqRenderStep();
+  } else {
+    await _vqSubmit();
+  }
+};
+
+async function _vqSubmit() {
+  const s = _vqState;
+  const t = s.test;
+  if (!t || !currentUser) return;
+
+  let correct = 0;
+  const total = s.questions.length;
+  s.questions.forEach((q, i) => {
+    const ans = s.answers[i];
+    const user = (ans.input || '').trim().toLowerCase();
+    const target = (ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'')).trim().toLowerCase();
+    if (user && user === target) correct++;
+  });
+
+  const score = total ? Math.round((correct / total) * 100) : 0;
+  const passScore = t.passScore ?? 80;
+  const passed = score >= passScore;
+  const today = new Date().toISOString().slice(0,10);
+
+  try {
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid, userId: currentUser.uid,
+      userName: userProfile?.name || '', name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id, testName: t.name || '',
+      unitId: t.id, unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'vocab',
+      score, correct, wrong: total - correct, total,
+      passed, passScore,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+    try {
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        { uid: currentUser.uid, userName: userProfile?.name || '', score, date: today, completedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+  } catch(e) {
+    console.error(e);
+    showToast('점수 저장 실패: ' + e.message);
+  }
+  _vqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore });
+}
+
+function _vqRenderResult({ correct, wrong, total, score, passed, passScore }) {
+  const screen = document.getElementById('vocabQuiz');
+  if (!screen) return;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">통과 기준 ${passScore}점</div>
+      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
+        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#0369a1'};line-height:1;">${score}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
+        <button onclick="goVocab()" style="flex:1;padding:14px;background:#0EA5E9;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      </div>
+    </div>`;
+  updateVocabBadge();
+}
+
+window.quitVocab = async () => {
+  if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  goHome();
+};
+
+async function updateVocabBadge() {
+  const badge = document.getElementById('testBadge');
+  if (!badge || !currentUser || !userProfile) return;
+  try {
+    const myGroup = userProfile.group || '';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const myTests = filterMyTests(
+      snap.docs.map(d => ({id:d.id, ...d.data()})),
+      myGroup, myUid
+    ).filter(t => t.testMode === 'vocab');
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t => {
+      try {
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if (d.exists()) completedSet.add(t.id);
+      } catch(e) {}
+    }));
+    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
+    if (unfinished > 0) {
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { badge.style.display = 'none'; }
+}
+
+// updateAllBadges 확장 (vocab)
+const _origUpdateAllBadgesForVocab = window.updateAllBadges;
+// no-op: updateVocabBadge 는 testBadge 를 관리하므로 기존 updateTestBadge 와 동일 element
+// Phase 6D 에서 updateTestBadge 제거 시 updateVocabBadge 로 완전 대체
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 6C: 언스크램블 v2 (unscramble) — genTests(testMode='unscramble') 기반
+// 홈 "언스크램블" 카드는 새 로직으로 완전 교체. 기존 goUnscramble 덮어씀
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _uqState = {
+  test: null,
+  questions: [],
+  currentIdx: 0,
+  answers: [],   // [{placed: [chunkIdx...], chunks: shuffled[]}]
+};
+
+// 기존 goUnscramble 덮어쓰기 (tests 기반 → genTests 기반)
+window.goUnscramble = async () => {
+  show('unscrambleList');
+  await loadUnscrambleList2();
+};
+
+async function loadUnscrambleList2() {
+  const elP = document.getElementById('unscListPending');
+  const elC = document.getElementById('unscListCompleted');
+  if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  try {
+    const myGroup = userProfile?.group || '';
+    const myUid = currentUser?.uid || '';
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'unscramble');
+
+    const completedMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try {
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if (d.exists()) completedMap.set(t.id, d.data().score ?? null);
+      } catch(e) {}
+    }));
+
+    const pending = myTests.filter(t => !completedMap.has(t.id));
+    const completed = myTests.filter(t => completedMap.has(t.id));
+    const oc = (id, name) => `startUnscramble2('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+
+    if (elP) elP.innerHTML = pending.length
+      ? pending.map(t => _uqMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
+    if (elC) elC.innerHTML = completed.length
+      ? completed.map(t => _uqMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  } catch(e) {
+    console.error(e);
+    if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+function _uqMakeCard(t, isCompleted, onclick, completedScore) {
+  const qCount = t.questionCount || t.questions?.length || 0;
+  const passScore = t.passScore ?? 80;
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${esc(t.name||'언스크램블 시험')}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            : `<span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">🔀 ${esc(t.bookName||'언스크램블')} · ${qCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+    </div>`;
+}
+
+window.startUnscramble2 = async (testId, testName) => {
+  try {
+    const snap = await getDoc(doc(db,'genTests',testId));
+    if (!snap.exists()) { showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    let questions = (test.questions || []).filter(q => q.type === 'unscramble');
+    if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+
+    // 매번 문제 순서 섞기
+    questions = _rngShuffle(questions);
+
+    // 각 문제의 청크도 섞어 answers 준비
+    const answers = questions.map(q => {
+      const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
+      const shuffled = _rngShuffle(chunks.map((c, i) => ({ text: c, origIdx: i })));
+      return { placed: [], chunks: shuffled };
+    });
+
+    _uqState = { test, questions, currentIdx: 0, answers };
+    show('unscrambleQuiz');
+    _uqRenderStep();
+  } catch(e) {
+    console.error(e);
+    showToast('시험 시작 실패: ' + e.message);
+  }
+};
+
+function _uqRenderStep() {
+  const s = _uqState;
+  const q = s.questions[s.currentIdx];
+  if (!q) return;
+
+  const pct = Math.round(((s.currentIdx + 1) / s.questions.length) * 100);
+  const bar = document.getElementById('uqProgressBar');
+  const txt = document.getElementById('uqProgressText');
+  if (bar) bar.style.width = pct + '%';
+  if (txt) txt.textContent = `${s.currentIdx + 1} / ${s.questions.length}`;
+
+  const meanEl = document.getElementById('uqMeaningKo');
+  if (meanEl) meanEl.textContent = q.meaningKo || '';
+
+  const ans = s.answers[s.currentIdx];
+  const ansBox = document.getElementById('uqAnswerBox');
+  const chunkBox = document.getElementById('uqChunkBox');
+
+  // 답안 영역
+  if (ansBox) {
+    ansBox.innerHTML = ans.placed.length === 0
+      ? '<span style="font-size:11px;color:#c0a0e0;padding:8px;">아래에서 청크를 탭해 추가</span>'
+      : ans.placed.map((shufIdx, pos) => {
+          const chunk = ans.chunks[shufIdx];
+          return `<span onclick="uqRemovePlaced(${pos})"
+            style="padding:6px 12px;background:#A855F7;color:white;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;">
+            ${esc(chunk.text)}
+          </span>`;
+        }).join('');
+  }
+
+  // 청크 풀
+  if (chunkBox) {
+    const used = new Set(ans.placed);
+    chunkBox.innerHTML = ans.chunks.map((chunk, shufIdx) => {
+      const isUsed = used.has(shufIdx);
+      return `<button onclick="uqTapChunk(${shufIdx})" ${isUsed?'disabled':''}
+        style="padding:8px 14px;background:${isUsed?'#f3f4f6':'white'};border:1px solid ${isUsed?'#e5e7eb':'#A855F7'};color:${isUsed?'#aaa':'#6b21a8'};border-radius:8px;font-size:14px;font-weight:600;cursor:${isUsed?'not-allowed':'pointer'};font-family:inherit;${isUsed?'text-decoration:line-through;':''}">
+        ${esc(chunk.text)}
+      </button>`;
+    }).join('');
+  }
+
+  _uqUpdateNextBtn();
+}
+
+function _uqUpdateNextBtn() {
+  const btn = document.getElementById('uqNextBtn');
+  if (!btn) return;
+  const s = _uqState;
+  const ans = s.answers[s.currentIdx];
+  const total = ans.chunks.length;
+  const done = ans.placed.length === total;
+  const isLast = s.currentIdx === s.questions.length - 1;
+  btn.disabled = !done;
+  btn.textContent = done ? (isLast ? '제출하기' : '다음 ▶') : `청크 ${ans.placed.length}/${total} 배열 중`;
+  btn.style.background = done ? (isLast ? '#059669' : '#A855F7') : '#ddd';
+  btn.style.color = done ? 'white' : '#888';
+  btn.style.cursor = done ? 'pointer' : 'not-allowed';
+}
+
+window.uqTapChunk = (shufIdx) => {
+  const s = _uqState;
+  const ans = s.answers[s.currentIdx];
+  if (ans.placed.includes(shufIdx)) return;
+  ans.placed.push(shufIdx);
+  _uqRenderStep();
+};
+
+window.uqRemovePlaced = (pos) => {
+  const s = _uqState;
+  s.answers[s.currentIdx].placed.splice(pos, 1);
+  _uqRenderStep();
+};
+
+window.uqReset = () => {
+  _uqState.answers[_uqState.currentIdx].placed = [];
+  _uqRenderStep();
+};
+
+window.uqNext = async () => {
+  const s = _uqState;
+  const ans = s.answers[s.currentIdx];
+  if (ans.placed.length !== ans.chunks.length) return;
+  if (s.currentIdx < s.questions.length - 1) {
+    s.currentIdx++;
+    _uqRenderStep();
+  } else {
+    await _uqSubmit();
+  }
+};
+
+async function _uqSubmit() {
+  const s = _uqState;
+  const t = s.test;
+  if (!t || !currentUser) return;
+
+  let correct = 0;
+  const total = s.questions.length;
+  s.questions.forEach((q, i) => {
+    const ans = s.answers[i];
+    const userSeq = ans.placed.map(idx => ans.chunks[idx].text);
+    const targetSeq = (q.chunkedSentence || '').split('/').map(x => x.trim()).filter(Boolean);
+    if (userSeq.length === targetSeq.length && userSeq.every((c, j) => c === targetSeq[j])) {
+      correct++;
+    }
+  });
+
+  const score = total ? Math.round((correct / total) * 100) : 0;
+  const passScore = t.passScore ?? 80;
+  const passed = score >= passScore;
+  const today = new Date().toISOString().slice(0,10);
+
+  try {
+    await addDoc(collection(db,'scores'), {
+      uid: currentUser.uid, userId: currentUser.uid,
+      userName: userProfile?.name || '', name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id, testName: t.name || '',
+      unitId: t.id, unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'unscramble',
+      score, correct, wrong: total - correct, total,
+      passed, passScore,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+    try {
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        { uid: currentUser.uid, userName: userProfile?.name || '', score, date: today, completedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+  } catch(e) {
+    console.error(e);
+    showToast('점수 저장 실패: ' + e.message);
+  }
+  _uqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore });
+}
+
+function _uqRenderResult({ correct, wrong, total, score, passed, passScore }) {
+  const screen = document.getElementById('unscrambleQuiz');
+  if (!screen) return;
+  screen.innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">통과 기준 ${passScore}점</div>
+      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
+        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#7c3aed'};line-height:1;">${score}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
+        <button onclick="goUnscramble()" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      </div>
+    </div>`;
+  updateUnscBadge2();
+}
+
+window.quitUnscramble2 = async () => {
+  if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  goHome();
+};
+
+// updateUnscBadge 덮어쓰기: genTests(unscramble) 기반
+async function updateUnscBadge2() {
+  const badge = document.getElementById('unscrambleBadge');
+  if (!badge || !currentUser || !userProfile) return;
+  try {
+    const myGroup = userProfile.group || '';
+    const myUid = currentUser.uid;
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const myTests = filterMyTests(
+      snap.docs.map(d => ({id:d.id, ...d.data()})),
+      myGroup, myUid
+    ).filter(t => t.testMode === 'unscramble');
+    const completedSet = new Set();
+    await Promise.all(myTests.map(async t => {
+      try {
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if (d.exists()) completedSet.add(t.id);
+      } catch(e) {}
+    }));
+    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
+    if (unfinished > 0) {
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { badge.style.display = 'none'; }
+}
+
+// 기존 updateTestBadge / updateUnscBadge 호출 지점을 v2 로 연결
+window.updateTestBadge = updateVocabBadge;
+window.updateUnscBadge = updateUnscBadge2;

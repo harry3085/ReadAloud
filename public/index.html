@@ -116,7 +116,7 @@
     <div class="scroll-content">
       <div class="menu-grid" style="margin-top:28px;">
         <!-- 1. 단어 테스트 (기존) -->
-        <div class="menu-card c-teal" onclick="goUnits()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">lab_profile</span></div>
+        <div class="menu-card c-teal" onclick="goVocab()" style="position:relative;"><span id="testBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">스펠링 · 뜻맞추기</div><div class="card-name">단어<br>테스트</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">lab_profile</span></div>
         <!-- 2. 언스크램블 (기존) -->
         <div class="menu-card c-blue" onclick="goUnscramble()" style="position:relative;"><span id="unscrambleBadge" style="display:none;position:absolute;top:10px;right:10px;background:#e05050;color:white;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.25);"></span><div><div class="card-label">문장 순서 맞추기</div><div class="card-name">언스크<br>램블</div></div><span class="material-symbols-outlined card-icon-big" style="font-size:42px;opacity:0.35;color:#444;align-self:flex-end;margin-top:6px;">shuffle</span></div>
         <!-- 3. 교재이해 (NEW, Phase 2에서 기능 활성화) -->
@@ -306,6 +306,87 @@
       </div>
       <button class="submit-btn" id="fbNextBtn" onclick="fbNext()" style="background:#EAB308;box-shadow:0 2px 8px rgba(234,179,8,0.3);">다음 ▶</button>
       <button class="skip-btn" onclick="fbSkip()">SKIP</button>
+    </div>
+  </div>
+
+  <!-- ══ Phase 6C: 단어시험 v2 (vocab genTests) ══ -->
+  <div id="vocabList" class="screen">
+    <div style="background:linear-gradient(150deg,#0EA5E9,#0369A1);padding:48px 20px 28px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
+        <span style="font-size:17px;font-weight:800;color:white;">단어테스트</span>
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);">배정된 단어시험을 풀고 결과를 확인하세요</div>
+    </div>
+    <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="scroll-content" style="padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">진행 중 / 미완료</div>
+        <div id="vqListPending"><div class="empty-msg" style="padding:20px;">로딩 중...</div></div>
+        <div style="font-size:11px;font-weight:700;color:#059669;margin-top:16px;margin-bottom:8px;">완료</div>
+        <div id="vqListCompleted"><div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="vocabQuiz" class="screen" style="background:#F0F9FF;">
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="quitVocab()">✕</button>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="vqProgressBar" style="width:5%;background:#0EA5E9;"></div></div>
+      <div id="vqProgressText" style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">1 / 1</div>
+    </div>
+
+    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
+      <div style="background:white;border-radius:14px;padding:22px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);text-align:center;">
+        <div id="vqDirection" style="font-size:10px;font-weight:700;color:#0EA5E9;letter-spacing:0.5px;margin-bottom:8px;">VOCABULARY</div>
+        <div id="vqPrompt" style="font-size:24px;font-weight:800;color:var(--text);line-height:1.3;"></div>
+        <div id="vqSub" style="font-size:11px;color:var(--gray);margin-top:8px;font-style:italic;"></div>
+      </div>
+
+      <div id="vqAnswerArea"></div>
+    </div>
+
+    <!-- 숨은 input (스펠링 전용 — iOS 키보드 자동 스크롤 방지용) -->
+    <div id="vqInputHolder" style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;z-index:-1;"></div>
+
+    <div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,0.06);background:#F0F9FF;">
+      <button id="vqNextBtn" onclick="vqNext()" disabled
+        style="width:100%;padding:14px;border:none;border-radius:12px;background:#ddd;color:#888;font-size:15px;font-weight:700;cursor:not-allowed;">
+        답을 선택하거나 입력하세요
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Phase 6C: 언스크램블 v2 (unscramble genTests) ══ -->
+  <div id="unscrambleQuiz" class="screen" style="background:#FAF5FF;">
+    <div class="quiz-header">
+      <button class="quit-btn" onclick="quitUnscramble2()">✕</button>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="uqProgressBar" style="width:5%;background:#A855F7;"></div></div>
+      <div id="uqProgressText" style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">1 / 1</div>
+    </div>
+
+    <div class="scroll-content" style="padding:16px;flex:1;overflow-y:auto;">
+      <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:10px;font-weight:700;color:#A855F7;letter-spacing:0.5px;margin-bottom:6px;">TRANSLATE TO ENGLISH</div>
+        <div id="uqMeaningKo" style="font-size:17px;color:var(--text);line-height:1.5;font-weight:600;"></div>
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);min-height:70px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:6px;">내 답안 (청크를 탭하면 제거)</div>
+        <div id="uqAnswerBox" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:6px;border:2px dashed #E9D5FF;border-radius:8px;"></div>
+      </div>
+
+      <div style="background:white;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:6px;">청크를 순서대로 탭해서 배열하세요</div>
+        <div id="uqChunkBox" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+    </div>
+
+    <div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,0.06);background:#FAF5FF;display:flex;gap:8px;">
+      <button onclick="uqReset()" style="padding:14px 18px;background:white;border:1px solid #A855F7;color:#A855F7;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">↺ 초기화</button>
+      <button id="uqNextBtn" onclick="uqNext()" disabled
+        style="flex:1;padding:14px;border:none;border-radius:12px;background:#ddd;color:#888;font-size:15px;font-weight:700;cursor:not-allowed;">
+        청크를 모두 배열하세요
+      </button>
     </div>
   </div>
 
