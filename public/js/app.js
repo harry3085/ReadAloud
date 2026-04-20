@@ -4742,27 +4742,39 @@ function _vqRenderStep() {
 
   const ans = s.answers[s.currentIdx];
   const instEl = document.getElementById('vqInstruction');
+  const labelEl = document.getElementById('vqLabel');
   const promptEl = document.getElementById('vqPrompt');
+  const subWrap = document.getElementById('vqSubWrap');
+  const subLabel = document.getElementById('vqSubLabel');
   const subEl = document.getElementById('vqSub');
   const choicesArea = document.getElementById('vqChoicesArea');
   const spellBoxes = document.getElementById('vqSpellBoxes');
 
-  // 지시문 + 큰 질문
+  // 지시문
   if (ans.format === 'mcq') {
     if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '뜻과 일치하는 한글을 고르세요.' : '알맞은 영어 단어를 고르세요.';
   } else {
-    if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '한글 뜻을 입력하세요.' : '뜻에 알맞는 영어 단어를 입력하세요.';
+    if (instEl) instEl.textContent = '뜻에 알맞는 영어 단어를 입력하세요.';
   }
 
+  // 합체 카드: 헤더 라벨 + 큰 질문, 본문 힌트/예문
   if (ans.direction === 'en2ko') {
+    if (labelEl) labelEl.textContent = '영단어';
     if (promptEl) promptEl.textContent = q.word || '';
-    if (subEl) {
-      if (q.example) { subEl.style.display = ''; subEl.textContent = '“' + q.example + '”'; subEl.style.color = 'var(--gray)'; }
-      else subEl.style.display = 'none';
-    }
+    if (q.example) {
+      if (subWrap) subWrap.style.display = '';
+      if (subLabel) subLabel.textContent = '예문';
+      if (subEl) { subEl.textContent = '“' + q.example + '”'; subEl.style.fontStyle='italic'; subEl.style.color='var(--text)'; }
+    } else if (subWrap) subWrap.style.display = 'none';
   } else {
+    if (labelEl) labelEl.textContent = ans.format === 'short' ? '한글 뜻 (영단어 쓰기)' : '한글 뜻';
     if (promptEl) promptEl.textContent = q.meaning || '';
-    if (subEl) subEl.style.display = 'none';
+    // 스펠링일 때 글자수 힌트 표시
+    if (ans.format === 'short' && subWrap) {
+      subWrap.style.display = '';
+      if (subLabel) subLabel.textContent = '힌트';
+      if (subEl) { subEl.innerHTML = `<span style="color:var(--teal);font-weight:700;">${(q.word||'').length}글자</span>`; subEl.style.fontStyle='normal'; }
+    } else if (subWrap) subWrap.style.display = 'none';
   }
 
   // MCQ / 스펠 표시 전환
@@ -4790,10 +4802,10 @@ function _vqRenderStep() {
 function _vqRenderChoices(ans, container) {
   const selected = ans.input;
   container.innerHTML = ans.choices.map((opt, j) => `
-    <div class="choice${selected === opt ? ' selected' : ''}" onclick="vqSelectMcq(${j})"
-      style="padding:14px 16px;background:${selected === opt ? 'var(--teal)' : 'white'};color:${selected === opt ? 'white' : 'var(--text)'};border:1px solid ${selected === opt ? 'var(--teal)' : 'var(--border)'};border-radius:14px;font-size:15px;cursor:pointer;font-weight:${selected === opt ? '700' : '500'};box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+    <button onclick="vqSelectMcq(${j})"
+      style="padding:14px 16px;background:${selected === opt ? 'var(--teal)' : 'white'};border:2px solid var(--teal);color:${selected === opt ? 'white' : 'var(--teal)'};border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 4px rgba(232,113,74,0.15);text-align:left;">
       ${['①','②','③','④'][j]} ${esc(opt)}
-    </div>
+    </button>
   `).join('');
 }
 
@@ -4897,13 +4909,13 @@ function _vqRenderMcqFeedback(ans) {
   container.innerHTML = ans.choices.map((opt, j) => {
     const isUser = opt === ans.input;
     const isCorrect = opt === correctText;
-    let bg = 'white', color = 'var(--text)', border = 'var(--border)', weight = 500;
-    if (isCorrect) { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; weight = 700; }
-    else if (isUser) { bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444'; weight = 700; }
-    return `<div class="choice"
-      style="padding:14px 16px;background:${bg};color:${color};border:2px solid ${border};border-radius:14px;font-size:15px;font-weight:${weight};box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+    let bg = 'white', color = 'var(--teal)', border = 'var(--teal)';
+    if (isCorrect) { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; }
+    else if (isUser) { bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444'; }
+    return `<button disabled
+      style="padding:14px 16px;background:${bg};border:2px solid ${border};color:${color};border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;box-shadow:0 2px 4px rgba(0,0,0,0.08);text-align:left;opacity:${isCorrect||isUser?1:0.5};">
       ${['①','②','③','④'][j]} ${esc(opt)}${isCorrect?' ✓':(isUser?' ✗':'')}
-    </div>`;
+    </button>`;
   }).join('');
 }
 

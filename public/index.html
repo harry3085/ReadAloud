@@ -328,26 +328,39 @@
     </div>
   </div>
 
-  <div id="vocabQuiz" class="screen">
+  <div id="vocabQuiz" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
       <button class="quit-btn" onclick="quitVocab()">✕</button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="vqProgressBar" style="width:10%;"></div></div>
       <div class="progress-pill" id="vqProgressText">1/10</div>
     </div>
-    <div class="quiz-instruction" id="vqInstruction">뜻과 일치하는 한글을 고르세요.</div>
-    <div class="word-card">
-      <div class="word" id="vqPrompt"></div>
-      <div class="word-listen" id="vqSub" style="display:none;"></div>
+
+    <div style="font-size:11px;color:var(--gray);text-align:center;margin:8px 0 6px;flex-shrink:0;" id="vqInstruction">뜻과 일치하는 한글을 고르세요.</div>
+
+    <!-- 문제 합체 카드 (언스크램블 스타일: 코랄 그라디언트 상단 + 흰 바디) -->
+    <div style="margin:0 16px 10px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(232,113,74,.12);flex-shrink:0;">
+      <div style="background:linear-gradient(135deg,#E8714A,#D85A30);padding:14px 16px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:3px;" id="vqLabel">영단어</div>
+        <div id="vqPrompt" style="font-size:22px;font-weight:800;color:white;line-height:1.3;word-break:break-word;"></div>
+      </div>
+      <div style="padding:12px 16px;min-height:40px;" id="vqSubWrap">
+        <div style="font-size:9px;color:var(--teal);font-weight:700;margin-bottom:4px;" id="vqSubLabel">예문</div>
+        <div id="vqSub" style="font-size:13px;color:var(--text);line-height:1.5;font-style:italic;"></div>
+      </div>
     </div>
-    <!-- MCQ 영역 (format=mcq 일 때만 채워짐) -->
-    <div class="choices" id="vqChoicesArea" style="display:none;"></div>
-    <!-- 스펠링 영역 (format=short 일 때만 채워짐) -->
+
+    <!-- MCQ 보기 (언스크 청크 스타일: flat, 테두리) -->
+    <div id="vqChoicesArea" style="display:none;padding:4px 14px 10px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
+
+    <!-- 스펠링 박스 -->
     <div class="spell-boxes" id="vqSpellBoxes" style="display:none;"></div>
     <div class="spell-input-wrap" style="position:absolute;left:-9999px;opacity:0;height:0;pointer-events:none;">
       <input class="spell-real-input" type="search" id="vqSpellInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text">
     </div>
+
     <div style="flex:1;"></div>
-    <div class="quiz-footer">
+
+    <div class="quiz-footer" style="margin-top:auto;">
       <div class="timer-circle">
         <svg width="44" height="44" viewBox="0 0 44 44">
           <circle cx="22" cy="22" r="18" fill="none" stroke="#eee" stroke-width="4"/>
