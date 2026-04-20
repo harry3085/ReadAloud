@@ -2387,7 +2387,7 @@ window.loadTestList = async() => {
       // 독해 시험(genTests) 은 진행상세(토글) 현재 지원하지 않음 (Phase 2 MVP)
       const isGen = t._src === 'genTests';
       const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
-      const bookName = isGen ? (t.sourceSetNames?.join(', ')||'-') : (t.bookName||'-');
+      const bookName = t.bookName || (isGen ? (t.sourceSetNames?.join(', ')||'-') : '-');
       return `
       <tr style="cursor:${isGen?'default':'pointer'};" ${isGen?'':`onclick="toggleTestProgress('${t.id}',this)"`} id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
@@ -8119,9 +8119,10 @@ window.tpOpenPublishModal = async () => {
   const sortedGroups = Object.keys(groupMap).sort((a,b) => a.localeCompare(b, 'ko'));
 
   window._tpModalTargets = [];
-  const mm = String(new Date().getMonth()+1).padStart(2,'0');
-  const dd = String(new Date().getDate()).padStart(2,'0');
-  const defaultName = `${cfg.kindLabel} 시험 ${mm}-${dd}`;
+  // 시험명 기본값: 선택된 세트 이름 (1개면 그대로, 여러 개면 "첫이름 외 N")
+  const defaultName = selectedSets.length === 1
+    ? (selectedSets[0].name || `${cfg.kindLabel} 시험`)
+    : `${selectedSets[0]?.name || cfg.kindLabel} 외 ${selectedSets.length - 1}`;
 
   const html = `
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -8251,7 +8252,11 @@ window.tpPublish = async () => {
   const targetType = (targets.length===1 && targets[0].type==='class') ? 'class' : 'mixed';
   const targetId = targets.map(t => t.id).join(',');
   const targetName = targets.length===1 ? targets[0].name : `${targets.length}명/반 선택`;
-  const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
+  // 교재: 첫 세트의 sourcePages[0] 에서 Book · Chapter 이름 조회
+  const sp = selectedSets[0]?.sourcePages?.[0];
+  const book = sp ? (_genBooks||[]).find(b => b.id === sp.bookId) : null;
+  const chap = sp ? (_genChapters||[]).find(c => c.id === sp.chapterId) : null;
+  const bookName = [book?.name, chap?.name].filter(Boolean).join(' · ') || '';
 
   try {
     await addDoc(collection(db,'genTests'), {
