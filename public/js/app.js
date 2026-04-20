@@ -1714,22 +1714,29 @@ async function _rv2Submit() {
 
   _rv2ShowSubmitting('🎤 녹음 업로드 중...', '3개 파일 Storage 에 저장');
 
+  let stage = 'upload';
   try {
+    console.log('[rv2Submit] START', { testId: t.id, rounds: _rv2.savedRounds.length });
     const storage = getStorage();
     const uploadResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
       const ext = r.mime.includes('mp4') ? 'm4a' : 'webm';
       const path = `recordings/genTests/${t.id}/${currentUser.uid}/r${i+1}_${Date.now()}.${ext}`;
       const fileRef = ref(storage, path);
+      console.log(`[rv2Submit] upload ${i+1} → ${path} (${r.blob.size} bytes)`);
       await uploadBytes(fileRef, r.blob);
       const url = await getDownloadURL(fileRef);
+      console.log(`[rv2Submit] uploaded ${i+1} ✓`);
       return { round: i + 1, audioUrl: url, duration: r.duration };
     }));
+    console.log('[rv2Submit] upload done');
 
     _rv2ShowSubmitting('🤖 AI 평가 중...', '3개 녹음을 동시에 평가해요 (10~15초)');
+    stage = 'check';
 
     const checkResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
       try {
         const base64 = await _rv2BlobToBase64(r.blob);
+        console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length}`);
         const res = await fetch('/api/check-recording', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1743,13 +1750,17 @@ async function _rv2Submit() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          return { round: i + 1, score: 0, missedWords: [], note: '평가 실패', error: true };
+          console.warn(`[rv2Submit] check ${i+1} failed`, res.status, data);
+          return { round: i + 1, score: 0, missedWords: [], note: `평가 실패: ${data?.error || res.status}`, error: true };
         }
+        console.log(`[rv2Submit] check ${i+1} score=${data.score}`);
         return { round: i + 1, score: data.score, missedWords: data.missedWords || [], note: data.note || '' };
       } catch(e) {
-        return { round: i + 1, score: 0, missedWords: [], note: '네트워크 에러', error: true };
+        console.error(`[rv2Submit] check ${i+1} exception`, e);
+        return { round: i + 1, score: 0, missedWords: [], note: '네트워크 에러: '+(e.message||''), error: true };
       }
     }));
+    console.log('[rv2Submit] check done', checkResults.map(r => r.score));
 
     const lastResult = checkResults[_RV2_ROUNDS - 1];
     const lastScore = lastResult.score;
@@ -1783,6 +1794,7 @@ async function _rv2Submit() {
     }
 
     _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
+    stage = 'firestore';
     const today = new Date().toISOString().slice(0,10);
 
     const recordingsDetail = uploadResults.map((u, i) => ({
@@ -1833,13 +1845,37 @@ async function _rv2Submit() {
 
     _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
     const allAudioUrls = uploadResults.map(u => u.audioUrl);
+    console.log('[rv2Submit] DONE');
     _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
   } catch(e) {
-    console.error(e);
-    showToast('제출 실패: ' + e.message);
-    _rv2Render();
+    console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
+    // 화면에 에러 유지 표시 (토스트는 짧게 사라지므로)
+    const screen = document.getElementById('recAiQuiz');
+    if (screen) {
+      screen.innerHTML = `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
+          <div style="font-size:52px;margin-bottom:14px;">⚠️</div>
+          <div style="font-size:17px;font-weight:800;color:#DC2626;margin-bottom:6px;">제출 실패</div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">단계: <code style="background:#f3f4f6;padding:1px 6px;border-radius:3px;">${esc(stage)}</code></div>
+          <div style="font-size:12px;color:var(--text);background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;max-width:340px;word-break:break-word;margin-bottom:16px;">${esc(e.message||String(e))}</div>
+          <div style="font-size:11px;color:var(--gray);margin-bottom:20px;max-width:320px;line-height:1.5;">
+            네트워크를 확인하거나 관리자에게 문의하세요.<br>
+            ※ 녹음 데이터는 메모리에 유지되어 있어요
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button onclick="goHome()" style="padding:12px 18px;background:white;border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;">홈으로</button>
+            <button onclick="_rv2Submit()" style="padding:12px 20px;background:#8B5CF6;border:none;border-radius:10px;font-size:13px;font-weight:700;color:white;cursor:pointer;">🔄 다시 시도</button>
+          </div>
+        </div>
+      `;
+    } else {
+      showToast(`제출 실패 (${stage}): ${e.message}`);
+    }
   }
 }
+
+// 재시도 버튼용 전역 노출
+window._rv2Submit = _rv2Submit;
 
 function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls) {
   _rv2ResultAudioUrls = allAudioUrls || [];
