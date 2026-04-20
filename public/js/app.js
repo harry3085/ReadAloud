@@ -853,11 +853,11 @@ function _fbRenderStep(){
         }
         html += `</span>`;
         // 숨은 input (단어시험 패턴)
-        inputsHtml += `<input type="search" id="fb-input-${i}" value="${esc(curVal)}"
+        inputsHtml += `<input type="password" id="fb-input-${i}" value="${esc(curVal)}"
           oninput="fbUpdateAnswer(${i}, this.value)"
           onkeydown="fbInputKey(event, ${i})"
-          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          inputmode="search" data-lpignore="true" data-form-type="other" data-1p-ignore="true"
+          autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+          inputmode="text" data-lpignore="true" data-form-type="other" data-1p-ignore="true"
           name="noop-fb-${i}" maxlength="${letterCount}">`;
       }
     }
