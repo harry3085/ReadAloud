@@ -55,9 +55,9 @@
     </div>
   </div>
 
-  <!-- 🎨 콘텐츠 제작 -->
+  <!-- 콘텐츠 제작 -->
   <div class="nav-section">
-    <div class="nav-label">🎨 콘텐츠 제작</div>
+    <div class="nav-label">콘텐츠 제작</div>
     <div class="nav-item" onclick="goPage('generator')" id="nav-generator">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
       Generator
@@ -72,37 +72,42 @@
     </div>
   </div>
 
-  <!-- 📚 교재 & 시험 -->
+  <!-- 시험 관리 -->
   <div class="nav-section">
-    <div class="nav-label">📚 교재 & 시험</div>
-
-    <!-- 시험 관리 (신 구조: 유형별 리빌딩) -->
-    <div class="nav-group" id="navgroup-test">
-      <div class="nav-item" onclick="toggleNav('test')">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        🎯 시험 관리
-        <span class="nav-toggle">›</span>
-      </div>
-      <div class="nav-children nav-sub">
-        <!-- 유형별 출제 메뉴 -->
-        <div class="nav-item" onclick="goPage('test-word')" id="nav-test-word">단어시험</div>
-        <div class="nav-item" onclick="goPage('test-unscramble')" id="nav-test-unscramble">언스크램블</div>
-        <div class="nav-item" onclick="goPage('test-blank')" id="nav-test-blank">빈칸채우기</div>
-        <div class="nav-item" onclick="goPage('test-mcq')" id="nav-test-mcq">내용이해_객관식</div>
-        <div class="nav-item" onclick="goPage('test-subj')" id="nav-test-subj">해석하기_주관식</div>
-        <div class="nav-item" onclick="goPage('test-rec-ai')" id="nav-test-rec-ai">녹음숙제</div>
-        <!-- 공통 메뉴 -->
-        <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">📋 시험 목록</div>
-        <div class="nav-item" onclick="goPage('test-print')" id="nav-test-print">🖨 시험지 출력</div>
-      </div>
+    <div class="nav-label">시험 관리</div>
+    <div class="nav-item" onclick="goPage('test-word')" id="nav-test-word">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      단어시험
     </div>
-
-
+    <div class="nav-item" onclick="goPage('test-unscramble')" id="nav-test-unscramble">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+      언스크램블
+    </div>
+    <div class="nav-item" onclick="goPage('test-blank')" id="nav-test-blank">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      빈칸채우기
+    </div>
+    <div class="nav-item" onclick="goPage('test-mcq')" id="nav-test-mcq">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      내용이해_객관식
+    </div>
+    <div class="nav-item" onclick="goPage('test-subj')" id="nav-test-subj">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+      해석하기_주관식
+    </div>
+    <div class="nav-item" onclick="goPage('test-rec-ai')" id="nav-test-rec-ai">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      녹음숙제
+    </div>
+    <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      시험 목록
+    </div>
   </div>
 
-  <!-- 📊 성적 관리 (nav-section 래퍼 복구) -->
+  <!-- 성적 관리 -->
   <div class="nav-section">
-    <div class="nav-label">📊 성적 관리</div>
+    <div class="nav-label">성적 관리</div>
     <div class="nav-group" id="navgroup-score">
       <div class="nav-item" onclick="toggleNav('score')">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -116,9 +121,9 @@
     </div>
   </div>
 
-  <!-- 💬 커뮤니케이션 -->
+  <!-- 커뮤니케이션 -->
   <div class="nav-section">
-    <div class="nav-label">💬 커뮤니케이션</div>
+    <div class="nav-label">커뮤니케이션</div>
     <div class="nav-item" onclick="goPage('message')" id="nav-message">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       메시지 관리
@@ -408,118 +413,6 @@
             <button class="action-btn danger" onclick="deleteSelectedTest()">🗑 삭제</button>
           </div>
           <div class="tbl-page" id="testPagination"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 시험지 출력 -->
-  <div class="page" id="page-test-print">
-    <div class="page-header">
-      <div><div class="page-title">시험지 출력</div><div class="page-sub">MYBOOK 내용의 시험지를 출력하여 개인보관/복습활용</div></div>
-      <button class="btn btn-secondary" onclick="loadPrintTestList()">↺ 새로고침</button>
-    </div>
-    <div style="display:grid;grid-template-columns:520px 1fr 300px;gap:16px;height:calc(100vh - 160px);">
-
-      <!-- 1열: 폴더→교재→Unit 트리 -->
-      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
-        <div style="padding:10px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;gap:8px;align-items:center;">
-            <span>📁 폴더 / 교재 / Unit</span>
-            <span id="ptTreeSortBtn" onclick="treeSort()" style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:12px;border:1px solid var(--border);background:white;color:var(--gray);font-weight:400;transition:.15s;" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'" onmouseout="this.style.borderColor='var(--border)';this.style.color=this.style.fontWeight==='700'?'var(--teal)':''">가나다순</span>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <span id="ptSelCount" style="font-size:12px;color:var(--teal);font-weight:400;"></span>
-            <button onclick="clearPrintSelection()" style="background:none;border:none;color:#bbb;cursor:pointer;font-size:11px;">전체 해제</button>
-          </div>
-        </div>
-        <div id="printBookTreeArea" style="font-size:13px;overflow-y:auto;flex:1;">
-          <div style="padding:20px;text-align:center;color:#bbb;">로딩 중...</div>
-        </div>
-      </div>
-
-      <!-- 2열: 미리보기 -->
-      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
-        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;display:flex;align-items:center;gap:8px;">
-          👁 미리보기
-          <span id="ptWordCount" style="font-size:12px;color:var(--teal);font-weight:400;margin-left:4px;"></span>
-        </div>
-        <div id="ptPreviewArea" style="flex:1;overflow:auto;padding:12px;background:#e0e0e0;">
-          <div style="width:794px;height:1123px;background:white;margin:0 auto;border-radius:4px;
-            box-shadow:0 2px 12px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;">
-            <div style="text-align:center;color:#bbb;font-size:13px;">왼쪽에서 교재/Unit을 선택하세요</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3열: 출력 옵션 -->
-      <div style="display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
-
-        <!-- 시험명 -->
-        <div class="card" style="padding:14px 16px;">
-          <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:6px;">시험명 <span style="font-weight:400;font-size:11px;">(수정 가능)</span></div>
-          <input id="ptExamName" type="text" placeholder="교재/Unit 선택 시 자동입력"
-            style="width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;outline:none;">
-          <div style="font-size:12px;font-weight:700;color:var(--gray);margin-top:10px;margin-bottom:6px;">학원명</div>
-          <input id="ptAcademy" type="text" value="큰소리영어"
-            style="width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;outline:none;">
-        </div>
-
-        <!-- 문제 유형 설정 -->
-        <div class="card" style="padding:14px 16px;">
-          <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:10px;">문제 유형별 문항 수</div>
-          <div style="font-size:12px;color:var(--teal);font-weight:600;margin-bottom:6px;">영어 → 한글</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
-            <div>
-              <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">객관식</div>
-              <input type="number" id="pt_mcEn2Ko" value="20" min="0"
-                oninput="savePtSettings();updatePtPreview()"
-                style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
-            </div>
-            <div>
-              <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">주관식</div>
-              <input type="number" id="pt_subjEn2Ko" value="0" min="0"
-                oninput="savePtSettings();updatePtPreview()"
-                style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--blue);font-weight:600;margin-bottom:6px;">한글 → 영어</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
-            <div>
-              <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">객관식</div>
-              <input type="number" id="pt_mcKo2En" value="0" min="0"
-                oninput="savePtSettings();updatePtPreview()"
-                style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
-            </div>
-            <div>
-              <div style="font-size:11px;color:var(--gray);margin-bottom:3px;">주관식</div>
-              <input type="number" id="pt_subjKo2En" value="0" min="0"
-                oninput="savePtSettings();updatePtPreview()"
-                style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;">
-            </div>
-          </div>
-          <div style="padding:8px;background:#f8f9fa;border-radius:6px;font-size:12px;text-align:center;">
-            총 <b id="ptTotalCount" style="color:var(--teal);font-size:14px;">20</b>문제
-          </div>
-        </div>
-
-        <!-- 출력 버튼 -->
-        <div class="card" style="padding:14px 16px;">
-          <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px;">출력 유형</div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <button onclick="doPrintExamFromTree('exam')"
-              style="padding:10px;background:var(--teal);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
-              📄 시험지 출력
-            </button>
-            <button onclick="doPrintExamFromTree('answer')"
-              style="padding:10px;background:#4bc27d;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
-              📋 답안지 출력
-            </button>
-            <button onclick="doPrintExamFromTree('both')"
-              style="padding:10px;background:var(--blue);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
-              🖨 시험지+답안지
-            </button>
-          </div>
         </div>
       </div>
     </div>
