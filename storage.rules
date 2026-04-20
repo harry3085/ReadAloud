@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── 기존 녹음숙제 (recHw 시스템) ─────────────────────────
+    // 경로 예: recHw/{hwId}/{uid}_slot{n}_{timestamp}.webm
+    match /recHw/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024
+                   && request.resource.contentType.matches('audio/.*');
+    }
+
+    // ── AI 녹음숙제 (Phase 5, 5.5) ───────────────────────────
+    // 경로 예: recordings/genTests/{testId}/{uid}/r{n}_{ts}.{webm|m4a}
+    match /recordings/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 25 * 1024 * 1024
+                   && request.resource.contentType.matches('audio/.*');
+    }
+
+    // ── 일반 파일 (숙제 파일, 공지 첨부 등) ─────────────────
+    match /hwFiles/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 50 * 1024 * 1024;
+    }
+
+    match /notices/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // ── 기타 ─────────────────────────────────────────────────
+    // 로그인 사용자 읽기 허용, 쓰기는 명시된 경로만
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}
