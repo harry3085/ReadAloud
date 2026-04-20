@@ -126,7 +126,34 @@ window.doLogout = async()=>{
   localStorage.removeItem('lastLoginAt');
   show('login');
 };
-window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();updateAllBadges();};
+window.goHome = ()=>{show('home');clearTimers();clearUnscTimer();_releaseWakeLock();updateAllBadges();};
+
+// ── 녹음 중 화면 꺼짐 방지 (Screen Wake Lock API) ────────
+let _wakeLock = null;
+let _wakeLockWanted = false;
+async function _acquireWakeLock(){
+  _wakeLockWanted = true;
+  if(!('wakeLock' in navigator)) return;
+  try{
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release', ()=>{ _wakeLock = null; });
+    console.log('[wakeLock] acquired');
+  }catch(e){ console.warn('[wakeLock] failed', e.message); }
+}
+async function _releaseWakeLock(){
+  _wakeLockWanted = false;
+  if(!_wakeLock) return;
+  try{ await _wakeLock.release(); _wakeLock = null; }catch(e){}
+}
+// 탭이 숨겨졌다 돌아오면 Wake Lock 이 자동 해제되므로 재획득
+document.addEventListener('visibilitychange', async ()=>{
+  if(_wakeLockWanted && document.visibilityState === 'visible' && !_wakeLock){
+    try{
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', ()=>{ _wakeLock = null; });
+    }catch(e){}
+  }
+});
 
 // ── 홈 데이터 ─────────────────────────────────────────────
 async function loadHomeData(){
@@ -1175,6 +1202,7 @@ window.startRecAi = async (testId, testName) => {
     };
 
     show('recAiQuiz');
+    _acquireWakeLock();
     _raRenderStep();
   }catch(e){
     console.error(e);
@@ -1423,6 +1451,7 @@ async function _raSubmit(){
 }
 
 function _raRenderResult(count){
+  _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if(!screen) return;
   if(!_raScreenTemplate) _raScreenTemplate = screen.innerHTML;
@@ -1488,6 +1517,7 @@ function _raStartV2(test, question) {
     timerStart: 0,
   };
   show('recAiQuiz');
+  _acquireWakeLock();
   _rv2Render();
 }
 
@@ -1949,6 +1979,7 @@ window.viewRecAiResult = async (testId) => {
 };
 
 function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls) {
+  _releaseWakeLock();
   _rv2ResultAudioUrls = allAudioUrls || [];
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
@@ -4159,6 +4190,7 @@ window.openRecHwDetail = async(hwId) => {
   if(!snap.exists()){ showToast('숙제를 찾을 수 없습니다.'); return; }
   _recCurrentHw = {id:hwId, ...snap.data()};
   _recBlobs = {}; _recMediaRecorders = {}; _recStreams = {}; _recSubmittedSlots = {};
+  _acquireWakeLock();
 
   document.getElementById('recHwDetailTitle').textContent = _recCurrentHw.title||'녹음 숙제';
   document.getElementById('recHwContent').textContent = _recCurrentHw.content||'';
