@@ -4654,13 +4654,14 @@ function _vqMakeCard(t, isCompleted, onclick, completedScore) {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${esc(t.name||'단어 시험')}</div>
           ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
+               <span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
             : `<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">📝 ${esc(t.bookName||'단어 시험')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
       </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'↻':'›'}</span>
     </div>`;
 }
 
@@ -5148,13 +5149,14 @@ function _uqMakeCard(t, isCompleted, onclick, completedScore) {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${esc(t.name||'언스크램블 시험')}</div>
           ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
+               <span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
             : `<span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">🔀 ${esc(t.bookName||'언스크램블')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
       </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'↻':'›'}</span>
     </div>`;
 }
 
