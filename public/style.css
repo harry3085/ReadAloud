@@ -346,7 +346,8 @@
     }
     #home .notice-item,
     #home .hw-file-item{
-      border-top:1.5px dashed var(--stitch-beige);
+      border-top:2.5px dashed var(--stitch-beige);
+      padding-top:12px;
     }
     #home .notice-item-title{color:var(--text-ink);}
     #home .notice-item-meta,
