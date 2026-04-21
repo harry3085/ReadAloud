@@ -315,3 +315,38 @@
     .home-header .menu-btn,.home-header .home-header-actions button{
       background:rgba(255,255,255,0.18);
     }
+
+    /* ═══ DS-1c: 홈 공지·숙제 파일 카드 ═══ */
+    #home .notice-section{padding-top:6px;}
+    #home .notice-card{
+      background:rgba(255,255,255,0.95);
+      border-radius:var(--radius-panel);
+      box-shadow:var(--shadow-panel);
+      margin-bottom:12px;
+      overflow:hidden;
+    }
+    #home .notice-card-title{
+      color:var(--text-ink);
+      font-weight:var(--fw-medium);
+    }
+    #home .notice-more{
+      color:var(--text-sub);
+      font-weight:var(--fw-regular);
+      background:none;
+    }
+    #home .notice-item,
+    #home .hw-file-item{
+      border-top:1.5px dashed var(--stitch-beige);
+    }
+    #home .notice-item-title{color:var(--text-ink);}
+    #home .notice-item-meta,
+    #home .file-meta{color:var(--text-hint);}
+    #home .file-name{color:var(--text-ink);font-weight:var(--fw-medium);}
+    #home .download-btn{
+      background:var(--c-brand);
+      border-radius:var(--radius-btn);
+      font-weight:var(--fw-medium);
+      padding:7px 14px;
+    }
+    #home .notice-dot{background:var(--c-brand);}
+    #home .notice-tag{background:var(--c-brand-cream);color:var(--c-brand-dark);}
