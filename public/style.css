@@ -281,3 +281,37 @@
     #home{background:var(--bg-gradient);}
     #home .home-header{background:transparent;}
     #home .home-body{background:transparent;border-radius:0;margin-top:0;}
+
+    /* ═══ DS-1b: 홈 메뉴 카드 6종 ═══ */
+    .menu-card.c-mint,.menu-card.c-rasp,.menu-card.c-lav,
+    .menu-card.c-butter,.menu-card.c-sky,.menu-card.c-rose{
+      border-radius:var(--radius-card);
+      outline:var(--stitch-width) dashed var(--stitch-white);
+      outline-offset:var(--stitch-offset);
+      box-shadow:var(--shadow-card);
+      padding:16px;
+      min-height:118px;
+    }
+    .menu-card.c-mint{background:var(--c-mint-bg) !important;color:var(--c-mint-fg);}
+    .menu-card.c-rasp{background:var(--c-rasp-bg) !important;color:var(--c-rasp-fg);}
+    .menu-card.c-lav{background:var(--c-lav-bg) !important;color:var(--c-lav-fg);}
+    .menu-card.c-butter{background:var(--c-butter-bg) !important;color:var(--c-butter-fg);}
+    .menu-card.c-sky{background:var(--c-sky-bg) !important;color:var(--c-sky-fg);}
+    .menu-card.c-rose{background:var(--c-rose-bg) !important;color:var(--c-rose-fg);}
+    /* 카드 내부 텍스트/아이콘 색상 상속 */
+    .menu-card.c-mint .card-name,.menu-card.c-rasp .card-name,.menu-card.c-lav .card-name,
+    .menu-card.c-butter .card-name,.menu-card.c-sky .card-name,.menu-card.c-rose .card-name{
+      color:inherit !important;font-weight:var(--fw-medium);
+    }
+    .menu-card.c-mint .card-label,.menu-card.c-rasp .card-label,.menu-card.c-lav .card-label,
+    .menu-card.c-butter .card-label,.menu-card.c-sky .card-label,.menu-card.c-rose .card-label{
+      color:inherit !important;opacity:0.78;font-weight:var(--fw-medium);
+    }
+    .menu-card.c-mint .card-icon-big,.menu-card.c-rasp .card-icon-big,.menu-card.c-lav .card-icon-big,
+    .menu-card.c-butter .card-icon-big,.menu-card.c-sky .card-icon-big,.menu-card.c-rose .card-icon-big{
+      color:currentColor !important;opacity:0.4 !important;
+    }
+    /* 헤더 아이콘 버튼 톤 통일 */
+    .home-header .menu-btn,.home-header .home-header-actions button{
+      background:rgba(255,255,255,0.18);
+    }
