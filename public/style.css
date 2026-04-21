@@ -350,3 +350,41 @@
     }
     #home .notice-dot{background:var(--c-brand);}
     #home .notice-tag{background:var(--c-brand-cream);color:var(--c-brand-dark);}
+
+    /* ═══ DS-1d: 서브 화면 6종 테마 ═══ */
+    .screen.theme-mint{--theme-fg:var(--c-mint-fg);--theme-soft:var(--c-mint-soft);background:var(--c-mint-soft);}
+    .screen.theme-butter{--theme-fg:var(--c-butter-fg);--theme-soft:var(--c-butter-soft);background:var(--c-butter-soft);}
+    .screen.theme-rasp{--theme-fg:#B04860;--theme-soft:var(--c-rasp-soft);background:var(--c-rasp-soft);}
+    .screen.theme-lav{--theme-fg:var(--c-lav-fg);--theme-soft:var(--c-lav-soft);background:var(--c-lav-soft);}
+    .screen.theme-sky{--theme-fg:var(--c-sky-fg);--theme-soft:var(--c-sky-soft);background:var(--c-sky-soft);}
+    .screen.theme-rose{--theme-fg:var(--c-rose-fg);--theme-soft:var(--c-rose-soft);background:var(--c-rose-soft);}
+    /* 리스트·랭킹 스크린: 첫 자식(헤더)과 두 번째 자식(바디 래퍼) 배경 덮어쓰기 */
+    .screen.theme-mint > div:first-child,
+    .screen.theme-butter > div:first-child,
+    .screen.theme-rasp > div:first-child,
+    .screen.theme-lav > div:first-child,
+    .screen.theme-sky > div:first-child,
+    .screen.theme-rose > div:first-child{
+      background:var(--theme-fg) !important;
+    }
+    .screen.theme-mint > div:nth-child(2),
+    .screen.theme-butter > div:nth-child(2),
+    .screen.theme-rasp > div:nth-child(2),
+    .screen.theme-lav > div:nth-child(2),
+    .screen.theme-sky > div:nth-child(2),
+    .screen.theme-rose > div:nth-child(2){
+      background:var(--theme-soft) !important;
+    }
+    /* 리스트 내부 카드들은 흰 바탕에 테마 포인트 */
+    .screen[class*="theme-"] .unit-card{
+      border-radius:var(--radius-panel);
+      box-shadow:var(--shadow-panel);
+    }
+    .screen[class*="theme-"] .unit-arrow{color:var(--theme-fg);}
+    .screen[class*="theme-"] .unit-progress-bar{background:var(--theme-fg);}
+    .screen[class*="theme-"] .rank-item.me{border-color:var(--theme-fg);background:rgba(255,255,255,0.85);}
+    .screen[class*="theme-"] .rank-num.gold,
+    .screen[class*="theme-"] .rank-num.silver,
+    .screen[class*="theme-"] .rank-num.bronze{color:inherit;}
+    .screen[class*="theme-"] .rank-name span{color:var(--theme-fg);}
+    .screen[class*="theme-"] .rank-score{color:var(--theme-fg);}
