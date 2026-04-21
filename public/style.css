@@ -1,4 +1,40 @@
-    *{box-sizing:border-box;margin:0;padding:0;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-tap-highlight-color:transparent;}
+    /* === DS-1 Design System Tokens === */
+    @font-face{
+      font-family:'Pretendard Variable';
+      font-weight:45 920;
+      font-style:normal;
+      font-display:swap;
+      src:url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/woff2/PretendardVariable.woff2') format('woff2-variations');
+    }
+    :root{
+      /* 타이포그래피 */
+      --font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+      --fw-regular:400;
+      --fw-medium:500;
+      /* 홈 배경 그라디언트 */
+      --bg-gradient:linear-gradient(180deg,#B02F44 0%,#C93848 10%,#E14E47 22%,#F07258 36%,#FF9575 52%,#FFC4AB 72%,#FFE8DB 100%);
+      /* 6종 팔레트 */
+      --c-mint-bg:#8FD9C2;--c-mint-fg:#166B54;--c-mint-soft:#DFF2EA;
+      --c-rasp-bg:#E8607A;--c-rasp-fg:#FFF0F3;--c-rasp-soft:#FCE2E8;
+      --c-lav-bg:#BFA6E0;--c-lav-fg:#4B2C75;--c-lav-soft:#ECE4F6;
+      --c-butter-bg:#FFD46E;--c-butter-fg:#7A4F04;--c-butter-soft:#FFF3D6;
+      --c-sky-bg:#8AC3ED;--c-sky-fg:#1F4C7A;--c-sky-soft:#DFEEFB;
+      --c-rose-bg:#F294AB;--c-rose-fg:#7A2C45;--c-rose-soft:#FCDFE7;
+      /* 브랜드 액센트 */
+      --c-brand:#D95A3E;--c-brand-dark:#A83E27;--c-brand-cream:#FFE8DB;
+      /* 스티치 */
+      --stitch-width:3.5px;--stitch-offset:-7px;
+      --stitch-white:#FFFFFF;--stitch-beige:#D4C4B8;
+      /* 그림자 */
+      --shadow-card:0 6px 14px rgba(110,25,35,0.22);
+      --shadow-panel:0 4px 12px rgba(110,25,35,0.14);
+      /* 반경 */
+      --radius-card:22px;--radius-panel:20px;--radius-btn:999px;--radius-chip:14px;
+      /* 텍스트 */
+      --text-ink:#3A3A4A;--text-sub:#6E7683;--text-hint:#A08776;
+      --text-white:#FFFFFF;--line-cream:#F0E4DC;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:var(--font-family);-webkit-tap-highlight-color:transparent;}
     :root{--teal:#E8714A;--teal-dark:#D85A30;--bg:#FEF2EC;--white:#fff;--text:#222;--gray:#888;--red:#e05050;--blue:#EF9F27;--purple:#D4537E;--green:#F4936A;}
     html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
     #app{height:100%;overflow:hidden;position:relative;}
@@ -240,3 +276,8 @@
     #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:#333;color:white;padding:10px 20px;border-radius:20px;font-size:14px;opacity:0;transition:all .3s;z-index:500;pointer-events:none;white-space:nowrap;}
     #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     .row-btns{display:flex;gap:8px;margin-top:8px;}
+
+    /* ═══ DS-1a: 홈 배경 그라디언트 ═══ */
+    #home{background:var(--bg-gradient);}
+    #home .home-header{background:transparent;}
+    #home .home-body{background:transparent;border-radius:0;margin-top:0;}
