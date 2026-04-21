@@ -2846,6 +2846,7 @@ window.genDeleteBooks = async () => {
 // ─── 전역 상태 ───
 let _qgSelectedPageIds = new Set();    // AI 생성 화면에서 선택된 Page IDs
 let _qgGenerated = [];                  // AI 생성 결과 (미리보기용)
+let _qgModel = '';                      // 마지막 생성에 실제 사용된 모델 (폴백 후 실제 값)
 let _qgExcluded = new Set();            // 미리보기에서 제외된 문제 인덱스
 let _qsList = [];                       // 문제 세트 목록 (Firestore에서 로드)
 let _qsEditState = null;                // 수정 중인 세트 (Phase: 세트 내용 편집)
@@ -3972,6 +3973,7 @@ function _qgShowResultModal(data) {
     showToast('AI가 문제를 생성하지 못했습니다. 본문이 너무 짧거나 부적절할 수 있습니다.');
     return;
   }
+  _qgModel = data.model || '';
 
   const defaultName = data.defaultName || _qgBuildDefaultName();
 
@@ -4192,7 +4194,7 @@ window.qgSaveSet = async () => {
       sourcePages,
       questions: finalQuestions,
       questionCount: finalQuestions.length,
-      aiModel: 'gemini-3.1-flash-lite-preview',
+      aiModel: _qgModel || 'unknown',
       aiGeneratedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',

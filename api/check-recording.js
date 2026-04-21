@@ -1,13 +1,13 @@
 // api/check-recording.js
-// 녹음 정확도 평가 + 상세 피드백 (Gemini 2.5 Flash 오디오)
+// 녹음 정확도 평가 + 상세 피드백 (Gemini 오디오 멀티모달)
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
 // 과부하 시 순차 폴백 (오디오 지원 확인된 모델만)
 const MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite-preview',  // 1순위 (1000회/일 무료, 네이티브 오디오)
+  'gemini-2.5-flash',                // GA 폴백
+  'gemini-2.0-flash',                // 최후 폴백
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
