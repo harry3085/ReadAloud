@@ -285,22 +285,12 @@
     /* ═══ DS-1b: 홈 메뉴 카드 6종 ═══ */
     .menu-card.c-mint,.menu-card.c-rasp,.menu-card.c-lav,
     .menu-card.c-butter,.menu-card.c-sky,.menu-card.c-rose{
-      position:relative;
       border-radius:var(--radius-card);
-      outline:none;
+      outline:var(--stitch-width) dashed var(--stitch-white);
+      outline-offset:var(--stitch-offset);
       box-shadow:var(--shadow-card);
       padding:16px;
       min-height:118px;
-    }
-    /* 스티치 — 가상요소 border로 border-radius를 따라감 (outline과 달리 Safari 호환) */
-    .menu-card.c-mint::before,.menu-card.c-rasp::before,.menu-card.c-lav::before,
-    .menu-card.c-butter::before,.menu-card.c-sky::before,.menu-card.c-rose::before{
-      content:'';
-      position:absolute;
-      inset:7px;
-      border:2.5px dashed rgba(255,255,255,0.92);
-      border-radius:calc(var(--radius-card) - 7px);
-      pointer-events:none;
     }
     .menu-card.c-mint{background:var(--c-mint-bg) !important;color:var(--c-mint-fg);}
     .menu-card.c-rasp{background:var(--c-rasp-bg) !important;color:var(--c-rasp-fg);}
