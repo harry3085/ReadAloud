@@ -2866,7 +2866,7 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문에서 중요 단어를 AI 가 선별해 단어 시험을 만듭니다.',
     options: [
-      { key:'count',      label:'문제수',         type:'number', default:20, min:5, max:50 },
+      { key:'count',      label:'문제수',         type:'number', default:20, min:5, max:100 },
       { key:'difficulty', label:'난이도(학년)',   type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'shuffleQ',   label:'문제 섞기',      type:'select', choices:['Off','On'], default:'On' },
       { key:'shuffleA',   label:'정답 섞기',      type:'select', choices:['Off','On'], default:'On' },
@@ -2880,7 +2880,7 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문 문장을 AI 가 청크 갯수에 맞게 나눠 언스크램블 문제를 만듭니다.',
     options: [
-      { key:'count',       label:'문제수',       type:'number', default:10, min:3, max:30 },
+      { key:'count',       label:'문제수',       type:'number', default:10, min:3, max:50 },
       { key:'difficulty',  label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'chunkCount',  label:'청크 갯수',    type:'number', default:4, min:2, max:8 },
       { key:'shuffleQ',    label:'문제 섞기',    type:'select', choices:['Off','On'], default:'On' },
@@ -2897,7 +2897,7 @@ const QG_TYPE_OPTIONS = {
       { key:'generationMode', label:'생성 방식', type:'select',
         choices:['규칙 기반 (즉시·무료)','AI 향상 (5~15초)'],
         default:'규칙 기반 (즉시·무료)' },
-      { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:30 },
+      { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:50 },
       { key:'difficulty',        label:'난이도(학년)',       type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'blanksPerSentence', label:'문장별 빈칸 개수',   type:'number', default:1, min:1, max:5 },
       { key:'passScore',         label:'통과점수',           type:'number', default:80, min:0, max:100 },
@@ -2910,7 +2910,7 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문을 읽고 4지선다로 내용을 확인합니다.',
     options: [
-      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:20 },
+      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:50 },
       { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
     ],
@@ -2922,7 +2922,7 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '원문 문장을 제시하고 학생이 손으로 한글 해석을 쓰는 시험지를 생성합니다. (학생앱 배정 없음)',
     options: [
-      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:20 },
+      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:50 },
       { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
     ],
@@ -3058,7 +3058,7 @@ function _qgRender() {
       <div id="qgPagePane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개</div>
+            <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 <span style="font-weight:400;color:var(--gray);font-size:10px;">(최대 10개)</span></div>
             <div style="font-size:10px;color:var(--gray);">${pages.length}개 표시 중 (본문 20자 이상만)</div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -3297,12 +3297,16 @@ function _qgRenderOptions(type) {
     const labelRow = `<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;">${esc(opt.label)}</div>`;
 
     if (opt.type === 'number') {
+      const hint = (opt.min!==undefined && opt.max!==undefined)
+        ? `<div style="font-size:10px;color:var(--gray);margin-top:3px;">입력 범위: ${opt.min} ~ ${opt.max}</div>`
+        : '';
       return `<div style="margin-bottom:10px;">
         ${labelRow}
         <input type="number" id="${id}" value="${val}"
           ${opt.min!==undefined?`min="${opt.min}"`:''} ${opt.max!==undefined?`max="${opt.max}"`:''}
           onchange="qgPersistOpts()"
           style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+        ${hint}
       </div>`;
     }
     if (opt.type === 'select') {

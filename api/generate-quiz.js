@@ -12,6 +12,17 @@ const GEMINI_MODELS = [
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+// 유형별 문제 수 상한 (초과 시 400 에러)
+const MAX_COUNT_BY_TYPE = {
+  vocab: 100,       // 단어는 항목당 짧아 많이 가능
+  mcq: 50,
+  subjective: 50,
+  fill_blank: 50,
+  recording: 50,
+  unscramble: 50,
+};
+const MAX_PAGES = 10;
+
 // ─── 문제 타입별 시스템 프롬프트 ───
 const SYSTEM_PROMPTS = {
   mcq: `You are an English reading comprehension quiz generator for Korean middle/high school students.
@@ -295,17 +306,28 @@ module.exports = async function handler(req, res) {
     if (!Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: 'pages array is required' });
     }
-    if (pages.length > 10) {
-      return res.status(400).json({ error: 'Maximum 10 pages per request' });
+    if (pages.length > MAX_PAGES) {
+      return res.status(400).json({ error: `페이지는 최대 ${MAX_PAGES}개까지 선택 가능합니다 (요청: ${pages.length}개)` });
     }
-    const targetCount = Math.min(Math.max(parseInt(count) || 5, 1), 20);
-    const quizType = type || 'mcq';
 
+    const quizType = type || 'mcq';
     if (!SYSTEM_PROMPTS[quizType]) {
       return res.status(400).json({
         error: `Type "${quizType}" not supported. Supported: ${Object.keys(SYSTEM_PROMPTS).join(', ')}`,
       });
     }
+
+    const requestedCount = parseInt(count) || 5;
+    if (requestedCount < 1) {
+      return res.status(400).json({ error: '문제 수는 1개 이상이어야 합니다' });
+    }
+    const maxAllowed = MAX_COUNT_BY_TYPE[quizType] || 50;
+    if (requestedCount > maxAllowed) {
+      return res.status(400).json({
+        error: `${quizType} 유형은 최대 ${maxAllowed}개까지 생성 가능합니다 (요청: ${requestedCount}개)`,
+      });
+    }
+    const targetCount = requestedCount;
 
     // ─── 본문 전처리 ───
     const MAX_CHARS_PER_PAGE = 3000;
@@ -409,7 +431,7 @@ async function callGemini(model, apiKey, systemPrompt, userPrompt) {
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 32768,
       responseMimeType: 'application/json', // JSON 모드
     },
   };
@@ -431,11 +453,17 @@ async function callGemini(model, apiKey, systemPrompt, userPrompt) {
     .map(p => p.text || '')
     .join('');
 
+  const finishReason = data.candidates?.[0]?.finishReason;
   if (!text) {
-    const finishReason = data.candidates?.[0]?.finishReason;
     return {
       ok: false,
       error: `Empty response (finishReason: ${finishReason || 'unknown'})`,
+    };
+  }
+  if (finishReason === 'MAX_TOKENS') {
+    return {
+      ok: false,
+      error: 'AI 응답이 최대 토큰 한도에 도달해 잘렸습니다. 문제 수를 줄이거나 페이지를 줄여 다시 시도하세요.',
     };
   }
 
