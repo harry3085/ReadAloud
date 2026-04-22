@@ -5055,13 +5055,8 @@ const _TYPE_LABEL_MAP = {
   mcq:'객관식',
   subjective:'주관식',
   recording:'녹음',
-  // UI 타입 별칭 (_TEST_TYPE_CONFIG 키 기반 접근 시 필요)
+  // _TEST_TYPE_CONFIG UI 키 별칭 (관리자앱 내부 접근 시 필요)
   blank:'빈칸', subj:'주관식', 'rec-ai':'녹음',
-  // 레거시 scores/testMode 호환 (마이그레이션 실행 전 임시 표시용)
-  word:'단어',
-  'fill-blank':'빈칸',
-  'reading-mcq':'객관식',
-  'recording-ai':'녹음',
 };
 function _qsTypeLabel(t) {
   if (!t) return '-';
@@ -7800,81 +7795,5 @@ window.qgResetPrompt = async () => {
   showToast('기본값으로 복원됨');
   _qgRenderPromptTabs();
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
-};
-
-// 1회용: scores.mode / genTests.testMode 표준 키로 일괄 변환 (완료 후 제거)
-window.runModeMigration = async (dryRun) => {
-  const MAPPING = {
-    'word': 'vocab',
-    'fill-blank': 'fill_blank',
-    'reading-mcq': 'mcq',
-    'recording-ai': 'recording',
-  };
-  const logEl = document.getElementById('modeMigLog');
-  const log = msg => { if (logEl) logEl.textContent += msg + '\n'; console.log('[modeMig]', msg); };
-  if (!dryRun) {
-    const ok = await showConfirm('변환 실행', 'scores.mode 와 genTests.testMode 레거시 값을 표준 키로 일괄 변경합니다.');
-    if (!ok) return;
-  }
-  if (logEl) logEl.textContent = '';
-  log(`=== 표준화 ${dryRun?'(Dry)':'(실행)'} ===`);
-  log(`매핑: ${JSON.stringify(MAPPING)}`);
-
-  const migrateCollection = async (collName, field) => {
-    let changed = 0, skipped = 0, failed = 0;
-    try {
-      const snap = await getDocs(collection(db, collName));
-      log(`${collName}: ${snap.size}건 스캔`);
-      for (const d of snap.docs) {
-        const old = d.data()[field];
-        const newVal = MAPPING[old];
-        if (!newVal) { skipped++; continue; }
-        if (dryRun) { changed++; continue; }
-        try {
-          await updateDoc(doc(db, collName, d.id), { [field]: newVal });
-          changed++;
-          if (changed % 20 === 0) log(`  ${collName} ${changed}건...`);
-        } catch(e) { failed++; }
-      }
-      log(`${collName}.${field}: 변환 ${changed} / 스킵 ${skipped} / 실패 ${failed}`);
-    } catch(e) { log(`${collName} 조회 실패: ${e.message}`); }
-    return changed;
-  };
-
-  const scoresChanged = await migrateCollection('scores', 'mode');
-  const testsChanged = await migrateCollection('genTests', 'testMode');
-
-  log(`\n=== ${dryRun?'Dry':'실행'} 완료 ===`);
-  showToast(dryRun
-    ? `미리보기: scores ${scoresChanged} + genTests ${testsChanged} 건 변환 예정`
-    : `완료: scores ${scoresChanged}, genTests ${testsChanged} 건 변환`);
-};
-
-// 1회용: scores.mode 'word' → 'vocab' 변환 (완료 후 버튼·함수 제거 예정)
-window.runWordModeMigration = async (dryRun) => {
-  const logEl = document.getElementById('wordMigLog');
-  const log = msg => { if (logEl) logEl.textContent += msg + '\n'; console.log('[wordMig]', msg); };
-  if (!dryRun) {
-    const ok = await showConfirm('변환 실행', 'scores 컬렉션의 mode=word 를 vocab 으로 일괄 변경합니다.');
-    if (!ok) return;
-  }
-  if (logEl) logEl.textContent = '';
-  log(`=== scores.mode word→vocab ${dryRun?'(Dry)':'(실행)'} ===`);
-  let changed = 0, skipped = 0, failed = 0;
-  try {
-    const snap = await getDocs(collection(db, 'scores'));
-    log(`총 ${snap.size}건 스캔`);
-    for (const d of snap.docs) {
-      if (d.data().mode !== 'word') { skipped++; continue; }
-      if (dryRun) { changed++; continue; }
-      try {
-        await updateDoc(doc(db,'scores', d.id), { mode: 'vocab' });
-        changed++;
-        if (changed % 20 === 0) log(`  ${changed}건 변환됨...`);
-      } catch(e) { failed++; log(`  ERR ${d.id}: ${e.message}`); }
-    }
-    log(`완료: 변환 ${changed} / 스킵 ${skipped} / 실패 ${failed}`);
-    showToast(dryRun ? `미리보기: ${changed}건 변환 예정` : `${changed}건 변환됨`);
-  } catch(e) { log('조회 실패: '+e.message); }
 };
 
