@@ -4976,16 +4976,24 @@ function _qsBookName(bookId) {
   const b = _qsBooks.find(x => x.id === bookId);
   return b?.name || '(알 수 없는 Book)';
 }
-// 통합 유형 라벨 맵 (sourceType + testMode 공용)
+// 통합 유형 라벨 맵 (sourceType / testMode / mode 다양한 별칭 수용)
 const _TYPE_LABEL_MAP = {
-  // sourceType (genQuestionSets)
-  mcq:'객관식', fill_blank:'빈칸', subjective:'주관식',
-  recording:'녹음', vocab:'단어', unscramble:'언스크램블',
-  // testMode (genTests) 별칭
-  'reading-mcq':'객관식', 'fill-blank':'빈칸', 'recording-ai':'녹음',
+  // 단어
+  vocab:'단어', word:'단어',
+  // 빈칸
+  fill_blank:'빈칸', 'fill-blank':'빈칸', blank:'빈칸',
+  // 언스크램블
+  unscramble:'언스크램블',
+  // 객관식
+  mcq:'객관식', 'reading-mcq':'객관식',
+  // 주관식
+  subjective:'주관식', subj:'주관식',
+  // 녹음
+  recording:'녹음', 'recording-ai':'녹음', 'rec-ai':'녹음',
 };
 function _qsTypeLabel(t) {
-  return _TYPE_LABEL_MAP[t] || t || '-';
+  if (!t) return '-';
+  return _TYPE_LABEL_MAP[t] || _TYPE_LABEL_MAP[String(t).toLowerCase()] || '-';
 }
 function _unifiedTypeBadge(t) {
   return `<span class="badge" style="background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 7px;border-radius:10px;">${_qsTypeLabel(t)}</span>`;
