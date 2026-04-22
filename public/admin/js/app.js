@@ -1215,70 +1215,191 @@ window.loadScoreReport = async() => {
   }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 };
 
+// ─── 유형별 상세 빌더 (학생앱과 동일) ────────────────────────────────
+function _adminVqBuildDetail(questions, answers){
+  if(!questions||!answers) return '';
+  return (questions||[]).map((q,i)=>{
+    const a=answers[i]||{};
+    const dir=a.direction||'en2ko';
+    const prompt=dir==='en2ko'?(q.word||''):(q.meaning||'');
+    const target=dir==='en2ko'?(q.meaning||''):(q.word||'');
+    const user=(a.input||'').trim();
+    const isCorrect=user && user.toLowerCase()===target.trim().toLowerCase();
+    const bg=isCorrect?'#F0FDF4':'#FEF2F2';
+    const border=isCorrect?'#BBF7D0':'#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':'단답'}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>
+          ${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+function _adminMcqBuildDetail(questions, answers){
+  if(!questions||!answers) return '';
+  const markers=['①','②','③','④','⑤'];
+  return (questions||[]).map((q,i)=>{
+    const userIdx=answers[i];
+    const correctIdx=(q.choices||[]).findIndex(c=>c.isAnswer===true);
+    const isCorrect=userIdx===correctIdx;
+    const userChoice=(q.choices||[])[userIdx];
+    const correctChoice=(q.choices||[])[correctIdx];
+    const bg=isCorrect?'#F0FDF4':'#FEF2F2';
+    const border=isCorrect?'#BBF7D0':'#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:4px;font-weight:600;">${esc(q.question||'')}</div>
+        ${q.questionKo?`<div style="font-size:11px;color:var(--gray);margin-bottom:5px;">${esc(q.questionKo)}</div>`:''}
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${userIdx!=null?`${markers[userIdx]||''} ${esc(userChoice?.text||'')}`:'(미선택)'}</span>
+          ${!isCorrect&&correctChoice?`<br><span style="color:#059669;">정답: ${markers[correctIdx]||''} ${esc(correctChoice.text||'')}</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+function _adminFbBuildDetail(questions, answers, detail){
+  if(!questions) return '';
+  return (questions||[]).map((q,i)=>{
+    const d=detail?.[i]||{correct:0,total:0,stage:0};
+    const allCorrect=d.correct===d.total && d.total>0;
+    const stageIcon=d.stage===2?'💡💡':d.stage===1?'💡':'';
+    const stageLabel=d.stage===2?'해석+첫글자':d.stage===1?'해석':'';
+    const userAns=(answers?.[i]||[]).join(', ')||'(미입력)';
+    const correctAns=(q.blanks||[]).join(', ');
+    const bg=allCorrect?'#F0FDF4':(d.correct>0?'#FFFBEB':'#FEF2F2');
+    const border=allCorrect?'#BBF7D0':(d.correct>0?'#FEF3C7':'#FECACA');
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${allCorrect?'#059669':'#dc2626'};font-weight:700;">${allCorrect?'✓':(d.correct>0?'△':'✗')} ${d.correct}/${d.total}</span>
+          ${stageIcon?`<span style="font-size:10px;background:#FED7AA;color:#9A3412;padding:2px 6px;border-radius:10px;font-weight:600;">${stageIcon} ${stageLabel}</span>`:''}
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:3px;">${esc(q.sentence||'')}</div>
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${allCorrect?'#059669':'#dc2626'};">내답: ${esc(userAns)}</span>
+          ${!allCorrect?` · <span style="color:#059669;">정답: ${esc(correctAns)}</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+function _adminUqBuildDetail(questions, answers){
+  if(!questions||!answers) return '';
+  return (questions||[]).map((q,i)=>{
+    const ans=answers[i]||{placed:[],chunks:[]};
+    const userChunks=(ans.placed||[]).map(idx=>(ans.chunks||[])[idx]?.text||'').filter(Boolean);
+    const targetChunks=(q.chunkedSentence||'').split('/').map(c=>c.trim()).filter(Boolean);
+    const isCorrect=userChunks.length===targetChunks.length && userChunks.every((c,j)=>c===targetChunks[j]);
+    const bg=isCorrect?'#F0FDF4':'#FEF2F2';
+    const border=isCorrect?'#BBF7D0':'#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+        </div>
+        ${q.meaningKo?`<div style="font-size:12px;color:var(--gray);margin-bottom:4px;">${esc(q.meaningKo)}</div>`:''}
+        <div style="font-size:11px;color:var(--gray);line-height:1.6;">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(userChunks.join(' / ')||'(미제출)')}</span>
+          ${!isCorrect?`<br><span style="color:#059669;">정답: ${esc(targetChunks.join(' / '))}</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+function _adminRecBuildDetail(recordings){
+  if(!Array.isArray(recordings)||!recordings.length) return '';
+  return recordings.map((r,i)=>{
+    const score=typeof r.score==='number'?r.score:null;
+    const pass=score!=null?score>=80:null;
+    const bg=pass===true?'#F0FDF4':pass===false?'#FEF2F2':'#f8f9fa';
+    const border=pass===true?'#BBF7D0':pass===false?'#FECACA':'#e5e7eb';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          ${score!=null?`<span style="font-size:12px;color:${pass?'#059669':'#dc2626'};font-weight:700;">${score}점</span>`:''}
+        </div>
+        ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:4px;">${esc(r.sentence)}</div>`:''}
+        ${r.url?`<audio src="${esc(r.url)}" controls style="width:100%;height:30px;"></audio>`:''}
+        ${Array.isArray(r.missedWords)&&r.missedWords.length?`<div style="font-size:11px;color:#dc2626;margin-top:4px;">놓친 단어: ${esc(r.missedWords.join(', '))}</div>`:''}
+        ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:4px;">${esc(r.note)}</div>`:''}
+      </div>`;
+  }).join('');
+}
+function _adminBuildDetail(mode, comp){
+  const m=String(mode||'').toLowerCase();
+  if(m==='vocab')       return _adminVqBuildDetail(comp.questions, comp.answers);
+  if(m==='mcq')         return _adminMcqBuildDetail(comp.questions, comp.answers);
+  if(m==='fill_blank')  return _adminFbBuildDetail(comp.questions, comp.answers, comp.detail);
+  if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
+  if(m==='recording')   return _adminRecBuildDetail(comp.recordings);
+  return '';
+}
+
 window.showScoreDetail = async(scoreId, testId) => {
   try{
     const scoreDoc = await getDoc(doc(db,'scores',scoreId));
     if(!scoreDoc.exists()){ showToast('데이터 없음'); return; }
     const s = scoreDoc.data();
-    const isUnsc = s.testMode==='unscramble'||s.mode==='unscramble';
+    const mode = s.mode || s.testMode || '';
 
-    let testData=null, words=[];
+    // genTests 기반 상세 시도
+    let genTest=null, comp=null;
     if(testId){
       try{
-        const tDoc=await getDoc(doc(db,'tests',testId));
-        if(tDoc.exists()){ testData=tDoc.data(); words=testData.words||testData.sentences||[]; }
-      }catch(e){console.warn(e);}
+        const [tSnap, cSnap] = await Promise.all([
+          getDoc(doc(db,'genTests',testId)),
+          s.uid ? getDoc(doc(db,'genTests',testId,'userCompleted',s.uid)) : Promise.resolve(null),
+        ]);
+        if(tSnap.exists()) genTest = tSnap.data();
+        if(cSnap && cSnap.exists?.()) comp = cSnap.data();
+      }catch(e){ console.warn('genTest 조회 실패', e); }
     }
 
-    const bookName=s.bookName||testData?.bookName||s.unitName||'-';
-    const testName=s.testName||testData?.name||'-';
-    const passScore=s.passScore||testData?.passScore||80;
-    const passed=s.passed||(s.score>=passScore);
-    const pct=s.score||0;
-    const badge=pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
+    const bookName = s.bookName || genTest?.bookName || s.unitName || '-';
+    const testName = s.testName || genTest?.name || '-';
+    const passScore = s.passScore || genTest?.passScore || 80;
+    const passed = s.passed || (s.score>=passScore);
+    const pct = s.score || 0;
+    const badge = pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
 
-    // 단어/문장 목록 HTML
-    const itemsHtml = words.length
-      ? isUnsc
-        ? `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📋 시험 문장 (${words.length}개)</div>
-           <div style="display:flex;flex-direction:column;gap:3px;">
-             ${words.map((w,i)=>`
-               <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;border-radius:8px;background:${i%2===0?'#f8f9fa':'white'};font-size:12px;">
-                 <span style="color:#ccc;font-size:11px;width:18px;flex-shrink:0;">${i+1}</span>
-                 <div>
-                   <div style="font-weight:600;">${w.sentence||w.en||''}</div>
-                   ${w.ko?`<div style="color:var(--gray);font-size:11px;">${w.ko}</div>`:''}
-                 </div>
-               </div>`).join('')}
-           </div>`
-        : `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📋 시험 단어 (${words.length}개) · 정답 ${s.correct||0}개 · 오답 ${s.wrong||0}개</div>
-           <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
-             ${words.map((w,i)=>`
-               <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:${i%2===0?'#f8f9fa':'white'};font-size:12px;">
-                 <span style="color:#ccc;font-size:10px;width:16px;flex-shrink:0;">${i+1}</span>
-                 <span style="font-weight:600;">${w.en||''}</span>
-                 <span style="color:var(--gray);margin-left:auto;">${w.ko||''}</span>
-               </div>`).join('')}
-           </div>`
-      : `<div style="color:#bbb;font-size:12px;text-align:center;padding:16px;">시험 단어 데이터가 없습니다</div>`;
+    // 상세 본문 결정
+    const hasDetail = comp && (
+      (comp.questions && comp.answers) ||
+      (mode==='recording' && Array.isArray(comp.recordings) && comp.recordings.length)
+    );
+    const detailHtml = hasDetail
+      ? _adminBuildDetail(mode, comp)
+      : `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+           <div style="font-size:24px;margin-bottom:6px;">📄</div>
+           <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
+           <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
+         </div>`;
 
     showModal(`
-      <!-- 헤더 -->
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
         <div>
           <div style="font-size:16px;font-weight:700;">${esc(s.userName)||'-'}
             <span style="font-size:12px;color:var(--gray);font-weight:400;">${esc(s.group)||''}</span>
           </div>
-          <div style="font-size:12px;color:var(--gray);margin-top:3px;">
-            ${isUnsc
-              ? '<span style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;border-radius:20px;padding:1px 7px;font-size:11px;">🔀 언스크램블</span>'
-              : '<span style="background:#e0f5f5;color:var(--teal);border-radius:20px;padding:1px 7px;font-size:11px;">📝 단어시험</span>'}
-            &nbsp;${esc(bookName)} &nbsp;·&nbsp; ${testName}
+          <div style="font-size:12px;color:var(--gray);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${_unifiedTypeBadge(mode)}
+            <span>${esc(bookName)} · ${esc(testName)}</span>
           </div>
         </div>
         <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;">${pct}점</span>
       </div>
-      <!-- 요약 4칸 -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
         <div style="background:#f0fafa;border-radius:10px;padding:10px;text-align:center;">
           <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
@@ -1297,9 +1418,8 @@ window.showScoreDetail = async(scoreId, testId) => {
           <div style="font-size:11px;color:var(--gray);margin-top:1px;">기준 ${passScore}점</div>
         </div>
       </div>
-      <!-- 시험 문항 목록 -->
-      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;max-height:300px;overflow-y:auto;">
-        ${itemsHtml}
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;max-height:340px;overflow-y:auto;">
+        ${detailHtml}
       </div>
       <div style="font-size:11px;color:#bbb;text-align:right;margin-top:6px;">${s.date||''} ${s.createdAt?.toDate?s.createdAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''}</div>
       <button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;margin-top:10px;">닫기</button>
