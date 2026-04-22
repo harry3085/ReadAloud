@@ -3474,7 +3474,19 @@ let _qgGenerated = [];                  // AI 생성 결과 (미리보기용)
 let _qgModel = '';                      // 마지막 생성에 실제 사용된 모델 (폴백 후 실제 값)
 let _qgExcluded = new Set();            // 미리보기에서 제외된 문제 인덱스
 let _qsList = [];                       // 문제 세트 목록 (Firestore에서 로드)
+let _qsBooks = [];                      // Book 목록 (폴더 이름 표시용, genBooks 에서 로드)
 let _qsEditState = null;                // 수정 중인 세트 (Phase: 세트 내용 편집)
+
+// ─── 문제 세트 목록 화면 상태 (Phase 7) ───
+const _QS_RECENT_LIMIT = 20;
+let _qsSplitV = 40;                     // 상단 pane 높이 %
+let _qsSplitH = 30;                     // 하단 좌측 pane 폭 %
+let _qsFavSets = new Set();             // 즐겨찾기된 세트 ID
+let _qsFavBooks = new Set();            // 즐겨찾기된 Book ID (+ '__unassigned__')
+let _qsActiveBookId = null;             // 하단 좌측에서 선택된 Book ID
+let _qsSortTop = { col: 'createdAt', dir: 'desc' };
+let _qsSortBottom = { col: 'createdAt', dir: 'desc' };
+const _QS_UNASSIGNED = '__unassigned__';
 
 // Phase 2.5: Book/Chapter 드릴다운 필터 + 유형 선택
 let _qgActiveBook = null;     // {id, name} | null
@@ -4845,14 +4857,88 @@ window.qgSaveSet = async () => {
 
 window.loadQuestionSets = async () => {
   try {
-    const snap = await getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc')));
-    _qsList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _qsLoadPrefs();
+    const [setSnap, bookSnap] = await Promise.all([
+      getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc'))),
+      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+    ]);
+    _qsList = setSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _qsBooks = bookSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     _qsRenderList();
   } catch(e) {
     showToast('세트 목록 로드 실패: '+e.message);
   }
 };
 
+// ─── prefs 로드/저장 ───
+function _qsLoadPrefs() {
+  const v = parseFloat(localStorage.getItem('qs_layout_v'));
+  if (!isNaN(v) && v >= 15 && v <= 85) _qsSplitV = v;
+  const h = parseFloat(localStorage.getItem('qs_layout_h'));
+  if (!isNaN(h) && h >= 15 && h <= 70) _qsSplitH = h;
+  try { _qsFavSets = new Set(JSON.parse(localStorage.getItem('qs_fav_sets')||'[]')); } catch { _qsFavSets = new Set(); }
+  try { _qsFavBooks = new Set(JSON.parse(localStorage.getItem('qs_fav_books')||'[]')); } catch { _qsFavBooks = new Set(); }
+  _qsActiveBookId = localStorage.getItem('qs_active_book') || null;
+  try { const t = JSON.parse(localStorage.getItem('qs_sort_top')||'null'); if (t?.col) _qsSortTop = t; } catch {}
+  try { const b = JSON.parse(localStorage.getItem('qs_sort_bottom')||'null'); if (b?.col) _qsSortBottom = b; } catch {}
+}
+function _qsSavePrefs() {
+  localStorage.setItem('qs_layout_v', String(_qsSplitV));
+  localStorage.setItem('qs_layout_h', String(_qsSplitH));
+  localStorage.setItem('qs_fav_sets', JSON.stringify([..._qsFavSets]));
+  localStorage.setItem('qs_fav_books', JSON.stringify([..._qsFavBooks]));
+  if (_qsActiveBookId) localStorage.setItem('qs_active_book', _qsActiveBookId);
+  else localStorage.removeItem('qs_active_book');
+  localStorage.setItem('qs_sort_top', JSON.stringify(_qsSortTop));
+  localStorage.setItem('qs_sort_bottom', JSON.stringify(_qsSortBottom));
+}
+
+// ─── 데이터 헬퍼 ───
+function _qsPrimaryBookId(s) {
+  const ids = (s.sourcePages||[]).map(p => p.bookId).filter(Boolean);
+  if (!ids.length) return _QS_UNASSIGNED;
+  const counts = {};
+  ids.forEach(id => counts[id] = (counts[id]||0) + 1);
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+function _qsBookName(bookId) {
+  if (bookId === _QS_UNASSIGNED) return '미지정';
+  const b = _qsBooks.find(x => x.id === bookId);
+  return b?.name || '(알 수 없는 Book)';
+}
+function _qsTypeLabel(t) {
+  return ({ mcq:'객관식', fill_blank:'빈칸', subjective:'주관식', recording:'녹음', vocab:'단어', unscramble:'언스크램블' })[t] || t || '-';
+}
+function _qsModelShort(m) {
+  return (m||'').replace('gemini-','').replace('-preview','');
+}
+function _qsDateMs(s) {
+  const d = s.createdAt?.toDate?.(); return d ? d.getTime() : 0;
+}
+function _qsDateStr(s) {
+  const d = s.createdAt?.toDate?.();
+  return d ? d.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+}
+function _qsSortSets(list, sort) {
+  const arr = [...list];
+  const { col, dir } = sort;
+  const mul = dir === 'asc' ? 1 : -1;
+  arr.sort((a,b) => {
+    // 즐겨찾기 먼저
+    const fa = _qsFavSets.has(a.id) ? 0 : 1;
+    const fb = _qsFavSets.has(b.id) ? 0 : 1;
+    if (fa !== fb) return fa - fb;
+    let av, bv;
+    if (col === 'name') { av = (a.name||'').toLowerCase(); bv = (b.name||'').toLowerCase(); return av.localeCompare(bv, 'ko') * mul; }
+    if (col === 'type') { av = _qsTypeLabel(a.sourceType); bv = _qsTypeLabel(b.sourceType); return av.localeCompare(bv, 'ko') * mul; }
+    // createdAt
+    av = _qsDateMs(a); bv = _qsDateMs(b);
+    return (av - bv) * mul;
+  });
+  return arr;
+}
+
+// ─── 메인 렌더 (상/하 + 좌/우) ───
 function _qsRenderList() {
   const root = document.getElementById('quizSetsRoot');
   if (!root) return;
@@ -4869,45 +4955,287 @@ function _qsRenderList() {
   }
 
   root.innerHTML = `
-    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-      <table class="data-table" style="width:100%;table-layout:fixed;">
-        <thead>
+    <div id="qsContainer" style="display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:500px;gap:0;">
+      <div id="qsTopPane" style="flex:0 0 ${_qsSplitV}%;min-height:150px;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;">
+        ${_qsRenderTopPane()}
+      </div>
+      <div id="qsResizerV" style="height:6px;flex-shrink:0;cursor:row-resize;background:var(--border);margin:4px 0;border-radius:3px;transition:background .15s;" title="상하 크기 조절"></div>
+      <div id="qsBottomPane" style="flex:1;min-height:200px;display:flex;gap:0;overflow:hidden;">
+        <div id="qsBookPane" style="flex:0 0 ${_qsSplitH}%;min-width:160px;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;">
+          ${_qsRenderBookPane()}
+        </div>
+        <div id="qsResizerH" style="width:6px;flex-shrink:0;cursor:col-resize;background:var(--border);margin:0 4px;border-radius:3px;transition:background .15s;" title="좌우 크기 조절"></div>
+        <div id="qsSetPane" style="flex:1;min-width:200px;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;">
+          ${_qsRenderSetPane()}
+        </div>
+      </div>
+    </div>
+  `;
+  _qsAttachResizers();
+}
+
+// ─── 상단: 최근 20개 테이블 ───
+function _qsRenderTopPane() {
+  const recent = _qsSortSets(_qsList.slice(0, _QS_RECENT_LIMIT), _qsSortTop);
+  return `
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
+      <span style="font-size:11px;color:var(--gray);font-weight:400;">총 ${_qsList.length}개</span>
+    </div>
+    <div style="flex:1;overflow:auto;">
+      <table class="data-table" style="width:100%;table-layout:fixed;font-size:12px;">
+        <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
-            <th style="width:40px;">#</th>
-            <th style="width:260px;">세트 이름</th>
-            <th style="width:110px;">유형</th>
-            <th style="width:90px;">문제수</th>
-            <th style="width:140px;">모델</th>
-            <th style="width:170px;">생성일</th>
-            <th style="width:270px;">작업</th>
+            <th style="width:32px;"></th>
+            <th style="cursor:pointer;" onclick="qsSortTop('name')">${_qsSortArrow('name', _qsSortTop)} 세트 이름</th>
+            <th style="width:90px;cursor:pointer;" onclick="qsSortTop('type')">${_qsSortArrow('type', _qsSortTop)} 유형</th>
+            <th style="width:70px;text-align:center;">문제수</th>
+            <th style="width:140px;">Book</th>
+            <th style="width:130px;cursor:pointer;" onclick="qsSortTop('createdAt')">${_qsSortArrow('createdAt', _qsSortTop)} 생성일</th>
+            <th style="width:280px;">작업</th>
           </tr>
         </thead>
-        <tbody>
-          ${_qsList.map((s, i) => {
-            const date = s.createdAt?.toDate ? s.createdAt.toDate() : null;
-            const dateStr = date ? date.toLocaleString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
-            const typeLabel = { mcq:'객관식', fill_blank:'빈칸' }[s.sourceType] || s.sourceType || '-';
-            const modelShort = (s.aiModel||'').replace('gemini-','').replace('-preview','');
-            return `<tr>
-              <td class="td-center td-sub">${i+1}</td>
-              <td class="td-link" onclick="qsViewDetail('${esc(s.id)}')" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(s.name||'')}">${esc(s.name||'(이름 없음)')}</td>
-              <td class="td-center"><span class="badge" style="background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 8px;border-radius:10px;">${esc(typeLabel)}</span></td>
-              <td class="td-center td-main">${s.questionCount||s.questions?.length||0}</td>
-              <td class="td-center td-sub" style="font-family:monospace;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(modelShort)}</td>
-              <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(dateStr)}</td>
-              <td class="td-center">
-                <button class="action-btn" onclick="qsViewDetail('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">보기</button>
-                <button class="action-btn" onclick="qsEditSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">수정</button>
-                <button class="action-btn" onclick="qsRenameSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">이름</button>
-                <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">삭제</button>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <tbody>${recent.map(s => _qsRenderRow(s, 'top')).join('')}</tbody>
       </table>
     </div>
   `;
 }
+
+// ─── 하단 왼쪽: Book 폴더 리스트 ───
+function _qsRenderBookPane() {
+  // Book 별 집계
+  const bookCounts = new Map();
+  _qsList.forEach(s => {
+    const bid = _qsPrimaryBookId(s);
+    bookCounts.set(bid, (bookCounts.get(bid)||0) + 1);
+  });
+  // 정렬: 즐겨찾기 먼저 → 이름 순 → 미지정은 맨 마지막
+  const items = [...bookCounts.entries()].map(([bid, cnt]) => ({
+    id: bid,
+    name: _qsBookName(bid),
+    count: cnt,
+    fav: _qsFavBooks.has(bid),
+    isUnassigned: bid === _QS_UNASSIGNED,
+  }));
+  items.sort((a,b) => {
+    if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
+    if (a.fav !== b.fav) return a.fav ? -1 : 1;
+    return a.name.localeCompare(b.name, 'ko');
+  });
+
+  // "전체" 가상 폴더를 맨 위에
+  const totalActive = _qsActiveBookId == null;
+  const allRow = `
+    <div onclick="qsSelectBook(null)" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${totalActive?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
+      <span style="font-size:14px;">📋</span>
+      <div style="flex:1;font-weight:600;font-size:13px;color:${totalActive?'var(--teal)':'var(--text)'};">전체</div>
+      <span style="font-size:11px;color:var(--gray);">${_qsList.length}</span>
+    </div>`;
+
+  const rows = items.map(it => {
+    const active = _qsActiveBookId === it.id;
+    return `
+    <div onclick="qsSelectBook('${esc(it.id)}')" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${active?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
+      <span onclick="event.stopPropagation();qsToggleFavBook('${esc(it.id)}')" style="cursor:pointer;font-size:14px;color:${it.fav?'#f0b000':'#ccc'};" title="즐겨찾기">${it.fav?'★':'☆'}</span>
+      <span style="font-size:14px;">${it.isUnassigned?'📂':'📚'}</span>
+      <div style="flex:1;font-weight:${it.fav?700:600};font-size:13px;color:${active?'var(--teal)':'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(it.name)}">${esc(it.name)}</div>
+      <span style="font-size:11px;color:var(--gray);">${it.count}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span>📚 Book 폴더</span>
+      <span style="font-size:11px;color:var(--gray);font-weight:400;">${items.length}개</span>
+    </div>
+    <div style="flex:1;overflow:auto;">
+      ${allRow}
+      ${rows || '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">폴더가 없습니다</div>'}
+    </div>
+  `;
+}
+
+// ─── 하단 오른쪽: 선택된 Book 의 세트 리스트 ───
+function _qsRenderSetPane() {
+  const filtered = _qsActiveBookId == null
+    ? _qsList
+    : _qsList.filter(s => _qsPrimaryBookId(s) === _qsActiveBookId);
+  const sorted = _qsSortSets(filtered, _qsSortBottom);
+  const bookLabel = _qsActiveBookId == null ? '전체' : _qsBookName(_qsActiveBookId);
+
+  return `
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">세트 ${sorted.length}개</span></span>
+    </div>
+    <div style="flex:1;overflow:auto;">
+      <table class="data-table" style="width:100%;table-layout:fixed;font-size:12px;">
+        <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
+          <tr>
+            <th style="width:32px;"></th>
+            <th style="cursor:pointer;" onclick="qsSortBottom('name')">${_qsSortArrow('name', _qsSortBottom)} 세트 이름</th>
+            <th style="width:90px;cursor:pointer;" onclick="qsSortBottom('type')">${_qsSortArrow('type', _qsSortBottom)} 유형</th>
+            <th style="width:70px;text-align:center;">문제수</th>
+            <th style="width:130px;cursor:pointer;" onclick="qsSortBottom('createdAt')">${_qsSortArrow('createdAt', _qsSortBottom)} 생성일</th>
+            <th style="width:280px;">작업</th>
+          </tr>
+        </thead>
+        <tbody>${sorted.map(s => _qsRenderRow(s, 'bottom')).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _qsRenderRow(s, where) {
+  const fav = _qsFavSets.has(s.id);
+  const bookId = _qsPrimaryBookId(s);
+  const bookCell = where === 'top'
+    ? `<td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_qsBookName(bookId))}</td>`
+    : '';
+  return `<tr>
+    <td style="text-align:center;">
+      <span onclick="qsToggleFavSet('${esc(s.id)}')" style="cursor:pointer;font-size:14px;color:${fav?'#f0b000':'#ccc'};" title="즐겨찾기">${fav?'★':'☆'}</span>
+    </td>
+    <td class="td-link" onclick="qsViewDetail('${esc(s.id)}')" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${fav?700:600};" title="${esc(s.name||'')}">${esc(s.name||'(이름 없음)')}</td>
+    <td class="td-center"><span class="badge" style="background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 7px;border-radius:10px;">${esc(_qsTypeLabel(s.sourceType))}</span></td>
+    <td class="td-center td-main">${s.questionCount||s.questions?.length||0}</td>
+    ${bookCell}
+    <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_qsDateStr(s))}</td>
+    <td class="td-center">
+      <button class="action-btn" onclick="qsAssignSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9;">배정</button>
+      <button class="action-btn" onclick="qsViewDetail('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">보기</button>
+      <button class="action-btn" onclick="qsEditSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">수정</button>
+      <button class="action-btn" onclick="qsRenameSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">이름</button>
+      <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">🗑</button>
+    </td>
+  </tr>`;
+}
+
+function _qsSortArrow(col, sort) {
+  if (sort.col !== col) return '<span style="color:#ccc;">↕</span>';
+  return sort.dir === 'asc' ? '▲' : '▼';
+}
+
+// ─── 핸들러 ───
+window.qsSortTop = (col) => {
+  if (_qsSortTop.col === col) _qsSortTop.dir = _qsSortTop.dir === 'asc' ? 'desc' : 'asc';
+  else _qsSortTop = { col, dir: col === 'createdAt' ? 'desc' : 'asc' };
+  _qsSavePrefs();
+  _qsRenderList();
+};
+window.qsSortBottom = (col) => {
+  if (_qsSortBottom.col === col) _qsSortBottom.dir = _qsSortBottom.dir === 'asc' ? 'desc' : 'asc';
+  else _qsSortBottom = { col, dir: col === 'createdAt' ? 'desc' : 'asc' };
+  _qsSavePrefs();
+  _qsRenderList();
+};
+window.qsSelectBook = (bid) => {
+  _qsActiveBookId = bid;
+  _qsSavePrefs();
+  _qsRenderList();
+};
+window.qsToggleFavBook = (bid) => {
+  if (_qsFavBooks.has(bid)) _qsFavBooks.delete(bid); else _qsFavBooks.add(bid);
+  _qsSavePrefs();
+  _qsRenderList();
+};
+window.qsToggleFavSet = (sid) => {
+  if (_qsFavSets.has(sid)) _qsFavSets.delete(sid); else _qsFavSets.add(sid);
+  _qsSavePrefs();
+  _qsRenderList();
+};
+
+// ─── 리사이저 (상/하, 좌/우) ───
+function _qsAttachResizers() {
+  const container = document.getElementById('qsContainer');
+  const top = document.getElementById('qsTopPane');
+  const bookPane = document.getElementById('qsBookPane');
+  const rv = document.getElementById('qsResizerV');
+  const rh = document.getElementById('qsResizerH');
+  if (!container || !top || !rv || !rh || !bookPane) return;
+
+  // 상하
+  rv.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const rect = container.getBoundingClientRect();
+    const startPct = _qsSplitV;
+    const onMove = (ev) => {
+      const deltaPct = ((ev.clientY - startY) / rect.height) * 100;
+      let next = startPct + deltaPct;
+      if (next < 15) next = 15;
+      if (next > 85) next = 85;
+      _qsSplitV = next;
+      top.style.flex = `0 0 ${next}%`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      _qsSavePrefs();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // 좌우 (하단 내부)
+  rh.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const bottom = document.getElementById('qsBottomPane');
+    const rect = bottom.getBoundingClientRect();
+    const startPct = _qsSplitH;
+    const onMove = (ev) => {
+      const deltaPct = ((ev.clientX - startX) / rect.width) * 100;
+      let next = startPct + deltaPct;
+      if (next < 15) next = 15;
+      if (next > 70) next = 70;
+      _qsSplitH = next;
+      bookPane.style.flex = `0 0 ${next}%`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      _qsSavePrefs();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+// ─── 배정: 기존 tp* 인프라 재활용 ───
+// sourceType(저장 필드) → _TEST_TYPE_CONFIG 키 매핑
+const _QS_SOURCE_TO_UI_TYPE = {
+  vocab: 'word',
+  unscramble: 'unscramble',
+  fill_blank: 'blank',
+  mcq: 'mcq',
+  subjective: 'subj',
+  recording: 'rec-ai',
+};
+
+window.qsAssignSet = async (setId) => {
+  const s = _qsList.find(x => x.id === setId);
+  if (!s) { showToast('세트를 찾을 수 없음'); return; }
+  if (!s.sourceType) { showToast('세트 유형이 없어 배정할 수 없습니다'); return; }
+
+  const type = _QS_SOURCE_TO_UI_TYPE[s.sourceType] || s.sourceType;
+  const cfg = _TEST_TYPE_CONFIG?.[type];
+  if (!cfg) { showToast('지원하지 않는 유형: ' + s.sourceType); return; }
+  if (!cfg.actions?.includes('assign')) {
+    showToast(`${cfg.kindLabel||type}은(는) 학생앱 배정이 지원되지 않습니다 (인쇄만 가능)`);
+    return;
+  }
+
+  // 배정 인프라가 기대하는 전역 상태 세팅
+  _activeTestType = type;
+  _tpSets = [s];
+  _tpSelectedSets = new Set([s.id]);
+
+  try {
+    await tpOpenPublishModal();
+  } catch (e) {
+    showToast('배정 모달 열기 실패: ' + (e?.message || e));
+  }
+};
 
 window.qsViewDetail = async (setId) => {
   const s = _qsList.find(x => x.id === setId);
