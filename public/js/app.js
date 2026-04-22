@@ -459,13 +459,14 @@ async function loadReadingMcqList(){
     const pending = myTests.filter(t => !completedMap.has(t.id));
     const completed = myTests.filter(t => completedMap.has(t.id));
 
-    const oc = (id, name) => `startReadingMcq('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocNew = (id, name) => `startReadingMcq('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocDone = (id, name) => `mcqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if(elP) elP.innerHTML = pending.length
-      ? pending.map(t=>_mcqMakeCard(t,false,oc(t.id,t.name),null)).join('')
+      ? pending.map(t=>_mcqMakeCard(t,false,ocNew(t.id,t.name),null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if(elC) elC.innerHTML = completed.length
-      ? completed.map(t=>_mcqMakeCard(t,true,oc(t.id,t.name),completedMap.get(t.id))).join('')
+      ? completed.map(t=>_mcqMakeCard(t,true,ocDone(t.id,t.name),completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   }catch(e){
     console.error(e);
@@ -635,54 +636,129 @@ async function _mcqSubmit(){
     });
 
     try{
-      await setDoc(
-        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-        {
+      // 통과 + 기존 최고점 초과 시에만 완료 기록 업데이트
+      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
+      const existingDoc = await getDoc(compRef);
+      const existing = existingDoc.exists() ? existingDoc.data() : null;
+      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
+      if (shouldUpdate) {
+        await setDoc(compRef, {
           uid: currentUser.uid,
           userName: userProfile?.name || '',
-          score, date: today,
+          score, correct, wrong, total,
+          passed, passScore,
+          answers: s.answers || [],  // 선택한 보기 인덱스 (null 허용)
+          date: today,
           completedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        }, { merge: true });
+        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
+      } else if (passed && existing) {
+        showToast(`기존 최고점 ${existing.score}점 유지`);
+      }
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
   }catch(e){
     console.error(e);
     showToast('점수 저장 실패: '+e.message);
   }
 
-  _mcqRenderResult({ correct, wrong, total, score, passed, passScore });
+  _mcqRenderResult({ correct, wrong, total, score, passed, passScore,
+    questions: s.questions, answers: s.answers });
 }
 
-function _mcqRenderResult({correct, wrong, total, score, passed, passScore}){
+function _mcqRenderResult({correct, wrong, total, score, passed, passScore, questions, answers}){
   const screen = document.getElementById('readingMcq');
   if(!screen) return;
+  if (!_mcqScreenTemplate) _mcqScreenTemplate = screen.innerHTML;
+
+  const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
+    const userIdx = answers[i];
+    const correctIdx = (q.choices || []).findIndex(c => c.isAnswer === true);
+    const isCorrect = userIdx === correctIdx;
+    const userChoice = (q.choices||[])[userIdx];
+    const correctChoice = (q.choices||[])[correctIdx];
+    const markers = ['①','②','③','④','⑤'];
+    const bg = isCorrect ? '#F0FDF4' : '#FEF2F2';
+    const border = isCorrect ? '#BBF7D0' : '#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:4px;font-weight:600;">${esc(q.question||'')}</div>
+        ${q.questionKo ? `<div style="font-size:11px;color:var(--gray);margin-bottom:5px;">${esc(q.questionKo)}</div>` : ''}
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${userIdx!=null ? `${markers[userIdx]||''} ${esc(userChoice?.text||'')}` : '(미선택)'}</span>
+          ${!isCorrect && correctChoice ? `<br><span style="color:#059669;">정답: ${markers[correctIdx]||''} ${esc(correctChoice.text||'')}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('') : '';
+
   screen.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
-      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
-      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">
-        ${passed ? '통과!' : '아쉬워요'}
-      </div>
-      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">
-        통과 기준 ${passScore}점
-      </div>
-      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;min-width:240px;">
-        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#F59E0B'};line-height:1;">${score}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
-          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
-          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
-          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
+      <div style="font-size:56px;margin-bottom:8px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:20px;">통과 기준 ${passScore}점</div>
+      <div style="background:white;border-radius:16px;padding:20px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;min-width:260px;">
+        <div style="font-size:44px;font-weight:800;color:${passed?'#059669':'#F59E0B'};line-height:1;text-align:center;">${score}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;text-align:center;">점</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div style="text-align:center;"><div style="color:#059669;font-weight:700;font-size:17px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div style="text-align:center;"><div style="color:#dc2626;font-weight:700;font-size:17px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div style="text-align:center;"><div style="color:var(--text);font-weight:700;font-size:17px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
-        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
-        <button onclick="goReadingMcq()" style="flex:1;padding:14px;background:#F59E0B;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      ${qListHtml ? `
+        <div style="width:100%;max-width:420px;margin-bottom:16px;">
+          <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">문제별 결과</div>
+          ${qListHtml}
+        </div>` : ''}
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
+        <button onclick="goReadingMcq()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
+        <button onclick="startReadingMcq('${esc(_mcqTakeState.test?.id||'')}','${esc(_mcqTakeState.test?.name||'')}')" style="flex:1;padding:14px;background:#F59E0B;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>
   `;
   updateMcqBadge();
 }
+
+// 완료된 객관식 이전 결과 보기
+window.mcqViewPreviousResult = async (testId, testName) => {
+  try {
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db,'genTests',testId)),
+      getDoc(doc(db,'genTests',testId,'userCompleted',currentUser.uid)),
+    ]);
+    if (!testSnap.exists() || !compSnap.exists()) {
+      showToast('이전 결과를 불러올 수 없습니다. 새로 시작합니다.');
+      startReadingMcq(testId, testName);
+      return;
+    }
+    const test = { id: testId, ...testSnap.data() };
+    const comp = compSnap.data();
+    const questions = test.questions || [];
+    _mcqTakeState = { test, questions, currentIdx: 0, answers: comp.answers || [] };
+
+    const screen = document.getElementById('readingMcq');
+    if (screen && _mcqScreenTemplate === null) _mcqScreenTemplate = screen.innerHTML;
+
+    show('readingMcq');
+    _mcqRenderResult({
+      correct: comp.correct || 0,
+      wrong: comp.wrong || 0,
+      total: comp.total || questions.length,
+      score: comp.score || 0,
+      passed: comp.passed ?? ((comp.score||0) >= (comp.passScore||80)),
+      passScore: comp.passScore || 80,
+      questions,
+      answers: comp.answers || [],
+    });
+  } catch (e) {
+    console.error('객관식 이전 결과 로드 실패', e);
+    showToast('로드 실패: ' + e.message);
+    startReadingMcq(testId, testName);
+  }
+};
 
 window.quitReadingMcq = async () => {
   if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
@@ -3832,13 +3908,14 @@ async function loadVocabList() {
 
     const pending = myTests.filter(t => !completedMap.has(t.id));
     const completed = myTests.filter(t => completedMap.has(t.id));
-    const oc = (id, name) => `startVocab('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocNew = (id, name) => `startVocab('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocDone = (id, name) => `vqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => _vqMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      ? pending.map(t => _vqMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _vqMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _vqMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   } catch(e) {
     console.error(e);
@@ -4229,45 +4306,130 @@ async function _vqSubmit() {
       createdAt: serverTimestamp(),
     });
     try {
-      await setDoc(
-        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-        { uid: currentUser.uid, userName: userProfile?.name || '', score, date: today, completedAt: serverTimestamp() },
-        { merge: true }
-      );
+      // 통과 + 기존 최고점 초과 시에만 완료 기록 업데이트
+      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
+      const existingDoc = await getDoc(compRef);
+      const existing = existingDoc.exists() ? existingDoc.data() : null;
+      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
+      if (shouldUpdate) {
+        await setDoc(compRef, {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score, correct, wrong: total - correct, total,
+          passed, passScore,
+          answers: s.answers || [],  // 재응시 리뷰용
+          date: today,
+          completedAt: serverTimestamp(),
+        }, { merge: true });
+        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
+      } else if (passed && existing) {
+        showToast(`기존 최고점 ${existing.score}점 유지`);
+      }
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
   } catch(e) {
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
   }
-  _vqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore });
+  _vqRenderResult({
+    correct, wrong: total - correct, total, score, passed, passScore,
+    questions: s.questions, answers: s.answers,
+  });
 }
 
-function _vqRenderResult({ correct, wrong, total, score, passed, passScore }) {
+function _vqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers }) {
   const screen = document.getElementById('vocabQuiz');
   if (!screen) return;
-  // 원본 템플릿 저장 (다음 시험 클릭 시 복원용)
   if (!_vqScreenTemplate) _vqScreenTemplate = screen.innerHTML;
+
+  // 문제별 상세 (questions + answers 있을 때만)
+  const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
+    const a = answers[i] || {};
+    const dir = a.direction || 'en2ko';
+    const prompt = dir === 'en2ko' ? (q.word||'') : (q.meaning||'');
+    const target = dir === 'en2ko' ? (q.meaning||'') : (q.word||'');
+    const user = (a.input || '').trim();
+    const isCorrect = user && user.toLowerCase() === target.trim().toLowerCase();
+    const bg = isCorrect ? '#F0FDF4' : '#FEF2F2';
+    const border = isCorrect ? '#BBF7D0' : '#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':'단답'}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>
+          ${!isCorrect ? ` · <span style="color:#059669;">정답: ${esc(target)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('') : '';
+
   screen.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
-      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
-      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
-      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">통과 기준 ${passScore}점</div>
-      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
-        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#0369a1'};line-height:1;">${score}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
-          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
-          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
-          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
+      <div style="font-size:56px;margin-bottom:8px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:20px;">통과 기준 ${passScore}점</div>
+      <div style="background:white;border-radius:16px;padding:20px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;min-width:260px;">
+        <div style="font-size:44px;font-weight:800;color:${passed?'#059669':'#0369a1'};line-height:1;text-align:center;">${score}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;text-align:center;">점</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div style="text-align:center;"><div style="color:#059669;font-weight:700;font-size:17px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div style="text-align:center;"><div style="color:#dc2626;font-weight:700;font-size:17px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div style="text-align:center;"><div style="color:var(--text);font-weight:700;font-size:17px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
-        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
-        <button onclick="goVocab()" style="flex:1;padding:14px;background:#0EA5E9;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      ${qListHtml ? `
+        <div style="width:100%;max-width:420px;margin-bottom:16px;">
+          <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">문제별 결과</div>
+          ${qListHtml}
+        </div>` : ''}
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
+        <button onclick="goVocab()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
+        <button onclick="startVocab('${esc(_vqState.test?.id||'')}','${esc(_vqState.test?.name||'')}')" style="flex:1;padding:14px;background:#0EA5E9;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>`;
   updateVocabBadge();
 }
+
+// 완료된 단어시험 이전 결과 보기
+window.vqViewPreviousResult = async (testId, testName) => {
+  try {
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db,'genTests',testId)),
+      getDoc(doc(db,'genTests',testId,'userCompleted',currentUser.uid)),
+    ]);
+    if (!testSnap.exists() || !compSnap.exists()) {
+      showToast('이전 결과를 불러올 수 없습니다. 새로 시작합니다.');
+      startVocab(testId, testName);
+      return;
+    }
+    const test = { id: testId, ...testSnap.data() };
+    const comp = compSnap.data();
+    const questions = (test.questions || []).filter(q => q.type === 'vocab');
+    _vqState = { test, questions, currentIdx: 0, answers: comp.answers || [], opts: test.vocabOptions || {} };
+
+    const screen = document.getElementById('vocabQuiz');
+    if (screen && !_vqScreenTemplate) _vqScreenTemplate = screen.innerHTML;
+
+    show('vocabQuiz');
+    _vqRenderResult({
+      correct: comp.correct || 0,
+      wrong: comp.wrong || 0,
+      total: comp.total || questions.length,
+      score: comp.score || 0,
+      passed: comp.passed ?? ((comp.score||0) >= (comp.passScore||80)),
+      passScore: comp.passScore || 80,
+      questions,
+      answers: comp.answers || [],
+    });
+  } catch (e) {
+    console.error('단어시험 이전 결과 로드 실패', e);
+    showToast('로드 실패: ' + e.message);
+    startVocab(testId, testName);
+  }
+};
 
 window.quitVocab = async () => {
   if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
@@ -4679,6 +4841,7 @@ async function _uqSubmit() {
           score,
           correct, wrong: total - correct, total,
           passed, passScore,
+          answers: s.answers || [],  // 재검토용 (placed 인덱스 + chunks 스냅샷)
           date: today,
           completedAt: serverTimestamp(),
         }, { merge: true });
@@ -4691,29 +4854,57 @@ async function _uqSubmit() {
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
   }
-  _uqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore });
+  _uqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore,
+    questions: s.questions, answers: s.answers });
 }
 
-function _uqRenderResult({ correct, wrong, total, score, passed, passScore }) {
+function _uqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers }) {
   const screen = document.getElementById('unscrambleQuiz');
   if (!screen) return;
-  // 원본 템플릿 저장 (재응시·다른 시험 클릭 시 복원용)
   if (!_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
+
+  const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
+    const ans = answers[i] || { placed: [], chunks: [] };
+    const userChunks = (ans.placed || []).map(idx => (ans.chunks||[])[idx]?.text || '').filter(Boolean);
+    const targetChunks = (q.chunkedSentence || '').split('/').map(c => c.trim()).filter(Boolean);
+    const isCorrect = userChunks.length === targetChunks.length &&
+      userChunks.every((c, j) => c === targetChunks[j]);
+    const bg = isCorrect ? '#F0FDF4' : '#FEF2F2';
+    const border = isCorrect ? '#BBF7D0' : '#FECACA';
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
+        </div>
+        ${q.meaningKo ? `<div style="font-size:12px;color:var(--gray);margin-bottom:4px;">${esc(q.meaningKo)}</div>` : ''}
+        <div style="font-size:11px;color:var(--gray);line-height:1.6;">
+          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(userChunks.join(' / ') || '(미제출)')}</span>
+          ${!isCorrect ? `<br><span style="color:#059669;">정답: ${esc(targetChunks.join(' / '))}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('') : '';
+
   screen.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
-      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
-      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
-      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">통과 기준 ${passScore}점</div>
-      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
-        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#7c3aed'};line-height:1;">${score}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
-          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
-          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
-          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
+      <div style="font-size:56px;margin-bottom:8px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">${passed ? '통과!' : '아쉬워요'}</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:20px;">통과 기준 ${passScore}점</div>
+      <div style="background:white;border-radius:16px;padding:20px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;min-width:260px;">
+        <div style="font-size:44px;font-weight:800;color:${passed?'#059669':'#7c3aed'};line-height:1;text-align:center;">${score}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;text-align:center;">점</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div style="text-align:center;"><div style="color:#059669;font-weight:700;font-size:17px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div style="text-align:center;"><div style="color:#dc2626;font-weight:700;font-size:17px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div style="text-align:center;"><div style="color:var(--text);font-weight:700;font-size:17px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:340px;">
+      ${qListHtml ? `
+        <div style="width:100%;max-width:420px;margin-bottom:16px;">
+          <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">문제별 결과</div>
+          ${qListHtml}
+        </div>` : ''}
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="goUnscramble()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
         <button onclick="startUnscramble2('${esc(_uqState.test?.id||'')}','${esc(_uqState.test?.name||'')}')" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
@@ -4752,7 +4943,10 @@ window.uqViewPreviousResult = async (testId, testName) => {
     const passScore = comp.passScore ?? (test.passScore ?? 80);
     const passed = comp.passed ?? (score >= passScore);
 
-    _uqRenderResult({ correct, wrong, total, score, passed, passScore });
+    _uqRenderResult({
+      correct, wrong, total, score, passed, passScore,
+      questions, answers: comp.answers || [],
+    });
   } catch (e) {
     console.error('언스크램블 이전 결과 로드 실패', e);
     showToast('로드 실패: ' + e.message);
