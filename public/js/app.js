@@ -4005,6 +4005,8 @@ window.startVocab = async (testId, testName) => {
     const screen = document.getElementById('vocabQuiz');
     if (screen && _vqScreenTemplate && !screen.querySelector('#vqProgressBar')) {
       screen.innerHTML = _vqScreenTemplate;
+      // DOM 복원 후 스펠 input 리스너 재바인딩 (새 element 라서 기존 리스너 미연결)
+      if (typeof _vqBindSpellInput === 'function') _vqBindSpellInput();
     } else if (screen && !_vqScreenTemplate) {
       _vqScreenTemplate = screen.innerHTML;
     }
@@ -5046,10 +5048,11 @@ async function updateUnscBadge2() {
 window.updateTestBadge = updateVocabBadge;
 window.updateUnscBadge = updateUnscBadge2;
 
-// 스펠 input 이벤트 (숨은 input 에 타이핑 → boxes 업데이트)
-(function bindVocabSpell(){
+// 스펠 input 이벤트 바인딩 (DOM 복원 시마다 재호출 필요)
+function _vqBindSpellInput(){
   const inp = document.getElementById('vqSpellInput');
-  if (!inp) return;
+  if (!inp || inp._vqBound) return;
+  inp._vqBound = true;
   inp.addEventListener('input', function(){
     const s = _vqState;
     if (!s.answers || !s.questions[s.currentIdx]) return;
@@ -5058,7 +5061,6 @@ window.updateUnscBadge = updateUnscBadge2;
     const q = s.questions[s.currentIdx];
     const target = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
     let v = this.value;
-    // 영어 방향이면 영문자/공백만
     if (ans.direction === 'ko2en') v = v.toLowerCase().replace(/[^a-z\s'-]/g,'');
     if (v.length > target.length) v = v.slice(0, target.length);
     this.value = v;
@@ -5074,5 +5076,10 @@ window.updateUnscBadge = updateUnscBadge2;
     }
   });
   const boxes = document.getElementById('vqSpellBoxes');
-  if (boxes) boxes.addEventListener('click', _vqFocusSpellInput);
-})();
+  if (boxes && !boxes._vqBound) {
+    boxes._vqBound = true;
+    boxes.addEventListener('click', _vqFocusSpellInput);
+  }
+}
+// 최초 1회 바인딩 (페이지 최초 로드 시)
+_vqBindSpellInput();
