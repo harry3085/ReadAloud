@@ -1678,10 +1678,58 @@ window.loadTestList = async() => {
     const scoresSnap = await getDocs(collection(db,'scores'));
     const allScores = scoresSnap.docs.map(d=>d.data());
 
+    // 학생 전체 (대상자 계산용 — 반 타겟을 uid 로 확장하려면 필요)
+    if (!Array.isArray(allStudents) || allStudents.length === 0) {
+      try {
+        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+      } catch(e) { console.warn('학생 로드 실패(대상자 집계 정확도 저하):', e); }
+    }
+
+    const resolveTargetUids = (targets) => {
+      const set = new Set();
+      (targets || []).forEach(tg => {
+        if (!tg) return;
+        if (tg.type === 'student' && tg.id) {
+          set.add(tg.id);
+        } else if (tg.type === 'class') {
+          const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
+          allStudents.forEach(s => { if (s.group === gName) set.add(s.id); });
+        }
+      });
+      return set;
+    };
+
     const attachStats = (t) => {
-      const ts = allScores.filter(s=>s.testId===t.id);
-      const avg = ts.length ? Math.round(ts.reduce((sum,s)=>sum+(s.score||0),0)/ts.length) : null;
-      return {...t, attemptCount:ts.length, avgScore:avg};
+      const scoresArr = allScores.filter(s => s.testId === t.id);
+      const avg = scoresArr.length ? Math.round(scoresArr.reduce((sum,s)=>sum+(s.score||0),0)/scoresArr.length) : null;
+
+      // 고유 응시자 (uid 기준)
+      const attemptedSet = new Set(scoresArr.map(s => s.uid).filter(Boolean));
+
+      // 고유 통과자 (학생별 최고점 기준)
+      const passScore = t.passScore || 80;
+      const maxByUid = new Map();
+      scoresArr.forEach(s => {
+        if (!s.uid) return;
+        const prev = maxByUid.get(s.uid);
+        const cur = s.score || 0;
+        if (prev === undefined || cur > prev) maxByUid.set(s.uid, cur);
+      });
+      let passedCount = 0;
+      maxByUid.forEach(v => { if (v >= passScore) passedCount++; });
+
+      // 대상자
+      const targetSet = resolveTargetUids(t.targets);
+
+      return {
+        ...t,
+        attemptCount: scoresArr.length, // 제출 횟수 (하위 호환)
+        avgScore: avg,
+        _passedCount: passedCount,
+        _attemptedCount: attemptedSet.size,
+        _targetCount: targetSet.size,
+      };
     };
 
     // 병합 + createdAt desc 재정렬
@@ -1708,7 +1756,13 @@ window.loadTestList = async() => {
         <td class="td-sm">${esc(bookName)}</td>
         <td class="td-center">${count}문제</td>
         <td class="td-sub">${esc(t.date)||''}</td>
-        <td style="text-align:center;font-weight:600;color:var(--blue);">${t.attemptCount||0}</td>
+        <td style="text-align:center;font-size:11px;white-space:nowrap;">
+          <span style="color:#2e7d32;font-weight:700;" title="통과자">${t._passedCount||0}</span>
+          <span style="color:var(--gray);">/</span>
+          <span style="color:#1565c0;font-weight:600;" title="응시자(고유)">${t._attemptedCount||0}</span>
+          <span style="color:var(--gray);">/</span>
+          <span style="color:var(--text);" title="대상자">${t._targetCount||'-'}</span>
+        </td>
         <td class="td-center">
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
