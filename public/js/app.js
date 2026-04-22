@@ -1282,6 +1282,8 @@ async function _fbSubmit(){
       const shouldUpdate = passed && (!existing || score > (existing.score || 0));
 
       if (shouldUpdate) {
+        // Firestore 는 중첩 배열([[...],[...]]) 미지원 → 객체 배열로 감싸서 저장
+        const answersPacked = (s.answers || []).map(a => ({ blanks: Array.isArray(a) ? a : [] }));
         await setDoc(compRef, {
           uid: currentUser.uid,
           userName: userProfile?.name || '',
@@ -1292,7 +1294,7 @@ async function _fbSubmit(){
           passed, passScore,
           hintUsageCount, hintStage1Count, hintStage2Count, hintPenalty,
           hintDetails,
-          answers: s.answers,
+          answers: answersPacked,
           date: today,
           completedAt: serverTimestamp(),
         }, { merge: true });
@@ -1399,13 +1401,17 @@ window.fbViewPreviousResult = async (testId, testName) => {
     const comp = compSnap.data();
     const questions = (test.questions || []).filter(q => q.type === 'fill_blank' || q.blanks);
 
-    // 상태에 기본값 세팅 (재응시 버튼이 쓸 수 있도록)
+    // answers: 저장 시 [{blanks:[...]}, ...] 로 packed 되어 있음 → 2D 배열로 복원
+    const unpackedAnswers = Array.isArray(comp.answers)
+      ? comp.answers.map(a => (a && Array.isArray(a.blanks)) ? a.blanks : (Array.isArray(a) ? a : []))
+      : questions.map(q => new Array((q.blanks||[]).length).fill(''));
+
     _fbState = {
       test,
       questions,
       playOrder: [...Array(questions.length).keys()], // 리뷰는 원본 순서
       currentIdx: 0,
-      answers: comp.answers || questions.map(q => new Array((q.blanks||[]).length).fill('')),
+      answers: unpackedAnswers,
       hintStages: (comp.hintDetails || []).reduce((acc, h) => { acc[h.qIdx] = h.stage; return acc; }, questions.map(() => 0)),
       hintCache: {},
     };
