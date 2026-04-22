@@ -693,11 +693,25 @@ let _fbActiveBlank = 0;   // 현재 포커스 중인 빈칸 idx
 let _fbState = {
   test: null,
   questions: [],
-  currentIdx: 0,
-  answers: [],
-  hintStages: [],   // 문제별 힌트 사용 단계: 0(미사용) / 1(해석) / 2(해석+첫글자)
-  hintCache: {},    // { [qIdx]: { ko: '번역' } } — 해석 번역 캐시
+  playOrder: [],    // 출제 순서 (섞인 인덱스 배열), 예: [2,0,1]
+  currentIdx: 0,    // playOrder 안의 위치 (0 = 첫 번째 출제)
+  answers: [],      // 원본 questions 순서로 정렬 (answers[i] ↔ questions[i])
+  hintStages: [],   // 원본 순서: 문제별 힌트 사용 단계 (0/1/2)
+  hintCache: {},    // { [qIdx]: { ko: '번역' } }
 };
+
+function _fbShuffle(arr){
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function _fbCurQIdx(){
+  const s = _fbState;
+  return (s.playOrder && s.playOrder.length) ? s.playOrder[s.currentIdx] : s.currentIdx;
+}
 let _fbScreenTemplate = null;  // 결과 화면이 innerHTML 덮어쓰므로 원본 캐시
 
 async function loadFillBlankList(){
@@ -776,6 +790,7 @@ window.startFillBlank = async (testId, testName) => {
     _fbState = {
       test,
       questions,
+      playOrder: _fbShuffle([...Array(questions.length).keys()]),
       currentIdx: 0,
       answers: questions.map(q => new Array((q.blanks||[]).length).fill('')),
       hintStages: questions.map(() => 0),
@@ -792,7 +807,8 @@ window.startFillBlank = async (testId, testName) => {
 
 function _fbRenderStep(){
   const s = _fbState;
-  const q = s.questions[s.currentIdx];
+  const qIdx = _fbCurQIdx();
+  const q = s.questions[qIdx];
   if(!q) return;
 
   // 이전 문제의 피드백 배너 초기화 (정답/오답 메시지 제거)
@@ -815,7 +831,7 @@ function _fbRenderStep(){
   const holder = document.getElementById('fbInputsHolder');
   if(sentEl){
     const parts = (q.sentence||'').split('___');
-    const curAnswers = s.answers[s.currentIdx] || [];
+    const curAnswers = s.answers[qIdx] || [];
     let html = '';
     let inputsHtml = '';
     const totalBlanks = parts.length - 1;
@@ -869,7 +885,8 @@ function _fbRenderStep(){
 // ─── 힌트 ───
 function _fbRefreshHintUI(){
   const s = _fbState;
-  const stage = s.hintStages[s.currentIdx] || 0;
+  const qIdx = _fbCurQIdx();
+  const stage = s.hintStages[qIdx] || 0;
   const btn = document.getElementById('fbHintBtn');
   const stageEl = document.getElementById('fbHintStage');
   const transBox = document.getElementById('fbTranslation');
@@ -899,7 +916,7 @@ function _fbRefreshHintUI(){
 
   if (transBox && transText) {
     if (stage >= 1) {
-      const cached = s.hintCache[s.currentIdx];
+      const cached = s.hintCache[qIdx];
       transBox.style.display = 'block';
       transText.textContent = cached?.ko || '로딩 중...';
     } else {
@@ -910,7 +927,7 @@ function _fbRefreshHintUI(){
 
 window.fbUseHint = async () => {
   const s = _fbState;
-  const qIdx = s.currentIdx;
+  const qIdx = _fbCurQIdx();
   const q = s.questions[qIdx];
   if (!q) return;
   const cur = s.hintStages[qIdx] || 0;
@@ -979,10 +996,11 @@ async function _fbFetchTranslation(sentence) {
 // 단일 빈칸 박스 시각 갱신
 function _fbRefreshBoxesForBlank(blankIdx){
   const s = _fbState;
-  const q = s.questions[s.currentIdx];
+  const qIdx = _fbCurQIdx();
+  const q = s.questions[qIdx];
   if(!q) return;
   const letterCount = (q.blanks?.[blankIdx] || '').length;
-  const curVal = (s.answers[s.currentIdx] || [])[blankIdx] || '';
+  const curVal = (s.answers[qIdx] || [])[blankIdx] || '';
   const isActiveBlank = (_fbActiveBlank === blankIdx);
   for(let k = 0; k < letterCount; k++){
     const box = document.getElementById(`fb-box-${blankIdx}-${k}`);
@@ -1004,7 +1022,7 @@ function _fbRefreshBoxesForBlank(blankIdx){
 }
 
 function _fbRefreshBoxes(){
-  const q = _fbState.questions[_fbState.currentIdx];
+  const q = _fbState.questions[_fbCurQIdx()];
   if(!q) return;
   const blankCount = (q.blanks || []).length;
   for(let i = 0; i < blankCount; i++) _fbRefreshBoxesForBlank(i);
@@ -1053,7 +1071,8 @@ function _fbUpdateTimerUI(){
 window.fbSkip = async () => {
   // 현재 문제 답 비우고 다음으로
   const s = _fbState;
-  if(s.answers[s.currentIdx]) s.answers[s.currentIdx] = s.answers[s.currentIdx].map(() => '');
+  const qIdx = _fbCurQIdx();
+  if(s.answers[qIdx]) s.answers[qIdx] = s.answers[qIdx].map(() => '');
   _fbStopTimer();
   if(s.currentIdx < s.questions.length - 1){
     s.currentIdx++;
@@ -1065,13 +1084,14 @@ window.fbSkip = async () => {
 
 window.fbUpdateAnswer = (blankIdx, value) => {
   const s = _fbState;
-  const q = s.questions[s.currentIdx];
+  const qIdx = _fbCurQIdx();
+  const q = s.questions[qIdx];
   if(!q) return;
   const letterCount = (q.blanks?.[blankIdx] || '').length;
   // 영문/공백만 허용, 최대 letterCount
   value = String(value||'').toLowerCase().replace(/[^a-z\s'-]/g, '').slice(0, letterCount);
-  if(!s.answers[s.currentIdx]) s.answers[s.currentIdx] = [];
-  s.answers[s.currentIdx][blankIdx] = value;
+  if(!s.answers[qIdx]) s.answers[qIdx] = [];
+  s.answers[qIdx][blankIdx] = value;
   const inp = document.getElementById('fb-input-' + blankIdx);
   if(inp && inp.value !== value) inp.value = value;
   _fbRefreshBoxesForBlank(blankIdx);
@@ -1088,7 +1108,7 @@ window.fbUpdateAnswer = (blankIdx, value) => {
 window.fbInputKey = (event, blankIdx) => {
   if(event.key === 'Enter' || event.key === 'Tab'){
     event.preventDefault();
-    const q = _fbState.questions[_fbState.currentIdx];
+    const q = _fbState.questions[_fbCurQIdx()];
     const total = (q.blanks||[]).length;
     if(blankIdx < total - 1){
       fbFocusBlank(blankIdx + 1);
@@ -1114,10 +1134,11 @@ window.fbNext = async () => {
 function _fbShowQuestionFeedback(){
   return new Promise(resolve => {
     const s = _fbState;
-    const q = s.questions[s.currentIdx];
+    const qIdx = _fbCurQIdx();
+    const q = s.questions[qIdx];
     if (!q) { resolve(); return; }
     const blanks = q.blanks || [];
-    const ans = s.answers[s.currentIdx] || [];
+    const ans = s.answers[qIdx] || [];
     let allCorrect = blanks.length > 0;
 
     blanks.forEach((correct, j) => {
@@ -1382,6 +1403,7 @@ window.fbViewPreviousResult = async (testId, testName) => {
     _fbState = {
       test,
       questions,
+      playOrder: [...Array(questions.length).keys()], // 리뷰는 원본 순서
       currentIdx: 0,
       answers: comp.answers || questions.map(q => new Array((q.blanks||[]).length).fill('')),
       hintStages: (comp.hintDetails || []).reduce((acc, h) => { acc[h.qIdx] = h.stage; return acc; }, questions.map(() => 0)),
