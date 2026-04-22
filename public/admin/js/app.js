@@ -208,10 +208,7 @@ async function loadDashScores(){
     el.innerHTML=snap.docs.map((d,i)=>{
       const s=d.data();
       const t=testMap[s.testId]||{};
-      const isUnsc = s.testMode==='unscramble'||s.mode==='unscramble'||t.testMode==='unscramble';
-      const modeHtml = isUnsc
-        ? '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀 언스크램블</span>'
-        : '<span class="badge badge-teal" style="font-size:10px;">📝 단어시험</span>';
+      const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || t.testMode || 'vocab');
       const pct=s.score||0;
       const badge=pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
       // 교재명: bookName 우선, 없으면 testMap의 bookName, 없으면 unitName
@@ -1291,12 +1288,9 @@ window.loadPersonalScore = async(uid) => {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>No</th><th>종류</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
+          <thead><tr><th>No</th><th>유형</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
           <tbody>${scores.map((s,i)=>{
-            const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble';
-            const modeHtml=isUnsc
-              ?'<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀</span>'
-              :'<span class="badge badge-teal" style="font-size:10px;">📝</span>';
+            const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || 'vocab');
             const bookName=s.bookName||s.unitName||'-';
             const testName=s.testName||'-';
             return `<tr>
@@ -1657,21 +1651,8 @@ window.importStudentExcel = async() => {
   if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
 function _testModeLabel(t){
-  const mode = t.testMode;
-  if(mode==='unscramble')
-    return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
-  if(mode==='reading-mcq')
-    return '<span class="badge" style="background:#fff4e6;color:#c2410c;border:1px solid #fed7aa;">📖 독해</span>';
-  if(mode==='fill-blank')
-    return '<span class="badge" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;">✏️ 빈칸채우기</span>';
-  if(mode==='subjective')
-    return '<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #ddd6fe;">✍️ 주관식</span>';
-  if(mode==='recording-ai')
-    return '<span class="badge" style="background:#fce7f3;color:#9d174d;border:1px solid #fbcfe8;">🎤 녹음</span>';
-  if(mode==='vocab')
-    return '<span class="badge badge-teal">📝 단어시험</span>';
-  // 레거시 tests (testMode 없음)
-  return '<span class="badge badge-teal">📝 단어시험</span>';
+  // 레거시 tests (testMode 없음)은 단어시험 = vocab 으로 간주
+  return _unifiedTypeBadge(t.testMode || 'vocab');
 }
 
 // ─── 시험 통계 공용 계산 (시험 목록 + 시험 유형별 최근 시험 공유) ───
@@ -4995,8 +4976,19 @@ function _qsBookName(bookId) {
   const b = _qsBooks.find(x => x.id === bookId);
   return b?.name || '(알 수 없는 Book)';
 }
+// 통합 유형 라벨 맵 (sourceType + testMode 공용)
+const _TYPE_LABEL_MAP = {
+  // sourceType (genQuestionSets)
+  mcq:'객관식', fill_blank:'빈칸', subjective:'주관식',
+  recording:'녹음', vocab:'단어', unscramble:'언스크램블',
+  // testMode (genTests) 별칭
+  'reading-mcq':'객관식', 'fill-blank':'빈칸', 'recording-ai':'녹음',
+};
 function _qsTypeLabel(t) {
-  return ({ mcq:'객관식', fill_blank:'빈칸', subjective:'주관식', recording:'녹음', vocab:'단어', unscramble:'언스크램블' })[t] || t || '-';
+  return _TYPE_LABEL_MAP[t] || t || '-';
+}
+function _unifiedTypeBadge(t) {
+  return `<span class="badge" style="background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 7px;border-radius:10px;">${_qsTypeLabel(t)}</span>`;
 }
 function _qsModelShort(m) {
   return (m||'').replace('gemini-','').replace('-preview','');
@@ -5552,7 +5544,7 @@ window.qsEditSet = (setId) => {
 function _qsRenderEditModal() {
   const st = _qsEditState;
   if (!st) return;
-  const typeLabel = { mcq:'객관식', fill_blank:'빈칸채우기' }[st.sourceType] || st.sourceType;
+  const typeLabel = _qsTypeLabel(st.sourceType);
   const html = `
     <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
