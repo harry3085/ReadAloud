@@ -3489,7 +3489,7 @@ let _qsSortBottom = { col: 'date', dir: 'desc' };
 let _qsColWidths = { top: {}, bottom: {} };   // 테이블별 컬럼 폭 (px)
 const _QS_UNASSIGNED = '__unassigned__';
 const _QS_COL_DEFAULTS = {
-  top:    { fav:32, name:260, type:90, count:70, book:140, date:130, act:280 },
+  top:    { fav:32, name:200, type:90, count:70, book:220, date:130, act:280 },
   bottom: { fav:32, name:280, type:90, count:70,          date:130, act:280 },
 };
 
