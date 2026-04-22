@@ -4976,20 +4976,16 @@ function _qsBookName(bookId) {
   const b = _qsBooks.find(x => x.id === bookId);
   return b?.name || '(알 수 없는 Book)';
 }
-// 통합 유형 라벨 맵 (sourceType / testMode / mode 다양한 별칭 수용)
+// 통합 유형 라벨 맵 (표준 snake_case 키 + UI 별칭 일부)
 const _TYPE_LABEL_MAP = {
-  // 단어
-  vocab:'단어', word:'단어',
-  // 빈칸
-  fill_blank:'빈칸', 'fill-blank':'빈칸', blank:'빈칸',
-  // 언스크램블
+  vocab:'단어',
+  fill_blank:'빈칸',
   unscramble:'언스크램블',
-  // 객관식
-  mcq:'객관식', 'reading-mcq':'객관식',
-  // 주관식
-  subjective:'주관식', subj:'주관식',
-  // 녹음
-  recording:'녹음', 'recording-ai':'녹음', 'rec-ai':'녹음',
+  mcq:'객관식',
+  subjective:'주관식',
+  recording:'녹음',
+  // UI 타입 별칭 (_TEST_TYPE_CONFIG 키 기반 접근 시 필요)
+  blank:'빈칸', subj:'주관식', 'rec-ai':'녹음',
 };
 function _qsTypeLabel(t) {
   if (!t) return '-';
@@ -6341,16 +6337,9 @@ async function _renderTestAssignDetail(type) {
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
-        // 레거시 testMode 값 호환 매핑 (마이그레이션 전까지)
-        const MODE_ALIASES = {
-          fill_blank: ['fill_blank','fill-blank'],
-          mcq: ['mcq','reading-mcq'],
-          recording: ['recording','recording-ai'],
-        };
-        const acceptedModes = MODE_ALIASES[cfg.testMode] || [cfg.testMode];
         const testSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
         _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}))
-          .filter(t => acceptedModes.includes(t.testMode));
+          .filter(t => t.testMode === cfg.testMode);
       }
     } catch(e) {
       console.error(e);
@@ -7737,89 +7726,3 @@ window.qgResetPrompt = async () => {
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 일회성 데이터 마이그레이션 (genTests.testMode / scores.mode 표준화)
-// 작업 완료 후 버튼·함수 모두 제거 예정
-// ═══════════════════════════════════════════════════════════════════════════
-window.runTypeMigration = async (dryRun) => {
-  const MAPPING = {
-    'fill-blank': 'fill_blank',
-    'reading-mcq': 'mcq',
-    'recording-ai': 'recording',
-    // vocab / unscramble / subjective 는 이미 표준
-  };
-  const logEl = document.getElementById('migrationLog');
-  const log = (msg) => {
-    if (logEl) logEl.textContent += msg + '\n';
-    console.log('[migration]', msg);
-  };
-
-  if (!dryRun) {
-    const ok = await showConfirm('마이그레이션 실행', 'Firestore 데이터를 실제로 변경합니다. 진행할까요?');
-    if (!ok) return;
-  }
-
-  if (logEl) logEl.textContent = '';
-  log(`=== 타입 키 마이그레이션 ${dryRun ? '(Dry Run)' : '(실행)'} ===`);
-  log(`변환 매핑: ${JSON.stringify(MAPPING)}`);
-
-  let testsChanged = 0, testsSkipped = 0, testsFailed = 0;
-  let scoresChanged = 0, scoresSkipped = 0, scoresFailed = 0;
-
-  // genTests.testMode
-  try {
-    const snap = await getDocs(collection(db, 'genTests'));
-    log(`\ngenTests: ${snap.size}건 스캔`);
-    for (const d of snap.docs) {
-      const data = d.data();
-      const oldMode = data.testMode;
-      const newMode = MAPPING[oldMode];
-      if (!newMode) { testsSkipped++; continue; }
-      if (dryRun) {
-        log(`  [DRY] ${d.id.slice(0,8)}… ${oldMode} → ${newMode}`);
-        testsChanged++;
-      } else {
-        try {
-          await updateDoc(doc(db, 'genTests', d.id), { testMode: newMode });
-          testsChanged++;
-          if (testsChanged % 10 === 0) log(`  ${testsChanged}건 변환됨...`);
-        } catch (e) {
-          log(`  ERROR ${d.id.slice(0,8)}: ${e.message}`);
-          testsFailed++;
-        }
-      }
-    }
-    log(`genTests: 변환 ${testsChanged} / 스킵 ${testsSkipped} / 실패 ${testsFailed}`);
-  } catch (e) {
-    log(`genTests 조회 실패: ${e.message}`);
-  }
-
-  // scores.mode
-  try {
-    const snap = await getDocs(collection(db, 'scores'));
-    log(`\nscores: ${snap.size}건 스캔`);
-    for (const d of snap.docs) {
-      const data = d.data();
-      const oldMode = data.mode;
-      const newMode = MAPPING[oldMode];
-      if (!newMode) { scoresSkipped++; continue; }
-      if (dryRun) {
-        scoresChanged++;
-      } else {
-        try {
-          await updateDoc(doc(db, 'scores', d.id), { mode: newMode });
-          scoresChanged++;
-          if (scoresChanged % 50 === 0) log(`  scores ${scoresChanged}건 변환됨...`);
-        } catch (e) {
-          scoresFailed++;
-        }
-      }
-    }
-    log(`scores: 변환 ${scoresChanged} / 스킵 ${scoresSkipped} / 실패 ${scoresFailed}`);
-  } catch (e) {
-    log(`scores 조회 실패: ${e.message}`);
-  }
-
-  log(`\n=== ${dryRun ? 'Dry Run' : '실행'} 완료 ===`);
-  showToast(dryRun ? '미리보기 완료 (로그 확인)' : `변환 완료 (genTests ${testsChanged}, scores ${scoresChanged})`);
-};

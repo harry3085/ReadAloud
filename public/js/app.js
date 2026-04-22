@@ -204,8 +204,8 @@ async function _updateGenTestBadge(testModes, badgeId) {
 }
 
 const updateTestBadge   = () => _updateGenTestBadge(['vocab'], 'testBadge');
-const updateMcqBadge    = () => _updateGenTestBadge(['mcq','reading-mcq'], 'mcqBadge');
-const updateFbBadge     = () => _updateGenTestBadge(['fill_blank','fill-blank'], 'blankBadge');
+const updateMcqBadge    = () => _updateGenTestBadge(['mcq'], 'mcqBadge');
+const updateFbBadge     = () => _updateGenTestBadge(['fill_blank'], 'blankBadge');
 
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
@@ -430,7 +430,7 @@ async function loadReadingMcqList(){
     const myUid = currentUser?.uid||'';
     const snap = await getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='mcq' || t.testMode==='reading-mcq');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'mcq');
 
     const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -773,7 +773,7 @@ async function loadFillBlankList(){
     const myUid = currentUser?.uid || '';
     const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='fill_blank' || t.testMode==='fill-blank');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'fill_blank');
 
     const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -1517,7 +1517,7 @@ async function loadRecAiList(){
     const myUid = currentUser?.uid || '';
     const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='recording' || t.testMode==='recording-ai');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording');
 
     const completedMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -1559,7 +1559,7 @@ async function loadRecAiList(){
   }
 }
 
-const updateRecBadge = () => _updateGenTestBadge(['recording','recording-ai'], 'recBadge');
+const updateRecBadge = () => _updateGenTestBadge(['recording'], 'recBadge');
 
 let _raState = {
   test: null,
@@ -4399,7 +4399,7 @@ window.quitVocab = async () => {
   goHome();
 };
 
-const updateVocabBadge = () => _updateGenTestBadge(['vocab','word'], 'testBadge');
+const updateVocabBadge = () => _updateGenTestBadge(['vocab'], 'testBadge');
 
 // updateAllBadges 확장 (vocab)
 const _origUpdateAllBadgesForVocab = window.updateAllBadges;
