@@ -1714,6 +1714,18 @@ window.importStudentExcel = async() => {
   document.getElementById('excelImportBtnWrap').style.display='none';
   if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
+// 출제 일시 포맷터 (createdAt Timestamp 우선, 없으면 t.date 폴백)
+// YY-MM-DD HH:mm 형식 — lexicographic 정렬과 시간순 정렬 일치
+function _fmtTestDateTime(t){
+  const dt = t.createdAt?.toDate?.();
+  if (dt) {
+    const p = n => String(n).padStart(2,'0');
+    const yy = p(dt.getFullYear() % 100);
+    return `${yy}-${p(dt.getMonth()+1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  }
+  return esc(t.date || '');
+}
+
 function _testModeLabel(t){
   // 레거시 tests (testMode 없음)은 단어시험 = vocab 으로 간주
   return _unifiedTypeBadge(t.testMode || 'vocab');
@@ -1819,7 +1831,7 @@ window.loadTestList = async() => {
         <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
         <td class="td-sm">${esc(bookName)}</td>
         <td class="td-center">${count}문제</td>
-        <td class="td-sub">${esc(t.date)||''}</td>
+        <td class="td-sub" style="white-space:nowrap;">${_fmtTestDateTime(t)}</td>
         <td style="text-align:center;font-size:11px;white-space:nowrap;">
           <span style="color:#2e7d32;font-weight:700;" title="통과자">${t._passedCount||0}</span>
           <span style="color:var(--gray);">/</span>
