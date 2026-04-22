@@ -715,12 +715,19 @@ function _mcqRenderResult({correct, wrong, total, score, passed, passScore, ques
         </div>` : ''}
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="goReadingMcq()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="startReadingMcq('${esc(_mcqTakeState.test?.id||'')}','${esc(_mcqTakeState.test?.name||'')}')" style="flex:1;padding:14px;background:#F59E0B;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
+        <button onclick="mcqRetakeCurrent()" style="flex:1;padding:14px;background:#F59E0B;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>
   `;
   updateMcqBadge();
 }
+
+// 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조)
+window.mcqRetakeCurrent = () => {
+  const t = _mcqTakeState?.test;
+  if (!t?.id) { showToast('시험 정보 없음'); return; }
+  startReadingMcq(t.id, t.name || '');
+};
 
 // 완료된 객관식 이전 결과 보기
 window.mcqViewPreviousResult = async (testId, testName) => {
@@ -1462,7 +1469,7 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore, detai
         </div>` : ''}
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="goFillBlank()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="startFillBlank('${esc(_fbState.test?.id||'')}','${esc(_fbState.test?.name||'')}')" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
+        <button onclick="fbRetakeCurrent()" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>
   `;
@@ -1470,6 +1477,12 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore, detai
 }
 
 // ─── 완료된 시험의 이전 결과 보기 + 재응시 선택 ───
+window.fbRetakeCurrent = () => {
+  const t = _fbState?.test;
+  if (!t?.id) { showToast('시험 정보 없음'); return; }
+  startFillBlank(t.id, t.name || '');
+};
+
 window.fbViewPreviousResult = async (testId, testName) => {
   try {
     const [testSnap, compSnap] = await Promise.all([
@@ -4389,11 +4402,18 @@ function _vqRenderResult({ correct, wrong, total, score, passed, passScore, ques
         </div>` : ''}
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="goVocab()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="startVocab('${esc(_vqState.test?.id||'')}','${esc(_vqState.test?.name||'')}')" style="flex:1;padding:14px;background:#0EA5E9;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
+        <button onclick="vqRetakeCurrent()" style="flex:1;padding:14px;background:#0EA5E9;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>`;
   updateVocabBadge();
 }
+
+// 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조 → 특수문자 이스케이프 이슈 회피)
+window.vqRetakeCurrent = () => {
+  const t = _vqState?.test;
+  if (!t?.id) { showToast('시험 정보 없음'); return; }
+  startVocab(t.id, t.name || '');
+};
 
 // 완료된 단어시험 이전 결과 보기
 window.vqViewPreviousResult = async (testId, testName) => {
@@ -4913,11 +4933,18 @@ function _uqRenderResult({ correct, wrong, total, score, passed, passScore, ques
         </div>` : ''}
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="goUnscramble()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="startUnscramble2('${esc(_uqState.test?.id||'')}','${esc(_uqState.test?.name||'')}')" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
+        <button onclick="uqRetakeCurrent()" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>`;
   updateUnscBadge2();
 }
+
+// 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조)
+window.uqRetakeCurrent = () => {
+  const t = _uqState?.test;
+  if (!t?.id) { showToast('시험 정보 없음'); return; }
+  startUnscramble2(t.id, t.name || '');
+};
 
 // ─── 완료된 언스크램블 시험의 이전 결과 보기 + 재응시 선택 ───
 window.uqViewPreviousResult = async (testId, testName) => {
