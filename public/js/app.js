@@ -166,7 +166,15 @@ async function updateAllBadges(force=false){
   const now = Date.now();
   if(!force && now - _badgeCache.ts < BADGE_TTL) return;
   _badgeCache.ts = now;
-  await Promise.all([updateTestBadge(), updateUnscBadge(), updateMcqBadge(), updateFbBadge(), updateRecBadge()]);
+  // window.updateTestBadge 는 후반부에서 updateVocabBadge 로 교체됨 → window 경유해서 최신 바인딩 호출
+  // (로컬 updateTestBadge 는 레거시 tests 컬렉션 조회라서 genTests 기반 시험 미반영)
+  await Promise.all([
+    (window.updateTestBadge || updateTestBadge)(),
+    (window.updateUnscBadge || updateUnscBadge)(),
+    updateMcqBadge(),
+    updateFbBadge(),
+    updateRecBadge(),
+  ]);
 }
 async function updateTestBadge(){
   const badge = document.getElementById('testBadge');
