@@ -4997,7 +4997,7 @@ function _qsTh(tableKey, col, label, opts = {}) {
   const align = opts.center ? 'text-align:center;' : '';
   const cursor = sortable ? 'cursor:pointer;' : '';
   const click = sortable ? `onclick="${sortFn}('${col}')"` : '';
-  return `<th data-table="${tableKey}" data-col="${col}" style="width:${w}px;position:relative;${align}${cursor}user-select:none;" ${click}>${arrow}${esc(label)}<span class="qs-col-resize" style="position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;user-select:none;"></span></th>`;
+  return `<th data-table="${tableKey}" data-col="${col}" style="width:${w}px;position:relative;${align}${cursor}user-select:none;border-right:1px solid var(--border);" ${click}>${arrow}${esc(label)}<span class="qs-col-resize" style="position:absolute;right:-4px;top:0;width:9px;height:100%;cursor:col-resize;user-select:none;z-index:2;"></span></th>`;
 }
 
 // ─── 상단: 최근 20개 테이블 ───
@@ -5009,7 +5009,7 @@ function _qsRenderTopPane() {
       <span style="font-size:11px;color:var(--gray);font-weight:400;">총 ${_qsList.length}개</span>
     </div>
     <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:max-content;min-width:100%;table-layout:fixed;font-size:12px;">
+      <table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
             ${_qsTh('top','fav','',{center:true})}
@@ -5094,7 +5094,7 @@ function _qsRenderSetPane() {
       <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">세트 ${sorted.length}개</span></span>
     </div>
     <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:max-content;min-width:100%;table-layout:fixed;font-size:12px;">
+      <table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
             ${_qsTh('bottom','fav','',{center:true})}

@@ -190,3 +190,10 @@ thead th.sortable[data-orig-text]{color:var(--teal);font-weight:700;}
 
 /* ── 토스트 ── */
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── 문제 세트 테이블 컬럼 리사이즈 핸들 ── */
+.qs-col-resize{background:transparent;transition:background .15s;}
+.qs-col-resize::before{content:'';position:absolute;right:4px;top:25%;bottom:25%;width:1px;background:#bbb;}
+.qs-col-resize:hover{background:rgba(232,113,74,.25);}
+.qs-col-resize:hover::before{background:var(--teal);width:2px;}
+.qs-col-resize:active{background:rgba(232,113,74,.5);}
