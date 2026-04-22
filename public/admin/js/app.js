@@ -1139,15 +1139,11 @@ function renderScoreReportRows(){
 
   const sbadge=v=>v>=80?'badge-green':v>=60?'badge-amber':'badge-red';
   el.innerHTML = sorted.map((s,i)=>{
-    const isUnsc = s._isUnsc;
-    const modeHtml = isUnsc
-      ? '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;font-size:10px;">🔀 언스크램블</span>'
-      : '<span class="badge badge-teal" style="font-size:10px;">📝 단어시험</span>';
     return `<tr style="cursor:pointer;" onclick="showScoreDetail('${s.id}','${s.testId||''}')">
       <td>${i+1}</td>
       <td>${esc(s.group)||'-'}</td>
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
-      <td>${modeHtml}</td>
+      <td>${_unifiedTypeBadge(s.mode)}</td>
       <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
       <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
@@ -1178,11 +1174,11 @@ window.loadScoreReport = async() => {
     const cls=document.getElementById('scoreClassFilter').value;
     const modeFilter=document.getElementById('scoreModeFilter').value;
 
+    // mode 필터: s.mode / s.testMode 둘 다 검사, 표준 키 기준
     const filtered=scores.filter(s=>{
       const d=s.date||'';
-      const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble';
-      if(modeFilter==='word' && isUnsc) return false;
-      if(modeFilter==='unscramble' && !isUnsc) return false;
+      const m = s.mode || s.testMode || '';
+      if (modeFilter && m !== modeFilter) return false;
       return(!from||d>=from)&&(!to||d<=to)&&(!cls||s.group===cls);
     });
     if(!filtered.length){
@@ -1200,13 +1196,12 @@ window.loadScoreReport = async() => {
     // 정렬용 필드 정규화
     _srData = filtered.map(s=>{
       const t=testMap[s.testId]||{};
-      const isUnsc=s.testMode==='unscramble'||s.mode==='unscramble'||t.testMode==='unscramble';
+      const m = s.mode || s.testMode || t.testMode || 'vocab';
       return {
         ...s,
-        _isUnsc: isUnsc,
         bookName: s.bookName||t.bookName||s.unitName||'-',
         testName: s.testName||t.name||'-',
-        mode: isUnsc?'unscramble':'word',
+        mode: m,  // 표준 키 유지 (vocab/fill_blank/mcq/unscramble/recording/subjective)
         score: s.score||0,
         correct: s.correct||0,
         _dateTime: s.createdAt?.toDate

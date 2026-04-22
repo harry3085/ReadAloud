@@ -437,9 +437,12 @@
         <input type="date" id="scoreTo" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
         <select id="scoreClassFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;"><option value="">전체 반</option></select>
         <select id="scoreModeFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
-          <option value="">전체 종류</option>
-          <option value="word">📝 단어시험</option>
-          <option value="unscramble">🔀 언스크램블</option>
+          <option value="">전체 유형</option>
+          <option value="vocab">단어</option>
+          <option value="fill_blank">빈칸</option>
+          <option value="unscramble">언스크램블</option>
+          <option value="mcq">객관식</option>
+          <option value="recording">녹음</option>
         </select>
         <button class="btn btn-primary" onclick="loadScoreReport()">조회</button>
       </div>
@@ -451,7 +454,7 @@
             <th>No</th>
             <th class="sortable" onclick="sortScoreReport('group')">반 <span id="srSort-group"></span></th>
             <th class="sortable" onclick="sortScoreReport('userName')">이름 <span id="srSort-userName"></span></th>
-            <th class="sortable" onclick="sortScoreReport('mode')">종류 <span id="srSort-mode"></span></th>
+            <th class="sortable" onclick="sortScoreReport('mode')">유형 <span id="srSort-mode"></span></th>
             <th class="sortable" onclick="sortScoreReport('bookName')">교재명 <span id="srSort-bookName"></span></th>
             <th>시험명</th>
             <th class="sortable" onclick="sortScoreReport('correct')">정답/전체 <span id="srSort-correct"></span></th>
