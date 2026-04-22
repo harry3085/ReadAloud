@@ -1658,6 +1658,44 @@ function _testModeLabel(t){
     return '<span class="badge" style="background:#fff4e6;color:#c2410c;border:1px solid #fed7aa;">📖 독해</span>';
   return '<span class="badge badge-teal">📝 단어시험</span>';
 }
+
+// ─── 시험 통계 공용 계산 (시험 목록 + 시험 유형별 최근 시험 공유) ───
+function _resolveTestTargetUids(targets, students) {
+  const set = new Set();
+  (targets || []).forEach(tg => {
+    if (!tg) return;
+    if (tg.type === 'student' && tg.id) {
+      set.add(tg.id);
+    } else if (tg.type === 'class') {
+      const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
+      (students || []).forEach(s => { if (s.group === gName) set.add(s.id); });
+    }
+  });
+  return set;
+}
+
+function _computeTestStats(t, scoresArr, students) {
+  const avg = scoresArr.length ? Math.round(scoresArr.reduce((sum,s)=>sum+(s.score||0),0)/scoresArr.length) : null;
+  const attemptedSet = new Set(scoresArr.map(s => s.uid).filter(Boolean));
+  const passScore = t.passScore || 80;
+  const maxByUid = new Map();
+  scoresArr.forEach(s => {
+    if (!s.uid) return;
+    const prev = maxByUid.get(s.uid);
+    const cur = s.score || 0;
+    if (prev === undefined || cur > prev) maxByUid.set(s.uid, cur);
+  });
+  let passedCount = 0;
+  maxByUid.forEach(v => { if (v >= passScore) passedCount++; });
+  const targetSet = _resolveTestTargetUids(t.targets, students);
+  return {
+    avg,
+    attemptedCount: attemptedSet.size,
+    passedCount,
+    targetCount: targetSet.size,
+  };
+}
+
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
@@ -1686,49 +1724,15 @@ window.loadTestList = async() => {
       } catch(e) { console.warn('학생 로드 실패(대상자 집계 정확도 저하):', e); }
     }
 
-    const resolveTargetUids = (targets) => {
-      const set = new Set();
-      (targets || []).forEach(tg => {
-        if (!tg) return;
-        if (tg.type === 'student' && tg.id) {
-          set.add(tg.id);
-        } else if (tg.type === 'class') {
-          const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
-          allStudents.forEach(s => { if (s.group === gName) set.add(s.id); });
-        }
-      });
-      return set;
-    };
-
     const attachStats = (t) => {
       const scoresArr = allScores.filter(s => s.testId === t.id);
-      const avg = scoresArr.length ? Math.round(scoresArr.reduce((sum,s)=>sum+(s.score||0),0)/scoresArr.length) : null;
-
-      // 고유 응시자 (uid 기준)
-      const attemptedSet = new Set(scoresArr.map(s => s.uid).filter(Boolean));
-
-      // 고유 통과자 (학생별 최고점 기준)
-      const passScore = t.passScore || 80;
-      const maxByUid = new Map();
-      scoresArr.forEach(s => {
-        if (!s.uid) return;
-        const prev = maxByUid.get(s.uid);
-        const cur = s.score || 0;
-        if (prev === undefined || cur > prev) maxByUid.set(s.uid, cur);
-      });
-      let passedCount = 0;
-      maxByUid.forEach(v => { if (v >= passScore) passedCount++; });
-
-      // 대상자
-      const targetSet = resolveTargetUids(t.targets);
-
-      return {
-        ...t,
+      const stats = _computeTestStats(t, scoresArr, allStudents);
+      return { ...t,
         attemptCount: scoresArr.length, // 제출 횟수 (하위 호환)
-        avgScore: avg,
-        _passedCount: passedCount,
-        _attemptedCount: attemptedSet.size,
-        _targetCount: targetSet.size,
+        avgScore: stats.avg,
+        _passedCount: stats.passedCount,
+        _attemptedCount: stats.attemptedCount,
+        _targetCount: stats.targetCount,
       };
     };
 
@@ -1747,7 +1751,7 @@ window.loadTestList = async() => {
       const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
       const bookName = t.bookName || (isGen ? (t.sourceSetNames?.join(', ')||'-') : '-');
       return `
-      <tr style="cursor:${isGen?'default':'pointer'};" ${isGen?'':`onclick="toggleTestProgress('${t.id}',this)"`} id="test-row-${t.id}">
+      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}','${t._src}')" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
         <td class="td-main">${esc(t.name)||'-'}</td>
@@ -1767,11 +1771,11 @@ window.loadTestList = async() => {
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
       </tr>
-      ${isGen ? '' : `<tr id="progress-${t.id}" style="display:none;background:#f0faff;">
+      <tr id="progress-${t.id}" style="display:none;background:#f0faff;">
         <td colspan="10" style="padding:0;border-top:none;">
           <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
-      </tr>`}`;
+      </tr>`;
     }, 'testPagination', 10);
   }catch(e){
     console.error(e);
@@ -1779,7 +1783,7 @@ window.loadTestList = async() => {
   }
 };
 
-window.toggleTestProgress = async(testId) => {
+window.toggleTestProgress = async(testId, source='tests') => {
   const progressRow = document.getElementById('progress-'+testId);
   if(!progressRow){ console.warn('progress row not found:', testId); return; }
 
@@ -1802,7 +1806,8 @@ window.toggleTestProgress = async(testId) => {
   contentEl.innerHTML = '<span style="color:#bbb;">로딩 중...</span>';
 
   try{
-    const testDoc = await getDoc(doc(db,'tests',testId));
+    const coll = (source === 'genTests') ? 'genTests' : 'tests';
+    const testDoc = await getDoc(doc(db, coll, testId));
     if(!testDoc.exists()){ contentEl.textContent='시험 데이터 없음'; return; }
     const t = testDoc.data();
     const targets = t.targets||[];
@@ -1810,9 +1815,11 @@ window.toggleTestProgress = async(testId) => {
     // 대상 학생 목록
     let students = [];
     for(const tg of targets){
-      if(tg.type==='student') students.push({uid:tg.id, name:tg.name, group:''});
-      else {
-        const gs = await getDocs(query(collection(db,'users'),where('group','==',tg.id)));
+      if(tg.type==='student') {
+        students.push({uid:tg.id, name:tg.name, group:tg.groupName||''});
+      } else if(tg.type==='class') {
+        const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
+        const gs = await getDocs(query(collection(db,'users'),where('group','==',gName)));
         gs.docs.filter(d=>d.data().role==='student').forEach(d=>
           students.push({uid:d.id, name:d.data().name, group:d.data().group||''})
         );
@@ -1822,7 +1829,7 @@ window.toggleTestProgress = async(testId) => {
     students.sort((a,b)=>(a.group+a.name).localeCompare(b.group+b.name,'ko'));
 
     // 완료 목록
-    const compSnap = await getDocs(collection(db,'tests',testId,'userCompleted'));
+    const compSnap = await getDocs(collection(db, coll, testId, 'userCompleted'));
     const compMap = {}; // uid → {score}
     compSnap.docs.forEach(d=>{ compMap[d.id]=d.data(); });
 
@@ -6616,7 +6623,7 @@ function _tpRenderTestsTable() {
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);">시험명</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:140px;">대상</th>
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">문항</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">응시</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;" title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">평균</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">출제일</th>
         </tr>
@@ -6649,16 +6656,32 @@ async function _tpLoadTestStats() {
   try {
     const scoresSnap = await getDocs(collection(db,'scores'));
     const allScores = scoresSnap.docs.map(d => d.data());
+
+    // 학생 전체 로드 (대상자 계산용)
+    if (!Array.isArray(allStudents) || allStudents.length === 0) {
+      try {
+        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+      } catch(e) { console.warn('학생 로드 실패:', e); }
+    }
+
     _tpGenTests.forEach(t => {
-      const ts = allScores.filter(s => s.testId === t.id);
+      const scoresArr = allScores.filter(s => s.testId === t.id);
+      const stats = _computeTestStats(t, scoresArr, allStudents);
       const elA = document.getElementById('tp-attempt-' + t.id);
       const elB = document.getElementById('tp-avg-' + t.id);
-      if (elA) elA.textContent = ts.length || 0;
+      if (elA) {
+        elA.innerHTML = `
+          <span style="color:#2e7d32;font-weight:700;" title="통과자">${stats.passedCount}</span>
+          <span style="color:var(--gray);">/</span>
+          <span style="color:#1565c0;font-weight:600;" title="응시자(고유)">${stats.attemptedCount}</span>
+          <span style="color:var(--gray);">/</span>
+          <span style="color:var(--text);" title="대상자">${stats.targetCount||'-'}</span>`;
+      }
       if (elB) {
-        if (ts.length) {
-          const avg = Math.round(ts.reduce((sum,s)=>sum+(s.score||0),0) / ts.length);
-          const cls = avg>=80 ? 'badge-green' : (avg>=60 ? 'badge-amber' : 'badge-red');
-          elB.innerHTML = `<span class="badge ${cls}">${avg}점</span>`;
+        if (stats.avg !== null) {
+          const cls = stats.avg>=80 ? 'badge-green' : (stats.avg>=60 ? 'badge-amber' : 'badge-red');
+          elB.innerHTML = `<span class="badge ${cls}">${stats.avg}점</span>`;
         } else {
           elB.textContent = '-';
         }
