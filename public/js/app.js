@@ -4064,6 +4064,8 @@ function _vqRenderStep() {
       if (q.example) { headerHint.style.display = ''; headerHint.textContent = '“' + q.example + '”'; }
       else headerHint.style.display = 'none';
     }
+    // TTS: 영단어 질문이 뜨면 발음 재생 (학습용)
+    if (q.word) _fbSpeakWords([q.word]);
   } else {
     if (labelEl) labelEl.textContent = ans.format === 'short' ? '한글 뜻 (영단어 쓰기)' : '한글 뜻';
     if (promptEl) promptEl.textContent = q.meaning || '';
@@ -4238,6 +4240,11 @@ window.vqNext = async (opts) => {
   ans._locked = true;
   const q = s.questions[s.currentIdx];
   const isCorrect = _vqIsAnsCorrect(q, ans);
+
+  // TTS: 한글→영어 방향에서 정답이면 영단어 발음 재생
+  if (isCorrect && ans.direction === 'ko2en' && q.word) {
+    _fbSpeakWords([q.word]);
+  }
 
   if (ans.format === 'short') {
     _vqRenderSpellFeedback(ans, isCorrect);
