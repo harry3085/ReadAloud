@@ -1657,10 +1657,20 @@ window.importStudentExcel = async() => {
   if(success>0) showToast(`✅ ${success}명 등록 완료!`);
 };
 function _testModeLabel(t){
-  if(t.testMode==='unscramble')
+  const mode = t.testMode;
+  if(mode==='unscramble')
     return '<span class="badge" style="background:#fff8e1;color:#b45309;border:1px solid #ffe082;">🔀 언스크램블</span>';
-  if(t.testMode==='reading-mcq')
+  if(mode==='reading-mcq')
     return '<span class="badge" style="background:#fff4e6;color:#c2410c;border:1px solid #fed7aa;">📖 독해</span>';
+  if(mode==='fill-blank')
+    return '<span class="badge" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;">✏️ 빈칸채우기</span>';
+  if(mode==='subjective')
+    return '<span class="badge" style="background:#f3e8ff;color:#6b21a8;border:1px solid #ddd6fe;">✍️ 주관식</span>';
+  if(mode==='recording-ai')
+    return '<span class="badge" style="background:#fce7f3;color:#9d174d;border:1px solid #fbcfe8;">🎤 녹음</span>';
+  if(mode==='vocab')
+    return '<span class="badge badge-teal">📝 단어시험</span>';
+  // 레거시 tests (testMode 없음)
   return '<span class="badge badge-teal">📝 단어시험</span>';
 }
 
