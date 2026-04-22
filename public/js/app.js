@@ -3858,6 +3858,8 @@ function _vqMakeCard(t, isCompleted, onclick, completedScore) {
     </div>`;
 }
 
+let _vqScreenTemplate = null;
+
 window.startVocab = async (testId, testName) => {
   try {
     const snap = await getDoc(doc(db,'genTests',testId));
@@ -3865,6 +3867,14 @@ window.startVocab = async (testId, testName) => {
     const test = { id: testId, ...snap.data() };
     let questions = (test.questions || []).filter(q => q.type === 'vocab');
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+
+    // 이전 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 템플릿 복원
+    const screen = document.getElementById('vocabQuiz');
+    if (screen && _vqScreenTemplate && !screen.querySelector('#vqProgressBar')) {
+      screen.innerHTML = _vqScreenTemplate;
+    } else if (screen && !_vqScreenTemplate) {
+      _vqScreenTemplate = screen.innerHTML;
+    }
 
     // vocabOptions (기본값 제공)
     const opts = Object.assign(
@@ -4227,6 +4237,8 @@ async function _vqSubmit() {
 function _vqRenderResult({ correct, wrong, total, score, passed, passScore }) {
   const screen = document.getElementById('vocabQuiz');
   if (!screen) return;
+  // 원본 템플릿 저장 (다음 시험 클릭 시 복원용)
+  if (!_vqScreenTemplate) _vqScreenTemplate = screen.innerHTML;
   screen.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
       <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
