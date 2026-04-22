@@ -1409,41 +1409,43 @@ window.showScoreDetail = async(scoreId, testId) => {
     }
 
     showModal(`
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;word-break:break-word;">
-        <div style="min-width:0;flex:1;">
-          <div style="font-size:16px;font-weight:700;line-height:1.3;">${esc(s.userName)||'-'}
-            <span style="font-size:12px;color:var(--gray);font-weight:400;">${esc(s.group)||''}</span>
+      <div style="padding:6px 4px 0;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px;word-break:break-word;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:16px;font-weight:700;line-height:1.3;">${esc(s.userName)||'-'}
+              <span style="font-size:12px;color:var(--gray);font-weight:400;">${esc(s.group)||''}</span>
+            </div>
+            <div style="font-size:12px;color:var(--gray);margin-top:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${_unifiedTypeBadge(mode)}
+              <span style="word-break:break-word;">${esc(bookName)} · ${esc(testName)}</span>
+            </div>
           </div>
-          <div style="font-size:12px;color:var(--gray);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            ${_unifiedTypeBadge(mode)}
-            <span style="word-break:break-word;">${esc(bookName)} · ${esc(testName)}</span>
+          <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;flex-shrink:0;">${pct}점</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+          <div style="background:#f0fafa;border-radius:10px;padding:12px 6px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">정답</div>
+          </div>
+          <div style="background:#fee2e2;border-radius:10px;padding:12px 6px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:#e05050;">${s.wrong||0}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">오답</div>
+          </div>
+          <div style="background:#f8f9fa;border-radius:10px;padding:12px 6px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">전체</div>
+          </div>
+          <div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:10px;padding:12px 6px;text-align:center;">
+            <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">기준 ${passScore}점</div>
           </div>
         </div>
-        <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;flex-shrink:0;">${pct}점</span>
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px;max-height:340px;overflow-y:auto;overscroll-behavior:contain;word-break:break-word;">
+          ${detailHtml}
+        </div>
+        <div style="font-size:11px;color:#bbb;text-align:right;margin-top:8px;padding-right:2px;">${s.date||''} ${s.createdAt?.toDate?s.createdAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''}</div>
+        <button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;margin-top:12px;">닫기</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
-        <div style="background:#f0fafa;border-radius:10px;padding:10px 6px;text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
-          <div style="font-size:11px;color:var(--gray);margin-top:1px;">정답</div>
-        </div>
-        <div style="background:#fee2e2;border-radius:10px;padding:10px 6px;text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:#e05050;">${s.wrong||0}</div>
-          <div style="font-size:11px;color:var(--gray);margin-top:1px;">오답</div>
-        </div>
-        <div style="background:#f8f9fa;border-radius:10px;padding:10px 6px;text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
-          <div style="font-size:11px;color:var(--gray);margin-top:1px;">전체</div>
-        </div>
-        <div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:10px;padding:10px 6px;text-align:center;">
-          <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
-          <div style="font-size:11px;color:var(--gray);margin-top:1px;">기준 ${passScore}점</div>
-        </div>
-      </div>
-      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 6px 10px 10px;max-height:340px;overflow-y:auto;word-break:break-word;">
-        ${detailHtml}
-      </div>
-      <div style="font-size:11px;color:#bbb;text-align:right;margin-top:6px;">${s.date||''} ${s.createdAt?.toDate?s.createdAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''}</div>
-      <button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;margin-top:10px;">닫기</button>
     `);
   }catch(e){ showToast('상세 불러오기 실패: '+e.message); }
 };
