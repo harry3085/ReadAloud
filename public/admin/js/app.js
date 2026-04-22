@@ -3484,9 +3484,14 @@ let _qsSplitH = 30;                     // 하단 좌측 pane 폭 %
 let _qsFavSets = new Set();             // 즐겨찾기된 세트 ID
 let _qsFavBooks = new Set();            // 즐겨찾기된 Book ID (+ '__unassigned__')
 let _qsActiveBookId = null;             // 하단 좌측에서 선택된 Book ID
-let _qsSortTop = { col: 'createdAt', dir: 'desc' };
-let _qsSortBottom = { col: 'createdAt', dir: 'desc' };
+let _qsSortTop = { col: 'date', dir: 'desc' };
+let _qsSortBottom = { col: 'date', dir: 'desc' };
+let _qsColWidths = { top: {}, bottom: {} };   // 테이블별 컬럼 폭 (px)
 const _QS_UNASSIGNED = '__unassigned__';
+const _QS_COL_DEFAULTS = {
+  top:    { fav:32, name:260, type:90, count:70, book:140, date:130, act:280 },
+  bottom: { fav:32, name:280, type:90, count:70,          date:130, act:280 },
+};
 
 // Phase 2.5: Book/Chapter 드릴다운 필터 + 유형 선택
 let _qgActiveBook = null;     // {id, name} | null
@@ -4881,6 +4886,14 @@ function _qsLoadPrefs() {
   _qsActiveBookId = localStorage.getItem('qs_active_book') || null;
   try { const t = JSON.parse(localStorage.getItem('qs_sort_top')||'null'); if (t?.col) _qsSortTop = t; } catch {}
   try { const b = JSON.parse(localStorage.getItem('qs_sort_bottom')||'null'); if (b?.col) _qsSortBottom = b; } catch {}
+  try {
+    const w = JSON.parse(localStorage.getItem('qs_col_widths')||'null');
+    if (w && typeof w === 'object') _qsColWidths = Object.assign({ top:{}, bottom:{} }, w);
+  } catch {}
+}
+
+function _qsColW(tableKey, col) {
+  return (_qsColWidths[tableKey]?.[col]) || _QS_COL_DEFAULTS[tableKey][col] || 80;
 }
 function _qsSavePrefs() {
   localStorage.setItem('qs_layout_v', String(_qsSplitV));
@@ -4974,6 +4987,19 @@ function _qsRenderList() {
   _qsAttachResizers();
 }
 
+// ─── <th> 렌더 헬퍼 (폭 + 리사이즈 핸들 + 선택적 정렬) ───
+function _qsTh(tableKey, col, label, opts = {}) {
+  const w = _qsColW(tableKey, col);
+  const sortable = opts.sortable;
+  const sortState = tableKey === 'top' ? _qsSortTop : _qsSortBottom;
+  const sortFn = tableKey === 'top' ? 'qsSortTop' : 'qsSortBottom';
+  const arrow = sortable ? _qsSortArrow(col, sortState) + ' ' : '';
+  const align = opts.center ? 'text-align:center;' : '';
+  const cursor = sortable ? 'cursor:pointer;' : '';
+  const click = sortable ? `onclick="${sortFn}('${col}')"` : '';
+  return `<th data-table="${tableKey}" data-col="${col}" style="width:${w}px;position:relative;${align}${cursor}user-select:none;" ${click}>${arrow}${esc(label)}<span class="qs-col-resize" style="position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;user-select:none;"></span></th>`;
+}
+
 // ─── 상단: 최근 20개 테이블 ───
 function _qsRenderTopPane() {
   const recent = _qsSortSets(_qsList.slice(0, _QS_RECENT_LIMIT), _qsSortTop);
@@ -4983,16 +5009,16 @@ function _qsRenderTopPane() {
       <span style="font-size:11px;color:var(--gray);font-weight:400;">총 ${_qsList.length}개</span>
     </div>
     <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:100%;table-layout:fixed;font-size:12px;">
+      <table class="data-table" style="width:max-content;min-width:100%;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
-            <th style="width:32px;"></th>
-            <th style="cursor:pointer;" onclick="qsSortTop('name')">${_qsSortArrow('name', _qsSortTop)} 세트 이름</th>
-            <th style="width:90px;cursor:pointer;" onclick="qsSortTop('type')">${_qsSortArrow('type', _qsSortTop)} 유형</th>
-            <th style="width:70px;text-align:center;">문제수</th>
-            <th style="width:140px;">Book</th>
-            <th style="width:130px;cursor:pointer;" onclick="qsSortTop('createdAt')">${_qsSortArrow('createdAt', _qsSortTop)} 생성일</th>
-            <th style="width:280px;">작업</th>
+            ${_qsTh('top','fav','',{center:true})}
+            ${_qsTh('top','name','세트 이름',{sortable:true})}
+            ${_qsTh('top','type','유형',{sortable:true,center:true})}
+            ${_qsTh('top','count','문제수',{center:true})}
+            ${_qsTh('top','book','Book')}
+            ${_qsTh('top','date','생성일',{sortable:true})}
+            ${_qsTh('top','act','작업',{center:true})}
           </tr>
         </thead>
         <tbody>${recent.map(s => _qsRenderRow(s, 'top')).join('')}</tbody>
@@ -5068,15 +5094,15 @@ function _qsRenderSetPane() {
       <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">세트 ${sorted.length}개</span></span>
     </div>
     <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:100%;table-layout:fixed;font-size:12px;">
+      <table class="data-table" style="width:max-content;min-width:100%;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
-            <th style="width:32px;"></th>
-            <th style="cursor:pointer;" onclick="qsSortBottom('name')">${_qsSortArrow('name', _qsSortBottom)} 세트 이름</th>
-            <th style="width:90px;cursor:pointer;" onclick="qsSortBottom('type')">${_qsSortArrow('type', _qsSortBottom)} 유형</th>
-            <th style="width:70px;text-align:center;">문제수</th>
-            <th style="width:130px;cursor:pointer;" onclick="qsSortBottom('createdAt')">${_qsSortArrow('createdAt', _qsSortBottom)} 생성일</th>
-            <th style="width:280px;">작업</th>
+            ${_qsTh('bottom','fav','',{center:true})}
+            ${_qsTh('bottom','name','세트 이름',{sortable:true})}
+            ${_qsTh('bottom','type','유형',{sortable:true,center:true})}
+            ${_qsTh('bottom','count','문제수',{center:true})}
+            ${_qsTh('bottom','date','생성일',{sortable:true})}
+            ${_qsTh('bottom','act','작업',{center:true})}
           </tr>
         </thead>
         <tbody>${sorted.map(s => _qsRenderRow(s, 'bottom')).join('')}</tbody>
@@ -5118,13 +5144,13 @@ function _qsSortArrow(col, sort) {
 // ─── 핸들러 ───
 window.qsSortTop = (col) => {
   if (_qsSortTop.col === col) _qsSortTop.dir = _qsSortTop.dir === 'asc' ? 'desc' : 'asc';
-  else _qsSortTop = { col, dir: col === 'createdAt' ? 'desc' : 'asc' };
+  else _qsSortTop = { col, dir: col === 'date' ? 'desc' : 'asc' };
   _qsSavePrefs();
   _qsRenderList();
 };
 window.qsSortBottom = (col) => {
   if (_qsSortBottom.col === col) _qsSortBottom.dir = _qsSortBottom.dir === 'asc' ? 'desc' : 'asc';
-  else _qsSortBottom = { col, dir: col === 'createdAt' ? 'desc' : 'asc' };
+  else _qsSortBottom = { col, dir: col === 'date' ? 'desc' : 'asc' };
   _qsSavePrefs();
   _qsRenderList();
 };
@@ -5144,8 +5170,9 @@ window.qsToggleFavSet = (sid) => {
   _qsRenderList();
 };
 
-// ─── 리사이저 (상/하, 좌/우) ───
+// ─── 리사이저 (상/하, 좌/우, 컬럼) ───
 function _qsAttachResizers() {
+  _qsAttachColumnResizers();
   const container = document.getElementById('qsContainer');
   const top = document.getElementById('qsTopPane');
   const bookPane = document.getElementById('qsBookPane');
@@ -5202,6 +5229,38 @@ function _qsAttachResizers() {
 }
 
 // ─── 배정: 기존 tp* 인프라 재활용 ───
+// ─── 컬럼 리사이즈: <th> 내부 핸들 드래그로 폭 조정 ───
+function _qsAttachColumnResizers() {
+  document.querySelectorAll('#qsContainer th[data-col] .qs-col-resize').forEach(handle => {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const th = handle.parentElement;
+      const tableKey = th.dataset.table;
+      const col = th.dataset.col;
+      const startX = e.clientX;
+      const startW = th.offsetWidth;
+      const onMove = (ev) => {
+        let next = startW + (ev.clientX - startX);
+        if (next < 40) next = 40;
+        th.style.width = next + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        const final = th.offsetWidth;
+        if (!_qsColWidths[tableKey]) _qsColWidths[tableKey] = {};
+        _qsColWidths[tableKey][col] = final;
+        localStorage.setItem('qs_col_widths', JSON.stringify(_qsColWidths));
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    // 핸들 위에서 클릭 시 정렬 트리거 방지 (stopPropagation 보강)
+    handle.addEventListener('click', (e) => e.stopPropagation());
+  });
+}
+
 // sourceType(저장 필드) → _TEST_TYPE_CONFIG 키 매핑
 const _QS_SOURCE_TO_UI_TYPE = {
   vocab: 'word',
