@@ -199,7 +199,7 @@ async function updateTestBadge(){
     await Promise.all(myTests.map(async t=>{
       try{
         const d = await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
-        if(d.exists()) completedSet.add(t.id);
+        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
       }catch(e){console.warn(e);}
     }));
     const unfinished = myTests.filter(t=>!completedSet.has(t.id)).length;
@@ -235,7 +235,7 @@ async function updateMcqBadge(){
     await Promise.all(myTests.map(async t => {
       try{
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) completedSet.add(t.id);
+        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
       }catch(e){ console.warn(e); }
     }));
     const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
@@ -271,7 +271,7 @@ async function updateFbBadge(){
     await Promise.all(myTests.map(async t => {
       try{
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) completedSet.add(t.id);
+        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
       }catch(e){ console.warn(e); }
     }));
     const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
@@ -379,6 +379,47 @@ window.goNoticeList = async()=>{
 let currentTestId = null, currentTestName = '';
 
 // ── 내 시험 필터 공통 함수 ────────────────────────────────
+// ─── 공용: 시험 완료 기록 쓰기 (모든 유형 공통) ───
+// 항상 latestScore/latestPassed 갱신, 통과 + 최고점 초과 시에만 score/passed/상세 갱신
+async function _writeUserCompleted(testId, { score, passed, passScore, correct, wrong, total, questions, answers, extra }) {
+  const compRef = doc(db,'genTests', testId,'userCompleted', currentUser.uid);
+  const existingDoc = await getDoc(compRef);
+  const existing = existingDoc.exists() ? existingDoc.data() : null;
+  const prevBest = existing?.score ?? 0;
+  const today = new Date().toISOString().slice(0,10);
+
+  const data = {
+    uid: currentUser.uid,
+    userName: userProfile?.name || '',
+    latestScore: score,
+    latestPassed: passed,
+    latestDate: today,
+    latestAt: serverTimestamp(),
+  };
+
+  const isNewBest = passed && score > prevBest;
+  if (isNewBest) {
+    Object.assign(data, {
+      score, passed: true, passScore,
+      correct, wrong, total,
+      questions: questions || [],
+      answers: answers || [],
+      date: today,
+      completedAt: serverTimestamp(),
+      ...(extra || {}),
+    });
+  }
+
+  await setDoc(compRef, data, { merge: true });
+
+  if (isNewBest && existing?.score !== undefined) {
+    showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
+  } else if (passed && existing?.score !== undefined && !isNewBest) {
+    showToast(`기존 최고점 ${existing.score}점 유지`);
+  }
+  return { isNewBest, prevBest };
+}
+
 function filterMyTests(allTests, myGroup, myUid){
   return allTests.filter(t=>{
     if(!t.active && t.active !== undefined) return false;
@@ -448,25 +489,29 @@ async function loadReadingMcqList(){
     const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t=>t.testMode==='reading-mcq');
 
-    const completedMap = new Map();
+    const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
       try{
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) completedMap.set(t.id, d.data().score??null);
+        if(d.exists()) userCompMap.set(t.id, d.data());
       }catch(e){ console.warn(e); }
     }));
 
-    const pending = myTests.filter(t => !completedMap.has(t.id));
-    const completed = myTests.filter(t => completedMap.has(t.id));
+    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+    const pending = myTests.filter(t => !isCompleted(t));
+    const completed = myTests.filter(isCompleted);
 
     const ocNew = (id, name) => `startReadingMcq('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
     const ocDone = (id, name) => `mcqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if(elP) elP.innerHTML = pending.length
-      ? pending.map(t=>_mcqMakeCard(t,false,ocNew(t.id,t.name),null)).join('')
+      ? pending.map(t => {
+          const comp = userCompMap.get(t.id);
+          return _mcqMakeCard(t,false,ocNew(t.id,t.name),null, comp?.latestScore);
+        }).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if(elC) elC.innerHTML = completed.length
-      ? completed.map(t=>_mcqMakeCard(t,true,ocDone(t.id,t.name),completedMap.get(t.id))).join('')
+      ? completed.map(t=>_mcqMakeCard(t,true,ocDone(t.id,t.name),userCompMap.get(t.id)?.score ?? null, null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   }catch(e){
     console.error(e);
@@ -474,9 +519,12 @@ async function loadReadingMcqList(){
   }
 }
 
-function _mcqMakeCard(t, isCompleted, onclick, completedScore){
+function _mcqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore){
   const qCount = t.questionCount || t.questions?.length || 0;
   const passScore = t.passScore ?? 80;
+  const latestBadge = (!isCompleted && latestFailedScore != null)
+    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
@@ -484,7 +532,7 @@ function _mcqMakeCard(t, isCompleted, onclick, completedScore){
           <div class="unit-name">${esc(t.name||'독해 시험')}</div>
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
-            : `<span style="font-size:11px;background:#fff4e6;color:#F59E0B;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+            : `${latestBadge}<span style="font-size:11px;background:#fff4e6;color:#F59E0B;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">📖 ${esc(t.bookName||'본문 독해')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
@@ -636,25 +684,10 @@ async function _mcqSubmit(){
     });
 
     try{
-      // 통과 + 기존 최고점 초과 시에만 완료 기록 업데이트
-      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
-      const existingDoc = await getDoc(compRef);
-      const existing = existingDoc.exists() ? existingDoc.data() : null;
-      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
-      if (shouldUpdate) {
-        await setDoc(compRef, {
-          uid: currentUser.uid,
-          userName: userProfile?.name || '',
-          score, correct, wrong, total,
-          passed, passScore,
-          answers: s.answers || [],  // 선택한 보기 인덱스 (null 허용)
-          date: today,
-          completedAt: serverTimestamp(),
-        }, { merge: true });
-        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
-      } else if (passed && existing) {
-        showToast(`기존 최고점 ${existing.score}점 유지`);
-      }
+      await _writeUserCompleted(t.id, {
+        score, passed, passScore, correct, wrong, total,
+        questions: s.questions, answers: s.answers,
+      });
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
   }catch(e){
     console.error(e);
@@ -817,25 +850,29 @@ async function loadFillBlankList(){
     const allTests = snap.docs.map(d=>({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'fill-blank');
 
-    const completedMap = new Map();
+    const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
       try{
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) completedMap.set(t.id, d.data().score ?? null);
+        if(d.exists()) userCompMap.set(t.id, d.data());
       }catch(e){ console.warn(e); }
     }));
 
-    const pending = myTests.filter(t => !completedMap.has(t.id));
-    const completed = myTests.filter(t => completedMap.has(t.id));
+    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+    const pending = myTests.filter(t => !isCompleted(t));
+    const completed = myTests.filter(isCompleted);
 
     const ocNew = (id, name) => `startFillBlank('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
     const ocDone = (id, name) => `fbViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if(elP) elP.innerHTML = pending.length
-      ? pending.map(t => _fbMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
+      ? pending.map(t => {
+          const comp = userCompMap.get(t.id);
+          return _fbMakeCard(t, false, ocNew(t.id,t.name), null, comp?.latestScore);
+        }).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if(elC) elC.innerHTML = completed.length
-      ? completed.map(t => _fbMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _fbMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   }catch(e){
     console.error(e);
@@ -843,9 +880,12 @@ async function loadFillBlankList(){
   }
 }
 
-function _fbMakeCard(t, isCompleted, onclick, completedScore){
+function _fbMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore){
   const qCount = t.questionCount || t.questions?.length || 0;
   const passScore = t.passScore ?? 80;
+  const latestBadge = (!isCompleted && latestFailedScore != null)
+    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
@@ -853,7 +893,7 @@ function _fbMakeCard(t, isCompleted, onclick, completedScore){
           <div class="unit-name">${esc(t.name||'빈칸 시험')}</div>
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
-            : `<span style="font-size:11px;background:#fefce8;color:#CA8A04;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+            : `${latestBadge}<span style="font-size:11px;background:#fefce8;color:#CA8A04;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">✏️ ${esc(t.bookName||'빈칸 채우기')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
@@ -1366,34 +1406,20 @@ async function _fbSubmit(){
     });
 
     try{
-      // 완료 목록(userCompleted)은 "통과 + 기존 최고점 초과" 일 때만 업데이트
-      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
-      const existingDoc = await getDoc(compRef);
-      const existing = existingDoc.exists() ? existingDoc.data() : null;
-      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
-
-      if (shouldUpdate) {
-        // Firestore 는 중첩 배열([[...],[...]]) 미지원 → 객체 배열로 감싸서 저장
-        const answersPacked = (s.answers || []).map(a => ({ blanks: Array.isArray(a) ? a : [] }));
-        await setDoc(compRef, {
-          uid: currentUser.uid,
-          userName: userProfile?.name || '',
-          score, rawScore,
-          correct: correctBlanks,
-          wrong: totalBlanks - correctBlanks,
-          total: totalBlanks,
-          passed, passScore,
+      // Firestore 는 중첩 배열([[...],[...]]) 미지원 → 객체 배열로 감싸서 저장
+      const answersPacked = (s.answers || []).map(a => ({ blanks: Array.isArray(a) ? a : [] }));
+      await _writeUserCompleted(t.id, {
+        score, passed, passScore,
+        correct: correctBlanks,
+        wrong: totalBlanks - correctBlanks,
+        total: totalBlanks,
+        answers: answersPacked,
+        extra: {
+          rawScore,
           hintUsageCount, hintStage1Count, hintStage2Count, hintPenalty,
           hintDetails,
-          answers: answersPacked,
-          date: today,
-          completedAt: serverTimestamp(),
-        }, { merge: true });
-        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
-      } else if (passed && existing) {
-        // 통과했지만 기존 점수가 더 높음
-        showToast(`기존 최고점 ${existing.score}점 유지`);
-      }
+        },
+      });
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
   }catch(e){
     console.error(e);
@@ -3911,24 +3937,30 @@ async function loadVocabList() {
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'vocab');
 
-    const completedMap = new Map();
+    const userCompMap = new Map(); // testId → userCompleted 전체 data
     await Promise.all(myTests.map(async t => {
       try {
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) completedMap.set(t.id, d.data().score ?? null);
+        if (d.exists()) userCompMap.set(t.id, d.data());
       } catch(e) {}
     }));
 
-    const pending = myTests.filter(t => !completedMap.has(t.id));
-    const completed = myTests.filter(t => completedMap.has(t.id));
+    // 완료 여부: score(= 최고 통과 점수) 필드 존재 시에만
+    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+    const pending = myTests.filter(t => !isCompleted(t));
+    const completed = myTests.filter(isCompleted);
     const ocNew = (id, name) => `startVocab('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
     const ocDone = (id, name) => `vqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => _vqMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
+      ? pending.map(t => {
+          const comp = userCompMap.get(t.id);
+          const latest = comp?.latestScore;
+          return _vqMakeCard(t, false, ocNew(t.id,t.name), null, latest);
+        }).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _vqMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _vqMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   } catch(e) {
     console.error(e);
@@ -3936,9 +3968,12 @@ async function loadVocabList() {
   }
 }
 
-function _vqMakeCard(t, isCompleted, onclick, completedScore) {
+function _vqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore) {
   const qCount = t.questionCount || t.questions?.length || 0;
   const passScore = t.passScore ?? 80;
+  const latestBadge = (!isCompleted && latestFailedScore != null)
+    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
@@ -3947,7 +3982,7 @@ function _vqMakeCard(t, isCompleted, onclick, completedScore) {
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
                <span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
-            : `<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+            : `${latestBadge}<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">📝 ${esc(t.bookName||'단어 시험')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
@@ -4326,27 +4361,11 @@ async function _vqSubmit() {
       createdAt: serverTimestamp(),
     });
     try {
-      // 통과 + 기존 최고점 초과 시에만 완료 기록 업데이트
-      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
-      const existingDoc = await getDoc(compRef);
-      const existing = existingDoc.exists() ? existingDoc.data() : null;
-      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
-      if (shouldUpdate) {
-        await setDoc(compRef, {
-          uid: currentUser.uid,
-          userName: userProfile?.name || '',
-          score, correct, wrong: total - correct, total,
-          passed, passScore,
-          // 셔플 순서 보존: 재리뷰 시 questions[i] ↔ answers[i] 일치
-          questions: s.questions || [],
-          answers: s.answers || [],
-          date: today,
-          completedAt: serverTimestamp(),
-        }, { merge: true });
-        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
-      } else if (passed && existing) {
-        showToast(`기존 최고점 ${existing.score}점 유지`);
-      }
+      await _writeUserCompleted(t.id, {
+        score, passed, passScore,
+        correct, wrong: total - correct, total,
+        questions: s.questions, answers: s.answers,
+      });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
   } catch(e) {
     console.error(e);
@@ -4484,7 +4503,7 @@ async function updateVocabBadge() {
     await Promise.all(myTests.map(async t => {
       try {
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) completedSet.add(t.id);
+        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
       } catch(e) {}
     }));
     const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
@@ -4532,24 +4551,28 @@ async function loadUnscrambleList2() {
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'unscramble');
 
-    const completedMap = new Map();
+    const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
       try {
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) completedMap.set(t.id, d.data().score ?? null);
+        if (d.exists()) userCompMap.set(t.id, d.data());
       } catch(e) {}
     }));
 
-    const pending = myTests.filter(t => !completedMap.has(t.id));
-    const completed = myTests.filter(t => completedMap.has(t.id));
+    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+    const pending = myTests.filter(t => !isCompleted(t));
+    const completed = myTests.filter(isCompleted);
     const ocNew = (id, name) => `startUnscramble2('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
     const ocDone = (id, name) => `uqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => _uqMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
+      ? pending.map(t => {
+          const comp = userCompMap.get(t.id);
+          return _uqMakeCard(t, false, ocNew(t.id,t.name), null, comp?.latestScore);
+        }).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _uqMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _uqMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   } catch(e) {
     console.error(e);
@@ -4557,9 +4580,12 @@ async function loadUnscrambleList2() {
   }
 }
 
-function _uqMakeCard(t, isCompleted, onclick, completedScore) {
+function _uqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore) {
   const qCount = t.questionCount || t.questions?.length || 0;
   const passScore = t.passScore ?? 80;
+  const latestBadge = (!isCompleted && latestFailedScore != null)
+    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
@@ -4568,7 +4594,7 @@ function _uqMakeCard(t, isCompleted, onclick, completedScore) {
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
                <span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
-            : `<span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+            : `${latestBadge}<span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
         </div>
         <div class="unit-count">🔀 ${esc(t.bookName||'언스크램블')} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
@@ -4861,28 +4887,11 @@ async function _uqSubmit() {
       createdAt: serverTimestamp(),
     });
     try {
-      // 완료 목록은 "통과 + 기존 최고점 초과" 일 때만 업데이트 (빈칸채우기와 동일 규칙)
-      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
-      const existingDoc = await getDoc(compRef);
-      const existing = existingDoc.exists() ? existingDoc.data() : null;
-      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
-      if (shouldUpdate) {
-        await setDoc(compRef, {
-          uid: currentUser.uid,
-          userName: userProfile?.name || '',
-          score,
-          correct, wrong: total - correct, total,
-          passed, passScore,
-          // 셔플 순서 보존: questions[i] ↔ answers[i] 매칭 유지
-          questions: s.questions || [],
-          answers: s.answers || [],
-          date: today,
-          completedAt: serverTimestamp(),
-        }, { merge: true });
-        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
-      } else if (passed && existing) {
-        showToast(`기존 최고점 ${existing.score}점 유지`);
-      }
+      await _writeUserCompleted(t.id, {
+        score, passed, passScore,
+        correct, wrong: total - correct, total,
+        questions: s.questions, answers: s.answers,
+      });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
   } catch(e) {
     console.error(e);
@@ -5020,7 +5029,7 @@ async function updateUnscBadge2() {
     await Promise.all(myTests.map(async t => {
       try {
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) completedSet.add(t.id);
+        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
       } catch(e) {}
     }));
     const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
