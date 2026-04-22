@@ -1375,17 +1375,38 @@ window.showScoreDetail = async(scoreId, testId) => {
     const badge = pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
 
     // 상세 본문 결정
+    // _writeUserCompleted는 최고점 통과 시에만 questions/answers를 저장함
+    //   - 미통과(passed=false) → 스냅샷 없음 → '미통과' 안내
+    //   - 통과했지만 기존 최고점 이하인 재응시 → 스냅샷 있으나 이번 score와 불일치 → '재응시' 안내
+    //   - genTests 자체가 없는 진짜 레거시 → '레거시' 안내
     const hasDetail = comp && (
       (comp.questions && comp.answers) ||
       (mode==='recording' && Array.isArray(comp.recordings) && comp.recordings.length)
     );
-    const detailHtml = hasDetail
-      ? _adminBuildDetail(mode, comp)
-      : `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
-           <div style="font-size:24px;margin-bottom:6px;">📄</div>
-           <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
-           <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
-         </div>`;
+    const isThisAttemptBest = hasDetail && comp.score === s.score && (comp.date||'') === (s.date||'');
+
+    let detailHtml;
+    if(isThisAttemptBest){
+      detailHtml = _adminBuildDetail(mode, comp);
+    } else if(!genTest){
+      detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+        <div style="font-size:24px;margin-bottom:6px;">📄</div>
+        <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
+      </div>`;
+    } else if(!passed){
+      detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+        <div style="font-size:24px;margin-bottom:6px;">⚠️</div>
+        <div style="font-weight:600;color:#b45309;">미통과 기록 - 상세 답안이 저장되지 않습니다</div>
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">상세는 통과한 최고점 기록에만 저장됩니다</div>
+      </div>`;
+    } else {
+      detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+        <div style="font-size:24px;margin-bottom:6px;">🔁</div>
+        <div style="font-weight:600;color:#888;">재응시 기록 - 기존 최고점보다 낮아 상세가 저장되지 않았습니다</div>
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">${comp?.score!=null?`최고점 ${comp.score}점 기록의 상세만 확인 가능합니다`:''}</div>
+      </div>`;
+    }
 
     showModal(`
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
