@@ -4362,6 +4362,8 @@ function _uqMakeCard(t, isCompleted, onclick, completedScore) {
     </div>`;
 }
 
+let _uqScreenTemplate = null;
+
 window.startUnscramble2 = async (testId, testName) => {
   try {
     const snap = await getDoc(doc(db,'genTests',testId));
@@ -4379,6 +4381,14 @@ window.startUnscramble2 = async (testId, testName) => {
       const shuffled = _rngShuffle(chunks.map((c, i) => ({ text: c, origIdx: i })));
       return { placed: [], chunks: shuffled };
     });
+
+    // 이전 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 템플릿 복원
+    const screen = document.getElementById('unscrambleQuiz');
+    if (screen && _uqScreenTemplate && !screen.querySelector('#uqProgressBar')) {
+      screen.innerHTML = _uqScreenTemplate;
+    } else if (screen && !_uqScreenTemplate) {
+      _uqScreenTemplate = screen.innerHTML;
+    }
 
     _uqState = { test, questions, currentIdx: 0, answers, feedback: null };
     show('unscrambleQuiz');
@@ -4652,6 +4662,8 @@ async function _uqSubmit() {
 function _uqRenderResult({ correct, wrong, total, score, passed, passScore }) {
   const screen = document.getElementById('unscrambleQuiz');
   if (!screen) return;
+  // 원본 템플릿 저장 (재응시·다른 시험 클릭 시 복원용)
+  if (!_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
   screen.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
       <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
