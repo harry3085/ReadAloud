@@ -4071,6 +4071,9 @@ function _vqRenderStep() {
   const q = s.questions[s.currentIdx];
   if (!q) return;
 
+  // 이전 문제의 피드백 배너 감추기
+  _vqHideFeedbackBanner();
+
   // 진행바 + pill
   const pct = Math.round(((s.currentIdx + 1) / s.questions.length) * 100);
   const bar = document.getElementById('vqProgressBar');
@@ -4254,6 +4257,8 @@ function _vqRenderMcqFeedback(ans) {
       ${['①','②','③','④'][j]} ${esc(opt)}${isCorrect?' ✓':(isUser?' ✗':'')}
     </button>`;
   }).join('');
+  // 배너로 결과 표시
+  _vqShowFeedbackBanner(ans.input === correctText, correctText);
 }
 
 function _vqIsAnsCorrect(q, ans) {
@@ -4310,13 +4315,25 @@ function _vqRenderSpellFeedback(ans, isCorrect) {
     const bg = match ? '#d1fae5' : (userCh ? '#fee2e2' : '#fef3c7');
     const color = match ? '#047857' : (userCh ? '#b91c1c' : '#92400e');
     const border = match ? '#10b981' : (userCh ? '#ef4444' : '#f59e0b');
-    const showCh = isCorrect || match ? (userCh || correctCh) : correctCh;  // 오답 위치도 정답 글자 공개
+    const showCh = isCorrect || match ? (userCh || correctCh) : correctCh;
     return `<div class="spell-box" style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};">${esc(showCh)}</div>`;
   }).join('');
 
-  // 토스트로 결과 안내
-  if (isCorrect) showToast('✓ 정답');
-  else showToast('✗ 정답: ' + target);
+  // 배너로 결과 표시 (빈칸채우기와 동일 스타일)
+  _vqShowFeedbackBanner(isCorrect, target);
+}
+
+function _vqShowFeedbackBanner(isCorrect, correctText){
+  const banner = document.getElementById('vqFeedbackBanner');
+  if (!banner) return;
+  banner.style.display = 'block';
+  banner.innerHTML = isCorrect
+    ? '<span style="color:#059669;">✓ 정답!</span>'
+    : `<span style="color:#DC2626;">✗ 오답 · 정답: ${esc(correctText)}</span>`;
+}
+function _vqHideFeedbackBanner(){
+  const banner = document.getElementById('vqFeedbackBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 async function _vqAutoNext() {
