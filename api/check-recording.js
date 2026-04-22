@@ -3,11 +3,11 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// 과부하 시 순차 폴백 (오디오 지원 확인된 모델만)
+// 과부하 시 순차 폴백 (오디오 지원 + 무료 티어 가용 모델만)
+// gemini-2.0-flash 는 무료 티어 limit=0 이라 제외 (해당 키 플랜에서 사용 불가)
 const MODELS = [
   'gemini-3.1-flash-lite-preview',  // 1순위 (1000회/일 무료, 네이티브 오디오)
   'gemini-2.5-flash',                // GA 폴백
-  'gemini-2.0-flash',                // 최후 폴백
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -231,9 +231,16 @@ module.exports = async (req, res) => {
 
     if (!gres || !gres.ok) {
       console.error('Gemini all models failed:', lastErrorMsg);
+      // Rate limit / quota 에러면 친화적 메시지로 변환
+      const lower = String(lastErrorMsg || '').toLowerCase();
+      let friendly = lastErrorMsg || 'Gemini API error';
+      if (lower.includes('quota') || lower.includes('rate limit') || lower.includes('retry')) {
+        friendly = 'AI 사용 한도에 도달했어요. 1~2분 뒤 다시 시도해 주세요.';
+      }
       res.status(gres?.status || 502).json({
         success: false,
-        error: lastErrorMsg || 'Gemini API error',
+        error: friendly,
+        detail: lastErrorMsg,
         modelTried: MODELS.join(','),
       });
       return;
