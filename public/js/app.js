@@ -795,6 +795,13 @@ function _fbRenderStep(){
   const q = s.questions[s.currentIdx];
   if(!q) return;
 
+  // 이전 문제의 피드백 배너 초기화 (정답/오답 메시지 제거)
+  const hintBox = document.getElementById('fbHintBox');
+  if (hintBox) {
+    hintBox.innerHTML = '빈칸을 탭하면 입력됩니다';
+    hintBox.style.color = 'var(--gray)';
+  }
+
   const pct = Math.round(((s.currentIdx+1) / s.questions.length) * 100);
   const bar = document.getElementById('fbProgressBar');
   const txt = document.getElementById('fbProgressText');
