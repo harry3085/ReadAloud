@@ -3,11 +3,12 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// 과부하 시 순차 폴백 (오디오 지원 + 무료 티어 가용 모델만)
-// gemini-2.0-flash 는 무료 티어 limit=0 이라 제외 (해당 키 플랜에서 사용 불가)
+// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
+// 이유: 2.5 계열은 일일 한도 20/day 로 녹음숙제(1회 3건 병렬)에 부적합하고,
+// 모델 간 결과 편차로 학생·관리자 경험 일관성 해침. 3.1 은 500/day 로 충분.
+// 실패 시 같은 모델로 최대 2회 재시도.
 const MODELS = [
-  'gemini-3.1-flash-lite-preview',  // 1순위 (1000회/일 무료, 네이티브 오디오)
-  'gemini-2.5-flash',                // GA 폴백
+  'gemini-3.1-flash-lite-preview',
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

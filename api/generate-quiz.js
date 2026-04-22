@@ -6,9 +6,10 @@
 // 환경변수: GEMINI_API_KEY (Google AI Studio에서 발급)
 
 // 모델 폴백 체인: Preview가 불안정할 수 있으므로 실패 시 안정판으로 자동 전환
+// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
+// (2.5 계열은 일일 한도 적고 결과 편차로 일관성 저하)
 const GEMINI_MODELS = [
-  'gemini-3.1-flash-lite-preview',  // 1순위 (빠르고 저렴, Preview)
-  'gemini-2.5-flash',                // 2순위 (안정판 폴백)
+  'gemini-3.1-flash-lite-preview',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

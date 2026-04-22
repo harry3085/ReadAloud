@@ -3,9 +3,9 @@
 // POST body: { text, systemPrompt }
 // Response: { success, cleaned, model, usage }
 
+// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
 const GEMINI_MODELS = [
   'gemini-3.1-flash-lite-preview',
-  'gemini-2.5-flash',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
