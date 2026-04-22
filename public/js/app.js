@@ -4229,15 +4229,18 @@ window.vqSkip = () => {
 window.vqSelectMcq = (choiceIdx) => {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
-  if (ans._locked) return;  // 피드백 중이면 재클릭 무시
+  if (ans._locked) return;
   ans.input = ans.choices[choiceIdx] || '';
   ans._locked = true;
   _vqStopTimer();
-  // 피드백 렌더 (정답=초록, 오답=빨강 + 정답 표시)
+  // 한→영 정답이면 영단어 TTS
+  const q = s.questions[s.currentIdx];
+  const isCorrect = _vqIsAnsCorrect(q, ans);
+  if (isCorrect && ans.direction === 'ko2en' && q.word) _fbSpeakWords([q.word]);
+  // 피드백 렌더 (배너 + 보기 색상)
   _vqRenderMcqFeedback(ans);
-  // 자동 진행 (정답 500ms / 오답 900ms)
-  const isCorrect = _vqIsAnsCorrect(s.questions[s.currentIdx], ans);
-  setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 900);
+  // 수동 진행: 제출 버튼을 '다음 ▶' 로 전환, 사용자 클릭 시 _vqAutoNext
+  _vqShowNextButton();
 };
 
 function _vqRenderMcqFeedback(ans) {
@@ -4290,13 +4293,22 @@ window.vqNext = async (opts) => {
 
   if (ans.format === 'short') {
     _vqRenderSpellFeedback(ans, isCorrect);
-    setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 1200);
   } else {
-    // 타이머 만료 시 MCQ 도 피드백 → 자동 다음
     _vqRenderMcqFeedback(ans);
-    setTimeout(() => _vqAutoNext(), isCorrect ? 500 : 900);
   }
+  // 수동 진행: 제출 버튼을 '다음 ▶' 로 전환, 사용자 클릭 시 _vqAutoNext
+  _vqShowNextButton();
 };
+
+function _vqShowNextButton(){
+  const btn = document.getElementById('vqSubmitBtn');
+  if (!btn) return;
+  const s = _vqState;
+  const isLast = s.currentIdx === s.questions.length - 1;
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.textContent = isLast ? '완료 ▶' : '다음 ▶';
+}
 
 function _vqRenderSpellFeedback(ans, isCorrect) {
   const s = _vqState;
