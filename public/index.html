@@ -275,6 +275,10 @@
           <div id="fbSentence" style="font-size:19px;line-height:1.7;color:var(--text);"></div>
         </div>
       </div>
+      <div id="fbTranslation" style="display:none;margin-top:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 14px;">
+        <div style="font-size:10px;color:#C2410C;font-weight:700;margin-bottom:4px;">💡 해석</div>
+        <div id="fbTranslationText" style="font-size:14px;color:#7C2D12;line-height:1.5;">로딩 중...</div>
+      </div>
       <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:8px;">
         빈칸을 탭하면 입력됩니다
       </div>
@@ -291,6 +295,11 @@
         </svg>
         <div class="timer-text" id="fbTimerText">30</div>
       </div>
+      <button id="fbHintBtn" onclick="fbUseHint()"
+        style="background:#3B82F6;color:white;border:none;border-radius:22px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:60px;">
+        <span>💡 힌트</span>
+        <span id="fbHintStage" style="font-size:10px;opacity:.9;">(1/2)</span>
+      </button>
       <button class="submit-btn" id="fbNextBtn" onclick="fbNext()">다음 ▶</button>
       <button class="skip-btn" onclick="fbSkip()">SKIP</button>
     </div>

@@ -695,6 +695,8 @@ let _fbState = {
   questions: [],
   currentIdx: 0,
   answers: [],
+  hintStages: [],   // 문제별 힌트 사용 단계: 0(미사용) / 1(해석) / 2(해석+첫글자)
+  hintCache: {},    // { [qIdx]: { ko: '번역' } } — 해석 번역 캐시
 };
 let _fbScreenTemplate = null;  // 결과 화면이 innerHTML 덮어쓰므로 원본 캐시
 
@@ -775,6 +777,8 @@ window.startFillBlank = async (testId, testName) => {
       questions,
       currentIdx: 0,
       answers: questions.map(q => new Array((q.blanks||[]).length).fill('')),
+      hintStages: questions.map(() => 0),
+      hintCache: {},
     };
 
     show('fillBlank');
@@ -843,6 +847,7 @@ function _fbRenderStep(){
   }
 
   _fbStartTimer();
+  _fbRefreshHintUI();
 
   setTimeout(() => {
     const first = document.getElementById('fb-input-0');
@@ -851,6 +856,111 @@ function _fbRenderStep(){
       window.scrollTo(0, 0);
     }
   }, 50);
+}
+
+// ─── 힌트 ───
+function _fbRefreshHintUI(){
+  const s = _fbState;
+  const stage = s.hintStages[s.currentIdx] || 0;
+  const btn = document.getElementById('fbHintBtn');
+  const stageEl = document.getElementById('fbHintStage');
+  const transBox = document.getElementById('fbTranslation');
+  const transText = document.getElementById('fbTranslationText');
+
+  if (btn && stageEl) {
+    if (stage === 0) {
+      btn.disabled = false;
+      btn.style.background = '#3B82F6';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      stageEl.textContent = '(1/2)';
+    } else if (stage === 1) {
+      btn.disabled = false;
+      btn.style.background = '#F59E0B';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      stageEl.textContent = '(2/2)';
+    } else {
+      btn.disabled = true;
+      btn.style.background = '#9CA3AF';
+      btn.style.opacity = '.7';
+      btn.style.cursor = 'not-allowed';
+      stageEl.textContent = '사용됨';
+    }
+  }
+
+  if (transBox && transText) {
+    if (stage >= 1) {
+      const cached = s.hintCache[s.currentIdx];
+      transBox.style.display = 'block';
+      transText.textContent = cached?.ko || '로딩 중...';
+    } else {
+      transBox.style.display = 'none';
+    }
+  }
+}
+
+window.fbUseHint = async () => {
+  const s = _fbState;
+  const qIdx = s.currentIdx;
+  const q = s.questions[qIdx];
+  if (!q) return;
+  const cur = s.hintStages[qIdx] || 0;
+  if (cur >= 2) return;
+
+  if (cur === 0) {
+    // 1단계: 해석 표시 (sentenceKo 있으면 그대로, 없으면 Gemini 온디맨드 번역)
+    s.hintStages[qIdx] = 1;
+    _fbRefreshHintUI();
+
+    if (!s.hintCache[qIdx]) {
+      const ko = q.sentenceKo || (await _fbFetchTranslation(q.sentence || ''));
+      s.hintCache[qIdx] = { ko: ko || '(번역 실패)' };
+    }
+    _fbRefreshHintUI();
+  } else if (cur === 1) {
+    // 2단계: 각 빈칸의 첫 글자 공개 (기존 입력값이 다르면 교체)
+    s.hintStages[qIdx] = 2;
+    const blanks = q.blanks || [];
+    if (!s.answers[qIdx]) s.answers[qIdx] = [];
+    blanks.forEach((correct, j) => {
+      const first = String(correct || '').charAt(0).toLowerCase();
+      const existing = s.answers[qIdx][j] || '';
+      // 현재 값의 첫 글자가 정답 첫 글자와 다르면 첫 글자만 교체
+      if (!existing || existing[0] !== first) {
+        s.answers[qIdx][j] = first;
+        const inp = document.getElementById('fb-input-' + j);
+        if (inp) inp.value = first;
+      }
+    });
+    _fbRefreshBoxes();
+    _fbRefreshHintUI();
+    // 첫 빈칸 포커스
+    const firstInp = document.getElementById('fb-input-0');
+    if (firstInp) {
+      try { firstInp.focus({ preventScroll: true }); } catch(e) { firstInp.focus(); }
+      try { firstInp.setSelectionRange(firstInp.value.length, firstInp.value.length); } catch(e){}
+    }
+  }
+};
+
+async function _fbFetchTranslation(sentence) {
+  if (!sentence || sentence.trim().length < 2) return '';
+  try {
+    const res = await fetch('/api/cleanup-ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: sentence,
+        systemPrompt: '다음 영어 문장을 자연스러운 한국어로 번역하세요. 번역문만 한 줄로 출력하고, 인용부호·설명·부연 없이 깔끔하게. 직역이 아닌 의역을 선호하세요.',
+      }),
+    });
+    const data = await res.json();
+    return (data.success && data.cleaned) ? String(data.cleaned).trim() : '';
+  } catch (e) {
+    console.warn('translation fetch failed', e);
+    return '';
+  }
 }
 
 // 단일 빈칸 박스 시각 갱신
@@ -993,8 +1103,13 @@ async function _fbSubmit(){
   if(!t || !currentUser) return;
 
   let totalBlanks = 0;
-  let correctBlanks = 0;
+  let correctBlanks = 0;       // 힌트 무시 정답 수 (rawScore 용)
+  let weightedCorrect = 0;     // 힌트 감점 반영 가중치 합 (score 용)
   const detail = [];
+  const hintDetails = [];
+
+  // 힌트 배율: 0 → 1.0 (100%), 1 → 0.8 (-20%), 2 → 0.6 (-40%)
+  const MULT = { 0: 1.0, 1: 0.8, 2: 0.6 };
 
   s.questions.forEach((q, i) => {
     const blanks = q.blanks || [];
@@ -1009,10 +1124,25 @@ async function _fbSubmit(){
         qCorrect++;
       }
     });
-    detail.push({correct: qCorrect, total: blanks.length});
+    const stage = s.hintStages[i] || 0;
+    weightedCorrect += qCorrect * (MULT[stage] || 1);
+    detail.push({correct: qCorrect, total: blanks.length, stage});
+    if (stage > 0) {
+      hintDetails.push({
+        qIdx: i,
+        stage,
+        allCorrect: qCorrect === blanks.length && blanks.length > 0,
+      });
+    }
   });
 
-  const score = totalBlanks ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
+  const score = totalBlanks ? Math.round((weightedCorrect / totalBlanks) * 100) : 0;
+  const rawScore = totalBlanks ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
+  const hintPenalty = Math.max(0, rawScore - score);
+  const hintStage1Count = hintDetails.filter(h => h.stage === 1).length;
+  const hintStage2Count = hintDetails.filter(h => h.stage === 2).length;
+  const hintUsageCount = hintDetails.length;
+
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
   const today = new Date().toISOString().slice(0,10);
@@ -1031,10 +1161,16 @@ async function _fbSubmit(){
       bookName: t.bookName || '',
       mode: 'fill-blank',
       score,
+      rawScore,
       correct: correctBlanks,
       wrong: totalBlanks - correctBlanks,
       total: totalBlanks,
       passed, passScore,
+      hintUsageCount,
+      hintStage1Count,
+      hintStage2Count,
+      hintPenalty,
+      hintDetails,
       date: today,
       createdAt: serverTimestamp(),
     });
@@ -1062,36 +1198,68 @@ async function _fbSubmit(){
     total: totalBlanks,
     score, passed, passScore,
     detail,
+    hintUsageCount,
+    questions: s.questions,
+    answers: s.answers,
   });
 }
 
-function _fbRenderResult({correct, wrong, total, score, passed, passScore}){
+function _fbRenderResult({correct, wrong, total, score, passed, passScore, detail, hintUsageCount, questions, answers}){
   const screen = document.getElementById('fillBlank');
   if(!screen) return;
   // 원본 템플릿 저장 (아직 저장 안됐으면)
   if(!_fbScreenTemplate) _fbScreenTemplate = screen.innerHTML;
+
+  // 문제별 상세 리스트 (힌트 뱃지 포함)
+  const qListHtml = (questions||[]).map((q, i) => {
+    const d = detail[i] || {correct:0, total:0, stage:0};
+    const allCorrect = d.correct === d.total && d.total > 0;
+    const stageIcon = d.stage === 2 ? '💡💡' : d.stage === 1 ? '💡' : '';
+    const stageLabel = d.stage === 2 ? '해석+첫글자' : d.stage === 1 ? '해석' : '';
+    const userAns = (answers[i]||[]).join(', ') || '(미입력)';
+    const correctAns = (q.blanks||[]).join(', ');
+    const bg = allCorrect ? '#F0FDF4' : (d.correct > 0 ? '#FFFBEB' : '#FEF2F2');
+    const border = allCorrect ? '#BBF7D0' : (d.correct > 0 ? '#FEF3C7' : '#FECACA');
+    return `
+      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+          <span style="font-size:12px;color:${allCorrect?'#059669':'#dc2626'};font-weight:700;">${allCorrect?'✓':(d.correct>0?'△':'✗')} ${d.correct}/${d.total}</span>
+          ${stageIcon ? `<span style="font-size:10px;background:#FED7AA;color:#9A3412;padding:2px 6px;border-radius:10px;font-weight:600;">${stageIcon} ${stageLabel}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:3px;">${esc(q.sentence||'')}</div>
+        <div style="font-size:11px;color:var(--gray);">
+          <span style="color:${allCorrect?'#059669':'#dc2626'};">내답: ${esc(userAns)}</span>
+          ${!allCorrect ? ` · <span style="color:#059669;">정답: ${esc(correctAns)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
   screen.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
-      <div style="font-size:72px;margin-bottom:12px;">${passed ? '🎉' : '💪'}</div>
-      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
+      <div style="font-size:56px;margin-bottom:8px;">${passed ? '🎉' : '💪'}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">
         ${passed ? '통과!' : '아쉬워요'}
       </div>
-      <div style="font-size:13px;color:var(--gray);margin-bottom:24px;">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:20px;">
         통과 기준 ${passScore}점
       </div>
-      <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;min-width:260px;">
-        <div style="font-size:48px;font-weight:800;color:${passed?'#059669':'#CA8A04'};line-height:1;">${score}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">점</div>
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
-          <div><div style="color:#059669;font-weight:700;font-size:18px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
-          <div><div style="color:#dc2626;font-weight:700;font-size:18px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
-          <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체 빈칸</div></div>
+      <div style="background:white;border-radius:16px;padding:20px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;min-width:260px;">
+        <div style="font-size:44px;font-weight:800;color:${passed?'#059669':'#CA8A04'};line-height:1;text-align:center;">${score}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;text-align:center;">점</div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-around;font-size:13px;">
+          <div style="text-align:center;"><div style="color:#059669;font-weight:700;font-size:17px;">${correct}</div><div style="color:var(--gray);font-size:11px;">정답</div></div>
+          <div style="text-align:center;"><div style="color:#dc2626;font-weight:700;font-size:17px;">${wrong}</div><div style="color:var(--gray);font-size:11px;">오답</div></div>
+          <div style="text-align:center;"><div style="color:var(--text);font-weight:700;font-size:17px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체 빈칸</div></div>
+          ${hintUsageCount > 0 ? `<div style="text-align:center;"><div style="color:#F59E0B;font-weight:700;font-size:17px;">${hintUsageCount}</div><div style="color:var(--gray);font-size:11px;">힌트 사용</div></div>` : ''}
         </div>
       </div>
-      <div style="font-size:11px;color:var(--gray);margin-bottom:20px;max-width:340px;">
-        ※ 각 빈칸 = 1점씩 부분점수로 채점됩니다
-      </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
+      ${qListHtml ? `
+        <div style="width:100%;max-width:420px;margin-bottom:16px;">
+          <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">문제별 결과</div>
+          ${qListHtml}
+        </div>` : ''}
+      <div style="display:flex;gap:10px;width:100%;max-width:320px;padding-bottom:16px;">
         <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
         <button onclick="goFillBlank()" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
       </div>

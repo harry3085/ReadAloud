@@ -254,13 +254,16 @@ RULES:
    - About 50% medium (content words requiring comprehension)
    - About 20% hard (less common words, inference required)
 
-6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+6. sentenceKo field: Provide a natural Korean translation of the COMPLETE sentence (with the blank words filled in). This is used as a hint for struggling students. Keep it fluent, not literal.
+
+7. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
   "questions": [
     {
       "type": "fill_blank",
       "sentence": "The young ___ quickly ___ the letter to his friend.",
       "blanks": ["boy", "sent"],
+      "sentenceKo": "그 어린 소년은 친구에게 빠르게 편지를 보냈다.",
       "questionKo": "문장의 빈칸에 알맞은 단어를 쓰세요.",
       "explanation": "본문에서 a young boy가 친구에게 편지를 보내는 장면",
       "sourcePageId": "the id you were given",
@@ -624,10 +627,13 @@ function validateFillBlank(questions, pages) {
         ? q.difficulty
         : 'medium';
 
+      const sentenceKo = String(q.sentenceKo || '').trim().slice(0, 500);
+
       return {
         type: 'fill_blank',
         sentence,
         blanks,
+        sentenceKo,
         questionKo,
         explanation: String(q.explanation || '').trim().slice(0, 500),
         sourcePageId,
