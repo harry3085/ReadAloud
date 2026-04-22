@@ -365,6 +365,44 @@ function _screenSnapshotOnce(screenId){
   }
 }
 
+// ─── 공용 시험 카드 렌더 (4개 텍스트 유형 공통: vocab / fill_blank / mcq / unscramble) ───
+const TEST_TYPE_UI = {
+  vocab:      { defaultName:'단어 시험',     subtitleEmoji:'📝', subtitleDefault:'단어 시험',
+                pendingBg:'#e0f2fe', pendingColor:'#0369a1', completedArrow:'↻', showRetakeBadge:true },
+  fill_blank: { defaultName:'빈칸 시험',     subtitleEmoji:'✏️', subtitleDefault:'빈칸 채우기',
+                pendingBg:'#fefce8', pendingColor:'#CA8A04', completedArrow:'✓', showRetakeBadge:false },
+  mcq:        { defaultName:'독해 시험',     subtitleEmoji:'📖', subtitleDefault:'본문 독해',
+                pendingBg:'#fff4e6', pendingColor:'#F59E0B', completedArrow:'✓', showRetakeBadge:false },
+  unscramble: { defaultName:'언스크램블 시험', subtitleEmoji:'🔀', subtitleDefault:'언스크램블',
+                pendingBg:'#f3e8ff', pendingColor:'#7c3aed', completedArrow:'↻', showRetakeBadge:true },
+};
+
+function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFailedScore) {
+  const ui = TEST_TYPE_UI[type] || TEST_TYPE_UI.vocab;
+  const qCount = t.questionCount || t.questions?.length || 0;
+  const passScore = t.passScore ?? 80;
+  const latestBadge = (!isCompleted && latestFailedScore != null)
+    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
+    : '';
+  const retakeBadge = (isCompleted && ui.showRetakeBadge)
+    ? `<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
+    : '';
+  return `
+    <div class="unit-card" onclick="${onclick}">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="unit-name">${esc(t.name||ui.defaultName)}</div>
+          ${isCompleted
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>${retakeBadge}`
+            : `${latestBadge}<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+        </div>
+        <div class="unit-count">${ui.subtitleEmoji} ${esc(t.bookName||ui.subtitleDefault)} · ${qCount}문제</div>
+        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
+      </div>
+      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?ui.completedArrow:'›'}</span>
+    </div>`;
+}
+
 function filterMyTests(allTests, myGroup, myUid){
   return allTests.filter(t=>{
     if(!t.active && t.active !== undefined) return false;
@@ -462,27 +500,8 @@ async function loadReadingMcqList(){
   }
 }
 
-function _mcqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore){
-  const qCount = t.questionCount || t.questions?.length || 0;
-  const passScore = t.passScore ?? 80;
-  const latestBadge = (!isCompleted && latestFailedScore != null)
-    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
-    : '';
-  return `
-    <div class="unit-card" onclick="${onclick}">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="unit-name">${esc(t.name||'독해 시험')}</div>
-          ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
-            : `${latestBadge}<span style="font-size:11px;background:#fff4e6;color:#F59E0B;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
-        </div>
-        <div class="unit-count">📖 ${esc(t.bookName||'본문 독해')} · ${qCount}문제</div>
-        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
-      </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
-    </div>`;
-}
+const _mcqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
+  _makeTypeCard('mcq', t, isCompleted, onclick, completedScore, latestFailedScore);
 
 window.startReadingMcq = async (testId, testName) => {
   try{
@@ -805,27 +824,8 @@ async function loadFillBlankList(){
   }
 }
 
-function _fbMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore){
-  const qCount = t.questionCount || t.questions?.length || 0;
-  const passScore = t.passScore ?? 80;
-  const latestBadge = (!isCompleted && latestFailedScore != null)
-    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
-    : '';
-  return `
-    <div class="unit-card" onclick="${onclick}">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="unit-name">${esc(t.name||'빈칸 시험')}</div>
-          ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>`
-            : `${latestBadge}<span style="font-size:11px;background:#fefce8;color:#CA8A04;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
-        </div>
-        <div class="unit-count">✏️ ${esc(t.bookName||'빈칸 채우기')} · ${qCount}문제</div>
-        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
-      </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'✓':'›'}</span>
-    </div>`;
-}
+const _fbMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
+  _makeTypeCard('fill_blank', t, isCompleted, onclick, completedScore, latestFailedScore);
 
 window.startFillBlank = async (testId, testName) => {
   try{
@@ -3857,28 +3857,8 @@ async function loadVocabList() {
   }
 }
 
-function _vqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore) {
-  const qCount = t.questionCount || t.questions?.length || 0;
-  const passScore = t.passScore ?? 80;
-  const latestBadge = (!isCompleted && latestFailedScore != null)
-    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
-    : '';
-  return `
-    <div class="unit-card" onclick="${onclick}">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="unit-name">${esc(t.name||'단어 시험')}</div>
-          ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
-               <span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
-            : `${latestBadge}<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
-        </div>
-        <div class="unit-count">📝 ${esc(t.bookName||'단어 시험')} · ${qCount}문제</div>
-        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
-      </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'↻':'›'}</span>
-    </div>`;
-}
+const _vqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
+  _makeTypeCard('vocab', t, isCompleted, onclick, completedScore, latestFailedScore);
 
 window.startVocab = async (testId, testName) => {
   try {
@@ -4465,28 +4445,8 @@ async function loadUnscrambleList2() {
   }
 }
 
-function _uqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore) {
-  const qCount = t.questionCount || t.questions?.length || 0;
-  const passScore = t.passScore ?? 80;
-  const latestBadge = (!isCompleted && latestFailedScore != null)
-    ? `<span style="font-size:11px;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:20px;font-weight:700;">최근 ${latestFailedScore}점</span>`
-    : '';
-  return `
-    <div class="unit-card" onclick="${onclick}">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="unit-name">${esc(t.name||'언스크램블 시험')}</div>
-          ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>
-               <span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
-            : `${latestBadge}<span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
-        </div>
-        <div class="unit-count">🔀 ${esc(t.bookName||'언스크램블')} · ${qCount}문제</div>
-        <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
-      </div>
-      <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?'↻':'›'}</span>
-    </div>`;
-}
+const _uqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
+  _makeTypeCard('unscramble', t, isCompleted, onclick, completedScore, latestFailedScore);
 
 window.startUnscramble2 = async (testId, testName) => {
   try {
