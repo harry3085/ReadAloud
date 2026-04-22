@@ -1186,8 +1186,8 @@ async function _fbSubmit(){
   const detail = [];
   const hintDetails = [];
 
-  // 힌트 배율: 0 → 1.0 (100%), 1 → 0.8 (-20%), 2 → 0.6 (-40%)
-  const MULT = { 0: 1.0, 1: 0.8, 2: 0.6 };
+  // 힌트 배율: 0 → 1.0 (100%), 1 → 0.9 (-10%), 2 → 0.8 (-20%)
+  const MULT = { 0: 1.0, 1: 0.9, 2: 0.8 };
 
   s.questions.forEach((q, i) => {
     const blanks = q.blanks || [];
@@ -1254,9 +1254,14 @@ async function _fbSubmit(){
     });
 
     try{
-      await setDoc(
-        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-        {
+      // 완료 목록(userCompleted)은 "통과 + 기존 최고점 초과" 일 때만 업데이트
+      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
+      const existingDoc = await getDoc(compRef);
+      const existing = existingDoc.exists() ? existingDoc.data() : null;
+      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
+
+      if (shouldUpdate) {
+        await setDoc(compRef, {
           uid: currentUser.uid,
           userName: userProfile?.name || '',
           score, rawScore,
@@ -1266,12 +1271,15 @@ async function _fbSubmit(){
           passed, passScore,
           hintUsageCount, hintStage1Count, hintStage2Count, hintPenalty,
           hintDetails,
-          answers: s.answers,       // 재검토용 학생 답안
+          answers: s.answers,
           date: today,
           completedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        }, { merge: true });
+        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
+      } else if (passed && existing) {
+        // 통과했지만 기존 점수가 더 높음
+        showToast(`기존 최고점 ${existing.score}점 유지`);
+      }
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
   }catch(e){
     console.error(e);
