@@ -1525,10 +1525,15 @@ window.reprintSelectedTest = async() => {
   reprintTest(ids[0]);
 };
 window.deleteSelectedTest = async() => {
-  const ids = getCheckedIds('testListBody');
-  if(!ids.length){showToast('삭제할 시험을 선택하세요.');return;}
-  if(!(await showConfirm(`선택한 ${ids.length}개 시험을 삭제할까요?`)))return;
-  for(const id of ids) await deleteDoc(doc(db,'tests',id));
+  const rows = [...document.querySelectorAll('#testListBody input[type=checkbox]:checked')]
+    .map(cb => ({ id: cb.value, src: cb.dataset.src || 'tests' }))
+    .filter(r => r.id && r.id !== 'on');
+  if(!rows.length){showToast('삭제할 시험을 선택하세요.');return;}
+  if(!(await showConfirm(`선택한 ${rows.length}개 시험을 삭제할까요?`)))return;
+  for(const r of rows) {
+    const coll = (r.src === 'genTests') ? 'genTests' : 'tests';
+    await deleteDoc(doc(db, coll, r.id));
+  }
   showToast('삭제됐어요.'); await loadTestList();
 };
 
