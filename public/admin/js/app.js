@@ -1776,7 +1776,7 @@ window.loadTestList = async() => {
           <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
       </tr>`;
-    }, 'testPagination', 10);
+    }, 'testPagination', 20);
   }catch(e){
     console.error(e);
     el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';
@@ -6454,7 +6454,8 @@ function _tpAttachResizer(scope) {
   const resizer = root.querySelector('#tpResizer');
   if (!row || !setsPane || !resizer) return;
 
-  const saved = parseFloat(localStorage.getItem('test_assign_sets_ratio'));
+  const storageKey = 'test_assign_sets_ratio_' + (_activeTestType || 'default');
+  const saved = parseFloat(localStorage.getItem(storageKey));
   if (saved && saved > 0.15 && saved < 0.85) {
     setsPane.style.flex = `0 0 calc(${saved*100}% - 4px)`;
   }
@@ -6466,7 +6467,7 @@ function _tpAttachResizer(scope) {
       let ratio = (ev.clientX - rect.left) / rect.width;
       ratio = Math.max(0.2, Math.min(0.85, ratio));
       setsPane.style.flex = `0 0 calc(${ratio*100}% - 4px)`;
-      try { localStorage.setItem('test_assign_sets_ratio', String(ratio)); } catch {}
+      try { localStorage.setItem(storageKey, String(ratio)); } catch {}
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
@@ -6484,15 +6485,15 @@ function _tpAttachResizer(scope) {
   resizer.addEventListener('mouseleave', () => { resizer.style.background = 'transparent'; });
 }
 
-// 상·하 비율 리사이저 (시험관리 전 서브메뉴 공통)
+// 상·하 비율 리사이저 (시험관리 유형별 독립 저장)
 function _tpAttachVResizer(scope) {
   const root = scope || document;
   const bottom = root.querySelector('#tpBottomSection');
   const resizer = root.querySelector('#tpVResizer');
   if (!bottom || !resizer) return;
 
-  // 복원
-  const saved = parseInt(localStorage.getItem('test_assign_bottom_height_px'), 10);
+  const storageKey = 'test_assign_bottom_height_px_' + (_activeTestType || 'default');
+  const saved = parseInt(localStorage.getItem(storageKey), 10);
   if (saved && saved >= 120 && saved <= 2000) {
     bottom.style.height = saved + 'px';
   }
@@ -6512,7 +6513,7 @@ function _tpAttachVResizer(scope) {
       document.removeEventListener('mouseup', onUp);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
-      try { localStorage.setItem('test_assign_bottom_height_px', String(parseInt(bottom.style.height))); } catch {}
+      try { localStorage.setItem(storageKey, String(parseInt(bottom.style.height))); } catch {}
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'row-resize';
