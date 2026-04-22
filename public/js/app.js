@@ -4317,7 +4317,9 @@ async function _vqSubmit() {
           userName: userProfile?.name || '',
           score, correct, wrong: total - correct, total,
           passed, passScore,
-          answers: s.answers || [],  // 재응시 리뷰용
+          // 셔플 순서 보존: 재리뷰 시 questions[i] ↔ answers[i] 일치
+          questions: s.questions || [],
+          answers: s.answers || [],
           date: today,
           completedAt: serverTimestamp(),
         }, { merge: true });
@@ -4407,7 +4409,10 @@ window.vqViewPreviousResult = async (testId, testName) => {
     }
     const test = { id: testId, ...testSnap.data() };
     const comp = compSnap.data();
-    const questions = (test.questions || []).filter(q => q.type === 'vocab');
+    // 응시 당시 스냅샷 우선 사용 (셔플 순서 보존). 구기록은 test.questions 로 폴백
+    const questions = (Array.isArray(comp.questions) && comp.questions.length)
+      ? comp.questions
+      : (test.questions || []).filter(q => q.type === 'vocab');
     _vqState = { test, questions, currentIdx: 0, answers: comp.answers || [], opts: test.vocabOptions || {} };
 
     const screen = document.getElementById('vocabQuiz');
@@ -4841,7 +4846,9 @@ async function _uqSubmit() {
           score,
           correct, wrong: total - correct, total,
           passed, passScore,
-          answers: s.answers || [],  // 재검토용 (placed 인덱스 + chunks 스냅샷)
+          // 셔플 순서 보존: questions[i] ↔ answers[i] 매칭 유지
+          questions: s.questions || [],
+          answers: s.answers || [],
           date: today,
           completedAt: serverTimestamp(),
         }, { merge: true });
@@ -4926,10 +4933,13 @@ window.uqViewPreviousResult = async (testId, testName) => {
     }
     const test = { id: testId, ...testSnap.data() };
     const comp = compSnap.data();
-    const questions = (test.questions || []).filter(q => q.type === 'unscramble');
+    // 응시 당시 스냅샷 우선 (셔플 순서 유지)
+    const questions = (Array.isArray(comp.questions) && comp.questions.length)
+      ? comp.questions
+      : (test.questions || []).filter(q => q.type === 'unscramble');
 
     // 재응시 버튼에서 test 참조할 수 있도록 상태 세팅
-    _uqState = { test, questions, currentIdx: 0, answers: [], feedback: null };
+    _uqState = { test, questions, currentIdx: 0, answers: comp.answers || [], feedback: null };
 
     const screen = document.getElementById('unscrambleQuiz');
     if (screen && !_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
