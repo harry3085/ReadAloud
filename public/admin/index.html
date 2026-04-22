@@ -661,6 +661,16 @@
           <div style="font-size:11px;color:var(--gray);">본문</div>
           <textarea id="genEditText" disabled
             style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;outline:none;resize:none;font-family:inherit;width:100%;box-sizing:border-box;background:#fafafa;"></textarea>
+          <div id="genCleanupBar" style="display:flex;gap:6px;align-items:center;">
+            <select id="genPresetSelect" onchange="cleanupOnPresetChange()" disabled
+              style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:white;">
+              <option value="">프리셋 선택...</option>
+            </select>
+            <button class="btn btn-secondary" id="genCleanupBtn" onclick="genCleanupActivePage()" disabled
+              style="font-size:12px;padding:6px 10px;white-space:nowrap;flex-shrink:0;">✨ AI 정리</button>
+            <button class="btn btn-secondary" onclick="cleanupOpenPresetManager()"
+              style="font-size:12px;padding:6px 8px;flex-shrink:0;" title="프리셋 관리">⚙</button>
+          </div>
           <button class="btn btn-primary" id="genSaveBtn" onclick="genSavePage()" disabled style="width:100%;justify-content:center;">💾 저장</button>
         </div>
       </div>
@@ -686,6 +696,7 @@
             <div style="display:flex;gap:4px;flex-wrap:wrap;">
               <button class="action-btn primary" onclick="genCreatePage()">+ 생성</button>
               <button class="action-btn" id="genPageEditBtn" onclick="genEditPage()" disabled>✏️ 수정</button>
+              <button class="action-btn" id="genPageCleanupBtn" onclick="genCleanupBatch()" disabled>✨ AI정리</button>
               <button class="action-btn" id="genPageMoveBtn" onclick="genMovePages()" disabled>→ Ch</button>
               <button class="action-btn" id="genPageExcludeBtn" onclick="genExcludePages()" disabled>제외</button>
               <button class="action-btn danger" id="genPageDeleteBtn" onclick="genDeletePages()" disabled>🗑</button>

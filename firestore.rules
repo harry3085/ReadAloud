@@ -130,6 +130,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── AI 정리 프리셋 (관리자 전용) ──────────────────────
+    match /genCleanupPresets/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // ── AI 시험 배정 (관리자 작성, 학생 읽기) ─────────────
     match /genTests/{testId} {
       allow read: if isSignedIn();

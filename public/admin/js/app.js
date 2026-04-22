@@ -2287,6 +2287,7 @@ window.loadGenerator = async () => {
     _genActiveBook = null; _genActiveChapter = null; _genActivePage = null;
     _genPageCur = 1;
     _genRenderAll();
+    _cleanupLoadPresets();  // 프리셋 백그라운드 로드 (에디터 드롭다운 채움)
   } catch(e) { showToast('Generator 로드 실패: '+e.message); }
 };
 
@@ -2414,6 +2415,9 @@ function _genToolbar(type) {
     ['genPageEditBtn','genPageMoveBtn','genPageExcludeBtn','genPageDeleteBtn'].forEach((id,i)=>{
       const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
     });
+    // Cleanup 버튼: 1개 이상 체크 시 활성화
+    const cleanupBtn=document.getElementById('genPageCleanupBtn');
+    if (cleanupBtn) cleanupBtn.disabled = cnt===0;
   } else if (type==='chapter') {
     ['genChapterEditBtn','genChapterMoveBtn','genChapterExcludeBtn','genChapterDeleteBtn'].forEach((id,i)=>{
       const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
@@ -2436,6 +2440,9 @@ function _genUpdateEditor() {
     textEl.value=''; textEl.disabled=true;
     pidEl.value='';
     if(saveBtn) saveBtn.disabled=true;
+    // Cleanup 컨트롤 비활성화
+    const ps=document.getElementById('genPresetSelect'); if(ps) ps.disabled=true;
+    const cb=document.getElementById('genCleanupBtn'); if(cb) cb.disabled=true;
     return;
   }
   const pid = _genActivePage;
@@ -2447,6 +2454,10 @@ function _genUpdateEditor() {
   textEl.value = page.text||''; textEl.disabled=false;
   pidEl.value = pid;
   if(saveBtn) saveBtn.disabled=false;
+  // Cleanup 컨트롤 상태 갱신 (프리셋 로드됐고 page 선택된 상태)
+  const ps=document.getElementById('genPresetSelect');
+  if(ps) ps.disabled = _cleanupPresets.length === 0;
+  _cleanupUpdateEditorCleanupBtn();
 }
 
 window.genOnBookCheck = (cb) => {
@@ -2829,6 +2840,620 @@ window.genDeleteBooks = async () => {
     _genCheckedBooks.clear(); await loadGenerator();
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI OCR 정리 (Cleanup) — Generator Page 본문을 프리셋 프롬프트로 Gemini 가공
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── 기본 프리셋 3개 (최초 방문 시 Firestore 에 자동 시드) ───
+const _CLEANUP_DEFAULT_PRESETS = [
+  {
+    name: '단어장 (Snapshot)',
+    description: '영단어[Tab]한글해석 형식으로 정리',
+    prompt: `이 본문은 영어 단어장입니다.
+각 항목을 "영단어[Tab]한글해석" 형식의 한 줄로 정리하세요.
+
+규칙:
+1. 각 줄: 영단어 → Tab 문자(\\t) → 한글 해석 → 줄바꿈
+2. 번호, 불릿, 점선, 장식 기호 모두 제거 (예: "1.", "①", "•", "...", ">")
+3. 한 영단어에 여러 뜻이 있으면 쉼표(, )로 구분해 같은 줄에 유지
+4. 품사 표시(n./v./adj. 등)는 한글 해석 앞에 유지
+5. 예문·설명 문장은 제거하고 단어-뜻 쌍만 남김
+6. OCR 오인식 의심되는 경우에도 원문 단어를 그대로 유지 (추측 금지)
+
+출력은 정리된 단어 목록만. 마크다운·서문·번호 매기기 금지.`,
+    order: 1, isDefault: true,
+  },
+  {
+    name: '기본 정리',
+    description: '페이지번호/하이픈/줄바꿈 정리',
+    prompt: `다음 영어 본문을 정리하세요. 의미는 절대 변경하지 말고 형식만 다듬으세요.
+1. 페이지 번호, 머리말/꼬리말, 저작권 표기 제거
+2. 줄끝 하이픈(-)으로 분리된 단어는 병합 (예: "exam-\\nple" → "example")
+3. 단락 내부의 강제 줄바꿈은 공백으로 통합 (문단 경계에서만 줄바꿈)
+4. 연속된 빈 줄은 1줄로 축소
+5. OCR 오인식으로 보이는 명백한 오타만 수정 (의심되면 그대로 둠)
+
+정리된 본문만 출력. 설명·서문·마크다운 금지.`,
+    order: 2, isDefault: true,
+  },
+  {
+    name: '교재 문제지',
+    description: '문제 번호/선택지/Answer Key 정리',
+    prompt: `이 본문은 영어 교재의 문제 섹션입니다. 다음 규칙으로 정리하세요.
+1. 문제 번호(1. 2. 3. 또는 ① ② ③) 유지, 번호 앞뒤 공백 정규화
+2. 선택지(A/B/C/D 또는 ① ② ③ ④)는 각각 새 줄로
+3. 지문(Passage)과 문제를 빈 줄로 구분
+4. Answer Key 섹션은 별도 블록으로 분리
+5. 페이지 번호·머리말 제거
+
+정리된 본문만 출력. 마크다운·서문 금지.`,
+    order: 3, isDefault: true,
+  },
+];
+
+// ─── 상태 ───
+let _cleanupPresets = [];           // Firestore 에서 로드한 프리셋 배열
+let _cleanupActivePresetId = '';    // 에디터 드롭다운에서 선택된 프리셋 ID
+let _cleanupBatchResults = [];      // 일괄 처리 결과 (비교·적용용)
+let _cleanupBatchTabIdx = 0;        // 일괄 결과 모달에서 보고 있는 탭 인덱스
+let _cleanupBatchPresetName = '';   // 현재 일괄 처리 중인 프리셋 이름
+
+// ─── 프리셋 로드 + 최초 시드 ───
+async function _cleanupLoadPresets() {
+  try {
+    const snap = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+    _cleanupPresets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (_cleanupPresets.length === 0) {
+      await _cleanupSeedDefaults();
+      const snap2 = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+      _cleanupPresets = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    _cleanupRenderEditorSelect();
+  } catch (e) {
+    console.error('cleanup presets load error:', e);
+    showToast('프리셋 로드 실패: ' + e.message);
+  }
+}
+
+async function _cleanupSeedDefaults() {
+  const uid = auth.currentUser?.uid || '';
+  await Promise.all(_CLEANUP_DEFAULT_PRESETS.map(p =>
+    addDoc(collection(db, 'genCleanupPresets'), {
+      ...p,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: uid,
+    })
+  ));
+}
+
+// ─── 에디터 드롭다운 렌더 ───
+function _cleanupRenderEditorSelect() {
+  const sel = document.getElementById('genPresetSelect');
+  if (!sel) return;
+  const opts = ['<option value="">프리셋 선택...</option>']
+    .concat(_cleanupPresets.map(p =>
+      `<option value="${esc(p.id)}" ${p.id===_cleanupActivePresetId?'selected':''}>${esc(p.name)}</option>`));
+  sel.innerHTML = opts.join('');
+  sel.disabled = _cleanupPresets.length === 0 || !_genActivePage;
+  _cleanupUpdateEditorCleanupBtn();
+}
+
+function _cleanupUpdateEditorCleanupBtn() {
+  const btn = document.getElementById('genCleanupBtn');
+  if (!btn) return;
+  btn.disabled = !_genActivePage || !_cleanupActivePresetId;
+}
+
+window.cleanupOnPresetChange = () => {
+  const sel = document.getElementById('genPresetSelect');
+  _cleanupActivePresetId = sel?.value || '';
+  _cleanupUpdateEditorCleanupBtn();
+};
+
+// ─── 단일 페이지 AI 정리 (에디터 버튼) ───
+window.genCleanupActivePage = async () => {
+  if (!_genActivePage) { showToast('Page 를 먼저 선택하세요'); return; }
+  if (!_cleanupActivePresetId) { showToast('프리셋을 먼저 선택하세요'); return; }
+
+  const page = _genPages.find(p => p.id === _genActivePage);
+  if (!page) return;
+  const preset = _cleanupPresets.find(p => p.id === _cleanupActivePresetId);
+  if (!preset) { showToast('프리셋을 찾을 수 없습니다'); return; }
+
+  const currentText = document.getElementById('genEditText')?.value || page.text || '';
+  if (currentText.trim().length < 5) { showToast('정리할 본문이 너무 짧습니다'); return; }
+
+  const btn = document.getElementById('genCleanupBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '🤖 AI 호출 중...'; }
+
+  try {
+    const res = await fetch('/api/cleanup-ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: currentText, systemPrompt: preset.prompt }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast('정리 실패: ' + (data.error || 'unknown'));
+      return;
+    }
+    _cleanupShowCompareModal(currentText, data.cleaned, page.id, page.title||'', preset.name, data.model);
+  } catch (e) {
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = '✨ AI 정리'; _cleanupUpdateEditorCleanupBtn(); }
+  }
+};
+
+// ─── 비교 모달 (좌 원본 / 우 AI 결과 → 적용/취소) ───
+function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetName, model) {
+  const html = `
+  <div style="width:min(1100px,95vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);">
+      <div style="font-size:16px;font-weight:700;">✨ AI 정리 결과 비교</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:3px;">
+        ${esc(pageTitle)} · 프리셋: ${esc(presetName)} · 모델: <code>${esc(model||'')}</code>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;gap:10px;padding:14px 18px;overflow:hidden;">
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:4px;">원본</div>
+        <textarea readonly style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(original)}</textarea>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px;">AI 결과 <span style="font-weight:400;color:var(--gray);font-size:11px;">(적용 시 원본 덮어쓰기)</span></div>
+        <textarea id="cleanupCompareEdit" style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--teal);border-radius:6px;font-size:12px;font-family:monospace;resize:none;">${esc(cleaned)}</textarea>
+      </div>
+    </div>
+    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+      <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" onclick="cleanupApplySingle('${esc(pageId)}')">적용 (덮어쓰기)</button>
+    </div>
+  </div>`;
+  showModal(html);
+}
+
+window.cleanupApplySingle = async (pageId) => {
+  const newText = document.getElementById('cleanupCompareEdit')?.value ?? '';
+  try {
+    await updateDoc(doc(db, 'genPages', pageId), { text: newText, edited: true });
+    const page = _genPages.find(p => p.id === pageId);
+    if (page) page.text = newText;
+    // 에디터에 반영
+    if (_genActivePage === pageId) {
+      const textEl = document.getElementById('genEditText');
+      if (textEl) textEl.value = newText;
+    }
+    closeModal();
+    showToast('적용 완료');
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+// ─── 일괄 AI 정리 (Page 툴바 버튼) ───
+window.genCleanupBatch = async () => {
+  if (_genCheckedPages.size === 0) { showToast('Page 를 1개 이상 체크하세요'); return; }
+  if (_cleanupPresets.length === 0) { showToast('프리셋이 없습니다'); return; }
+
+  // 프리셋 선택 모달 먼저
+  const presetId = await _cleanupPickPresetModal();
+  if (!presetId) return;
+  const preset = _cleanupPresets.find(p => p.id === presetId);
+  if (!preset) return;
+
+  const targets = _genPages.filter(p => _genCheckedPages.has(p.id) && (p.text||'').trim().length >= 5);
+  if (targets.length === 0) { showToast('본문이 충분한 페이지가 없습니다'); return; }
+
+  _cleanupBatchResults = [];
+  _cleanupBatchTabIdx = 0;
+
+  // 진행률 모달
+  _cleanupShowBatchProgress(targets.length, 0);
+
+  for (let i = 0; i < targets.length; i++) {
+    const p = targets[i];
+    _cleanupShowBatchProgress(targets.length, i);
+    try {
+      const res = await fetch('/api/cleanup-ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: p.text, systemPrompt: preset.prompt }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        _cleanupBatchResults.push({
+          pageId: p.id, title: p.title||('Page '+p.serialNumber),
+          original: p.text, cleaned: data.cleaned,
+          applied: false, skipped: false, error: null,
+        });
+      } else {
+        _cleanupBatchResults.push({
+          pageId: p.id, title: p.title||('Page '+p.serialNumber),
+          original: p.text, cleaned: '',
+          applied: false, skipped: false, error: data.error || 'unknown',
+        });
+      }
+    } catch (e) {
+      _cleanupBatchResults.push({
+        pageId: p.id, title: p.title||('Page '+p.serialNumber),
+        original: p.text, cleaned: '',
+        applied: false, skipped: false, error: e.message,
+      });
+    }
+  }
+
+  _cleanupBatchPresetName = preset.name;
+  _cleanupShowBatchResult(preset.name);
+};
+
+function _cleanupSaveCurrentTabEdit() {
+  const cur = _cleanupBatchResults[_cleanupBatchTabIdx];
+  if (!cur || cur.applied || cur.skipped || cur.error) return;
+  const ta = document.getElementById('cleanupBatchEdit');
+  if (ta && typeof ta.value === 'string') cur.cleaned = ta.value;
+}
+
+function _cleanupShowBatchProgress(total, done) {
+  const html = `
+  <div style="width:min(420px,90vw);padding:30px 20px;text-align:center;">
+    <div style="font-size:32px;margin-bottom:10px;">🤖</div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">AI 정리 진행 중...</div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:15px;">${done} / ${total} 완료</div>
+    <div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+      <div style="height:100%;background:var(--teal);width:${Math.round(done/total*100)}%;transition:width .2s;"></div>
+    </div>
+  </div>`;
+  showModal(html);
+}
+
+// ─── 일괄 결과 모달 (페이지별 탭 → 개별 적용/건너뜀) ───
+function _cleanupShowBatchResult(presetName) {
+  if (_cleanupBatchResults.length === 0) { closeModal(); return; }
+  _cleanupRenderBatchResult(presetName);
+}
+
+function _cleanupRenderBatchResult(presetName) {
+  const results = _cleanupBatchResults;
+  const idx = Math.min(_cleanupBatchTabIdx, results.length - 1);
+  const cur = results[idx];
+
+  const tabs = results.map((r, i) => {
+    const active = i === idx;
+    const statusIcon = r.applied ? '✓' : r.skipped ? '—' : r.error ? '⚠' : '•';
+    const statusColor = r.applied ? '#0a7a3a' : r.error ? '#c33' : r.skipped ? 'var(--gray)' : 'var(--text)';
+    return `<button onclick="cleanupBatchGoto(${i})" style="padding:6px 10px;border:1px solid ${active?'var(--teal)':'var(--border)'};background:${active?'var(--teal-light)':'white'};border-radius:6px 6px 0 0;border-bottom:${active?'1px solid var(--teal-light)':'1px solid var(--border)'};margin-right:-1px;font-size:11px;cursor:pointer;color:${statusColor};white-space:nowrap;">
+      <span style="margin-right:4px;">${statusIcon}</span>${esc(r.title)}
+    </button>`;
+  }).join('');
+
+  const body = cur.error
+    ? `<div style="padding:30px;text-align:center;color:#c33;font-size:13px;">
+         <div style="font-size:24px;margin-bottom:8px;">⚠</div>
+         <div>AI 정리 실패</div>
+         <div style="color:var(--gray);margin-top:8px;font-size:12px;">${esc(cur.error)}</div>
+       </div>`
+    : `<div style="flex:1;display:flex;gap:10px;padding:14px;overflow:hidden;">
+         <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+           <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:4px;">원본</div>
+           <textarea readonly style="flex:1;min-height:40vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(cur.original)}</textarea>
+         </div>
+         <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+           <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px;">AI 결과</div>
+           <textarea id="cleanupBatchEdit" style="flex:1;min-height:40vh;padding:10px;border:1px solid var(--teal);border-radius:6px;font-size:12px;font-family:monospace;resize:none;" ${cur.applied||cur.skipped?'readonly':''}>${esc(cur.cleaned)}</textarea>
+         </div>
+       </div>`;
+
+  const footerLeft = `<div style="font-size:12px;color:var(--gray);">
+    ${idx + 1} / ${results.length} · 적용 ${results.filter(r=>r.applied).length} · 건너뜀 ${results.filter(r=>r.skipped).length} · 실패 ${results.filter(r=>r.error).length}
+  </div>`;
+
+  const footerRight = cur.error
+    ? `<button class="btn btn-secondary" onclick="cleanupBatchNext()">다음 →</button>
+       <button class="btn btn-secondary" onclick="cleanupBatchFinish()">닫기</button>`
+    : (cur.applied || cur.skipped)
+      ? `<span style="font-size:12px;color:${cur.applied?'#0a7a3a':'var(--gray)'};margin-right:8px;">${cur.applied?'✓ 적용됨':'— 건너뜀'}</span>
+         <button class="btn btn-secondary" onclick="cleanupBatchNext()">다음 →</button>
+         <button class="btn btn-secondary" onclick="cleanupBatchFinish()">닫기</button>`
+      : `<button class="btn btn-secondary" onclick="cleanupBatchSkip()">건너뜀</button>
+         <button class="btn btn-primary" onclick="cleanupBatchApply()">적용 (덮어쓰기)</button>
+         <button class="btn btn-secondary" onclick="cleanupBatchNext()">다음 →</button>`;
+
+  const html = `
+  <div style="width:min(1100px,95vw);height:min(85vh,750px);display:flex;flex-direction:column;">
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;">✨ 일괄 AI 정리 결과</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:2px;">프리셋: ${esc(presetName)} · 각 페이지별로 적용/건너뜀 선택</div>
+    </div>
+    <div style="padding:10px 14px 0;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--teal-light);">${tabs}</div>
+    ${body}
+    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:space-between;background:#fafafa;">
+      ${footerLeft}
+      <div style="display:flex;gap:8px;align-items:center;">${footerRight}</div>
+    </div>
+  </div>`;
+  showModal(html);
+}
+
+window.cleanupBatchGoto = (i) => {
+  _cleanupSaveCurrentTabEdit();
+  _cleanupBatchTabIdx = i;
+  _cleanupRenderBatchResult(_cleanupBatchPresetName);
+};
+
+window.cleanupBatchApply = async () => {
+  const idx = _cleanupBatchTabIdx;
+  const cur = _cleanupBatchResults[idx];
+  if (!cur || cur.error) return;
+  const edited = document.getElementById('cleanupBatchEdit')?.value ?? cur.cleaned;
+  try {
+    await updateDoc(doc(db, 'genPages', cur.pageId), { text: edited, edited: true });
+    const page = _genPages.find(p => p.id === cur.pageId);
+    if (page) page.text = edited;
+    cur.applied = true;
+    cur.cleaned = edited;
+    if (_genActivePage === cur.pageId) {
+      const textEl = document.getElementById('genEditText');
+      if (textEl) textEl.value = edited;
+    }
+    // 다음 탭으로 자동 이동
+    if (idx < _cleanupBatchResults.length - 1) _cleanupBatchTabIdx = idx + 1;
+    _cleanupRenderBatchResult(_cleanupBatchPresetName);
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+window.cleanupBatchSkip = () => {
+  _cleanupSaveCurrentTabEdit();
+  const idx = _cleanupBatchTabIdx;
+  const cur = _cleanupBatchResults[idx];
+  if (!cur) return;
+  cur.skipped = true;
+  if (idx < _cleanupBatchResults.length - 1) _cleanupBatchTabIdx = idx + 1;
+  _cleanupRenderBatchResult(_cleanupBatchPresetName);
+};
+
+window.cleanupBatchNext = () => {
+  _cleanupSaveCurrentTabEdit();
+  if (_cleanupBatchTabIdx < _cleanupBatchResults.length - 1) {
+    _cleanupBatchTabIdx++;
+    _cleanupRenderBatchResult(_cleanupBatchPresetName);
+  } else {
+    window.cleanupBatchFinish();
+  }
+};
+
+window.cleanupBatchFinish = () => {
+  const applied = _cleanupBatchResults.filter(r => r.applied).length;
+  closeModal();
+  showToast(`일괄 처리 종료 — ${applied}개 적용됨`);
+  _cleanupBatchResults = [];
+  _cleanupBatchTabIdx = 0;
+  // Page 목록 새로고침
+  _genRenderPages();
+};
+
+// ─── 프리셋 선택 모달 (일괄 처리 시작 전) ───
+function _cleanupPickPresetModal() {
+  return new Promise(resolve => {
+    if (_cleanupPresets.length === 0) { resolve(null); return; }
+    const opts = _cleanupPresets.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    const html = `
+    <div style="width:min(480px,92vw);padding:20px;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">✨ 일괄 AI 정리</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:14px;">
+        체크된 Page ${_genCheckedPages.size}개에 적용할 프리셋을 선택하세요.
+      </div>
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">프리셋</label>
+      <select id="cleanupPickSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">${opts}</select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+        <button class="btn btn-secondary" id="cleanupPickCancel">취소</button>
+        <button class="btn btn-primary" id="cleanupPickOk">시작</button>
+      </div>
+    </div>`;
+    showModal(html);
+    setTimeout(() => {
+      const ok = document.getElementById('cleanupPickOk');
+      const cancel = document.getElementById('cleanupPickCancel');
+      const sel = document.getElementById('cleanupPickSelect');
+      if (ok) ok.onclick = () => { const v = sel?.value || ''; closeModal(); resolve(v); };
+      if (cancel) cancel.onclick = () => { closeModal(); resolve(null); };
+    }, 50);
+  });
+}
+
+// ─── 프리셋 관리 모달 (CRUD) ───
+window.cleanupOpenPresetManager = () => {
+  _cleanupRenderPresetManager();
+};
+
+function _cleanupRenderPresetManager() {
+  const rows = _cleanupPresets.length === 0
+    ? '<tr><td colspan="4" style="padding:30px;text-align:center;color:#bbb;font-size:12px;">프리셋이 없습니다. 아래 "기본값 복원" 또는 "+ 새 프리셋"을 사용하세요.</td></tr>'
+    : _cleanupPresets.map(p => `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td class="td-main" style="padding:8px 10px;">${esc(p.name)}${p.isDefault?' <span style="font-size:10px;color:var(--gray);">(기본)</span>':''}</td>
+        <td class="td-sub" style="padding:8px 10px;">${esc(p.description||'')}</td>
+        <td class="td-center" style="padding:8px 10px;">${p.order||0}</td>
+        <td style="padding:6px 10px;white-space:nowrap;">
+          <button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">✏️ 편집</button>
+          <button class="action-btn" onclick="cleanupDuplicatePreset('${esc(p.id)}')">⎘ 복제</button>
+          <button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑</button>
+        </td>
+      </tr>`).join('');
+
+  const html = `
+  <div style="width:min(860px,95vw);max-height:85vh;display:flex;flex-direction:column;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:16px;font-weight:700;">⚙ AI 정리 프리셋 관리</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:3px;">${_cleanupPresets.length}개 프리셋</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-secondary" onclick="cleanupRestoreDefaults()" style="font-size:12px;">↻ 기본값 복원</button>
+        <button class="btn btn-primary" onclick="cleanupEditPreset('')" style="font-size:12px;">+ 새 프리셋</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:0 18px 14px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);background:#fafafa;">
+            <th style="text-align:left;padding:10px;">이름</th>
+            <th style="text-align:left;padding:10px;">설명</th>
+            <th style="text-align:center;padding:10px;width:60px;">순서</th>
+            <th style="text-align:left;padding:10px;width:230px;">동작</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="padding:10px 18px;border-top:1px solid var(--border);text-align:right;background:#fafafa;">
+      <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+    </div>
+  </div>`;
+  showModal(html);
+}
+
+// ─── 프리셋 편집 모달 (create/edit 공용) ───
+window.cleanupEditPreset = (id) => {
+  const existing = id ? _cleanupPresets.find(p => p.id === id) : null;
+  const p = existing || { name:'', description:'', prompt:'', order:(_cleanupPresets.length+1), isDefault:false };
+  const isNew = !existing;
+
+  const html = `
+  <div style="width:min(760px,95vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);">
+      <div style="font-size:16px;font-weight:700;">${isNew?'+ 새 프리셋':'✏️ 프리셋 편집'}</div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">이름 *</label>
+        <input id="cleanupEditName" type="text" value="${esc(p.name)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">설명 (선택)</label>
+        <input id="cleanupEditDesc" type="text" value="${esc(p.description||'')}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">정렬 순서</label>
+        <input id="cleanupEditOrder" type="number" value="${p.order||0}" style="width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;min-height:250px;">
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">프롬프트 *</label>
+        <textarea id="cleanupEditPrompt" style="flex:1;min-height:250px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;">${esc(p.prompt||'')}</textarea>
+      </div>
+    </div>
+    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+      <button class="btn btn-secondary" onclick="cleanupOpenPresetManager()">취소</button>
+      <button class="btn btn-primary" onclick="cleanupSavePreset('${esc(id||'')}')">저장</button>
+    </div>
+  </div>`;
+  showModal(html);
+};
+
+window.cleanupSavePreset = async (id) => {
+  const name = document.getElementById('cleanupEditName')?.value.trim() || '';
+  const description = document.getElementById('cleanupEditDesc')?.value.trim() || '';
+  const order = parseInt(document.getElementById('cleanupEditOrder')?.value || '0') || 0;
+  const prompt = document.getElementById('cleanupEditPrompt')?.value || '';
+
+  if (name.length < 1) { showToast('이름을 입력하세요'); return; }
+  if (prompt.trim().length < 10) { showToast('프롬프트는 최소 10자 이상이어야 합니다'); return; }
+
+  try {
+    if (id) {
+      await updateDoc(doc(db, 'genCleanupPresets', id), {
+        name, description, prompt, order,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await addDoc(collection(db, 'genCleanupPresets'), {
+        name, description, prompt, order,
+        isDefault: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: auth.currentUser?.uid || '',
+      });
+    }
+    showToast(id ? '수정 완료' : '추가 완료');
+    await _cleanupLoadPresets();
+    _cleanupRenderPresetManager();
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+window.cleanupDuplicatePreset = async (id) => {
+  const p = _cleanupPresets.find(x => x.id === id);
+  if (!p) return;
+  try {
+    await addDoc(collection(db, 'genCleanupPresets'), {
+      name: p.name + ' (복제)',
+      description: p.description || '',
+      prompt: p.prompt || '',
+      order: (p.order || 0) + 1,
+      isDefault: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+    });
+    showToast('복제 완료');
+    await _cleanupLoadPresets();
+    _cleanupRenderPresetManager();
+  } catch (e) {
+    showToast('복제 실패: ' + e.message);
+  }
+};
+
+window.cleanupDeletePreset = async (id) => {
+  const p = _cleanupPresets.find(x => x.id === id);
+  if (!p) return;
+  const ok = await showConfirm(`"${p.name}" 프리셋을 삭제하시겠습니까?`, '삭제된 프리셋은 복구할 수 없습니다.');
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'genCleanupPresets', id));
+    showToast('삭제됨');
+    // 활성 프리셋이 삭제되면 에디터 선택 해제
+    if (_cleanupActivePresetId === id) _cleanupActivePresetId = '';
+    await _cleanupLoadPresets();
+    _cleanupRenderPresetManager();
+  } catch (e) {
+    showToast('삭제 실패: ' + e.message);
+  }
+};
+
+// ─── 기본값 복원 (누락된 기본 프리셋만 재추가) ───
+window.cleanupRestoreDefaults = async () => {
+  const existingNames = new Set(_cleanupPresets.map(p => p.name));
+  const missing = _CLEANUP_DEFAULT_PRESETS.filter(p => !existingNames.has(p.name));
+  if (missing.length === 0) {
+    showToast('모든 기본 프리셋이 이미 존재합니다');
+    return;
+  }
+  const ok = await showConfirm(`${missing.length}개의 기본 프리셋을 복원하시겠습니까?`, missing.map(p => '• ' + p.name).join('\n'));
+  if (!ok) return;
+  try {
+    const uid = auth.currentUser?.uid || '';
+    await Promise.all(missing.map(p =>
+      addDoc(collection(db, 'genCleanupPresets'), {
+        ...p,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: uid,
+      })
+    ));
+    showToast(`${missing.length}개 복원됨`);
+    await _cleanupLoadPresets();
+    _cleanupRenderPresetManager();
+  } catch (e) {
+    showToast('복원 실패: ' + e.message);
+  }
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AI 문제 생성 & 문제 세트 관리 (2026-04 추가)
 // ═══════════════════════════════════════════════════════════════════════════
