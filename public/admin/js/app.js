@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -40,6 +40,26 @@ let calYear = new Date().getFullYear(), calMonth = new Date().getMonth();
 let currentPage = 'dashboard';
 let studentCurrentPage = 1;
 const PAGE_SIZE = 10;
+
+// Gemini API 호출 로거 (일별 집계, 대시보드 위젯용)
+async function _logApiCall(endpoint){
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    await setDoc(doc(db, 'apiUsage', today), {
+      total: increment(1),
+      [`byEndpoint.${endpoint}`]: increment(1),
+      lastAt: serverTimestamp(),
+    }, { merge: true });
+  } catch(e) { /* silent */ }
+}
+
+// fetch + 자동 로깅 wrapper — /api/generate-quiz / /api/cleanup-ocr 호출 시 사용
+async function _geminiFetch(url, init){
+  const res = await fetch(url, init);
+  const ep = String(url).replace(/^\/api\//, '');
+  _logApiCall(ep);
+  return res;
+}
 
 // ── 인증 체크 ──────────────────────────────────────────
 onAuthStateChanged(auth, async user => {
@@ -147,9 +167,53 @@ async function initDashboard(){
   const now = new Date();
   document.getElementById('dashDate').textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   renderCalendar();
-  await Promise.all([loadDashStats(), loadDashNotices(), loadDashScores(), loadDashStudents()]);
+  await Promise.all([loadDashStats(), loadDashNotices(), loadDashScores(), loadDashStudents(), loadApiUsage()]);
 }
 window.refreshDashboard = initDashboard;
+
+async function loadApiUsage(){
+  const body = document.getElementById('apiUsageBody');
+  if (!body) return;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0,10);
+    const [todaySnap, yestSnap] = await Promise.all([
+      getDoc(doc(db, 'apiUsage', today)),
+      getDoc(doc(db, 'apiUsage', yesterday)),
+    ]);
+    const t = todaySnap.exists() ? todaySnap.data() : { total: 0, byEndpoint: {} };
+    const y = yestSnap.exists() ? yestSnap.data() : { total: 0 };
+    const bE = t.byEndpoint || {};
+    const items = [
+      { key: 'check-recording', label: '🎤 녹음 평가' },
+      { key: 'generate-quiz',   label: '✨ 문제 생성' },
+      { key: 'cleanup-ocr',     label: '📝 OCR 정리' },
+    ];
+    const total = t.total || 0;
+    const pct = Math.min(100, Math.round((total / 500) * 100));
+    const barColor = pct >= 80 ? '#dc2626' : (pct >= 50 ? '#f59e0b' : '#059669');
+    body.innerHTML = `
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
+        <span style="font-size:18px;font-weight:800;color:var(--text);">${total}</span>
+        <span style="font-size:11px;color:var(--gray);">/ 500 (일일 한도)</span>
+      </div>
+      <div style="height:5px;background:#eee;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+        <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
+        ${items.map(it => `
+          <div style="display:flex;justify-content:space-between;">
+            <span>${it.label}</span>
+            <span style="font-weight:600;color:var(--text);">${bE[it.key] || 0}</span>
+          </div>`).join('')}
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:10px;color:#bbb;">
+        어제: ${y.total || 0}회
+      </div>`;
+  } catch(e) {
+    body.innerHTML = '<div style="color:#bbb;font-size:11px;">집계 로드 실패</div>';
+  }
+}
 
 async function loadDashStats(){
   try {
@@ -3026,7 +3090,7 @@ window.genCleanupActivePage = async () => {
   if (btn) { btn.disabled = true; btn.textContent = '🤖 AI 호출 중...'; }
 
   try {
-    const res = await fetch('/api/cleanup-ocr', {
+    const res = await _geminiFetch('/api/cleanup-ocr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: currentText, systemPrompt: preset.prompt }),
@@ -3114,7 +3178,7 @@ window.genCleanupBatch = async () => {
     const p = targets[i];
     _cleanupShowBatchProgress(targets.length, i);
     try {
-      const res = await fetch('/api/cleanup-ocr', {
+      const res = await _geminiFetch('/api/cleanup-ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: p.text, systemPrompt: preset.prompt }),
@@ -4153,7 +4217,7 @@ async function _qgCallMcq(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
@@ -4201,7 +4265,7 @@ async function _qgCallFillBlank(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4368,7 +4432,7 @@ async function _qgCallSubjective(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
@@ -4408,7 +4472,7 @@ async function _qgCallRecording(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4453,7 +4517,7 @@ async function _qgCallVocab(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4501,7 +4565,7 @@ async function _qgCallUnscramble(opts) {
 
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/generate-quiz', {
+    const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

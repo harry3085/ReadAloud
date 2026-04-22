@@ -135,6 +135,16 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── API 호출 카운터 (Gemini 사용량 추적) ───────────────
+    // read: 관리자만 (위젯 표시용)
+    // write: 로그인 사용자 (학생 앱에서 check-recording 호출 후 증가)
+    // delete 금지 (감사 흔적 유지)
+    match /apiUsage/{day} {
+      allow read: if isAdmin();
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
     // ── AI 시험 배정 (관리자 작성, 학생 읽기) ─────────────
     match /genTests/{testId} {
       allow read: if isSignedIn();

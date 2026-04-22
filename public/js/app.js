@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -499,6 +499,18 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
       </div>
       <span class="unit-arrow" style="color:${isCompleted?'#059669':''};">${isCompleted?ui.completedArrow:'›'}</span>
     </div>`;
+}
+
+// Gemini API 호출 로거 (일별 집계, 위젯용)
+async function _logApiCall(endpoint){
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    await setDoc(doc(db, 'apiUsage', today), {
+      total: increment(1),
+      [`byEndpoint.${endpoint}`]: increment(1),
+      lastAt: serverTimestamp(),
+    }, { merge: true });
+  } catch(e) { /* silent: logging 실패해도 앱 동작엔 영향 없음 */ }
 }
 
 function filterMyTests(allTests, myGroup, myUid){
@@ -1034,6 +1046,7 @@ async function _fbFetchTranslation(sentence) {
         systemPrompt: '다음 영어 문장을 자연스러운 한국어로 번역하세요. 번역문만 한 줄로 출력하고, 인용부호·설명·부연 없이 깔끔하게. 직역이 아닌 의역을 선호하세요.',
       }),
     });
+    _logApiCall('cleanup-ocr');
     const data = await res.json();
     return (data.success && data.cleaned) ? String(data.cleaned).trim() : '';
   } catch (e) {
@@ -2182,6 +2195,7 @@ async function _rv2Submit() {
             evaluationSeconds: evalSec,
           }),
         });
+        _logApiCall('check-recording');
         const data = await res.json();
         if (!res.ok || !data.success) {
           console.warn(`[rv2Submit] check ${i+1} failed`, res.status, data);
@@ -2218,6 +2232,7 @@ async function _rv2Submit() {
             evaluationSeconds: evalSec,
           }),
         });
+        _logApiCall('check-recording');
         const fbData = await fbRes.json();
         if (fbRes.ok && fbData.success) {
           feedback = {
