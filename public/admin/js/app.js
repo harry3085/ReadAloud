@@ -6382,14 +6382,15 @@ function _tpRender() {
     </div>
   `;
 
-  _tpAttachResizer();
-  _tpAttachVResizer();
+  _tpAttachResizer(root);
+  _tpAttachVResizer(root);
 }
 
-function _tpAttachResizer() {
-  const row = document.getElementById('tpTopRow');
-  const setsPane = document.getElementById('tpSetsPane');
-  const resizer = document.getElementById('tpResizer');
+function _tpAttachResizer(scope) {
+  const root = scope || document;
+  const row = root.querySelector('#tpTopRow');
+  const setsPane = root.querySelector('#tpSetsPane');
+  const resizer = root.querySelector('#tpResizer');
   if (!row || !setsPane || !resizer) return;
 
   const saved = parseFloat(localStorage.getItem('test_assign_sets_ratio'));
@@ -6423,9 +6424,10 @@ function _tpAttachResizer() {
 }
 
 // 상·하 비율 리사이저 (시험관리 전 서브메뉴 공통)
-function _tpAttachVResizer() {
-  const bottom = document.getElementById('tpBottomSection');
-  const resizer = document.getElementById('tpVResizer');
+function _tpAttachVResizer(scope) {
+  const root = scope || document;
+  const bottom = root.querySelector('#tpBottomSection');
+  const resizer = root.querySelector('#tpVResizer');
   if (!bottom || !resizer) return;
 
   // 복원
