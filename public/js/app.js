@@ -373,6 +373,8 @@ const TEST_TYPE_UI = {
     completedArrow:'↻', showRetakeBadge:true,
     accent:'#0369a1', retakeBtnBg:'#0EA5E9',
     screenId:'vocabQuiz', listFn:'goVocab', retakeFn:'vqRetakeCurrent',
+    pendingElId:'vqListPending', completedElId:'vqListCompleted',
+    startFn:'startVocab', viewPrevFn:'vqViewPreviousResult',
   },
   fill_blank: {
     defaultName:'빈칸 시험', subtitleEmoji:'✏️', subtitleDefault:'빈칸 채우기',
@@ -380,6 +382,8 @@ const TEST_TYPE_UI = {
     completedArrow:'✓', showRetakeBadge:false,
     accent:'#CA8A04', retakeBtnBg:'#EAB308',
     screenId:'fillBlank', listFn:'goFillBlank', retakeFn:'fbRetakeCurrent',
+    pendingElId:'fbListPending', completedElId:'fbListCompleted',
+    startFn:'startFillBlank', viewPrevFn:'fbViewPreviousResult',
   },
   mcq: {
     defaultName:'독해 시험', subtitleEmoji:'📖', subtitleDefault:'본문 독해',
@@ -387,6 +391,8 @@ const TEST_TYPE_UI = {
     completedArrow:'✓', showRetakeBadge:false,
     accent:'#F59E0B', retakeBtnBg:'#F59E0B',
     screenId:'readingMcq', listFn:'goReadingMcq', retakeFn:'mcqRetakeCurrent',
+    pendingElId:'mcqListPending', completedElId:'mcqListCompleted',
+    startFn:'startReadingMcq', viewPrevFn:'mcqViewPreviousResult',
   },
   unscramble: {
     defaultName:'언스크램블 시험', subtitleEmoji:'🔀', subtitleDefault:'언스크램블',
@@ -394,8 +400,50 @@ const TEST_TYPE_UI = {
     completedArrow:'↻', showRetakeBadge:true,
     accent:'#7c3aed', retakeBtnBg:'#A855F7',
     screenId:'unscrambleQuiz', listFn:'goUnscramble', retakeFn:'uqRetakeCurrent',
+    pendingElId:'unscListPending', completedElId:'unscListCompleted',
+    startFn:'startUnscramble2', viewPrevFn:'uqViewPreviousResult',
   },
 };
+
+// 공용 시험 목록 로더 (vocab / fill_blank / mcq / unscramble)
+async function _loadTestListByType(type) {
+  const ui = TEST_TYPE_UI[type];
+  const elP = document.getElementById(ui.pendingElId);
+  const elC = document.getElementById(ui.completedElId);
+  if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  try {
+    const myGroup = userProfile?.group || '';
+    const myUid = currentUser?.uid || '';
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === type);
+
+    const userCompMap = new Map();
+    await Promise.all(myTests.map(async t => {
+      try {
+        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
+        if (d.exists()) userCompMap.set(t.id, d.data());
+      } catch(e) {}
+    }));
+
+    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+    const pending = myTests.filter(t => !isCompleted(t));
+    const completed = myTests.filter(isCompleted);
+    const quote = v => String(v||'').replace(/'/g,"\\'");
+    const ocNew  = (id, name) => `${ui.startFn}('${id}','${quote(name)}')`;
+    const ocDone = (id, name) => `${ui.viewPrevFn}('${id}','${quote(name)}')`;
+
+    if (elP) elP.innerHTML = pending.length
+      ? pending.map(t => _makeTypeCard(type, t, false, ocNew(t.id,t.name), null, userCompMap.get(t.id)?.latestScore)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
+    if (elC) elC.innerHTML = completed.length
+      ? completed.map(t => _makeTypeCard(type, t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
+      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+  } catch(e) {
+    console.error(e);
+    if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
 
 // 공용 결과 화면 shell (헤더 + 점수 카드 + 문제별 상세 + 버튼)
 function _renderResultShell(type, {correct, wrong, total, score, passed, passScore, hintUsageCount, detailHtml}) {
@@ -508,47 +556,7 @@ let _mcqTakeState = {
   currentIdx: 0,
   answers: [],
 };
-async function loadReadingMcqList(){
-  const elP = document.getElementById('mcqListPending');
-  const elC = document.getElementById('mcqListCompleted');
-  if(elP) elP.innerHTML='<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-
-  try{
-    const myGroup = userProfile?.group||'';
-    const myUid = currentUser?.uid||'';
-    const snap = await getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'mcq');
-
-    const userCompMap = new Map();
-    await Promise.all(myTests.map(async t => {
-      try{
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) userCompMap.set(t.id, d.data());
-      }catch(e){ console.warn(e); }
-    }));
-
-    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
-    const pending = myTests.filter(t => !isCompleted(t));
-    const completed = myTests.filter(isCompleted);
-
-    const ocNew = (id, name) => `startReadingMcq('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-    const ocDone = (id, name) => `mcqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-
-    if(elP) elP.innerHTML = pending.length
-      ? pending.map(t => {
-          const comp = userCompMap.get(t.id);
-          return _mcqMakeCard(t,false,ocNew(t.id,t.name),null, comp?.latestScore);
-        }).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
-    if(elC) elC.innerHTML = completed.length
-      ? completed.map(t=>_mcqMakeCard(t,true,ocDone(t.id,t.name),userCompMap.get(t.id)?.score ?? null, null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
-  }catch(e){
-    console.error(e);
-    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
-  }
-}
+const loadReadingMcqList = () => _loadTestListByType('mcq');
 
 const _mcqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
   _makeTypeCard('mcq', t, isCompleted, onclick, completedScore, latestFailedScore);
@@ -813,47 +821,7 @@ function _fbCurQIdx(){
   const s = _fbState;
   return (s.playOrder && s.playOrder.length) ? s.playOrder[s.currentIdx] : s.currentIdx;
 }
-async function loadFillBlankList(){
-  const elP = document.getElementById('fbListPending');
-  const elC = document.getElementById('fbListCompleted');
-  if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-
-  try{
-    const myGroup = userProfile?.group || '';
-    const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'fill_blank');
-
-    const userCompMap = new Map();
-    await Promise.all(myTests.map(async t => {
-      try{
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) userCompMap.set(t.id, d.data());
-      }catch(e){ console.warn(e); }
-    }));
-
-    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
-    const pending = myTests.filter(t => !isCompleted(t));
-    const completed = myTests.filter(isCompleted);
-
-    const ocNew = (id, name) => `startFillBlank('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-    const ocDone = (id, name) => `fbViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-
-    if(elP) elP.innerHTML = pending.length
-      ? pending.map(t => {
-          const comp = userCompMap.get(t.id);
-          return _fbMakeCard(t, false, ocNew(t.id,t.name), null, comp?.latestScore);
-        }).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
-    if(elC) elC.innerHTML = completed.length
-      ? completed.map(t => _fbMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
-  }catch(e){
-    console.error(e);
-    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
-  }
-}
+const loadFillBlankList = () => _loadTestListByType('fill_blank');
 
 const _fbMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
   _makeTypeCard('fill_blank', t, isCompleted, onclick, completedScore, latestFailedScore);
@@ -3820,47 +3788,7 @@ window.goVocab = async () => {
   await loadVocabList();
 };
 
-async function loadVocabList() {
-  const elP = document.getElementById('vqListPending');
-  const elC = document.getElementById('vqListCompleted');
-  if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-  try {
-    const myGroup = userProfile?.group || '';
-    const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'vocab');
-
-    const userCompMap = new Map(); // testId → userCompleted 전체 data
-    await Promise.all(myTests.map(async t => {
-      try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) userCompMap.set(t.id, d.data());
-      } catch(e) {}
-    }));
-
-    // 완료 여부: score(= 최고 통과 점수) 필드 존재 시에만
-    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
-    const pending = myTests.filter(t => !isCompleted(t));
-    const completed = myTests.filter(isCompleted);
-    const ocNew = (id, name) => `startVocab('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-    const ocDone = (id, name) => `vqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-
-    if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => {
-          const comp = userCompMap.get(t.id);
-          const latest = comp?.latestScore;
-          return _vqMakeCard(t, false, ocNew(t.id,t.name), null, latest);
-        }).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
-    if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _vqMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
-  } catch(e) {
-    console.error(e);
-    if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
-  }
-}
+const loadVocabList = () => _loadTestListByType('vocab');
 
 const _vqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
   _makeTypeCard('vocab', t, isCompleted, onclick, completedScore, latestFailedScore);
@@ -4391,45 +4319,7 @@ window.goUnscramble = async () => {
   await loadUnscrambleList2();
 };
 
-async function loadUnscrambleList2() {
-  const elP = document.getElementById('unscListPending');
-  const elC = document.getElementById('unscListCompleted');
-  if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-  try {
-    const myGroup = userProfile?.group || '';
-    const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'unscramble');
-
-    const userCompMap = new Map();
-    await Promise.all(myTests.map(async t => {
-      try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) userCompMap.set(t.id, d.data());
-      } catch(e) {}
-    }));
-
-    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
-    const pending = myTests.filter(t => !isCompleted(t));
-    const completed = myTests.filter(isCompleted);
-    const ocNew = (id, name) => `startUnscramble2('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-    const ocDone = (id, name) => `uqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
-
-    if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => {
-          const comp = userCompMap.get(t.id);
-          return _uqMakeCard(t, false, ocNew(t.id,t.name), null, comp?.latestScore);
-        }).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
-    if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _uqMakeCard(t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
-  } catch(e) {
-    console.error(e);
-    if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
-  }
-}
+const loadUnscrambleList2 = () => _loadTestListByType('unscramble');
 
 const _uqMakeCard = (t, isCompleted, onclick, completedScore, latestFailedScore) =>
   _makeTypeCard('unscramble', t, isCompleted, onclick, completedScore, latestFailedScore);
