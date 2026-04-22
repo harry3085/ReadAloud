@@ -176,113 +176,36 @@ async function updateAllBadges(force=false){
     updateRecBadge(),
   ]);
 }
-async function updateTestBadge(){
-  const badge = document.getElementById('testBadge');
-  if(!badge || !currentUser || !userProfile) return;
-  try{
-    const myGroup = userProfile.group||'';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // 내 시험 필터 + 언스크램블 제외 (단어시험만)
-    const myTests = allTests.filter(t=>{
-      if(!t.active && t.active !== undefined) return false;
-      if(t.testMode === 'unscramble') return false;  // 언스크램블은 별도 뱃지
-      const targets = t.targets||[];
-      if(!targets.length){
-        return (t.targetType==='class'&&t.targetId===myGroup)||(t.targetType==='student'&&t.targetId===myUid)||(t.targetId===myGroup);
-      }
-      return targets.some(tg=>(tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
-    });
-    // 완료된 시험 확인
-    const completedSet = new Set();
-    await Promise.all(myTests.map(async t=>{
-      try{
-        const d = await getDoc(doc(db,'tests',t.id,'userCompleted',myUid));
-        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      }catch(e){console.warn(e);}
-    }));
-    const unfinished = myTests.filter(t=>!completedSet.has(t.id)).length;
-    if(unfinished > 0){
-      badge.textContent = unfinished > 99 ? '99+' : unfinished;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  }catch(e){ badge.style.display='none'; }
-}
-
-async function updateMcqBadge(){
-  const badge = document.getElementById('mcqBadge');
-  if(!badge || !currentUser || !userProfile) return;
-  try{
-    const myGroup = userProfile.group||'';
+// 공용 뱃지 업데이트 (genTests 기반, testMode 별칭 수용)
+async function _updateGenTestBadge(testModes, badgeId) {
+  const badge = document.getElementById(badgeId);
+  if (!badge || !currentUser || !userProfile) return;
+  try {
+    const myGroup = userProfile.group || '';
     const myUid = currentUser.uid;
     const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const myTests = allTests.filter(t => {
-      if(!t.active && t.active !== undefined) return false;
-      if(t.testMode !== 'reading-mcq') return false;
-      const targets = t.targets || [];
-      if(!targets.length){
-        return (t.targetType==='class'&&t.targetId===myGroup)
-          ||(t.targetType==='student'&&t.targetId===myUid)
-          ||(t.targetId===myGroup);
-      }
-      return targets.some(tg => (tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
-    });
+    const myTests = filterMyTests(snap.docs.map(d => ({id:d.id,...d.data()})), myGroup, myUid)
+      .filter(t => testModes.includes(t.testMode));
     const completedSet = new Set();
     await Promise.all(myTests.map(async t => {
-      try{
+      try {
         const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      }catch(e){ console.warn(e); }
+        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
+      } catch(e) {}
     }));
     const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
-    if(unfinished > 0){
+    if (unfinished > 0) {
       badge.textContent = unfinished > 99 ? '99+' : unfinished;
       badge.style.display = 'flex';
     } else {
       badge.style.display = 'none';
     }
-  }catch(e){ badge.style.display='none'; }
+  } catch(e) { badge.style.display = 'none'; }
 }
 
-async function updateFbBadge(){
-  const badge = document.getElementById('blankBadge');
-  if(!badge || !currentUser || !userProfile) return;
-  try{
-    const myGroup = userProfile.group||'';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const myTests = allTests.filter(t => {
-      if(!t.active && t.active !== undefined) return false;
-      if(t.testMode !== 'fill-blank') return false;
-      const targets = t.targets || [];
-      if(!targets.length){
-        return (t.targetType==='class'&&t.targetId===myGroup)
-          ||(t.targetType==='student'&&t.targetId===myUid)
-          ||(t.targetId===myGroup);
-      }
-      return targets.some(tg => (tg.type==='class'&&tg.id===myGroup)||(tg.type==='student'&&tg.id===myUid));
-    });
-    const completedSet = new Set();
-    await Promise.all(myTests.map(async t => {
-      try{
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      }catch(e){ console.warn(e); }
-    }));
-    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
-    if(unfinished > 0){
-      badge.textContent = unfinished > 99 ? '99+' : unfinished;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  }catch(e){ badge.style.display='none'; }
-}
+const updateTestBadge   = () => _updateGenTestBadge(['vocab'], 'testBadge');
+const updateMcqBadge    = () => _updateGenTestBadge(['mcq','reading-mcq'], 'mcqBadge');
+const updateFbBadge     = () => _updateGenTestBadge(['fill_blank','fill-blank'], 'blankBadge');
 
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
@@ -420,6 +343,28 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
   return { isNewBest, prevBest };
 }
 
+// 공용 화면 템플릿 캐싱 (결과 화면이 innerHTML 덮어쓸 수 있는 퀴즈 화면용)
+const _screenTemplates = {};
+
+function _screenPrepare(screenId, probeSelector, onAfterRestore){
+  const screen = document.getElementById(screenId);
+  if (!screen) return;
+  if (_screenTemplates[screenId] && !screen.querySelector(probeSelector)) {
+    // 결과 화면이 덮어쓴 상태 → 원본 복원
+    screen.innerHTML = _screenTemplates[screenId];
+    if (typeof onAfterRestore === 'function') onAfterRestore();
+  } else if (!_screenTemplates[screenId]) {
+    _screenTemplates[screenId] = screen.innerHTML;
+  }
+}
+
+function _screenSnapshotOnce(screenId){
+  const screen = document.getElementById(screenId);
+  if (screen && !_screenTemplates[screenId]) {
+    _screenTemplates[screenId] = screen.innerHTML;
+  }
+}
+
 function filterMyTests(allTests, myGroup, myUid){
   return allTests.filter(t=>{
     if(!t.active && t.active !== undefined) return false;
@@ -475,8 +420,6 @@ let _mcqTakeState = {
   currentIdx: 0,
   answers: [],
 };
-let _mcqScreenTemplate = null;   // 결과 화면이 innerHTML을 덮어쓰므로 원본 보존
-
 async function loadReadingMcqList(){
   const elP = document.getElementById('mcqListPending');
   const elC = document.getElementById('mcqListCompleted');
@@ -487,7 +430,7 @@ async function loadReadingMcqList(){
     const myUid = currentUser?.uid||'';
     const snap = await getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t=>t.testMode==='reading-mcq');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='mcq' || t.testMode==='reading-mcq');
 
     const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -556,13 +499,7 @@ window.startReadingMcq = async (testId, testName) => {
       answers: new Array(questions.length).fill(null),
     };
 
-    // 원본 HTML 보존 + 이전 시험 결과 화면이 남아있으면 복원
-    const screen = document.getElementById('readingMcq');
-    if(screen){
-      if(_mcqScreenTemplate === null) _mcqScreenTemplate = screen.innerHTML;
-      else screen.innerHTML = _mcqScreenTemplate;
-    }
-
+    _screenPrepare('readingMcq', '#mcqProgressBar');
     show('readingMcq');
     _mcqRenderStep();
   }catch(e){
@@ -701,7 +638,7 @@ async function _mcqSubmit(){
 function _mcqRenderResult({correct, wrong, total, score, passed, passScore, questions, answers}){
   const screen = document.getElementById('readingMcq');
   if(!screen) return;
-  if (!_mcqScreenTemplate) _mcqScreenTemplate = screen.innerHTML;
+  _screenSnapshotOnce('readingMcq');
 
   const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
     const userIdx = answers[i];
@@ -779,9 +716,7 @@ window.mcqViewPreviousResult = async (testId, testName) => {
     const questions = test.questions || [];
     _mcqTakeState = { test, questions, currentIdx: 0, answers: comp.answers || [] };
 
-    const screen = document.getElementById('readingMcq');
-    if (screen && _mcqScreenTemplate === null) _mcqScreenTemplate = screen.innerHTML;
-
+    _screenSnapshotOnce('readingMcq');
     show('readingMcq');
     _mcqRenderResult({
       correct: comp.correct || 0,
@@ -824,20 +759,10 @@ let _fbState = {
   hintCache: {},    // { [qIdx]: { ko: '번역' } }
 };
 
-function _fbShuffle(arr){
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 function _fbCurQIdx(){
   const s = _fbState;
   return (s.playOrder && s.playOrder.length) ? s.playOrder[s.currentIdx] : s.currentIdx;
 }
-let _fbScreenTemplate = null;  // 결과 화면이 innerHTML 덮어쓰므로 원본 캐시
-
 async function loadFillBlankList(){
   const elP = document.getElementById('fbListPending');
   const elC = document.getElementById('fbListCompleted');
@@ -848,7 +773,7 @@ async function loadFillBlankList(){
     const myUid = currentUser?.uid || '';
     const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'fill-blank');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='fill_blank' || t.testMode==='fill-blank');
 
     const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -910,18 +835,12 @@ window.startFillBlank = async (testId, testName) => {
     const questions = (test.questions || []).filter(q => q.type === 'fill_blank' || q.blanks);
     if(questions.length === 0){ showToast('문제가 비어있습니다.'); return; }
 
-    // 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 복원
-    const screen = document.getElementById('fillBlank');
-    if(screen && _fbScreenTemplate && !screen.querySelector('#fbProgressBar')){
-      screen.innerHTML = _fbScreenTemplate;
-    } else if(screen && !_fbScreenTemplate){
-      _fbScreenTemplate = screen.innerHTML;
-    }
+    _screenPrepare('fillBlank', '#fbProgressBar');
 
     _fbState = {
       test,
       questions,
-      playOrder: _fbShuffle([...Array(questions.length).keys()]),
+      playOrder: _rngShuffle([...Array(questions.length).keys()]),
       currentIdx: 0,
       answers: questions.map(q => new Array((q.blanks||[]).length).fill('')),
       hintStages: questions.map(() => 0),
@@ -1442,7 +1361,7 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore, detai
   const screen = document.getElementById('fillBlank');
   if(!screen) return;
   // 원본 템플릿 저장 (아직 저장 안됐으면)
-  if(!_fbScreenTemplate) _fbScreenTemplate = screen.innerHTML;
+  _screenSnapshotOnce('fillBlank');
 
   // 문제별 상세 리스트 (힌트 뱃지 포함)
   const qListHtml = (questions||[]).map((q, i) => {
@@ -1539,10 +1458,7 @@ window.fbViewPreviousResult = async (testId, testName) => {
       hintCache: {},
     };
 
-    // 원본 화면 템플릿 저장 (재응시 시 복원 필요)
-    const screen = document.getElementById('fillBlank');
-    if (screen && !_fbScreenTemplate) _fbScreenTemplate = screen.innerHTML;
-
+    _screenSnapshotOnce('fillBlank');
     show('fillBlank');
 
     // detail 재구성
@@ -1601,7 +1517,7 @@ async function loadRecAiList(){
     const myUid = currentUser?.uid || '';
     const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording-ai');
+    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode==='recording' || t.testMode==='recording-ai');
 
     const completedMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -1643,26 +1559,7 @@ async function loadRecAiList(){
   }
 }
 
-async function updateRecBadge(){
-  const badge = document.getElementById('recBadge');
-  if(!badge || !currentUser || !userProfile) return;
-  try{
-    const myGroup = userProfile.group || '';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const mine = filterMyTests(snap.docs.map(d=>({id:d.id,...d.data()})), myGroup, myUid)
-      .filter(t => t.testMode === 'recording-ai');
-    let count = 0;
-    await Promise.all(mine.map(async t => {
-      try{
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(!d.exists()) count++;
-      }catch(e){}
-    }));
-    badge.textContent = count > 99 ? '99+' : count;
-    badge.style.display = count > 0 ? 'flex' : 'none';
-  }catch(e){ badge.style.display = 'none'; }
-}
+const updateRecBadge = () => _updateGenTestBadge(['recording','recording-ai'], 'recBadge');
 
 let _raState = {
   test: null,
@@ -1676,8 +1573,6 @@ let _raState = {
   timerInterval: null,
   timerStart: 0,
 };
-let _raScreenTemplate = null;
-
 window.startRecAi = async (testId, testName) => {
   try{
     const snap = await getDoc(doc(db,'genTests',testId));
@@ -1702,13 +1597,7 @@ window.startRecAi = async (testId, testName) => {
       return _raStartV2(test, firstQ);
     }
 
-    // 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 복원
-    const screen = document.getElementById('recAiQuiz');
-    if(screen && _raScreenTemplate && !screen.querySelector('#raProgressBar')){
-      screen.innerHTML = _raScreenTemplate;
-    } else if(screen && !_raScreenTemplate){
-      _raScreenTemplate = screen.innerHTML;
-    }
+    _screenPrepare('recAiQuiz', '#raProgressBar');
 
     _raState = {
       test,
@@ -1976,7 +1865,7 @@ function _raRenderResult(count){
   _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if(!screen) return;
-  if(!_raScreenTemplate) _raScreenTemplate = screen.innerHTML;
+  _screenSnapshotOnce('recAiQuiz');
   screen.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
       <div style="font-size:72px;margin-bottom:12px;">🎉</div>
@@ -3991,8 +3880,6 @@ function _vqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore)
     </div>`;
 }
 
-let _vqScreenTemplate = null;
-
 window.startVocab = async (testId, testName) => {
   try {
     const snap = await getDoc(doc(db,'genTests',testId));
@@ -4001,15 +3888,10 @@ window.startVocab = async (testId, testName) => {
     let questions = (test.questions || []).filter(q => q.type === 'vocab');
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
 
-    // 이전 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 템플릿 복원
-    const screen = document.getElementById('vocabQuiz');
-    if (screen && _vqScreenTemplate && !screen.querySelector('#vqProgressBar')) {
-      screen.innerHTML = _vqScreenTemplate;
-      // DOM 복원 후 스펠 input 리스너 재바인딩 (새 element 라서 기존 리스너 미연결)
+    // 원본 템플릿 복원 + 스펠 input 리스너 재바인딩 (복원된 DOM 에는 기존 리스너 없음)
+    _screenPrepare('vocabQuiz', '#vqProgressBar', () => {
       if (typeof _vqBindSpellInput === 'function') _vqBindSpellInput();
-    } else if (screen && !_vqScreenTemplate) {
-      _vqScreenTemplate = screen.innerHTML;
-    }
+    });
 
     // vocabOptions (기본값 제공)
     const opts = Object.assign(
@@ -4411,7 +4293,7 @@ async function _vqSubmit() {
 function _vqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers }) {
   const screen = document.getElementById('vocabQuiz');
   if (!screen) return;
-  if (!_vqScreenTemplate) _vqScreenTemplate = screen.innerHTML;
+  _screenSnapshotOnce('vocabQuiz');
 
   // 문제별 상세 (questions + answers 있을 때만)
   const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
@@ -4492,9 +4374,7 @@ window.vqViewPreviousResult = async (testId, testName) => {
       : (test.questions || []).filter(q => q.type === 'vocab');
     _vqState = { test, questions, currentIdx: 0, answers: comp.answers || [], opts: test.vocabOptions || {} };
 
-    const screen = document.getElementById('vocabQuiz');
-    if (screen && !_vqScreenTemplate) _vqScreenTemplate = screen.innerHTML;
-
+    _screenSnapshotOnce('vocabQuiz');
     show('vocabQuiz');
     _vqRenderResult({
       correct: comp.correct || 0,
@@ -4519,33 +4399,7 @@ window.quitVocab = async () => {
   goHome();
 };
 
-async function updateVocabBadge() {
-  const badge = document.getElementById('testBadge');
-  if (!badge || !currentUser || !userProfile) return;
-  try {
-    const myGroup = userProfile.group || '';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const myTests = filterMyTests(
-      snap.docs.map(d => ({id:d.id, ...d.data()})),
-      myGroup, myUid
-    ).filter(t => t.testMode === 'vocab');
-    const completedSet = new Set();
-    await Promise.all(myTests.map(async t => {
-      try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      } catch(e) {}
-    }));
-    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
-    if (unfinished > 0) {
-      badge.textContent = unfinished > 99 ? '99+' : unfinished;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  } catch(e) { badge.style.display = 'none'; }
-}
+const updateVocabBadge = () => _updateGenTestBadge(['vocab','word'], 'testBadge');
 
 // updateAllBadges 확장 (vocab)
 const _origUpdateAllBadgesForVocab = window.updateAllBadges;
@@ -4634,8 +4488,6 @@ function _uqMakeCard(t, isCompleted, onclick, completedScore, latestFailedScore)
     </div>`;
 }
 
-let _uqScreenTemplate = null;
-
 window.startUnscramble2 = async (testId, testName) => {
   try {
     const snap = await getDoc(doc(db,'genTests',testId));
@@ -4654,13 +4506,7 @@ window.startUnscramble2 = async (testId, testName) => {
       return { placed: [], chunks: shuffled };
     });
 
-    // 이전 결과 화면이 innerHTML 덮어썼을 수 있으므로 원본 템플릿 복원
-    const screen = document.getElementById('unscrambleQuiz');
-    if (screen && _uqScreenTemplate && !screen.querySelector('#uqProgressBar')) {
-      screen.innerHTML = _uqScreenTemplate;
-    } else if (screen && !_uqScreenTemplate) {
-      _uqScreenTemplate = screen.innerHTML;
-    }
+    _screenPrepare('unscrambleQuiz', '#uqProgressBar');
 
     _uqState = { test, questions, currentIdx: 0, answers, feedback: null };
     show('unscrambleQuiz');
@@ -4935,7 +4781,7 @@ async function _uqSubmit() {
 function _uqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers }) {
   const screen = document.getElementById('unscrambleQuiz');
   if (!screen) return;
-  if (!_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
+  _screenSnapshotOnce('unscrambleQuiz');
 
   const qListHtml = (questions && answers) ? (questions||[]).map((q, i) => {
     const ans = answers[i] || { placed: [], chunks: [] };
@@ -5015,9 +4861,7 @@ window.uqViewPreviousResult = async (testId, testName) => {
     // 재응시 버튼에서 test 참조할 수 있도록 상태 세팅
     _uqState = { test, questions, currentIdx: 0, answers: comp.answers || [], feedback: null };
 
-    const screen = document.getElementById('unscrambleQuiz');
-    if (screen && !_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
-
+    _screenSnapshotOnce('unscrambleQuiz');
     show('unscrambleQuiz');
 
     const total = comp.total ?? questions.length;
@@ -5045,33 +4889,7 @@ window.quitUnscramble2 = async () => {
 };
 
 // updateUnscBadge 덮어쓰기: genTests(unscramble) 기반
-async function updateUnscBadge2() {
-  const badge = document.getElementById('unscrambleBadge');
-  if (!badge || !currentUser || !userProfile) return;
-  try {
-    const myGroup = userProfile.group || '';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
-    const myTests = filterMyTests(
-      snap.docs.map(d => ({id:d.id, ...d.data()})),
-      myGroup, myUid
-    ).filter(t => t.testMode === 'unscramble');
-    const completedSet = new Set();
-    await Promise.all(myTests.map(async t => {
-      try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      } catch(e) {}
-    }));
-    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
-    if (unfinished > 0) {
-      badge.textContent = unfinished > 99 ? '99+' : unfinished;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  } catch(e) { badge.style.display = 'none'; }
-}
+const updateUnscBadge2 = () => _updateGenTestBadge(['unscramble'], 'unscrambleBadge');
 
 // 기존 updateTestBadge / updateUnscBadge 호출 지점을 v2 로 연결
 window.updateTestBadge = updateVocabBadge;
