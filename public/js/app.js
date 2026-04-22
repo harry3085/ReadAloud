@@ -4328,13 +4328,14 @@ async function loadUnscrambleList2() {
 
     const pending = myTests.filter(t => !completedMap.has(t.id));
     const completed = myTests.filter(t => completedMap.has(t.id));
-    const oc = (id, name) => `startUnscramble2('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocNew = (id, name) => `startUnscramble2('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocDone = (id, name) => `uqViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => _uqMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      ? pending.map(t => _uqMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _uqMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _uqMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   } catch(e) {
     console.error(e);
@@ -4646,11 +4647,25 @@ async function _uqSubmit() {
       createdAt: serverTimestamp(),
     });
     try {
-      await setDoc(
-        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-        { uid: currentUser.uid, userName: userProfile?.name || '', score, date: today, completedAt: serverTimestamp() },
-        { merge: true }
-      );
+      // 완료 목록은 "통과 + 기존 최고점 초과" 일 때만 업데이트 (빈칸채우기와 동일 규칙)
+      const compRef = doc(db,'genTests',t.id,'userCompleted',currentUser.uid);
+      const existingDoc = await getDoc(compRef);
+      const existing = existingDoc.exists() ? existingDoc.data() : null;
+      const shouldUpdate = passed && (!existing || score > (existing.score || 0));
+      if (shouldUpdate) {
+        await setDoc(compRef, {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score,
+          correct, wrong: total - correct, total,
+          passed, passScore,
+          date: today,
+          completedAt: serverTimestamp(),
+        }, { merge: true });
+        if (existing && passed) showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
+      } else if (passed && existing) {
+        showToast(`기존 최고점 ${existing.score}점 유지`);
+      }
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
   } catch(e) {
     console.error(e);
@@ -4678,13 +4693,52 @@ function _uqRenderResult({ correct, wrong, total, score, passed, passScore }) {
           <div><div style="color:var(--text);font-weight:700;font-size:18px;">${total}</div><div style="color:var(--gray);font-size:11px;">전체</div></div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:320px;">
-        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
-        <button onclick="goUnscramble()" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;">
+        <button onclick="goUnscramble()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
+        <button onclick="startUnscramble2('${esc(_uqState.test?.id||'')}','${esc(_uqState.test?.name||'')}')" style="flex:1;padding:14px;background:#A855F7;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>`;
   updateUnscBadge2();
 }
+
+// ─── 완료된 언스크램블 시험의 이전 결과 보기 + 재응시 선택 ───
+window.uqViewPreviousResult = async (testId, testName) => {
+  try {
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db, 'genTests', testId)),
+      getDoc(doc(db, 'genTests', testId, 'userCompleted', currentUser.uid)),
+    ]);
+    if (!testSnap.exists() || !compSnap.exists()) {
+      showToast('이전 결과를 불러올 수 없습니다. 새로 시작합니다.');
+      startUnscramble2(testId, testName);
+      return;
+    }
+    const test = { id: testId, ...testSnap.data() };
+    const comp = compSnap.data();
+    const questions = (test.questions || []).filter(q => q.type === 'unscramble');
+
+    // 재응시 버튼에서 test 참조할 수 있도록 상태 세팅
+    _uqState = { test, questions, currentIdx: 0, answers: [], feedback: null };
+
+    const screen = document.getElementById('unscrambleQuiz');
+    if (screen && !_uqScreenTemplate) _uqScreenTemplate = screen.innerHTML;
+
+    show('unscrambleQuiz');
+
+    const total = comp.total ?? questions.length;
+    const correct = comp.correct ?? 0;
+    const wrong = comp.wrong ?? (total - correct);
+    const score = comp.score ?? 0;
+    const passScore = comp.passScore ?? (test.passScore ?? 80);
+    const passed = comp.passed ?? (score >= passScore);
+
+    _uqRenderResult({ correct, wrong, total, score, passed, passScore });
+  } catch (e) {
+    console.error('언스크램블 이전 결과 로드 실패', e);
+    showToast('로드 실패: ' + e.message);
+    startUnscramble2(testId, testName);
+  }
+};
 
 window.quitUnscramble2 = async () => {
   if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
