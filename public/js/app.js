@@ -723,13 +723,14 @@ async function loadFillBlankList(){
     const pending = myTests.filter(t => !completedMap.has(t.id));
     const completed = myTests.filter(t => completedMap.has(t.id));
 
-    const oc = (id, name) => `startFillBlank('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocNew = (id, name) => `startFillBlank('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
+    const ocDone = (id, name) => `fbViewPreviousResult('${id}','${String(name||'').replace(/'/g,"\\'")}')`;
 
     if(elP) elP.innerHTML = pending.length
-      ? pending.map(t => _fbMakeCard(t, false, oc(t.id,t.name), null)).join('')
+      ? pending.map(t => _fbMakeCard(t, false, ocNew(t.id,t.name), null)).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
     if(elC) elC.innerHTML = completed.length
-      ? completed.map(t => _fbMakeCard(t, true, oc(t.id,t.name), completedMap.get(t.id))).join('')
+      ? completed.map(t => _fbMakeCard(t, true, ocDone(t.id,t.name), completedMap.get(t.id))).join('')
       : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
   }catch(e){
     console.error(e);
@@ -908,6 +909,16 @@ window.fbUseHint = async () => {
   const cur = s.hintStages[qIdx] || 0;
   if (cur >= 2) return;
 
+  // 현재 포커스된 입력 기억 (힌트 조작 후 복귀)
+  const focusIdx = (_fbActiveBlank != null) ? _fbActiveBlank : 0;
+  const refocus = () => {
+    const inp = document.getElementById('fb-input-' + focusIdx);
+    if (inp) {
+      try { inp.focus({ preventScroll: true }); } catch(e) { inp.focus(); }
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch(e){}
+    }
+  };
+
   if (cur === 0) {
     // 1단계: 해석 표시 (sentenceKo 있으면 그대로, 없으면 Gemini 온디맨드 번역)
     s.hintStages[qIdx] = 1;
@@ -918,6 +929,7 @@ window.fbUseHint = async () => {
       s.hintCache[qIdx] = { ko: ko || '(번역 실패)' };
     }
     _fbRefreshHintUI();
+    refocus();
   } else if (cur === 1) {
     // 2단계: 각 빈칸의 첫 글자 공개 (기존 입력값이 다르면 교체)
     s.hintStages[qIdx] = 2;
@@ -926,7 +938,6 @@ window.fbUseHint = async () => {
     blanks.forEach((correct, j) => {
       const first = String(correct || '').charAt(0).toLowerCase();
       const existing = s.answers[qIdx][j] || '';
-      // 현재 값의 첫 글자가 정답 첫 글자와 다르면 첫 글자만 교체
       if (!existing || existing[0] !== first) {
         s.answers[qIdx][j] = first;
         const inp = document.getElementById('fb-input-' + j);
@@ -935,12 +946,7 @@ window.fbUseHint = async () => {
     });
     _fbRefreshBoxes();
     _fbRefreshHintUI();
-    // 첫 빈칸 포커스
-    const firstInp = document.getElementById('fb-input-0');
-    if (firstInp) {
-      try { firstInp.focus({ preventScroll: true }); } catch(e) { firstInp.focus(); }
-      try { firstInp.setSelectionRange(firstInp.value.length, firstInp.value.length); } catch(e){}
-    }
+    refocus();
   }
 };
 
@@ -1087,6 +1093,8 @@ window.fbInputKey = (event, blankIdx) => {
 
 window.fbNext = async () => {
   _fbStopTimer();
+  // 현재 문제 즉시 피드백 (1.5초 하이라이트)
+  await _fbShowQuestionFeedback();
   const s = _fbState;
   if(s.currentIdx < s.questions.length - 1){
     s.currentIdx++;
@@ -1095,6 +1103,50 @@ window.fbNext = async () => {
     await _fbSubmit();
   }
 };
+
+function _fbShowQuestionFeedback(){
+  return new Promise(resolve => {
+    const s = _fbState;
+    const q = s.questions[s.currentIdx];
+    if (!q) { resolve(); return; }
+    const blanks = q.blanks || [];
+    const ans = s.answers[s.currentIdx] || [];
+    let allCorrect = blanks.length > 0;
+
+    blanks.forEach((correct, j) => {
+      const user = (ans[j] || '').trim().toLowerCase();
+      const target = String(correct || '').trim().toLowerCase();
+      const isCorrect = user === target;
+      if (!isCorrect) allCorrect = false;
+      const letterCount = target.length;
+      for (let k = 0; k < letterCount; k++) {
+        const box = document.getElementById(`fb-box-${j}-${k}`);
+        if (!box) continue;
+        if (isCorrect) {
+          box.style.borderColor = '#22C55E';
+          box.style.background = '#DCFCE7';
+          box.style.color = '#059669';
+        } else {
+          // 오답은 정답을 빨간 박스로 보여줌
+          box.style.borderColor = '#EF4444';
+          box.style.background = '#FEE2E2';
+          box.style.color = '#DC2626';
+          box.textContent = target[k] || '';
+        }
+      }
+    });
+
+    // 하단 피드백 배너
+    const hintBox = document.getElementById('fbHintBox');
+    if (hintBox) {
+      hintBox.innerHTML = allCorrect
+        ? '<span style="color:#059669;font-weight:800;font-size:14px;">✓ 정답!</span>'
+        : `<span style="color:#DC2626;font-weight:800;font-size:14px;">✗ 오답 · 정답: ${esc(blanks.join(', '))}</span>`;
+    }
+
+    setTimeout(resolve, 1500);
+  });
+}
 
 async function _fbSubmit(){
   _fbStopTimer();
@@ -1181,7 +1233,15 @@ async function _fbSubmit(){
         {
           uid: currentUser.uid,
           userName: userProfile?.name || '',
-          score, date: today,
+          score, rawScore,
+          correct: correctBlanks,
+          wrong: totalBlanks - correctBlanks,
+          total: totalBlanks,
+          passed, passScore,
+          hintUsageCount, hintStage1Count, hintStage2Count, hintPenalty,
+          hintDetails,
+          answers: s.answers,       // 재검토용 학생 답안
+          date: today,
           completedAt: serverTimestamp(),
         },
         { merge: true }
@@ -1259,14 +1319,78 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore, detai
           <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">문제별 결과</div>
           ${qListHtml}
         </div>` : ''}
-      <div style="display:flex;gap:10px;width:100%;max-width:320px;padding-bottom:16px;">
-        <button onclick="goHome()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">홈으로</button>
-        <button onclick="goFillBlank()" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">시험 목록</button>
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
+        <button onclick="goFillBlank()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
+        <button onclick="startFillBlank('${esc(_fbState.test?.id||'')}','${esc(_fbState.test?.name||'')}')" style="flex:1;padding:14px;background:#EAB308;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
       </div>
     </div>
   `;
   updateFbBadge();
 }
+
+// ─── 완료된 시험의 이전 결과 보기 + 재응시 선택 ───
+window.fbViewPreviousResult = async (testId, testName) => {
+  try {
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db, 'genTests', testId)),
+      getDoc(doc(db, 'genTests', testId, 'userCompleted', currentUser.uid)),
+    ]);
+    if (!testSnap.exists() || !compSnap.exists()) {
+      showToast('이전 결과를 불러올 수 없습니다. 새로 시작합니다.');
+      startFillBlank(testId, testName);
+      return;
+    }
+    const test = { id: testId, ...testSnap.data() };
+    const comp = compSnap.data();
+    const questions = (test.questions || []).filter(q => q.type === 'fill_blank' || q.blanks);
+
+    // 상태에 기본값 세팅 (재응시 버튼이 쓸 수 있도록)
+    _fbState = {
+      test,
+      questions,
+      currentIdx: 0,
+      answers: comp.answers || questions.map(q => new Array((q.blanks||[]).length).fill('')),
+      hintStages: (comp.hintDetails || []).reduce((acc, h) => { acc[h.qIdx] = h.stage; return acc; }, questions.map(() => 0)),
+      hintCache: {},
+    };
+
+    // 원본 화면 템플릿 저장 (재응시 시 복원 필요)
+    const screen = document.getElementById('fillBlank');
+    if (screen && !_fbScreenTemplate) _fbScreenTemplate = screen.innerHTML;
+
+    show('fillBlank');
+
+    // detail 재구성
+    const detail = questions.map((q, i) => {
+      const ansArr = (_fbState.answers[i] || []);
+      const blanks = q.blanks || [];
+      let qc = 0;
+      blanks.forEach((correct, j) => {
+        const user = (ansArr[j] || '').trim().toLowerCase();
+        const target = String(correct || '').trim().toLowerCase();
+        if (user && user === target) qc++;
+      });
+      return { correct: qc, total: blanks.length, stage: _fbState.hintStages[i] || 0 };
+    });
+
+    _fbRenderResult({
+      correct: comp.correct || 0,
+      wrong: comp.wrong || 0,
+      total: comp.total || 0,
+      score: comp.score || 0,
+      passed: comp.passed ?? ((comp.score||0) >= (comp.passScore||80)),
+      passScore: comp.passScore || 80,
+      detail,
+      hintUsageCount: comp.hintUsageCount || 0,
+      questions,
+      answers: _fbState.answers,
+    });
+  } catch (e) {
+    console.error('이전 결과 로드 실패', e);
+    showToast('로드 실패: ' + e.message);
+    startFillBlank(testId, testName);
+  }
+};
 
 window.quitFillBlank = async () => {
   if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;

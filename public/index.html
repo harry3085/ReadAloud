@@ -296,6 +296,7 @@
         <div class="timer-text" id="fbTimerText">30</div>
       </div>
       <button id="fbHintBtn" onclick="fbUseHint()"
+        onmousedown="event.preventDefault()"
         style="background:#3B82F6;color:white;border:none;border-radius:22px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:60px;">
         <span>💡 힌트</span>
         <span id="fbHintStage" style="font-size:10px;opacity:.9;">(1/2)</span>
