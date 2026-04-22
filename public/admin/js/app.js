@@ -1776,7 +1776,7 @@ window.loadTestList = async() => {
           <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
       </tr>`;
-    }, 'testPagination', 20);
+    }, 'testPagination', 10, { pageSize: 20 });
   }catch(e){
     console.error(e);
     el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';
