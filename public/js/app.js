@@ -1147,12 +1147,31 @@ function _fbShowQuestionFeedback(){
     const hintBox = document.getElementById('fbHintBox');
     if (hintBox) {
       hintBox.innerHTML = allCorrect
-        ? '<span style="color:#059669;font-weight:800;font-size:14px;">✓ 정답!</span>'
+        ? '<span style="color:#059669;font-weight:800;font-size:14px;">✓ 정답! 🔊</span>'
         : `<span style="color:#DC2626;font-weight:800;font-size:14px;">✗ 오답 · 정답: ${esc(blanks.join(', '))}</span>`;
     }
 
+    // 정답일 때 정답 단어(들) 음성 재생
+    if (allCorrect) _fbSpeakWords(blanks);
+
     setTimeout(resolve, 1500);
   });
+}
+
+function _fbSpeakWords(words){
+  try {
+    if (!('speechSynthesis' in window)) return;
+    const text = (words || []).join(', ');
+    if (!text) return;
+    // 기존 음성 중단 (이전 문제 재생 남았을 수 있음)
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    u.pitch = 1;
+    u.volume = 1;
+    window.speechSynthesis.speak(u);
+  } catch(e) { console.warn('speech error', e); }
 }
 
 async function _fbSubmit(){
