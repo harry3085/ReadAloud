@@ -7072,7 +7072,11 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 // 사용자 정의 프롬프트는 localStorage('ai_prompt_custom_<type>') 에 저장되어
 // 관리자 디바이스별로 독립 관리. 저장된 경우 생성 API 호출 시 동반 전송.
 
-const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording', 'vocab', 'unscramble'];
+// UI 에서 쓰는 타입명. 'word'(단어시험) 는 API 호출 시 'vocab' 으로 변환 필요.
+const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording', 'word', 'unscramble'];
+// UI 타입 → API 타입 변환 (/api/generate-quiz GET/POST 에 전달)
+const _qgUiToApiType = { word: 'vocab' };
+function _qgApiTypeOf(uiType) { return _qgUiToApiType[uiType] || uiType; }
 
 // ─── 언스크램블 편집 핸들러 (Phase 6) ───
 window._qgEditUnscrambleMeaning = (idx, value) => {
@@ -7167,11 +7171,13 @@ function _qgRenderPromptTabs() {
   const tabs = document.getElementById('qgPromptTabs');
   if (!tabs) return;
   tabs.innerHTML = _qgAiPromptTypes.map(t => {
-    const cfg = QG_TYPE_OPTIONS[t];
+    const cfg = QG_TYPE_OPTIONS[t] || {};
     const active = t === _qgPromptEditingType;
-    const hasCustom = !!_qgGetCustomPrompt(t);
+    const hasCustom = !!_qgGetCustomPrompt(_qgApiTypeOf(t));
+    const icon = cfg.icon || '•';
+    const label = cfg.label || t;
     return `<button onclick="qgSwitchPromptTab('${t}')" class="btn ${active?'btn-primary':'btn-secondary'}" style="font-size:12px;padding:5px 12px;">
-      ${cfg.icon} ${esc(cfg.label)}${hasCustom?' <span style="color:#c47;">●</span>':''}
+      ${icon} ${esc(label)}${hasCustom?' <span style="color:#c47;">●</span>':''}
     </button>`;
   }).join('');
 }
@@ -7181,7 +7187,8 @@ async function _qgLoadPromptIntoTextarea(type) {
   const status = document.getElementById('qgPromptStatus');
   if (!textarea || !status) return;
 
-  const custom = _qgGetCustomPrompt(type);
+  const apiType = _qgApiTypeOf(type);
+  const custom = _qgGetCustomPrompt(apiType);
   if (custom) {
     textarea.value = custom;
     status.innerHTML = '<span style="color:#c47;font-weight:700;">● 사용자 정의 프롬프트 활성 (저장됨)</span>';
@@ -7189,7 +7196,7 @@ async function _qgLoadPromptIntoTextarea(type) {
   }
   status.innerHTML = '기본값 로딩 중...';
   textarea.value = '';
-  const def = await _qgFetchDefaultPrompt(type);
+  const def = await _qgFetchDefaultPrompt(apiType);
   textarea.value = def || '';
   if (def) {
     status.innerHTML = '<span style="color:var(--gray);">기본 프롬프트 — 수정 후 [저장] 하면 이 유형에만 적용됩니다</span>';
@@ -7213,13 +7220,14 @@ window.qgSavePrompt = () => {
     showToast('프롬프트가 너무 짧습니다 (최소 20자)');
     return;
   }
-  const def = (_qgAiPromptDefaults[_qgPromptEditingType] || '').trim();
+  const apiType = _qgApiTypeOf(_qgPromptEditingType);
+  const def = (_qgAiPromptDefaults[apiType] || '').trim();
   const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
   if (def && val === def) {
-    _qgSetCustomPrompt(_qgPromptEditingType, '');
+    _qgSetCustomPrompt(apiType, '');
     showToast(`${label}: 기본값과 동일 → 사용자 정의 해제`);
   } else {
-    _qgSetCustomPrompt(_qgPromptEditingType, val);
+    _qgSetCustomPrompt(apiType, val);
     showToast(`✓ ${label} 프롬프트 저장됨`);
   }
   _qgRenderPromptTabs();
@@ -7227,13 +7235,14 @@ window.qgSavePrompt = () => {
 };
 
 window.qgResetPrompt = async () => {
+  const apiType = _qgApiTypeOf(_qgPromptEditingType);
   const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
-  if (!_qgGetCustomPrompt(_qgPromptEditingType)) {
+  if (!_qgGetCustomPrompt(apiType)) {
     showToast('이미 기본값 사용 중');
     return;
   }
   if (!(await showConfirm('기본값으로 복원?', `${label}의 사용자 정의가 삭제됩니다.`))) return;
-  _qgSetCustomPrompt(_qgPromptEditingType, '');
+  _qgSetCustomPrompt(apiType, '');
   showToast('기본값으로 복원됨');
   _qgRenderPromptTabs();
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
