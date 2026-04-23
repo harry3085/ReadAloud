@@ -5579,10 +5579,7 @@ function _qsRenderRow(s, where) {
     ${bookCell}
     <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_qsDateStr(s))}</td>
     <td class="td-center">
-      <button class="action-btn" onclick="qsAssignSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9;">배정</button>
-      <button class="action-btn" onclick="qsViewDetail('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">보기</button>
-      <button class="action-btn" onclick="qsEditSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">수정</button>
-      <button class="action-btn" onclick="qsRenameSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">이름</button>
+      <button class="action-btn" onclick="qsAssignSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9;">시험출제</button>
       <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">🗑 삭제</button>
     </td>
   </tr>`;
@@ -7161,7 +7158,7 @@ window.tpOpenPublishModal = async () => {
   const html = `
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;">📝 시험 배정</div>
+        <div style="font-size:17px;font-weight:700;">📝 시험출제</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">
           ${esc(cfg.kindLabel)} · ${selectedSets.length}개 세트 · 총 ${questions.length}문제
         </div>
