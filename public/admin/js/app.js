@@ -1158,8 +1158,11 @@ function renderScoreReportRows(){
   const el = document.getElementById('scoreReportBody');
   if(!el) return;
 
+  const q = (document.getElementById('scoreSearch')?.value || '').trim().toLowerCase();
+  const base = q ? _srData.filter(s => (s.userName||'').toLowerCase().includes(q)) : _srData;
+
   const {col, dir} = _srSort;
-  const sorted = [..._srData].sort((a,b)=>{
+  const sorted = [...base].sort((a,b)=>{
     let av = a[col]??'', bv = b[col]??'';
     // 숫자형 컬럼
     if(col==='score'||col==='correct'){
@@ -1196,6 +1199,8 @@ function renderScoreReportRows(){
     </tr>`;
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
 }
+
+window.searchScoreReport = () => renderScoreReportRows();
 
 window.sortScoreReport = (col) => {
   if(_srSort.col===col){
