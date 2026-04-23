@@ -7751,7 +7751,7 @@ function _printRenderMcq(questions, { showAnswers }) {
         return `
           <div style="margin-bottom:14px;">
             <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${gi+1}-${i+1}. ${esc(q.question || '')}</div>
-            ${q.questionKo ? `<div style="font-size:11px;color:#666;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
+            ${showAnswers && q.questionKo ? `<div style="font-size:11px;color:#2e7d32;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
               ${(q.choices || []).map((c, j) => `
                 <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">

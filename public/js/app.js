@@ -623,9 +623,8 @@ function _mcqRenderStep(){
   }
 
   const qEl = document.getElementById('mcqQuestion');
-  const qKoEl = document.getElementById('mcqQuestionKo');
   if(qEl) qEl.textContent = q.question || '';
-  if(qKoEl) qKoEl.textContent = q.questionKo || '';
+  // 한글 해석은 문제 풀이 중 표시 안 함 (답을 암시할 수 있음). 결과 상세에서만 표시.
 
   const choicesEl = document.getElementById('mcqChoices');
   if(choicesEl){
