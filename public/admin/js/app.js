@@ -2857,14 +2857,24 @@ window.runGenOcr = async () => {
 // ── Page CRUD ──
 window.genCreatePage = () => {
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">📄 Page 생성</div>
-    <div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목</div>
-      <input id="gnPT" type="text" placeholder="비우면 자동 지정" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">본문</div>
-      <textarea id="gnPX" rows="6" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoCreatePage()" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">📄 Page 생성</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">제목</div>
+          <input id="gnPT" type="text" placeholder="비우면 자동 지정" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">본문</div>
+          <textarea id="gnPX" rows="6" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoCreatePage()">저장</button>
+      </div>
     </div>`);
   setTimeout(()=>document.getElementById('gnPT')?.focus(),80);
 };
@@ -2889,16 +2899,25 @@ window.genEditPage = () => {
   const page=_genPages.find(p=>p.id===pid);
   if (!page) return;
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Page 수정</div>
-    <div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">제목</div>
-      <input id="gnET" type="text" value="${esc(page.title||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">본문</div>
-      <textarea id="gnEX" rows="10" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">${esc(page.text||'')}</textarea></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoEditPage('${pid}')" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(720px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#9999;&#65039; Page 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">제목</div>
+          <input id="gnET" type="text" value="${esc(page.title||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">본문</div>
+          <textarea id="gnEX" rows="10" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">${esc(page.text||'')}</textarea>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoEditPage('${pid}')">저장</button>
+      </div>
     </div>`);
-  document.getElementById('modalBox').style.width='700px';
 };
 window.genDoEditPage = async (pid) => {
   const title=document.getElementById('gnET')?.value.trim();
@@ -2946,16 +2965,24 @@ window.genMovePages = async () => {
   if (!_genCheckedPages.size) return;
   if (!_genChapters.length){ showToast('Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:12px;">&#8594; Chapter 이동</div>
-    <div style="font-size:13px;color:var(--gray);margin-bottom:10px;">${_genCheckedPages.size}개 Page 이동</div>
-    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
-      ${_genChapters.map(c=>`
-        <div data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" onclick="window.genDoMovePages(this.dataset.cid,this.dataset.bid,this.dataset.bname,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
-          <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(c.name)}</div>
-          <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};pointer-events:none;">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
-        </div>`).join('')}
-    </div>
-    <div style="margin-top:10px;"><button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;">취소</button></div>`);
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Chapter 이동</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedPages.size}개 Page 이동</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          ${_genChapters.map(c=>`
+            <div data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" onclick="window.genDoMovePages(this.dataset.cid,this.dataset.bid,this.dataset.bname,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+              <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(c.name)}</div>
+              <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};pointer-events:none;">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+      </div>
+    </div>`);
 };
 window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
   try {
@@ -2970,12 +2997,20 @@ window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
 // ── Chapter CRUD ──
 window.genCreateChapter = () => {
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#128218; Chapter 생성</div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Chapter 이름 *</div>
-      <input id="gnCN" type="text" placeholder="예: Chapter 1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoCreateChapter()" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#128218; Chapter 생성</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">Chapter 이름 *</div>
+          <input id="gnCN" type="text" placeholder="예: Chapter 1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoCreateChapter()">저장</button>
+      </div>
     </div>`);
   setTimeout(()=>document.getElementById('gnCN')?.focus(),80);
 };
@@ -2997,12 +3032,20 @@ window.genEditChapter = () => {
   const ch=_genChapters.find(c=>c.id===cid);
   if (!ch) return;
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Chapter 수정</div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Chapter 이름 *</div>
-      <input id="gnCE" type="text" value="${esc(ch.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoEditChapter('${cid}')" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#9999;&#65039; Chapter 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">Chapter 이름 *</div>
+          <input id="gnCE" type="text" value="${esc(ch.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoEditChapter('${cid}')">저장</button>
+      </div>
     </div>`);
   setTimeout(()=>document.getElementById('gnCE')?.focus(),80);
 };
@@ -3042,16 +3085,24 @@ window.genMoveChapters = async () => {
   if (!_genCheckedChapters.size) return;
   if (!_genBooks.length){ showToast('Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:12px;">&#8594; Book 이동</div>
-    <div style="font-size:13px;color:var(--gray);margin-bottom:10px;">${_genCheckedChapters.size}개 Chapter 이동</div>
-    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
-      ${_genBooks.map(b=>`
-        <div onclick="genDoMoveChapters('${b.id}','${esc(b.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
-          <div style="font-weight:600;font-size:13px;">${esc(b.name)}</div>
-          <div style="font-size:11px;color:var(--gray);">Chapter ${b.chapterCount||0}개</div>
-        </div>`).join('')}
-    </div>
-    <div style="margin-top:10px;"><button class="btn btn-secondary" onclick="closeModal()" style="width:100%;justify-content:center;">취소</button></div>`);
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Book 이동</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedChapters.size}개 Chapter 이동</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          ${_genBooks.map(b=>`
+            <div onclick="genDoMoveChapters('${b.id}','${esc(b.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+              <div style="font-weight:600;font-size:13px;">${esc(b.name)}</div>
+              <div style="font-size:11px;color:var(--gray);">Chapter ${b.chapterCount||0}개</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+      </div>
+    </div>`);
 };
 window.genDoMoveChapters = async (bookId,bookName) => {
   const ids=[..._genCheckedChapters];
@@ -3067,12 +3118,20 @@ window.genDoMoveChapters = async (bookId,bookName) => {
 // ── Book CRUD ──
 window.genCreateBook = () => {
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#128218; Book 생성</div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Book 이름 *</div>
-      <input id="gnBN" type="text" placeholder="예: 중등 영어 교과서 1-1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoCreateBook()" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#128218; Book 생성</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">Book 이름 *</div>
+          <input id="gnBN" type="text" placeholder="예: 중등 영어 교과서 1-1" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoCreateBook()">저장</button>
+      </div>
     </div>`);
   setTimeout(()=>document.getElementById('gnBN')?.focus(),80);
 };
@@ -3094,12 +3153,20 @@ window.genEditBook = () => {
   const book=_genBooks.find(b=>b.id===bid);
   if (!book) return;
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">&#9999;&#65039; Book 수정</div>
-    <div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Book 이름 *</div>
-      <input id="gnBE" type="text" value="${esc(book.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="genDoEditBook('${bid}')" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">&#9999;&#65039; Book 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">Book 이름 *</div>
+          <input id="gnBE" type="text" value="${esc(book.name)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoEditBook('${bid}')">저장</button>
+      </div>
     </div>`);
   setTimeout(()=>document.getElementById('gnBE')?.focus(),80);
 };
