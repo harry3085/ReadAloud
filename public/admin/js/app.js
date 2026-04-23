@@ -6937,11 +6937,16 @@ function _tpBuildFolders(sets) {
         bookId: sp.bookId || '',
         chapterId: sp.chapterId || '',
         count: 0,
+        lastTime: 0,
       });
     }
-    map.get(key).count++;
+    const folder = map.get(key);
+    folder.count++;
+    const t = s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0;
+    if (t > folder.lastTime) folder.lastTime = t;
   });
-  return [...map.values()].sort((a,b) => a.name.localeCompare(b.name, 'ko'));
+  // 최근 생성/수정된 폴더가 위로 (포함된 세트 중 가장 최신 시각 기준)
+  return [...map.values()].sort((a,b) => b.lastTime - a.lastTime);
 }
 
 function _tpRenderFolderItem(f, isActive) {
