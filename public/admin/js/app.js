@@ -2680,7 +2680,7 @@ function _genRenderBooks() {
     _genToolbar('book'); return;
   }
   if (cnt) cnt.textContent = _genBooks.length + '개';
-  el.innerHTML = _genBooks.map(b => {
+  el.innerHTML = _genRecentSort(_genBooks).map(b => {
     const chCnt = _genChapters.filter(c=>c.bookId===b.id).length;
     const pgCnt = _genPages.filter(p=>p.bookId===b.id).length;
     const active = _genActiveBook === b.id;
@@ -2707,7 +2707,7 @@ function _genRenderChapters() {
     _genToolbar('chapter'); return;
   }
   if (cnt) cnt.textContent = filtered.length + '개';
-  el.innerHTML = filtered.map(c => {
+  el.innerHTML = _genRecentSort(filtered).map(c => {
     const pgCnt = _genPages.filter(p=>p.chapterId===c.id).length;
     const active = _genActiveChapter === c.id;
     return `
