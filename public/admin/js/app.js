@@ -2665,6 +2665,11 @@ function _genFilteredPages() {
   return _genPages.filter(p => !p.chapterId);
 }
 
+function _genRecentSort(arr) {
+  const t = x => (x?.updatedAt?.toMillis?.() || x?.createdAt?.toMillis?.() || 0);
+  return [...arr].sort((a,b) => t(b) - t(a));
+}
+
 function _genRenderBooks() {
   const el = document.getElementById('genBookList');
   const cnt = document.getElementById('genBookCount');
@@ -3030,15 +3035,16 @@ window.genExcludePages = async () => {
 window.genMovePages = async () => {
   if (!_genCheckedPages.size) return;
   if (!_genChapters.length){ showToast('Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
+  const chapters = _genRecentSort(_genChapters);
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Chapter 이동</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedPages.size}개 Page 이동</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedPages.size}개 Page 이동 · 최근 수정순</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-          ${_genChapters.map(c=>`
+          ${chapters.map(c=>`
             <div data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" onclick="window.genDoMovePages(this.dataset.cid,this.dataset.bid,this.dataset.bname,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
               <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(c.name)}</div>
               <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};pointer-events:none;">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
@@ -3119,7 +3125,7 @@ window.genDoEditChapter = async (cid) => {
   const name=document.getElementById('gnCE')?.value.trim();
   if (!name){ showToast('이름을 입력하세요.'); return; }
   try {
-    await updateDoc(doc(db,'genChapters',cid),{name});
+    await updateDoc(doc(db,'genChapters',cid),{name, updatedAt:serverTimestamp()});
     await Promise.all(_genPages.filter(p=>p.chapterId===cid).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterName:name})));
     closeModal(); await loadGenerator();
   } catch(e){ showToast('저장 실패: '+e.message); }
@@ -3141,7 +3147,7 @@ window.genExcludeChapters = async () => {
   if (!_genCheckedChapters.size) return;
   const ids=[..._genCheckedChapters];
   try {
-    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId:null,bookName:''})));
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId:null,bookName:'',updatedAt:serverTimestamp()})));
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})));
     showToast('Book에서 제외됨'); await loadGenerator();
   } catch(e){ showToast('실패: '+e.message); }
@@ -3150,15 +3156,16 @@ window.genExcludeChapters = async () => {
 window.genMoveChapters = async () => {
   if (!_genCheckedChapters.size) return;
   if (!_genBooks.length){ showToast('Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
+  const books = _genRecentSort(_genBooks);
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Book 이동</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedChapters.size}개 Chapter 이동</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedChapters.size}개 Chapter 이동 · 최근 수정순</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-          ${_genBooks.map(b=>`
+          ${books.map(b=>`
             <div onclick="genDoMoveChapters('${b.id}','${esc(b.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
               <div style="font-weight:600;font-size:13px;">${esc(b.name)}</div>
               <div style="font-size:11px;color:var(--gray);">Chapter ${b.chapterCount||0}개</div>
@@ -3173,7 +3180,7 @@ window.genMoveChapters = async () => {
 window.genDoMoveChapters = async (bookId,bookName) => {
   const ids=[..._genCheckedChapters];
   try {
-    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId,bookName})));
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId,bookName,updatedAt:serverTimestamp()})));
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId,bookName})));
     closeModal(); _genCheckedChapters.clear();
     showToast(`"${bookName}"으로 이동 완료`);
@@ -3240,7 +3247,7 @@ window.genDoEditBook = async (bid) => {
   const name=document.getElementById('gnBE')?.value.trim();
   if (!name){ showToast('이름을 입력하세요.'); return; }
   try {
-    await updateDoc(doc(db,'genBooks',bid),{name});
+    await updateDoc(doc(db,'genBooks',bid),{name, updatedAt:serverTimestamp()});
     await Promise.all([
       ..._genChapters.filter(c=>c.bookId===bid).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookName:name})),
       ..._genPages.filter(p=>p.bookId===bid).map(p=>updateDoc(doc(db,'genPages',p.id),{bookName:name})),
