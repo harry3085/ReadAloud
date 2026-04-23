@@ -452,16 +452,22 @@ async function loadClasses(){
 
 window.openClassModal = () => {
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">반 생성</div>
-    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
-      <div><div style="color:var(--gray);margin-bottom:4px;">반 이름 *</div>
-      <input id="className" type="text" placeholder="예: 1반, 초급반" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:4px;">담당 선생님</div>
-      <input id="classTeacher" type="text" placeholder="선택사항" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="saveClass()" style="flex:1;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">반 생성</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+          <div><div style="color:var(--gray);margin-bottom:6px;">반 이름 *</div>
+            <input id="className" type="text" placeholder="예: 1반, 초급반" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:6px;">담당 선생님</div>
+            <input id="classTeacher" type="text" placeholder="선택사항" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveClass()">저장</button>
+      </div>
     </div>
   `);
 };
@@ -555,11 +561,18 @@ window.bulkAction = async(action) => {
     const classSnap=await getDocs(collection(db,'groups'));
     const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
     showModal(`
-      <div style="font-size:17px;font-weight:700;margin-bottom:16px;">반 배정 (${checked.length}명)</div>
-      <select id="assignClass" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;margin-bottom:16px;">${opts}</select>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-        <button class="btn btn-primary" onclick="doAssignClass([${checked.map(id=>`'${id}'`).join(',')}])" style="flex:1;justify-content:center;">배정</button>
+      <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:17px;font-weight:700;line-height:1.3;">반 배정</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:5px;">${checked.length}명 학생</div>
+        </div>
+        <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+          <select id="assignClass" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;">${opts}</select>
+        </div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+          <button class="btn btn-primary" onclick="doAssignClass([${checked.map(id=>`'${id}'`).join(',')}])">배정</button>
+        </div>
       </div>
     `);
   }
@@ -586,22 +599,28 @@ window.openStudentModal = async() => {
   const classSnap=await getDocs(collection(db,'groups'));
   const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">재원생 추가</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
-      <div><div style="color:var(--gray);margin-bottom:3px;">아이디 *</div><input id="sId" type="text" placeholder="영문/숫자" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">이름 *</div><input id="sName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">비밀번호 *</div><input id="sPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">반</div><select id="sGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">생일</div><input id="sBirth" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">학교</div><input id="sSchool" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">학년</div><input id="sGrade" type="text" placeholder="예: 5학년" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">연락처</div><input id="sPhone" type="tel" placeholder="010-0000-0000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 성함</div><input id="sParentName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 연락처</div><input id="sParentPhone" type="tel" placeholder="010-0000-0000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="saveStudent()" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">재원생 추가</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+          <div><div style="color:var(--gray);margin-bottom:5px;">아이디 *</div><input id="sId" type="text" placeholder="영문/숫자" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">이름 *</div><input id="sName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">비밀번호 *</div><input id="sPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">반</div><select id="sGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">생일</div><input id="sBirth" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">학교</div><input id="sSchool" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">학년</div><input id="sGrade" type="text" placeholder="예: 5학년" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">연락처</div><input id="sPhone" type="tel" placeholder="010-0000-0000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">부모님 성함</div><input id="sParentName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">부모님 연락처</div><input id="sParentPhone" type="tel" placeholder="010-0000-0000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveStudent()">저장</button>
+      </div>
     </div>
   `);
 };
@@ -655,18 +674,24 @@ window.openNoticeModal = async() => {
   const classSnap=await getDocs(collection(db,'groups'));
   const opts='<option value="all">전체</option>'+classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">공지 작성</div>
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">대상</div>
-      <select id="noticeTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">제목 *</div>
-      <input id="noticeTitle" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">내용 *</div>
-      <textarea id="noticeContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:none;outline:none;"></textarea></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="saveNotice()" style="flex:1;justify-content:center;">등록</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">공지 작성</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">대상</div>
+            <select id="noticeTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">제목 *</div>
+            <input id="noticeTitle" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
+            <textarea id="noticeContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;"></textarea></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveNotice()">등록</button>
+      </div>
     </div>
   `);
 };
@@ -726,33 +751,39 @@ window.editHwFile = async(id) => {
   else if(f.group && f.group !== '전체') currentTarget = 'group:'+f.group;
 
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:14px;">✏️ 숙제파일 수정</div>
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
-      <div>
-        <div style="color:var(--gray);margin-bottom:4px;">파일명</div>
-        <input id="hwfEditName" type="text" value="${(f.name||'').replace(/"/g,'&quot;')}"
-          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 숙제파일 수정</div>
       </div>
-      <div>
-        <div style="color:var(--gray);margin-bottom:4px;">대상 선택</div>
-        <select id="hwfEditTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
-          <option value="all" ${currentTarget==='all'?'selected':''}>전체</option>
-          <optgroup label="── 반별 ──">
-            ${groups.map(g=>`<option value="group:${g}" ${currentTarget==='group:'+g?'selected':''}>${g}</option>`).join('')}
-          </optgroup>
-          <optgroup label="── 개별 학생 ──">
-            ${students.map(u=>`<option value="uid:${u.id}" ${currentTarget==='uid:'+u.id?'selected':''}>${u.name} (${esc(u.group)||'-'})</option>`).join('')}
-          </optgroup>
-        </select>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+          <div>
+            <div style="color:var(--gray);margin-bottom:6px;">파일명</div>
+            <input id="hwfEditName" type="text" value="${(f.name||'').replace(/"/g,'&quot;')}"
+              style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+          </div>
+          <div>
+            <div style="color:var(--gray);margin-bottom:6px;">대상 선택</div>
+            <select id="hwfEditTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+              <option value="all" ${currentTarget==='all'?'selected':''}>전체</option>
+              <optgroup label="── 반별 ──">
+                ${groups.map(g=>`<option value="group:${g}" ${currentTarget==='group:'+g?'selected':''}>${g}</option>`).join('')}
+              </optgroup>
+              <optgroup label="── 개별 학생 ──">
+                ${students.map(u=>`<option value="uid:${u.id}" ${currentTarget==='uid:'+u.id?'selected':''}>${u.name} (${esc(u.group)||'-'})</option>`).join('')}
+              </optgroup>
+            </select>
+          </div>
+          <div style="padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:12px;color:var(--gray);">
+            📎 현재 파일: <b style="color:var(--text);">${esc(f.name)||'-'}.${f.type||''}</b>
+            <br><span style="font-size:11px;">파일 자체를 교체하려면 삭제 후 새로 등록하세요.</span>
+          </div>
+        </div>
       </div>
-      <div style="padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:12px;color:var(--gray);">
-        📎 현재 파일: <b style="color:var(--text);">${esc(f.name)||'-'}.${f.type||''}</b>
-        <br><span style="font-size:11px;">파일 자체를 교체하려면 삭제 후 새로 등록하세요.</span>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveHwFileEdit('${id}')">💾 저장</button>
       </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="saveHwFileEdit('${id}')" style="flex:2;justify-content:center;">💾 저장</button>
     </div>`);
   setTimeout(()=>document.getElementById('hwfEditName')?.focus(),100);
 };
@@ -779,36 +810,42 @@ window.openHwFileModal = async() => {
   const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
 
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📁 숙제파일 등록</div>
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
-      <div>
-        <div style="color:var(--gray);margin-bottom:4px;">파일명 (표시 이름)</div>
-        <input id="hwfName" type="text" placeholder="예: 1단원 받아쓰기" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">📁 숙제파일 등록</div>
       </div>
-      <div>
-        <div style="color:var(--gray);margin-bottom:4px;">대상 선택</div>
-        <select id="hwfTarget" onchange="onHwfTargetChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
-          <option value="all">전체</option>
-          <optgroup label="── 반별 ──">
-            ${groups.map(g=>`<option value="group:${g}">반: ${g}</option>`).join('')}
-          </optgroup>
-          <optgroup label="── 개별 학생 ──">
-            ${students.map(u=>`<option value="uid:${u.id}">학생: ${u.name} (${esc(u.group)||'-'})</option>`).join('')}
-          </optgroup>
-        </select>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+          <div>
+            <div style="color:var(--gray);margin-bottom:6px;">파일명 (표시 이름)</div>
+            <input id="hwfName" type="text" placeholder="예: 1단원 받아쓰기" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+          </div>
+          <div>
+            <div style="color:var(--gray);margin-bottom:6px;">대상 선택</div>
+            <select id="hwfTarget" onchange="onHwfTargetChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
+              <option value="all">전체</option>
+              <optgroup label="── 반별 ──">
+                ${groups.map(g=>`<option value="group:${g}">반: ${g}</option>`).join('')}
+              </optgroup>
+              <optgroup label="── 개별 학생 ──">
+                ${students.map(u=>`<option value="uid:${u.id}">학생: ${u.name} (${esc(u.group)||'-'})</option>`).join('')}
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <div style="color:var(--gray);margin-bottom:6px;">파일 선택</div>
+            <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.hwp"
+              style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+          </div>
+          <div id="hwfProgress" style="display:none;height:6px;background:#eee;border-radius:10px;overflow:hidden;">
+            <div id="hwfProgressBar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;"></div>
+          </div>
+        </div>
       </div>
-      <div>
-        <div style="color:var(--gray);margin-bottom:4px;">파일 선택</div>
-        <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.hwp"
-          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" id="hwfUploadBtn" onclick="uploadHwFileAdmin()">📤 업로드</button>
       </div>
-      <div id="hwfProgress" style="display:none;height:6px;background:#eee;border-radius:10px;overflow:hidden;">
-        <div id="hwfProgressBar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" id="hwfUploadBtn" onclick="uploadHwFileAdmin()" style="flex:2;justify-content:center;">📤 업로드</button>
     </div>`);
   setTimeout(()=>document.getElementById('hwfName')?.focus(),100);
 };
@@ -922,17 +959,23 @@ window.openPaymentModal = async() => {
   const usersSnap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
   const opts=usersSnap.docs.map(d=>{const u=d.data();return `<option value="${d.id}|${u.name}|${u.group||''}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">결제 등록</div>
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
-      <div><div style="color:var(--gray);margin-bottom:3px;">학생 *</div><select id="payStudent" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">항목 *</div><input id="payTitle" type="text" placeholder="예: 4월 수강료" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">금액 *</div><input id="payAmount" type="number" placeholder="150000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">납부 기한</div><input id="payDue" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">상태</div><select id="payStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"><option value="unpaid">미납</option><option value="paid">납부완료</option></select></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="savePayment()" style="flex:1;justify-content:center;">등록</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">결제 등록</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+          <div><div style="color:var(--gray);margin-bottom:5px;">학생 *</div><select id="payStudent" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">항목 *</div><input id="payTitle" type="text" placeholder="예: 4월 수강료" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">금액 *</div><input id="payAmount" type="number" placeholder="150000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">납부 기한</div><input id="payDue" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">상태</div><select id="payStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"><option value="unpaid">미납</option><option value="paid">납부완료</option></select></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="savePayment()">등록</button>
+      </div>
     </div>
   `);
 };
@@ -2145,50 +2188,55 @@ window.openTestEditModal = async(testId) => {
     </tr>`).join('');
 
   showModal(`
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">✏️ 시험 수정</div>
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">시험명</div>
-        <input id="editTestName" value="${esc(t.name||'')}"
-          style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
+    <div style="width:min(900px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 시험 수정</div>
       </div>
-      <div style="display:flex;gap:12px;">
-        <div style="flex:1;">
-          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">통과점수</div>
-          <input id="editTestPass" type="number" value="${t.passScore||80}" min="0" max="100"
-            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;text-align:center;">
-        </div>
-        <div style="flex:1;">
-          <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">활성화</div>
-          <select id="editTestActive" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;">
-            <option value="1" ${t.active!==false?'selected':''}>활성</option>
-            <option value="0" ${t.active===false?'selected':''}>비활성</option>
-          </select>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">시험명</div>
+            <input id="editTestName" value="${esc(t.name||'')}"
+              style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
+          </div>
+          <div style="display:flex;gap:12px;">
+            <div style="flex:1;">
+              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">통과점수</div>
+              <input id="editTestPass" type="number" value="${t.passScore||80}" min="0" max="100"
+                style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;text-align:center;">
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">활성화</div>
+              <select id="editTestActive" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;">
+                <option value="1" ${t.active!==false?'selected':''}>활성</option>
+                <option value="0" ${t.active===false?'selected':''}>비활성</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--gray);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+              <span>단어 목록 ${isUnsc?'<span style="color:#b45309;font-size:11px;">(언스크램블: / 로 청크 구분)</span>':''}</span>
+              <button onclick="addEditWordRow()" style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ 추가</button>
+            </div>
+            <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#f8f9fa;font-size:11px;color:var(--gray);">
+                  <th style="padding:6px 4px;text-align:center;width:28px;">No</th>
+                  <th style="padding:6px 4px;text-align:left;">영어</th>
+                  <th style="padding:6px 4px;text-align:left;">한글</th>
+                  <th style="width:28px;"></th>
+                </tr></thead>
+                <tbody id="editWordList">${wordsHtml}</tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
-      <div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
-          <span>단어 목록 ${isUnsc?'<span style="color:#b45309;font-size:11px;">(언스크램블: / 로 청크 구분)</span>':''}</span>
-          <button onclick="addEditWordRow()" style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ 추가</button>
-        </div>
-        <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
-          <table style="width:100%;border-collapse:collapse;">
-            <thead><tr style="background:#f8f9fa;font-size:11px;color:var(--gray);">
-              <th style="padding:6px 4px;text-align:center;width:28px;">No</th>
-              <th style="padding:6px 4px;text-align:left;">영어</th>
-              <th style="padding:6px 4px;text-align:left;">한글</th>
-              <th style="width:28px;"></th>
-            </tr></thead>
-            <tbody id="editWordList">${wordsHtml}</tbody>
-          </table>
-        </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveTestEdit('${testId}')">저장</button>
       </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="saveTestEdit('${testId}')" style="flex:1;justify-content:center;">저장</button>
     </div>`);
-  document.getElementById('modalBox').style.width = '900px';
 };
 
 window.addEditWordRow = () => {
@@ -2330,16 +2378,22 @@ window.editClass = async(id) => {
   const snap = await getDoc(doc(db,'groups',id));
   const g = snap.data(); if(!g) return;
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">반 수정</div>
-    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
-      <div><div style="color:var(--gray);margin-bottom:4px;">반 이름 *</div>
-      <input id="editClassName" type="text" value="${esc(g.name||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:4px;">담당 선생님</div>
-      <input id="editClassTeacher" type="text" value="${esc(g.teacher||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="updateClass('${id}')" style="flex:1;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">반 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+          <div><div style="color:var(--gray);margin-bottom:6px;">반 이름 *</div>
+            <input id="editClassName" type="text" value="${esc(g.name||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:6px;">담당 선생님</div>
+            <input id="editClassTeacher" type="text" value="${esc(g.teacher||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="updateClass('${id}')">저장</button>
+      </div>
     </div>
   `);
 };
@@ -2358,32 +2412,38 @@ window.editStudent = async(id) => {
   const classSnap = await getDocs(collection(db,'groups'));
   const opts = classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${u.group===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">학생 정보 수정</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
-      <div><div style="color:var(--gray);margin-bottom:3px;">아이디</div>
-      <input type="text" value="${u.username||''}" disabled style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:#f5f5f5;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">이름 *</div>
-      <input id="euName" type="text" value="${u.name||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">반</div>
-      <select id="euGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">생일</div>
-      <input id="euBirth" type="date" value="${u.birth||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">학교</div>
-      <input id="euSchool" type="text" value="${u.school||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">학년</div>
-      <input id="euGrade" type="text" value="${u.grade||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">연락처</div>
-      <input id="euPhone" type="tel" value="${u.phone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">새 비밀번호</div>
-      <input id="euPw" type="password" placeholder="변경 시만 입력" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 성함</div>
-      <input id="euParentName" type="text" value="${u.parentName||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="color:var(--gray);margin-bottom:3px;">부모님 연락처</div>
-      <input id="euParentPhone" type="tel" value="${u.parentPhone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="updateStudent('${id}')" style="flex:2;justify-content:center;">저장</button>
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">학생 정보 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+          <div><div style="color:var(--gray);margin-bottom:5px;">아이디</div>
+            <input type="text" value="${u.username||''}" disabled style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:#f5f5f5;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">이름 *</div>
+            <input id="euName" type="text" value="${u.name||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">반</div>
+            <select id="euGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">생일</div>
+            <input id="euBirth" type="date" value="${u.birth||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">학교</div>
+            <input id="euSchool" type="text" value="${u.school||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">학년</div>
+            <input id="euGrade" type="text" value="${u.grade||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">연락처</div>
+            <input id="euPhone" type="tel" value="${u.phone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">새 비밀번호</div>
+            <input id="euPw" type="password" placeholder="변경 시만 입력" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">부모님 성함</div>
+            <input id="euParentName" type="text" value="${u.parentName||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">부모님 연락처</div>
+            <input id="euParentPhone" type="tel" value="${u.parentPhone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="updateStudent('${id}')">저장</button>
+      </div>
     </div>
   `);
 };
@@ -2412,18 +2472,24 @@ window.editNotice = async(id) => {
   const opts = '<option value="all" '+(n.target==='all'?'selected':'')+'>전체</option>'
     + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${n.target===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`
-    <div style="font-size:17px;font-weight:700;margin-bottom:20px;">공지 수정</div>
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">대상</div>
-      <select id="enTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">제목 *</div>
-      <input id="enTitle" type="text" value="${(n.title||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-      <div><div style="font-size:13px;color:var(--gray);margin-bottom:4px;">내용 *</div>
-      <textarea id="enContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:none;outline:none;">${esc(n.content)||''}</textarea></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn btn-secondary" onclick="closeModal()" style="flex:1;justify-content:center;">취소</button>
-      <button class="btn btn-primary" onclick="updateNotice('${id}')" style="flex:1;justify-content:center;">저장</button>
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">공지 수정</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">대상</div>
+            <select id="enTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">제목 *</div>
+            <input id="enTitle" type="text" value="${(n.title||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
+            <textarea id="enContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;">${esc(n.content)||''}</textarea></div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="updateNotice('${id}')">저장</button>
+      </div>
     </div>
   `);
 };
@@ -3348,23 +3414,23 @@ window.genCleanupActivePage = async () => {
 function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetName, model) {
   const html = `
   <div style="width:min(1100px,95vw);max-height:88vh;display:flex;flex-direction:column;">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);">
-      <div style="font-size:16px;font-weight:700;">✨ AI 정리 결과 비교</div>
-      <div style="font-size:12px;color:var(--gray);margin-top:3px;">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ AI 정리 결과 비교</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:5px;">
         ${esc(pageTitle)} · 프리셋: ${esc(presetName)} · 모델: <code>${esc(model||'')}</code>
       </div>
     </div>
-    <div style="flex:1;display:flex;gap:10px;padding:14px 18px;overflow:hidden;">
+    <div style="flex:1;display:flex;gap:10px;padding:16px 22px;overflow:hidden;">
       <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
-        <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:4px;">원본</div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:6px;">원본</div>
         <textarea readonly style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(original)}</textarea>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
-        <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px;">AI 결과 <span style="font-weight:400;color:var(--gray);font-size:11px;">(적용 시 원본 덮어쓰기)</span></div>
+        <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:6px;">AI 결과 <span style="font-weight:400;color:var(--gray);font-size:11px;">(적용 시 원본 덮어쓰기)</span></div>
         <textarea id="cleanupCompareEdit" style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--teal);border-radius:6px;font-size:12px;font-family:monospace;resize:none;">${esc(cleaned)}</textarea>
       </div>
     </div>
-    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="closeModal()">취소</button>
       <button class="btn btn-primary" onclick="cleanupApplySingle('${esc(pageId)}')">적용 (덮어쓰기)</button>
     </div>
@@ -3487,18 +3553,20 @@ function _cleanupRenderBatchResult(presetName) {
   }).join('');
 
   const body = cur.error
-    ? `<div style="padding:30px;text-align:center;color:#c33;font-size:13px;">
-         <div style="font-size:24px;margin-bottom:8px;">⚠</div>
-         <div>AI 정리 실패</div>
-         <div style="color:var(--gray);margin-top:8px;font-size:12px;">${esc(cur.error)}</div>
+    ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;color:#c33;font-size:13px;">
+         <div>
+           <div style="font-size:24px;margin-bottom:8px;">⚠</div>
+           <div>AI 정리 실패</div>
+           <div style="color:var(--gray);margin-top:8px;font-size:12px;">${esc(cur.error)}</div>
+         </div>
        </div>`
-    : `<div style="flex:1;display:flex;gap:10px;padding:14px;overflow:hidden;">
+    : `<div style="flex:1;display:flex;gap:10px;padding:16px 22px;overflow:hidden;">
          <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
-           <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:4px;">원본</div>
+           <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:6px;">원본</div>
            <textarea readonly style="flex:1;min-height:40vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(cur.original)}</textarea>
          </div>
          <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
-           <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px;">AI 결과</div>
+           <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:6px;">AI 결과</div>
            <textarea id="cleanupBatchEdit" style="flex:1;min-height:40vh;padding:10px;border:1px solid var(--teal);border-radius:6px;font-size:12px;font-family:monospace;resize:none;" ${cur.applied||cur.skipped?'readonly':''}>${esc(cur.cleaned)}</textarea>
          </div>
        </div>`;
@@ -3520,13 +3588,13 @@ function _cleanupRenderBatchResult(presetName) {
 
   const html = `
   <div style="width:min(1100px,95vw);height:min(85vh,750px);display:flex;flex-direction:column;">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);">
-      <div style="font-size:15px;font-weight:700;">✨ 일괄 AI 정리 결과</div>
-      <div style="font-size:12px;color:var(--gray);margin-top:2px;">프리셋: ${esc(presetName)} · 각 페이지별로 적용/건너뜀 선택</div>
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ 일괄 AI 정리 결과</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:5px;">프리셋: ${esc(presetName)} · 각 페이지별로 적용/건너뜀 선택</div>
     </div>
-    <div style="padding:10px 14px 0;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--teal-light);">${tabs}</div>
+    <div style="padding:10px 22px 0;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--teal-light);">${tabs}</div>
     ${body}
-    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:space-between;background:#fafafa;">
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:space-between;">
       ${footerLeft}
       <div style="display:flex;gap:8px;align-items:center;">${footerRight}</div>
     </div>
@@ -3600,14 +3668,18 @@ function _cleanupPickPresetModal() {
     const opts = _cleanupPresets.map(p =>
       `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
     const html = `
-    <div style="width:min(480px,92vw);padding:20px;">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">✨ 일괄 AI 정리</div>
-      <div style="font-size:12px;color:var(--gray);margin-bottom:14px;">
-        체크된 Page ${_genCheckedPages.size}개에 적용할 프리셋을 선택하세요.
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ 일괄 AI 정리</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">
+          체크된 Page ${_genCheckedPages.size}개에 적용할 프리셋을 선택하세요.
+        </div>
       </div>
-      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">프리셋</label>
-      <select id="cleanupPickSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">${opts}</select>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">프리셋</label>
+        <select id="cleanupPickSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">${opts}</select>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" id="cleanupPickCancel">취소</button>
         <button class="btn btn-primary" id="cleanupPickOk">시작</button>
       </div>
@@ -3644,18 +3716,18 @@ function _cleanupRenderPresetManager() {
       </tr>`).join('');
 
   const html = `
-  <div style="width:min(860px,95vw);max-height:85vh;display:flex;flex-direction:column;">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:16px;font-weight:700;">⚙ AI 정리 프리셋 관리</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:3px;">${_cleanupPresets.length}개 프리셋</div>
+  <div style="width:min(860px,95vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div style="min-width:0;flex:1;">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">⚙ AI 정리 프리셋 관리</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_cleanupPresets.length}개 프리셋</div>
       </div>
-      <div style="display:flex;gap:6px;">
-        <button class="btn btn-secondary" onclick="cleanupRestoreDefaults()" style="font-size:12px;">↻ 기본값 복원</button>
-        <button class="btn btn-primary" onclick="cleanupEditPreset('')" style="font-size:12px;">+ 새 프리셋</button>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn btn-secondary" onclick="cleanupRestoreDefaults()">↻ 기본값 복원</button>
+        <button class="btn btn-primary" onclick="cleanupEditPreset('')">+ 새 프리셋</button>
       </div>
     </div>
-    <div style="flex:1;overflow:auto;padding:0 18px 14px;">
+    <div style="flex:1;overflow:auto;padding:16px 22px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead>
           <tr style="border-bottom:2px solid var(--border);background:#fafafa;">
@@ -3668,7 +3740,7 @@ function _cleanupRenderPresetManager() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div style="padding:10px 18px;border-top:1px solid var(--border);text-align:right;background:#fafafa;">
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
     </div>
   </div>`;
@@ -3683,28 +3755,28 @@ window.cleanupEditPreset = (id) => {
 
   const html = `
   <div style="width:min(760px,95vw);max-height:88vh;display:flex;flex-direction:column;">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);">
-      <div style="font-size:16px;font-weight:700;">${isNew?'+ 새 프리셋':'✏️ 프리셋 편집'}</div>
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">${isNew?'+ 새 프리셋':'✏️ 프리셋 편집'}</div>
     </div>
-    <div style="flex:1;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+    <div style="flex:1;overflow:auto;padding:16px 22px;display:flex;flex-direction:column;gap:14px;">
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">이름 *</label>
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">이름 *</label>
         <input id="cleanupEditName" type="text" value="${esc(p.name)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;">
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">설명 (선택)</label>
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">설명 (선택)</label>
         <input id="cleanupEditDesc" type="text" value="${esc(p.description||'')}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;">
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">정렬 순서</label>
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">정렬 순서</label>
         <input id="cleanupEditOrder" type="number" value="${p.order||0}" style="width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
       </div>
       <div style="flex:1;display:flex;flex-direction:column;min-height:250px;">
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">프롬프트 *</label>
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">프롬프트 *</label>
         <textarea id="cleanupEditPrompt" style="flex:1;min-height:250px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;">${esc(p.prompt||'')}</textarea>
       </div>
     </div>
-    <div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="cleanupOpenPresetManager()">취소</button>
       <button class="btn btn-primary" onclick="cleanupSavePreset('${esc(id||'')}')">저장</button>
     </div>
@@ -4982,32 +5054,32 @@ function _qgShowResultModal(data) {
 
   const html = `
     <div style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column;">
-      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <div style="font-size:16px;font-weight:700;">🎯 AI 생성 결과 미리보기</div>
-            <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:17px;font-weight:700;line-height:1.3;">🎯 AI 생성 결과 미리보기</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:5px;">
               제외할 문제는 체크박스 해제 · 모델: <code>${esc(data.model||'')}</code> · 선택 <span id="qgIncludeCount">${_qgGenerated.length}</span> / ${_qgGenerated.length}
             </div>
           </div>
-          <button onclick="qgDiscardModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);">✕</button>
+          <button onclick="qgDiscardModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);flex-shrink:0;">✕</button>
         </div>
       </div>
 
-      <div style="padding:14px 20px;flex:1;overflow-y:auto;">
+      <div style="padding:16px 22px;flex:1;overflow-y:auto;">
         <div id="qgResultList">
           ${_qgGenerated.map((q,i) => _qgRenderQuestion(q,i)).join('')}
         </div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);">
+          <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">세트 이름</label>
+          <input type="text" id="qgSetName" value="${esc(defaultName)}" placeholder="예: Lesson 3 - 객관식 5문제"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        </div>
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:#fafafa;">
-        <label style="font-size:12px;font-weight:600;">세트 이름</label>
-        <input type="text" id="qgSetName" value="${esc(defaultName)}" placeholder="예: Lesson 3 - 객관식 5문제"
-          style="width:100%;padding:9px 12px;margin:5px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary" style="flex:1;" onclick="qgSaveSet()">💾 문제 세트로 저장</button>
-          <button class="btn btn-secondary" onclick="qgDiscardModal()">✖ 버리기</button>
-        </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="qgDiscardModal()">버리기</button>
+        <button class="btn btn-primary" onclick="qgSaveSet()">💾 문제 세트로 저장</button>
       </div>
     </div>
   `;
@@ -6346,12 +6418,12 @@ window.mcqOpenTargetPicker = async () => {
   const selStudentIds = new Set(_mcqTargets.filter(t=>t.type==='student').map(t=>t.id));
 
   const html = `
-    <div style="max-width:560px;">
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:16px;font-weight:700;">👥 배정 대상 선택</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:4px;">반 체크 = 반 전체 · 학생 체크 = 개별 지정 (중복 선택시 우선)</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">👥 배정 대상 선택</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:5px;">반 체크 = 반 전체 · 학생 체크 = 개별 지정 (중복 선택시 우선)</div>
       </div>
-      <div style="padding:12px 22px;max-height:55vh;overflow-y:auto;">
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         ${sortedGroups.map(g => {
           const cls = selClassIds.has(g) ? 'checked' : '';
           return `
@@ -6373,7 +6445,7 @@ window.mcqOpenTargetPicker = async () => {
             </div>`;
         }).join('')}
       </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);text-align:right;">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
       </div>
     </div>
@@ -7912,17 +7984,17 @@ window.qgOpenPromptModal = async () => {
   _qgPromptEditingType = _qgAiPromptTypes.includes(_qgCurrentType) ? _qgCurrentType : 'mcq';
 
   const html = `
-    <div style="width:min(820px,94vw);max-height:92vh;display:flex;flex-direction:column;">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
-        <div style="font-size:16px;font-weight:700;">📋 AI 프롬프트 편집</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:4px;">
+    <div style="width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">📋 AI 프롬프트 편집</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:5px;">
           유형별 시스템 프롬프트를 확인·수정합니다. 저장 시 이 브라우저에만 적용 (localStorage).
         </div>
       </div>
 
-      <div id="qgPromptTabs" style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;"></div>
+      <div id="qgPromptTabs" style="padding:12px 22px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;"></div>
 
-      <div style="padding:12px 20px 6px;flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;">
+      <div style="padding:16px 22px;flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;">
         <div id="qgPromptStatus" style="font-size:11px;color:var(--gray);margin-bottom:8px;">로딩 중...</div>
         <textarea id="qgPromptText" rows="20"
           style="width:100%;flex:1;min-height:320px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,Consolas,monospace;line-height:1.5;resize:vertical;"></textarea>
@@ -7931,11 +8003,11 @@ window.qgOpenPromptModal = async () => {
         </div>
       </div>
 
-      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;">
-        <button class="btn btn-secondary" onclick="qgResetPrompt()" style="font-size:12px;">↺ 기본값으로 복원</button>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;">
+        <button class="btn btn-secondary" onclick="qgResetPrompt()">↺ 기본값으로 복원</button>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
-          <button class="btn btn-primary" onclick="qgSavePrompt()" style="font-size:12px;font-weight:700;">💾 저장</button>
+          <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+          <button class="btn btn-primary" onclick="qgSavePrompt()">💾 저장</button>
         </div>
       </div>
     </div>
