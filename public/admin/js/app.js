@@ -7629,27 +7629,18 @@ function _tpBuildPrintHtml(questions, meta) {
   // - 2단 레이아웃: 헤더 1번 + 본문을 좌우 2단 CSS columns 로 분할 (구버전 printMixedExamPDF 방식)
   //   브라우저 인쇄 설정(시트당 2페이지) 필요 없음 — HTML 자체가 2단
   // A4 경계선 배경 그라데이션: 297mm(또는 210mm) 마다 옅은 빨간 선으로 페이지 경계 표시
-  // 인쇄 시엔 @media print 에서 이 배경 제거 (실제 페이지는 자동 분할되므로 불필요)
+  // 외곽(용지+경계선) 과 내부(내용) 를 분리: 페이지 맞춤 시 내부만 zoom → 빨간 선은 원래 위치 유지
   const pageBreakBg = `repeating-linear-gradient(to bottom,transparent 0,transparent calc(${pageMinH} - 2px),rgba(255,80,80,0.45) calc(${pageMinH} - 2px),rgba(255,80,80,0.45) ${pageMinH})`;
-  const pageStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;padding:8mm 10mm;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
+  const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
+  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;`;
 
-  if (twoPerSheet) {
-    return `
-      <div style="${pageStyle}">
-        ${headerHtml}
-        <div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">
-          ${body}
-        </div>
-        ${endHtml}
-      </div>
-    `;
-  }
+  const innerContent = twoPerSheet
+    ? `${headerHtml}<div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">${body}</div>${endHtml}`
+    : `${headerHtml}${body}${endHtml}`;
 
   return `
-    <div style="${pageStyle}">
-      ${headerHtml}
-      ${body}
-      ${endHtml}
+    <div style="${outerStyle}">
+      <div class="a4-content" style="${innerStyle}">${innerContent}</div>
     </div>
   `;
 }
@@ -7862,17 +7853,19 @@ window.tpPrintRefreshPreview = () => {
 };
 
 // zoom 비율 계산 후 적용 (내용 높이가 A4 1장보다 크면 축소)
+// 외곽(빨간 경계선) 은 그대로 두고 내부 .a4-content 에만 zoom 적용
 function _tpApplyFitToPage(enabled, orientation) {
-  const container = document.querySelector('#tpPrintArea > div');
-  if (!container) return;
-  container.style.zoom = '';
+  const inner = document.querySelector('#tpPrintArea .a4-content');
+  if (!inner) return;
+  inner.style.zoom = '';
   if (!enabled) return;
-  const contentH = container.scrollHeight;
+  // 측정: zoom 없는 상태에서의 자연 높이
+  const contentH = inner.scrollHeight;
   const targetMm = orientation === 'landscape' ? 210 : 297;
   const targetPx = targetMm * 96 / 25.4; // 96 DPI 기준
   if (contentH > targetPx + 5) {
     const ratio = targetPx / contentH;
-    container.style.zoom = ratio.toFixed(3);
+    inner.style.zoom = ratio.toFixed(3);
   }
 }
 
@@ -7920,12 +7913,12 @@ window.tpPrintNow = () => {
       const pending = imgs.filter(img => !img.complete);
       const fit = function(){
         if (!window.__FIT) return;
-        const c = document.querySelector('body > div');
-        if (!c) return;
-        const h = c.scrollHeight;
+        const inner = document.querySelector('.a4-content');
+        if (!inner) return;
+        const h = inner.scrollHeight;
         const targetMm = window.__ORIENT === 'landscape' ? 210 : 297;
         const targetPx = targetMm * 96 / 25.4;
-        if (h > targetPx + 5) c.style.zoom = (targetPx / h).toFixed(3);
+        if (h > targetPx + 5) inner.style.zoom = (targetPx / h).toFixed(3);
       };
       const done = function(){ fit(); setTimeout(function(){ window.print(); }, 200); };
       if (pending.length === 0) { done(); return; }
