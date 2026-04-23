@@ -7731,16 +7731,12 @@ function _printRenderUnscramble(questions, { showAnswers }) {
     const shuffled = chunks.slice().sort(() => Math.random() - 0.5);
     return `
       <div style="margin-bottom:22px;page-break-inside:avoid;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.meaningKo || '')}</div>
-        <div style="font-size:11px;color:#555;margin-left:20px;margin-bottom:8px;">다음 단어/구를 배열하여 위 뜻의 영문을 쓰시오.</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px;">${i+1}. ${esc(q.meaningKo || '')}</div>
         <div style="margin-left:20px;border-bottom:1px solid #888;min-height:26px;padding:4px;${showAnswers ? 'background:#f0fdf4;' : ''}">
           ${showAnswers ? `<span style="font-size:13px;color:#2e7d32;font-weight:700;">${esc(chunks.join(' '))}</span>` : ''}
         </div>
-        <div style="margin-left:20px;margin-top:8px;padding:8px 10px;background:#f9fafb;border:1px dashed #bbb;border-radius:4px;">
-          <div style="font-size:10px;color:#888;margin-bottom:4px;">단어/구 묶음</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            ${shuffled.map(c => `<span style="padding:4px 10px;background:white;border:1px solid #bbb;border-radius:4px;font-size:12px;font-family:'Times New Roman',serif;">${esc(c)}</span>`).join('')}
-          </div>
+        <div style="margin-left:20px;margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+          ${shuffled.map(c => `<span style="padding:4px 10px;background:white;border:1px solid #bbb;border-radius:4px;font-size:12px;font-family:'Times New Roman',serif;">${esc(c)}</span>`).join('')}
         </div>
       </div>`;
   }).join('');
