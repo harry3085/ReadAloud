@@ -389,6 +389,74 @@ function _genRecentSort(arr) {
 - `renderScoreReportRows`에 `_srData` userName 부분일치 필터 삽입
 - 날짜/반/유형은 서버 조회(`loadScoreReport`), 이름은 클라이언트 라이브 필터
 
+## 2026-04-25: AI 문제 생성 안정화 + 시험지 출력 전면 리뉴얼
+
+### 1) AI 문제 생성 파서 견고화 (`api/generate-quiz.js`)
+Gemini 3.1 Flash-Lite Preview 가 JSON 모드에서 간헐적으로 깨진 응답을 내는 문제 대응:
+- `parseAIResponse` 5단계 폴백
+  1. 마크다운 펜스 제거
+  2. 바로 `JSON.parse`
+  3. 첫 `{` ~ 마지막 `}` 구간 잘라 parse
+  4. 트레일링 쉼표 제거 후 parse
+  5. `_trySalvageTruncatedQuestions`: `"questions":[...]` 중간에 끊긴 경우 브레이스 깊이 추적해서 마지막으로 완성된 object까지만 살려 `]}` 닫아 복구
+- 실패 시 서버 응답에 `rawSnippet` 포함 → 클라이언트 6개 호출 지점에서 `console.warn('[generate-quiz raw]', ...)` 덤프
+- 다음 실패 시 F12 콘솔에서 실제 응답이 어떻게 깨졌는지 확인 가능
+
+### 2) AI 문제 생성 UX 강화
+- **Page 선택 토큰 추정치 실시간 표시** ([_qgEstimateInputTokens](public/admin/js/app.js))
+  - 한글: `chars/2`, 영문/기타: `chars/4`, 프롬프트 오버헤드 1200 tok + 페이지당 30 tok
+  - 서버의 `MAX_CHARS_PER_PAGE=3000` 잘라내기 반영
+  - 임계치 색상: `<5k 안전(녹)` / `<15k 적정(주황)` / `15k+ 큼(빨강)`
+- **Page 상한 10 → 20**
+  - `api/generate-quiz.js MAX_PAGES 20` / UI 라벨 `(최대 20개)` / 클라이언트 체크 `> 20`
+  - 초과 시 생성 버튼 아래 `qgStatus`에 `⚠️ Page 수를 20이하로 줄이세요 (현재 N개)` 영구 표시
+  - 20 이하로 내려가면 경고 자동 제거
+
+### 3) 학생앱 MCQ 한글 해석 노출 정책
+답을 암시할 수 있어 풀이 중엔 숨김:
+- `public/index.html`: `#mcqQuestionKo` div 제거
+- `_mcqRenderStep`: `questionKo` setter 삭제
+- **결과 상세** (`_mcqBuildDetail`)엔 그대로 표시 — 제출 후 피드백이라 무방
+- 관리자 시험지 프린트에선 `showAnswers` 시에만 표시
+
+### 4) 시험지 출력 전면 리뉴얼
+14건 배포로 단어/빈칸/객관식/주관식/언스크램블 공통 프린트 흐름을 대거 개선.
+
+#### 레이아웃 · A4 정합성
+- **A4 실물 크기 프리뷰**: `width:210mm;min-height:297mm` (세로) / `297×210mm` (가로), `padding:8mm 10mm` + `box-sizing:border-box`
+- **방향 선택**: 툴바 `A4 세로 / A4 가로` select. `@page size` 동적 주입 (`A4 portrait / landscape`)
+- **여백 최소화**: `@page margin 0`, 컨테이너 `padding 8px 12px`
+- **페이지 경계선 시각화**: `repeating-linear-gradient` 로 297mm(세로)/210mm(가로) 마다 옅은 빨간 선
+  - 외곽 div(용지+경계선) / 내부 `.a4-content`(내용) 분리 → 페이지 맞춤 시 경계선은 축소 제외
+
+#### 2단 레이아웃 (구버전 `printMixedExamPDF` 방식 복원)
+- 체크박스 `2단 레이아웃`: 내용을 `column-count:2 + column-rule` 로 좌우 분할
+- 브라우저의 "시트당 페이지" 설정에 의존하지 않음 — HTML 자체가 2단
+- 헤더는 최상단 1번만, 문제가 좌→우로 자연스럽게 흐름
+- 이전 시도(thead 반복)는 페이지별 다른 내용 렌더가 CSS로 불가해 폐기
+
+#### 페이지 맞춤 (자동 축소)
+- 체크박스 `페이지 맞춤`: 내용이 A4 1장을 넘으면 `zoom` 으로 비례 축소
+- `_tpApplyFitToPage`: `scrollHeight` 측정 → `ratio = target / actual` 계산
+- **`.a4-content`에만 적용** (외곽 박스·경계선은 고정 유지)
+- 프리뷰·프린트 팝업 양쪽 동일 로직 (`window.__FIT` / `__ORIENT` 주입)
+
+#### 대표 로고 헤더 삽입
+- `/icons/icon-192.png` (앱 시작 화면·홈 헤더의 대표 로고)
+- 헤더 왼쪽 42×42 크기, `object-fit:contain`
+- 팝업 `about:blank`에서도 로드되도록 `location.origin + /icons/...` 절대 URL 사용
+- 인쇄 스크립트가 모든 `<img>` 로드 완료 후 `window.print()` 호출 (2초 타임아웃 안전장치)
+
+#### 유형별 렌더 개선
+
+| 유형 | 개선 |
+|------|------|
+| **객관식** (`_printRenderMcq`) | 번호 `1-1/1-2` → `1/2/3` 순차, 출처 Page는 답지 보기 시에만, 출처+해석을 한 줄에 `출처: Page · (해석)` 결합 |
+| **빈칸채우기** (`_printRenderBlank`) | `문장의 빈칸에 알맞은 단어를 쓰세요.` 반복 → `※` 상단 공통 안내 1회, 번호를 영어 문장 앞으로 이동 |
+| **주관식 해석** (`_printRenderSubj`) | `위 문장을 우리말로 해석하시오.` 반복 → `※` 상단 공통 안내 1회, 번호를 영어 문장 앞으로 이동, 답란도 번호 폭만큼 들여쓰기 |
+| **언스크램블** (`_printRenderUnscramble`) | `다음 단어/구를 배열하여 위 뜻의 영문을 쓰시오.` 안내 / `단어/구 묶음` 라벨·점선 박스 제거, 칩만 바로 노출 |
+| **단어시험 주관식** (`_printRenderVocab` short) | `align-items:center` → `align-items:baseline` 로 문제/정답 **베이스라인 정렬**, 답란은 `padding-bottom + border-bottom` 로 자연스러운 밑줄 |
+
 ## 주요 버그 수정 이력
 
 ### 학생앱 녹음숙제 (2026-04-18)
@@ -442,9 +510,10 @@ function _genRecentSort(arr) {
 8. **Gemini 모델 단일화** (2026-04-23): 모든 API는 `gemini-3.1-flash-lite-preview` 만 사용. 폴백 체인 추가 금지 (버전 간 결과 차이로 관리자·학생 혼란 발생 → 실패 시 친화적 에러 메시지만 표시)
 9. **Gemini API 호출 로깅**: 새 Gemini 호출 추가 시 반드시 `_logApiCall(endpoint)` 또는 `_geminiFetch()` 래퍼 경유 — `apiUsage/{YYYY-MM-DD}` 에 자동 카운트
 
-## 파일 크기 참고 (2026-04-24)
-- `public/admin/js/app.js`: ~8030줄 (모달 표준화 + 정렬 헬퍼 추가)
-- `public/admin/index.html`: ~870줄 (성적 리포트 검색 input)
-- `public/js/app.js`: ~4765줄
-- `public/index.html`: ~662줄
-- SW 캐시: `kunsori-v85`
+## 파일 크기 참고 (2026-04-25)
+- `public/admin/js/app.js`: ~8100줄 (시험지 프린트 재작업 + AI 파서)
+- `public/admin/index.html`: ~870줄
+- `public/js/app.js`: ~4765줄 (MCQ 한글 div 삭제)
+- `public/index.html`: ~661줄
+- `api/generate-quiz.js`: ~840줄 (파서 폴백 추가)
+- SW 캐시: `kunsori-v103`
