@@ -7770,33 +7770,23 @@ function _printRenderBlank(questions, { showAnswers }) {
 }
 
 function _printRenderMcq(questions, { showAnswers }) {
-  // 지문(sourcePageId) 별로 그룹화
-  const grouped = {};
-  questions.forEach(q => {
-    const key = q.sourcePageId || 'default';
-    if (!grouped[key]) grouped[key] = { title: q.sourcePageTitle || '', items: [] };
-    grouped[key].items.push(q);
-  });
-
-  return Object.values(grouped).map((group, gi) => `
-    <div style="margin-bottom:22px;page-break-inside:avoid;">
-      ${group.title ? `<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px;padding:4px 8px;background:#f3f4f6;border-radius:4px;">📄 ${esc(group.title)}</div>` : ''}
-      ${group.items.map((q, i) => {
-        const correctIdx = (q.choices || []).findIndex(c => c.isAnswer);
-        return `
-          <div style="margin-bottom:14px;">
-            <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${gi+1}-${i+1}. ${esc(q.question || '')}</div>
-            ${showAnswers && q.questionKo ? `<div style="font-size:11px;color:#2e7d32;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
-              ${(q.choices || []).map((c, j) => `
-                <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
-                  ${['①','②','③','④'][j]} ${esc(c.text || '')}${showAnswers && j === correctIdx ? ' ✓' : ''}
-                </div>`).join('')}
-            </div>
-          </div>`;
-      }).join('')}
-    </div>
-  `).join('');
+  // 순차 번호 1, 2, 3 ... (이전엔 Page별 그룹화로 1-1, 1-2 였음)
+  // 출처 페이지 표시는 답지 보기일 때만
+  return questions.map((q, i) => {
+    const correctIdx = (q.choices || []).findIndex(c => c.isAnswer);
+    return `
+      <div style="margin-bottom:14px;page-break-inside:avoid;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.question || '')}</div>
+        ${showAnswers && q.sourcePageTitle ? `<div style="font-size:10px;color:#888;margin-left:16px;margin-bottom:3px;">출처: ${esc(q.sourcePageTitle)}</div>` : ''}
+        ${showAnswers && q.questionKo ? `<div style="font-size:11px;color:#2e7d32;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
+          ${(q.choices || []).map((c, j) => `
+            <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+              ${['①','②','③','④'][j]} ${esc(c.text || '')}${showAnswers && j === correctIdx ? ' ✓' : ''}
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // 원문 줄 수만큼 답란(28px 선) 채우기 — innerHTML 설정 후 호출
