@@ -523,19 +523,54 @@ Output ONLY the JSON object, nothing else.`;
 }
 
 function parseAIResponse(text) {
+  if (!text || typeof text !== 'string') return null;
   let cleaned = text.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
 
+  // 1) 마크다운 펜스 제거
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+
+  // 2) 그대로 파싱 (responseMimeType:application/json 이상적 케이스)
+  try { return JSON.parse(cleaned); } catch {}
+
+  // 3) 앞뒤 잡음 제거: 첫 { ~ 마지막 }
   const firstBrace = cleaned.indexOf('{');
+  if (firstBrace === -1) return null;
   const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) return null;
+  if (lastBrace > firstBrace) {
+    const slice = cleaned.slice(firstBrace, lastBrace + 1);
+    try { return JSON.parse(slice); } catch {}
 
-  const jsonStr = cleaned.slice(firstBrace, lastBrace + 1);
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    return null;
+    // 4) 트레일링 쉼표 제거
+    const noTrail = slice.replace(/,(\s*[}\]])/g, '$1');
+    try { return JSON.parse(noTrail); } catch {}
   }
+
+  // 5) 잘린 응답 복구 시도: "questions":[...] 배열에서 마지막으로 완성된 object 까지만 살림
+  const salvaged = _trySalvageTruncatedQuestions(cleaned.slice(firstBrace));
+  if (salvaged) return salvaged;
+
+  return null;
+}
+
+// "questions":[ ... ] 형태에서 중간에 끊긴 경우, 마지막으로 완성된 중괄호 블록까지만 파싱
+function _trySalvageTruncatedQuestions(src) {
+  const m = src.match(/"questions"\s*:\s*\[/);
+  if (!m) return null;
+  const arrStart = m.index + m[0].length;
+  let depth = 0, inStr = false, escape = false, lastCompleteEnd = -1;
+  for (let i = arrStart; i < src.length; i++) {
+    const c = src[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) lastCompleteEnd = i; }
+    else if (c === ']' && depth === 0) break;
+  }
+  if (lastCompleteEnd === -1) return null;
+  const rebuilt = src.slice(0, lastCompleteEnd + 1) + ']}';
+  try { return JSON.parse(rebuilt); } catch { return null; }
 }
 
 function validateMCQ(questions, pages) {

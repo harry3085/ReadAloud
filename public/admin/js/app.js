@@ -4547,6 +4547,7 @@ async function _qgCallMcq(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
@@ -4601,6 +4602,7 @@ async function _qgCallFillBlank(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
@@ -4762,6 +4764,7 @@ async function _qgCallSubjective(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
@@ -4807,6 +4810,7 @@ async function _qgCallRecording(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
@@ -4853,6 +4857,7 @@ async function _qgCallVocab(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
@@ -4902,6 +4907,7 @@ async function _qgCallUnscramble(opts) {
     const sec = ((Date.now()-t0)/1000).toFixed(1);
 
     if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[generate-quiz raw]', data.rawSnippet);
       if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
       showToast('생성 실패: ' + (data.error||'unknown'));
       return;
