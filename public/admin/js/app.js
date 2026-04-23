@@ -4143,7 +4143,7 @@ function _qgRender() {
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 <span style="font-weight:400;color:var(--gray);font-size:10px;">(최대 10개)</span></div>
-            <div style="font-size:10px;color:var(--gray);">${pages.length}개 표시 중 (본문 20자 이상만)</div>
+            <div style="font-size:10px;color:var(--gray);">${pages.length}개 표시 중 (본문 20자 이상만) · <span id="qgTokenEst"></span></div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
             <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectAll()">전체</button>
@@ -4215,6 +4215,7 @@ function _qgRender() {
 
   _qgRenderOptions(_qgCurrentType);
   _qgAttachResizers();
+  _qgUpdateTokenEstimate();
 }
 
 // ─── 컬럼 리사이저 (4개 pane = 3개 리사이저) ───
@@ -4350,6 +4351,37 @@ window.qgSelectNone = () => {
 function _qgUpdateSelCount() {
   const el = document.getElementById('qgSelCount');
   if (el) el.textContent = _qgSelectedPageIds.size;
+  _qgUpdateTokenEstimate();
+}
+
+// Gemini 입력 토큰 추정 (±10% 오차, 실제 API 호출 없이 문자수 기반)
+// - 한글: ~2 chars/token
+// - 영문/기타: ~4 chars/token
+// - 시스템 프롬프트 + 유저 지시문 오버헤드: ~1200 tokens 고정
+// - 페이지당 랩핑 오버헤드: ~30 tokens
+// - 서버의 MAX_CHARS_PER_PAGE(3000) 잘라내기 반영
+function _qgEstimateInputTokens(pageIds) {
+  const MAX = 3000;
+  let total = 1200; // 시스템 + 유저 지시문 오버헤드
+  (_genPages||[]).forEach(p => {
+    if (!pageIds.has(p.id)) return;
+    const text = String(p.text||'').slice(0, MAX);
+    const hangul = (text.match(/[ㄱ-ㆎ가-힣]/g)||[]).length;
+    const rest = text.length - hangul;
+    total += Math.ceil(hangul / 2) + Math.ceil(rest / 4) + 30;
+  });
+  return total;
+}
+
+function _qgUpdateTokenEstimate() {
+  const el = document.getElementById('qgTokenEst');
+  if (!el) return;
+  if (_qgSelectedPageIds.size === 0) { el.innerHTML = ''; return; }
+  const n = _qgEstimateInputTokens(_qgSelectedPageIds);
+  // 임계치: <5k 안전 / 5k~15k 주의 / 15k+ 경고 (입력 1M 컨텍스트 기준 여유는 많지만, 응답 품질과 파싱 안정성 영향)
+  const color = n < 5000 ? '#0a7a3a' : n < 15000 ? '#b45309' : '#c33';
+  const hint = n < 5000 ? '안전' : n < 15000 ? '적정' : '큼';
+  el.innerHTML = `<span style="color:${color};" title="선택된 Page 본문 + 프롬프트의 예상 입력 토큰">≈${n.toLocaleString()} tokens · ${hint}</span>`;
 }
 
 // ─── 유형 전환 ───
