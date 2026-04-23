@@ -22,7 +22,7 @@ const MAX_COUNT_BY_TYPE = {
   recording: 50,
   unscramble: 50,
 };
-const MAX_PAGES = 10;
+const MAX_PAGES = 20;
 
 // ─── 문제 타입별 시스템 프롬프트 ───
 const SYSTEM_PROMPTS = {

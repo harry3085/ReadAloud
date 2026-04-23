@@ -4142,7 +4142,7 @@ function _qgRender() {
       <div id="qgPagePane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 <span style="font-weight:400;color:var(--gray);font-size:10px;">(최대 10개)</span></div>
+            <div style="font-weight:700;font-size:13px;">📄 Page · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 <span style="font-weight:400;color:var(--gray);font-size:10px;">(최대 20개)</span></div>
             <div style="font-size:10px;color:var(--gray);">${pages.length}개 표시 중 (본문 20자 이상만) · <span id="qgTokenEst"></span></div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -4352,6 +4352,11 @@ function _qgUpdateSelCount() {
   const el = document.getElementById('qgSelCount');
   if (el) el.textContent = _qgSelectedPageIds.size;
   _qgUpdateTokenEstimate();
+  // 선택 수가 상한 이하로 내려가면 이전 경고 문구 제거
+  if (_qgSelectedPageIds.size <= 20) {
+    const status = document.getElementById('qgStatus');
+    if (status && status.textContent?.includes('20이하')) status.innerHTML = '';
+  }
 }
 
 // Gemini 입력 토큰 추정 (±10% 오차, 실제 API 호출 없이 문자수 기반)
@@ -4519,10 +4524,14 @@ window.qgGenerate = async () => {
 
   if (_qgSelectedPageIds.size === 0) {
     showToast('Page 를 먼저 선택하세요');
+    const status0 = document.getElementById('qgStatus');
+    if (status0) status0.innerHTML = `<span style="color:#c33;">Page 를 먼저 선택하세요</span>`;
     return;
   }
-  if (_qgSelectedPageIds.size > 10) {
-    showToast('한 번에 최대 10개 Page까지 가능합니다');
+  if (_qgSelectedPageIds.size > 20) {
+    const status0 = document.getElementById('qgStatus');
+    if (status0) status0.innerHTML = `<span style="color:#c33;">⚠️ Page 수를 20이하로 줄이세요 (현재 ${_qgSelectedPageIds.size}개)</span>`;
+    showToast('Page 수를 20이하로 줄이세요');
     return;
   }
 
