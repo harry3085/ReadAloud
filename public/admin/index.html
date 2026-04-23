@@ -60,11 +60,11 @@
     <div class="nav-label">콘텐츠 제작</div>
     <div class="nav-item" onclick="goPage('generator')" id="nav-generator">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-      Generator
+      AI OCR
     </div>
     <div class="nav-item" onclick="goPage('quiz-generate')" id="nav-quiz-generate">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
-      AI 문제 생성
+      AI Generator
     </div>
     <div class="nav-item" onclick="goPage('quiz-sets')" id="nav-quiz-sets">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
@@ -635,7 +635,7 @@
   <!-- Generator -->
   <div class="page" id="page-generator">
     <div class="page-header">
-      <div><div class="page-title">📁 Generator</div><div class="page-sub">이미지를 OCR하여 Book › Chapter › Page 구조로 저장합니다</div></div>
+      <div><div class="page-title">📁 AI OCR</div><div class="page-sub">이미지를 OCR하여 Book › Chapter › Page 구조로 저장합니다</div></div>
       <button class="btn btn-secondary" onclick="loadGenerator()">↺ 새로고침</button>
     </div>
 
@@ -766,7 +766,7 @@
   <!-- AI 문제 생성 -->
   <div class="page" id="page-quiz-generate">
     <div class="page-header">
-      <div><div class="page-title">✨ AI 문제 생성</div><div class="page-sub">Generator Page를 선택하면 AI가 객관식 4지선다 문제를 만들어 줍니다</div></div>
+      <div><div class="page-title">✨ AI Generator</div><div class="page-sub">AI OCR Page를 선택하면 AI가 객관식 4지선다 문제를 만들어 줍니다</div></div>
       <button class="btn btn-secondary" onclick="loadQuizGenerate()">↺ 새로고침</button>
     </div>
     <div id="quizGenRoot"></div>

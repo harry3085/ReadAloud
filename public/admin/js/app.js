@@ -90,8 +90,8 @@ const pageLabels = {
   'test-list':'시험 목록',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
-  generator:'Generator',
-  'quiz-generate':'AI 문제 생성', 'quiz-sets':'문제 세트 목록',
+  generator:'AI OCR',
+  'quiz-generate':'AI Generator', 'quiz-sets':'문제 세트 목록',
   'test-word':'단어시험',
   'test-unscramble':'언스크램블',
   'test-blank':'빈칸채우기',
@@ -2649,7 +2649,7 @@ window.loadGenerator = async () => {
     _genPageCur = 1;
     _genRenderAll();
     _cleanupLoadPresets();  // 프리셋 백그라운드 로드 (에디터 드롭다운 채움)
-  } catch(e) { showToast('Generator 로드 실패: '+e.message); }
+  } catch(e) { showToast('AI OCR 로드 실패: '+e.message); }
 };
 
 function _genRenderAll() {
@@ -4048,7 +4048,7 @@ window.loadQuizGenerate = async () => {
       _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
       _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
     } catch(e) {
-      showToast('Generator 데이터 로드 실패: '+e.message);
+      showToast('AI OCR 데이터 로드 실패: '+e.message);
       return;
     }
   }
@@ -5465,8 +5465,8 @@ function _qsRenderList() {
       <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:40px;text-align:center;color:var(--gray);">
         <div style="font-size:32px;margin-bottom:10px;">📭</div>
         <div style="font-size:14px;margin-bottom:6px;">저장된 문제 세트가 없습니다</div>
-        <div style="font-size:12px;">'AI 문제 생성' 메뉴에서 새 세트를 만들어보세요</div>
-        <button class="btn btn-primary" style="margin-top:16px;" onclick="goPage('quiz-generate')">✨ AI 문제 생성하러 가기</button>
+        <div style="font-size:12px;">'AI Generator' 메뉴에서 새 세트를 만들어보세요</div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="goPage('quiz-generate')">✨ AI Generator 바로가기</button>
       </div>`;
     return;
   }
@@ -6348,8 +6348,8 @@ function _mcqRender() {
       <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:48px;text-align:center;color:var(--gray);">
         <div style="font-size:32px;margin-bottom:10px;">📭</div>
         <div style="font-size:14px;margin-bottom:6px;">배정 가능한 객관식 문제 세트가 없습니다</div>
-        <div style="font-size:12px;">먼저 'AI 문제 생성' 메뉴에서 객관식 세트를 만들어주세요</div>
-        <button class="btn btn-primary" style="margin-top:16px;" onclick="goPage('quiz-generate')">✨ AI 문제 생성하러 가기</button>
+        <div style="font-size:12px;">먼저 'AI Generator' 메뉴에서 객관식 세트를 만들어주세요</div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="goPage('quiz-generate')">✨ AI Generator 바로가기</button>
       </div>`;
     return;
   }
@@ -7064,7 +7064,7 @@ function _tpRenderNoSets(cfg) {
     <div style="padding:40px;text-align:center;color:var(--gray);">
       <div style="font-size:32px;margin-bottom:10px;">📭</div>
       <div style="font-size:13px;margin-bottom:10px;">배정 가능한 ${esc(cfg.kindLabel)} 문제 세트가 없습니다</div>
-      <button class="btn btn-primary" onclick="goPage('quiz-generate')">✨ AI 문제 생성하러 가기</button>
+      <button class="btn btn-primary" onclick="goPage('quiz-generate')">✨ AI Generator 바로가기</button>
     </div>`;
 }
 
@@ -8175,7 +8175,7 @@ window.qgOpenPromptModal = async () => {
         <textarea id="qgPromptText" rows="20"
           style="width:100%;flex:1;min-height:320px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,Consolas,monospace;line-height:1.5;resize:vertical;"></textarea>
         <div style="font-size:10px;color:var(--gray);margin-top:6px;">
-          💡 팁: 규칙·출력 JSON 형식을 바꾸면 파싱 실패로 이어질 수 있습니다. 수정 후 "AI 문제 생성" 으로 실제 테스트하세요.
+          💡 팁: 규칙·출력 JSON 형식을 바꾸면 파싱 실패로 이어질 수 있습니다. 수정 후 "AI Generator" 로 실제 테스트하세요.
         </div>
       </div>
 
