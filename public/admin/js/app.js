@@ -7494,8 +7494,8 @@ window.tpOpenPrintModal = () => {
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;">
             <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintRefreshPreview()"> 답지 보기
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="브라우저 인쇄 시 '시트당 2페이지' 설정과 같이 쓰세요">
-            <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 시트당 2페이지
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="한 페이지를 좌우 2단으로 분할하여 인쇄 (브라우저의 '시트당 페이지' 설정 불필요)">
+            <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 2단 레이아웃
           </label>
           <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
           <button class="btn btn-primary" onclick="tpPrintNow()" style="font-size:12px;font-weight:700;">🖨 인쇄</button>
@@ -7609,19 +7609,17 @@ function _tpBuildPrintHtml(questions, meta) {
   const endHtml = `<div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>`;
 
   // 두 모드:
-  // - 기본 (1-per-sheet): 헤더는 1페이지에만 (예전 방식, 2페이지+는 문제만 이어짐)
-  // - 2-per-sheet: thead 로 감싸 매 페이지 반복 (모든 페이지에서 첫 문제 Y 정렬)
+  // - 기본: 헤더 1번 + 단일 컬럼 (문제가 길면 자연스럽게 페이지 넘어감, 헤더는 1페이지에만)
+  // - 2단 레이아웃: 헤더 1번 + 본문을 좌우 2단 CSS columns 로 분할 (구버전 printMixedExamPDF 방식)
+  //   브라우저 인쇄 설정(시트당 2페이지) 필요 없음 — HTML 자체가 2단
   if (twoPerSheet) {
     return `
       <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr><td style="padding:0;">${headerHtml}</td></tr>
-          </thead>
-          <tbody>
-            <tr><td style="padding:0;">${body}${endHtml}</td></tr>
-          </tbody>
-        </table>
+        ${headerHtml}
+        <div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">
+          ${body}
+        </div>
+        ${endHtml}
       </div>
     `;
   }
@@ -7866,9 +7864,8 @@ window.tpPrintNow = () => {
       body { background:white; padding:0; }
       @page { margin: 8mm 10mm; size: A4; }
       div[style*='box-shadow'] { box-shadow:none !important; max-width:none !important; padding:0 !important; }
-      /* thead 매 페이지 반복 (Firefox/Chromium 모두 동작) */
-      thead { display: table-header-group; }
-      tr, td { page-break-inside: avoid; }
+      /* 문제 단위로는 컬럼/페이지 중간에 잘리지 않도록 */
+      [style*='margin-bottom'] { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
