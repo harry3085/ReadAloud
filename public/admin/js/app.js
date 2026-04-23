@@ -3719,7 +3719,7 @@ function _cleanupRenderPresetManager() {
         <td style="padding:6px 10px;white-space:nowrap;">
           <button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">✏️ 편집</button>
           <button class="action-btn" onclick="cleanupDuplicatePreset('${esc(p.id)}')">⎘ 복제</button>
-          <button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑</button>
+          <button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑 삭제</button>
         </td>
       </tr>`).join('');
 
@@ -5583,7 +5583,7 @@ function _qsRenderRow(s, where) {
       <button class="action-btn" onclick="qsViewDetail('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">보기</button>
       <button class="action-btn" onclick="qsEditSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">수정</button>
       <button class="action-btn" onclick="qsRenameSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">이름</button>
-      <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">🗑</button>
+      <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">🗑 삭제</button>
     </td>
   </tr>`;
 }
