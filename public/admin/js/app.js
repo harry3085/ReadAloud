@@ -7648,16 +7648,23 @@ function _tpBuildPrintHtml(questions, meta) {
 // ─── 유형별 프린트 렌더러 (Phase 6B) ───
 
 function _printRenderSubj(questions, { showAnswers }) {
-  return questions.map((q, i) => `
+  // 상단에 공통 지시문 한 번만, 각 문항은 번호 + 영어 문장 (번호를 영문 앞으로)
+  const items = questions.map((q, i) => `
     <div style="margin-bottom:22px;page-break-inside:avoid;">
-      <div style="font-size:12px;font-weight:700;margin-bottom:5px;">${i+1}. ${esc(q.questionKo || '위 문장을 우리말로 해석하시오.')}</div>
-      <div data-fb-sent="${i}" style="font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;margin-bottom:8px;">${esc(q.sentence || '')}</div>
+      <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
+        <div data-fb-sent="${i}" style="flex:1;font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;">${esc(q.sentence || '')}</div>
+      </div>
       ${showAnswers && q.sampleAnswerKo
-        ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;"><strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}</div>`
-        : `<div data-fb-ans="${i}"><div style="border-bottom:1px solid #aaa;height:28px;"></div></div>`
+        ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;margin-left:30px;"><strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}</div>`
+        : `<div data-fb-ans="${i}" style="margin-left:30px;"><div style="border-bottom:1px solid #aaa;height:28px;"></div></div>`
       }
     </div>
   `).join('');
+  return `
+    <div style="font-size:12px;color:#555;margin-bottom:10px;">※ 위 문장을 우리말로 해석하시오.</div>
+    ${items}
+  `;
 }
 
 function _printRenderVocab(questions, { showAnswers, typeOpts }) {
