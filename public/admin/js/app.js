@@ -7584,29 +7584,38 @@ function _tpBuildPrintHtml(questions, meta) {
   const renderer = renderers[sourceType] || _printRenderSubj;
   const body = renderer(questions, { showAnswers, typeOpts: typeOpts || {} });
 
+  // thead 로 헤더를 감싸 매 페이지마다 반복 → 모든 페이지에서 첫 문제가 같은 Y 위치에서 시작
   return `
-    <div style="background:white;max-width:720px;margin:0 auto;padding:28px 36px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
-      <div style="border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:18px;">
-        <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
-            <div style="font-size:20px;font-weight:800;color:#111;margin-top:3px;">${esc(title||'시험')}</div>
-            <div style="font-size:11px;color:#555;margin-top:5px;">
-              ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
-              ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
-              · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
+    <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr><td style="padding:0;">
+            <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
+                  <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${esc(title||'시험')}</div>
+                  <div style="font-size:10px;color:#555;margin-top:3px;">
+                    ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
+                    ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
+                    · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
+                  </div>
+                </div>
+                <div style="font-size:10px;text-align:right;line-height:1.7;flex-shrink:0;border:1px solid #999;padding:4px 8px;border-radius:4px;">
+                  이름: <span style="display:inline-block;width:80px;border-bottom:1px solid #333;">&nbsp;</span><br>
+                  반: <span style="display:inline-block;width:50px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:45px;border-bottom:1px solid #333;">&nbsp;</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div style="font-size:11px;text-align:right;line-height:1.9;flex-shrink:0;border:1px solid #999;padding:6px 10px;border-radius:4px;">
-            이름: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span><br>
-            반: <span style="display:inline-block;width:60px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:50px;border-bottom:1px solid #333;">&nbsp;</span>
-          </div>
-        </div>
-      </div>
-
-      ${body}
-
-      <div style="text-align:center;margin-top:28px;padding-top:10px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>
+          </td></tr>
+        </thead>
+        <tbody>
+          <tr><td style="padding:0;">
+            ${body}
+            <div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>
+          </td></tr>
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -7838,8 +7847,11 @@ window.tpPrintNow = () => {
     body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',sans-serif; margin:0; padding:20px; background:#eee; }
     @media print {
       body { background:white; padding:0; }
-      @page { margin: 15mm; size: A4; }
-      div[style*='box-shadow'] { box-shadow:none !important; max-width:none !important; }
+      @page { margin: 8mm 10mm; size: A4; }
+      div[style*='box-shadow'] { box-shadow:none !important; max-width:none !important; padding:0 !important; }
+      /* thead 매 페이지 반복 (Firefox/Chromium 모두 동작) */
+      thead { display: table-header-group; }
+      tr, td { page-break-inside: avoid; }
     }
   </style>
 </head>
