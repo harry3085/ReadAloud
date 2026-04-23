@@ -7620,7 +7620,10 @@ function _tpBuildPrintHtml(questions, meta) {
   // - 기본: 헤더 1번 + 단일 컬럼 (문제가 길면 자연스럽게 페이지 넘어감, 헤더는 1페이지에만)
   // - 2단 레이아웃: 헤더 1번 + 본문을 좌우 2단 CSS columns 로 분할 (구버전 printMixedExamPDF 방식)
   //   브라우저 인쇄 설정(시트당 2페이지) 필요 없음 — HTML 자체가 2단
-  const pageStyle = `background:white;width:${pageW};min-height:${pageMinH};margin:0 auto;padding:8mm 10mm;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
+  // A4 경계선 배경 그라데이션: 297mm(또는 210mm) 마다 옅은 빨간 선으로 페이지 경계 표시
+  // 인쇄 시엔 @media print 에서 이 배경 제거 (실제 페이지는 자동 분할되므로 불필요)
+  const pageBreakBg = `repeating-linear-gradient(to bottom,transparent 0,transparent calc(${pageMinH} - 2px),rgba(255,80,80,0.45) calc(${pageMinH} - 2px),rgba(255,80,80,0.45) ${pageMinH})`;
+  const pageStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;padding:8mm 10mm;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
 
   if (twoPerSheet) {
     return `
@@ -7877,8 +7880,12 @@ window.tpPrintNow = () => {
     @media print {
       body { background:white; padding:0; }
       @page { margin: 0; size: A4 ${orientation}; }
-      /* 프린트 시 외곽 래퍼의 섀도·padding 제거하고 A4 정확히 채움 */
-      div[style*='box-shadow'] { box-shadow:none !important; margin:0 !important; }
+      /* 프린트 시 외곽 래퍼의 섀도·여백·페이지경계선 배경 제거 */
+      div[style*='box-shadow'] {
+        box-shadow:none !important;
+        margin:0 !important;
+        background-image:none !important;
+      }
       /* 문제 단위로는 컬럼/페이지 중간에 잘리지 않도록 */
       [style*='margin-bottom'] { break-inside: avoid; page-break-inside: avoid; }
     }
