@@ -7743,7 +7743,8 @@ function _printRenderUnscramble(questions, { showAnswers }) {
 }
 
 function _printRenderBlank(questions, { showAnswers }) {
-  return questions.map((q, i) => {
+  // 상단에 공통 지시문 한 번만, 각 문항은 번호 + 영어 문장 (번호를 영문 앞으로)
+  const items = questions.map((q, i) => {
     const parts = (q.sentence || '').split('___');
     let html = '';
     for (let j = 0; j < parts.length; j++) {
@@ -7759,11 +7760,15 @@ function _printRenderBlank(questions, { showAnswers }) {
       }
     }
     return `
-      <div style="margin-bottom:16px;page-break-inside:avoid;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.')}</div>
-        <div style="font-size:14px;line-height:2;padding:8px 12px;background:#f9fafb;border-left:3px solid #333;margin-left:18px;">${html}</div>
+      <div style="margin-bottom:14px;page-break-inside:avoid;display:flex;gap:8px;align-items:baseline;">
+        <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
+        <div style="flex:1;font-size:14px;line-height:2;padding:6px 12px;background:#f9fafb;border-left:3px solid #333;">${html}</div>
       </div>`;
   }).join('');
+  return `
+    <div style="font-size:12px;color:#555;margin-bottom:10px;">※ 문장의 빈칸에 알맞은 단어를 쓰세요.</div>
+    ${items}
+  `;
 }
 
 function _printRenderMcq(questions, { showAnswers }) {

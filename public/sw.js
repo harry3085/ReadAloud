@@ -2,7 +2,7 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-const CACHE_NAME = 'kunsori-v100';
+const CACHE_NAME = 'kunsori-v101';
 const APP_SHELL = [
   '/',
   '/index.html',
