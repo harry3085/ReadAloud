@@ -7627,7 +7627,7 @@ function _tpBuildPrintHtml(questions, meta) {
   const watermarkTop = isLandscape ? '105mm' : '148.5mm';
   const watermarkHtml = `<img src="${logoUrl}" alt="" aria-hidden="true"
     style="position:absolute;top:${watermarkTop};left:50%;transform:translate(-50%,-50%);
-           width:65%;max-width:150mm;height:auto;opacity:0.07;pointer-events:none;z-index:0;
+           width:32%;max-width:75mm;height:auto;opacity:0.07;pointer-events:none;z-index:0;
            user-select:none;"
     onerror="this.style.display='none'">`;
 
