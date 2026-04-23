@@ -7791,7 +7791,7 @@ function _printRenderMcq(questions, { showAnswers }) {
           ${q.sourcePageTitle && q.questionKo ? `<span style="font-size:10px;color:#ccc;margin:0 6px;">·</span>` : ''}
           ${q.questionKo ? `<span style="font-size:11px;color:#2e7d32;">(${esc(q.questionKo)})</span>` : ''}
         </div>` : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
+        <div style="display:grid;grid-template-columns:1fr;gap:4px;margin-left:16px;">
           ${(q.choices || []).map((c, j) => `
             <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
               ${['①','②','③','④'][j]} ${esc(c.text || '')}${showAnswers && j === correctIdx ? ' ✓' : ''}
