@@ -2896,7 +2896,8 @@ window.runGenOcr = async () => {
   const btn = document.getElementById('genOcrBtn');
   const status = document.getElementById('genOcrStatus');
   btn.disabled = true;
-  let maxSerial = _genPages.reduce((m,p)=>Math.max(m,p.serialNumber||0),0);
+  // 미배정(chapterId 없음) Page 수 + 1 부터 넘버링 시작
+  let nextSerial = _genPages.filter(p => !p.chapterId).length;
   let saved = 0;
   for (let i=0; i<_genImages.length; i++) {
     if (status) status.textContent = `처리 중... (${i+1}/${_genImages.length})`;
@@ -2908,9 +2909,9 @@ window.runGenOcr = async () => {
       });
       const data = await res.json();
       if (!res.ok||data.error){ showToast(`[${i+1}] OCR 실패: ${data.error||res.status}`); continue; }
-      maxSerial++;
+      nextSerial++;
       await addDoc(collection(db,'genPages'),{
-        title:`Page ${maxSerial}`, serialNumber:maxSerial,
+        title:`Page ${nextSerial}`, serialNumber:nextSerial,
         chapterId:null, chapterName:'', bookId:null, bookName:'',
         text:data.text||'', ocrConfidence:(data.confidence||0)/100,
         ocrProvider:data.provider||'google-vision', imageUrl:'', edited:false,
