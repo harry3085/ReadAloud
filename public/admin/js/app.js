@@ -7494,9 +7494,13 @@ window.tpOpenPrintModal = () => {
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;">
             <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintRefreshPreview()"> 답지 보기
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="한 페이지를 좌우 2단으로 분할하여 인쇄 (브라우저의 '시트당 페이지' 설정 불필요)">
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="한 페이지를 좌우 2단으로 분할">
             <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 2단 레이아웃
           </label>
+          <select id="tpPrintOrientation" onchange="tpPrintRefreshPreview()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;">
+            <option value="portrait">A4 세로</option>
+            <option value="landscape">A4 가로</option>
+          </select>
           <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
           <button class="btn btn-primary" onclick="tpPrintNow()" style="font-size:12px;font-weight:700;">🖨 인쇄</button>
         </div>
@@ -7574,7 +7578,11 @@ function _tpBuildTypeOptionsUI(sourceType) {
 }
 
 function _tpBuildPrintHtml(questions, meta) {
-  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, sourceType, typeOpts } = meta;
+  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts } = meta;
+  const isLandscape = orientation === 'landscape';
+  // 실물 A4: 세로 210×297mm, 가로 297×210mm. 여백 8mm 10mm 를 padding 으로 포함.
+  const pageW = isLandscape ? '297mm' : '210mm';
+  const pageMinH = isLandscape ? '210mm' : '297mm';
 
   // 유형별 렌더러 라우팅
   const renderers = {
@@ -7612,9 +7620,11 @@ function _tpBuildPrintHtml(questions, meta) {
   // - 기본: 헤더 1번 + 단일 컬럼 (문제가 길면 자연스럽게 페이지 넘어감, 헤더는 1페이지에만)
   // - 2단 레이아웃: 헤더 1번 + 본문을 좌우 2단 CSS columns 로 분할 (구버전 printMixedExamPDF 방식)
   //   브라우저 인쇄 설정(시트당 2페이지) 필요 없음 — HTML 자체가 2단
+  const pageStyle = `background:white;width:${pageW};min-height:${pageMinH};margin:0 auto;padding:8mm 10mm;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
+
   if (twoPerSheet) {
     return `
-      <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+      <div style="${pageStyle}">
         ${headerHtml}
         <div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">
           ${body}
@@ -7625,7 +7635,7 @@ function _tpBuildPrintHtml(questions, meta) {
   }
 
   return `
-    <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+    <div style="${pageStyle}">
       ${headerHtml}
       ${body}
       ${endHtml}
@@ -7827,6 +7837,7 @@ window.tpPrintRefreshPreview = () => {
   }
 
   const twoPerSheetEl = document.getElementById('tpPrint2PerSheet');
+  const orientationEl = document.getElementById('tpPrintOrientation');
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
@@ -7835,6 +7846,7 @@ window.tpPrintRefreshPreview = () => {
     chapName: ctx.chapName,
     showAnswers: !!showAnsEl?.checked,
     twoPerSheet: !!twoPerSheetEl?.checked,
+    orientation: orientationEl?.value || 'portrait',
     sourceType: ctx.sourceType,
     typeOpts,
   });
@@ -7850,6 +7862,8 @@ window.tpPrintNow = () => {
   const area = document.getElementById('tpPrintArea');
   if (!area) { showToast('프리뷰 영역을 찾을 수 없습니다'); return; }
 
+  const orientation = document.getElementById('tpPrintOrientation')?.value === 'landscape' ? 'landscape' : 'portrait';
+
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) { showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요'); return; }
 
@@ -7862,8 +7876,9 @@ window.tpPrintNow = () => {
     body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',sans-serif; margin:0; padding:20px; background:#eee; }
     @media print {
       body { background:white; padding:0; }
-      @page { margin: 8mm 10mm; size: A4; }
-      div[style*='box-shadow'] { box-shadow:none !important; max-width:none !important; padding:0 !important; }
+      @page { margin: 0; size: A4 ${orientation}; }
+      /* 프린트 시 외곽 래퍼의 섀도·padding 제거하고 A4 정확히 채움 */
+      div[style*='box-shadow'] { box-shadow:none !important; margin:0 !important; }
       /* 문제 단위로는 컬럼/페이지 중간에 잘리지 않도록 */
       [style*='margin-bottom'] { break-inside: avoid; page-break-inside: avoid; }
     }
