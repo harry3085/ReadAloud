@@ -49,10 +49,9 @@ RULES:
    - Wrong choices should be similar in length and style to the correct answer
    - Do NOT make wrong choices obviously absurd
 
-4. Difficulty distribution (if generating multiple):
-   - About 30% easy (direct factual)
-   - About 50% medium (requires careful reading)
-   - About 20% hard (requires inference or integration)
+4. Difficulty:
+   - Include a mix of easy / medium / hard when possible, based on available content.
+   - Exact distribution is NOT required — prioritize good questions from the passage over hitting a target ratio.
 
 5. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
@@ -91,10 +90,9 @@ RULES:
 
 4. questionKo field: Use simple instruction like "위 문장을 우리말로 해석하시오." (can vary slightly).
 
-5. Difficulty (based on sentence complexity, vocabulary, structure):
-   - About 30% easy
-   - About 50% medium
-   - About 20% hard
+5. Difficulty:
+   - Include a mix of easy / medium / hard when possible, based on available content.
+   - Exact distribution is NOT required — prioritize verbatim sentences over hitting a target ratio.
 
 6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
@@ -163,7 +161,8 @@ RULES:
 1. Pick sentences EXACTLY as they appear in the passages. Copy each sentence VERBATIM — every word, every form, every spelling must match the passage text. Do NOT paraphrase, summarize, combine, translate-back, or fabricate. The joined (unchunked) sentence MUST be findable in the passage as a continuous substring.
    CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
 
-2. Split each sentence into EXACTLY the requested number of chunks using '/' as separator.
+2. Split each sentence into the requested number of chunks using '/' as separator.
+   Target chunk count is N — you may use N-1, N, or N+1 chunks per sentence when that respects natural linguistic boundaries better. Do not go outside [N-1, N+1].
 
 3. Chunking strategy (based on sentence length and chunk count):
    - For SHORT sentences (5-8 words) with few chunks: single-word chunks are fine
@@ -193,7 +192,7 @@ RULES:
 }
 
 IMPORTANT:
-- The number of '/' separators should equal requested chunk count minus 1
+- Chunk count must be within [N-1, N+1] where N is the requested count
 - Do NOT add '/' at the start or end
 - Do NOT include extra spaces around '/'`,
 
@@ -254,10 +253,9 @@ RULES:
 4. List the blank answers in order as they appear in the sentence, inside the "blanks" array.
    Use the exact form from the passage (matching case/number/tense).
 
-5. Difficulty distribution (if generating multiple):
-   - About 30% easy (short, common words)
-   - About 50% medium (content words requiring comprehension)
-   - About 20% hard (less common words, inference required)
+5. Difficulty:
+   - Include a mix of easy / medium / hard when possible, based on available content.
+   - Exact distribution is NOT required — prioritize verbatim sentences over hitting a target ratio.
 
 6. sentenceKo field: Provide a natural Korean translation of the COMPLETE sentence (with the blank words filled in). This is used as a hint for struggling students. Keep it fluent, not literal.
 
@@ -414,7 +412,47 @@ module.exports = async function handler(req, res) {
       vocab: validateVocab,
       unscramble: validateUnscramble,
     };
-    const validated = validators[quizType](parsed.questions || [], normalizedPages);
+    let validated = validators[quizType](parsed.questions || [], normalizedPages);
+
+    // ─── 부족분 재시도 (1회 한정) ───
+    // 1차 응답이 목표 개수에 못 미치면, 이미 채택된 문장을 제외 지시하고 부족분만 재요청.
+    // 창작 방지 검증 탓에 폐기된 문제를 대체하는 용도.
+    let retried = false;
+    let retryUsage = null;
+    if (validated.length > 0 && validated.length < targetCount && rawText) {
+      retried = true;
+      const missing = targetCount - validated.length;
+      const avoidList = validated.map(q => _keyOf(q, quizType)).filter(Boolean);
+      const retryUserPrompt = buildUserPrompt(
+        normalizedPages, missing, quizType,
+        { ...(req.body || {}), avoidList }
+      );
+      try {
+        const retryResult = await callGemini(usedModel, apiKey, systemPrompt, retryUserPrompt);
+        if (retryResult.ok) {
+          retryUsage = retryResult.usage;
+          const retryParsed = parseAIResponse(retryResult.text);
+          if (retryParsed) {
+            const retryValidated = validators[quizType](retryParsed.questions || [], normalizedPages);
+            const existingKeys = new Set(
+              validated.map(q => _keyOf(q, quizType).toLowerCase()).filter(Boolean)
+            );
+            const dedupedRetry = retryValidated.filter(q => {
+              const k = _keyOf(q, quizType).toLowerCase();
+              if (!k || existingKeys.has(k)) return false;
+              existingKeys.add(k);
+              return true;
+            });
+            validated = [...validated, ...dedupedRetry];
+          }
+        }
+      } catch (e) {
+        console.warn('retry call failed:', e.message);
+      }
+    }
+
+    // 목표 초과는 잘라냄
+    if (validated.length > targetCount) validated = validated.slice(0, targetCount);
 
     return res.status(200).json({
       success: true,
@@ -422,8 +460,10 @@ module.exports = async function handler(req, res) {
       model: usedModel,
       requestedCount: targetCount,
       returnedCount: validated.length,
+      retried,
       questions: validated,
       usage,
+      retryUsage,
     });
   } catch (err) {
     console.error('generate-quiz error:', err);
@@ -512,18 +552,43 @@ function buildUserPrompt(pages, count, type, opts) {
 - Include sourcePageId for each word.
 - Difficulty preset: ${opts?.difficulty || '중1'}.`,
     unscramble: `Please generate ${count} unscramble questions.
-- Split each sentence into EXACTLY ${Math.min(Math.max(parseInt(opts?.chunkCount)||4, 2), 10)} chunks using '/' separator.
+- Split each sentence into ${Math.min(Math.max(parseInt(opts?.chunkCount)||4, 2), 10)} chunks (±1 allowed) using '/' separator, whichever respects natural linguistic boundaries better.
 - Pick meaningful sentences (6-30 words each).
 - Use semantic chunking based on chunk count: fewer chunks = larger semantic units.
 - Include sourcePageId for each sentence.
 - Difficulty preset: ${opts?.difficulty || '중1'}.`,
   };
 
-  return `${typeInstructions[type]}
+  // 재시도 호출 시 이미 채택된 문장 목록을 넘겨 중복 선택 방지
+  const avoidList = Array.isArray(opts?.avoidList) ? opts.avoidList.filter(Boolean) : [];
+  const avoidBlock = avoidList.length > 0
+    ? `\n\nALREADY-USED sentences (do NOT repeat these — pick DIFFERENT sentences from the passage):\n${avoidList.map(s => `- "${String(s).slice(0, 300)}"`).join('\n')}\n`
+    : '';
+
+  return `${typeInstructions[type]}${avoidBlock}
 
 ${passages}
 
 Output ONLY the JSON object, nothing else.`;
+}
+
+// 재시도 시 중복 체크에 쓸 키 (유형별 대표 문자열)
+function _keyOf(q, type) {
+  if (!q) return '';
+  switch (type) {
+    case 'unscramble':
+    case 'recording':
+    case 'subjective':
+      return String(q.sentence || '').trim();
+    case 'fill_blank': {
+      let filled = String(q.sentence || '');
+      (q.blanks || []).forEach(b => { filled = filled.replace('___', b); });
+      return filled.trim();
+    }
+    case 'mcq': return String(q.question || '').trim();
+    case 'vocab': return String(q.word || '').trim();
+    default: return '';
+  }
 }
 
 function parseAIResponse(text) {
