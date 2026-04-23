@@ -84,7 +84,8 @@ Your task is to pick meaningful sentences from given English passages and create
 RULES:
 1. Pick ONE sentence per question. Avoid trivial sentences (e.g., "Hello."). Prefer sentences with substantive content.
 
-2. Keep the original sentence from the passage UNMODIFIED. Do not rephrase, shorten, or combine sentences.
+2. Copy the original sentence from the passage VERBATIM. Every word, every form, every spelling must match the passage text exactly. Do NOT rephrase, shorten, combine, translate-back, or fabricate sentences. If a sentence does not appear in the passage as written, DO NOT use it.
+   CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
 
 3. For each picked sentence, provide a natural Korean translation that a teacher would accept as a model answer (sampleAnswerKo). It should be fluent Korean, not literal word-by-word.
 
@@ -159,7 +160,8 @@ RULES:
 Your task is to pick sentences from the given passages and split them into chunks based on the requested chunk count.
 
 RULES:
-1. Pick sentences directly from the passages (unmodified).
+1. Pick sentences EXACTLY as they appear in the passages. Copy each sentence VERBATIM — every word, every form, every spelling must match the passage text. Do NOT paraphrase, summarize, combine, translate-back, or fabricate. The joined (unchunked) sentence MUST be findable in the passage as a continuous substring.
+   CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
 
 2. Split each sentence into EXACTLY the requested number of chunks using '/' as separator.
 
@@ -200,7 +202,8 @@ IMPORTANT:
 Your task is to pick sentences from given English passages that students will READ ALOUD and RECORD for pronunciation practice.
 
 RULES:
-1. Pick ONE sentence per question, directly from the passage (unmodified).
+1. Pick ONE sentence per question, copied VERBATIM from the passage. Every word, every form, every spelling must match the passage text exactly. Do NOT paraphrase, modify, combine, translate-back, or fabricate. The sentence MUST be findable in the passage as a continuous substring.
+   CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
 
 2. Prefer sentences that are:
    - 6 ~ 20 words long (not too short, not too long for single recording)
@@ -238,7 +241,8 @@ Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSO
 Your task is to create fill-in-the-blank questions based on given English passages.
 
 RULES:
-1. Each question is ONE sentence from the passage (or slightly modified for clarity).
+1. Each question is ONE sentence copied VERBATIM from the passage, with some content words replaced by ___. Every non-blank word (and its form/spelling/punctuation) must match the passage text exactly. Do NOT paraphrase, simplify, combine, translate-back, or fabricate. When the blanks are filled back in with the answer words, the resulting sentence MUST be findable in the passage as a continuous substring.
+   CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
 
 2. Mark 1-K words as blanks per sentence, where K is given by the user (blanksPerSentence option).
    Prefer meaningful CONTENT words: nouns, main verbs, adjectives, adverbs.
@@ -573,6 +577,29 @@ function _trySalvageTruncatedQuestions(src) {
   try { return JSON.parse(rebuilt); } catch { return null; }
 }
 
+// ─── 본문 원문 포함 검증 헬퍼 ───
+// 대소문자·공백·구두점 차이는 무시하고 substring 매칭 (어순·어휘는 유지 필수)
+// \p{L}=letter, \p{N}=number 외 모든 문자를 공백으로 치환 → 공백 정규화
+function _normalizeForMatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 생성 문장이 어느 passage에 포함되는지 찾아 해당 page 반환. 없으면 null.
+// 이 반환값으로 sourcePageId 를 실제 매칭 페이지로 교정한다.
+function _findHostPage(sentence, pages) {
+  const norm = _normalizeForMatch(sentence);
+  if (!norm || norm.length < 8) return null;
+  for (const p of pages) {
+    const body = _normalizeForMatch(p.text);
+    if (body.includes(norm)) return p;
+  }
+  return null;
+}
+
 function validateMCQ(questions, pages) {
   if (!Array.isArray(questions)) return [];
 
@@ -652,12 +679,18 @@ function validateFillBlank(questions, pages) {
       const blanks = q.blanks.map(b => String(b || '').trim());
       if (blanks.some(b => !b || b.length > 40)) return null;
 
+      // 본문 원문 검증: ___ 를 blanks 로 채운 완성 문장이 어느 passage 에 있어야 함
+      let filled = sentence;
+      for (const b of blanks) filled = filled.replace('___', b);
+      if (filled.includes('___')) return null;
+      const hostPage = _findHostPage(filled, pages);
+      if (!hostPage) return null;
+
       const questionKo = String(q.questionKo || '문장의 빈칸에 알맞은 단어를 쓰세요.').trim();
 
-      const sourcePageId = validPageIds.has(q.sourcePageId)
-        ? q.sourcePageId
-        : (pages[0]?.id || '');
-      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+      // sourcePageId 는 실제 매칭된 페이지로 교정 (AI 가 엉뚱한 id 를 줘도 복구)
+      const sourcePageId = hostPage.id;
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || hostPage.title || '';
 
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty
@@ -693,13 +726,16 @@ function validateSubjective(questions, pages) {
       const sentence = String(q.sentence || '').trim();
       if (!sentence || sentence.length < 8 || sentence.length > 500) return null;
 
+      // 본문 원문 검증: 문장이 어느 passage 에도 없으면 폐기
+      const hostPage = _findHostPage(sentence, pages);
+      if (!hostPage) return null;
+
       const sampleAnswerKo = String(q.sampleAnswerKo || '').trim().slice(0, 500);
       const questionKo = String(q.questionKo || '위 문장을 우리말로 해석하시오.').trim();
 
-      const sourcePageId = validPageIds.has(q.sourcePageId)
-        ? q.sourcePageId
-        : (pages[0]?.id || '');
-      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+      // sourcePageId 는 실제 매칭 페이지로 교정
+      const sourcePageId = hostPage.id;
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || hostPage.title || '';
 
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty
@@ -735,12 +771,14 @@ function validateRecording(questions, pages) {
       const wordCount = sentence.split(/\s+/).length;
       if (wordCount < 4 || wordCount > 30) return null;
 
+      // 본문 원문 검증
+      const hostPage = _findHostPage(sentence, pages);
+      if (!hostPage) return null;
+
       const questionKo = String(q.questionKo || '다음 문장을 큰 소리로 읽고 녹음하세요.').trim();
 
-      const sourcePageId = validPageIds.has(q.sourcePageId)
-        ? q.sourcePageId
-        : (pages[0]?.id || '');
-      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+      const sourcePageId = hostPage.id;
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || hostPage.title || '';
 
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty
@@ -822,9 +860,12 @@ function validateUnscramble(questions, pages) {
       const meaningKo = String(q.meaningKo || '').trim();
       if (!meaningKo) return null;
 
-      const sourcePageId = validPageIds.has(q.sourcePageId)
-        ? q.sourcePageId : (pages[0]?.id || '');
-      const sourcePageTitle = pageTitleMap.get(sourcePageId) || '';
+      // 본문 원문 검증: 청크를 합친 문장이 어느 passage 에도 없으면 폐기
+      const hostPage = _findHostPage(sentence, pages);
+      if (!hostPage) return null;
+
+      const sourcePageId = hostPage.id;
+      const sourcePageTitle = pageTitleMap.get(sourcePageId) || hostPage.title || '';
 
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty : 'medium';
