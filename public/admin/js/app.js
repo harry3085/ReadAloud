@@ -7690,12 +7690,14 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
     const wrap = `margin-bottom:${itemMb}px;break-inside:avoid;page-break-inside:avoid;`;
 
     if (thisFmt === 'short') {
+      // align-items:baseline → 문제 텍스트와 정답 텍스트의 베이스라인 정렬
+      // 답란은 padding-bottom 으로 텍스트 아래에 밑줄이 자연스럽게 붙도록
       return `
-        <div style="${wrap}display:flex;align-items:center;gap:8px;">
+        <div style="${wrap}display:flex;align-items:baseline;gap:8px;min-height:${lineH}px;">
           <div style="font-size:${fSize}px;font-weight:700;min-width:22px;">${i+1}.</div>
           <div style="font-size:${fSize}px;font-weight:600;min-width:${qMinWidth}px;">${esc(question)}</div>
-          <div style="flex:1;border-bottom:1px solid #aaa;height:${lineH}px;">
-            ${showAnswers ? `<span style="font-size:${fSize-1}px;color:#2e7d32;font-weight:700;">${esc(answer)}</span>` : ''}
+          <div style="flex:1;border-bottom:1px solid #aaa;padding-bottom:2px;font-size:${fSize-1}px;color:#2e7d32;font-weight:700;">
+            ${showAnswers ? esc(answer) : '&nbsp;'}
           </div>
         </div>`;
     }
