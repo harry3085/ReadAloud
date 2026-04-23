@@ -7595,16 +7595,21 @@ function _tpBuildPrintHtml(questions, meta) {
   const renderer = renderers[sourceType] || _printRenderSubj;
   const body = renderer(questions, { showAnswers, typeOpts: typeOpts || {} });
 
+  // 절대 경로로 로고 — 프리뷰와 팝업(인쇄창) 양쪽에서 로드되도록
+  const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/icons/icon-192.png';
   const headerHtml = `
     <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
-          <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${esc(title||'시험')}</div>
-          <div style="font-size:10px;color:#555;margin-top:3px;">
-            ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
-            ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
-            · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+          <img src="${logoUrl}" alt="" style="width:42px;height:42px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
+            <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${esc(title||'시험')}</div>
+            <div style="font-size:10px;color:#555;margin-top:3px;">
+              ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
+              ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
+              · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
+            </div>
           </div>
         </div>
         <div style="font-size:10px;text-align:right;line-height:1.7;flex-shrink:0;border:1px solid #999;padding:4px 8px;border-radius:4px;">
@@ -7884,7 +7889,21 @@ window.tpPrintNow = () => {
 <body>
   ${area.innerHTML}
   <script>
-    window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };
+    window.onload = function(){
+      // 로고 이미지가 로드된 뒤 인쇄 (안 깨져서 나오도록)
+      const imgs = Array.from(document.images || []);
+      const pending = imgs.filter(img => !img.complete);
+      const done = function(){ setTimeout(function(){ window.print(); }, 200); };
+      if (pending.length === 0) { done(); return; }
+      let left = pending.length;
+      const check = function(){ if (--left <= 0) done(); };
+      pending.forEach(function(img){
+        img.addEventListener('load', check);
+        img.addEventListener('error', check);
+      });
+      // 안전장치: 2초 넘으면 그냥 인쇄
+      setTimeout(done, 2000);
+    };
   <\/script>
 </body>
 </html>`);
