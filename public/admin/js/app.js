@@ -7601,7 +7601,7 @@ function _tpBuildPrintHtml(questions, meta) {
   // 절대 경로로 로고 — 프리뷰와 팝업(인쇄창) 양쪽에서 로드되도록
   const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/icons/icon-192.png';
   const headerHtml = `
-    <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;">
+    <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;position:relative;z-index:1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
           <img src="${logoUrl}" alt="" style="width:42px;height:42px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">
@@ -7615,12 +7615,21 @@ function _tpBuildPrintHtml(questions, meta) {
             </div>
           </div>
         </div>
-        <div style="font-size:10px;text-align:right;line-height:1.7;flex-shrink:0;border:1px solid #999;padding:4px 8px;border-radius:4px;">
-          이름: <span style="display:inline-block;width:80px;border-bottom:1px solid #333;">&nbsp;</span><br>
-          반: <span style="display:inline-block;width:50px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:45px;border-bottom:1px solid #333;">&nbsp;</span>
+        <div style="font-size:16px;text-align:right;line-height:1.8;flex-shrink:0;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
+          이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>
+          반: <span style="display:inline-block;width:100px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span>
         </div>
       </div>
     </div>`;
+
+  // 대표 로고 워터마크 — 용지 중앙에 크게, 옅게 (내용 위가 아니라 뒤에 배치)
+  // portrait: 297mm 의 절반 = 148.5mm, landscape: 210mm 의 절반 = 105mm
+  const watermarkTop = isLandscape ? '105mm' : '148.5mm';
+  const watermarkHtml = `<img src="${logoUrl}" alt="" aria-hidden="true"
+    style="position:absolute;top:${watermarkTop};left:50%;transform:translate(-50%,-50%);
+           width:65%;max-width:150mm;height:auto;opacity:0.07;pointer-events:none;z-index:0;
+           user-select:none;"
+    onerror="this.style.display='none'">`;
 
   const endHtml = `<div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>`;
 
@@ -7631,8 +7640,8 @@ function _tpBuildPrintHtml(questions, meta) {
   // A4 경계선 배경 그라데이션: 297mm(또는 210mm) 마다 옅은 빨간 선으로 페이지 경계 표시
   // 외곽(용지+경계선) 과 내부(내용) 를 분리: 페이지 맞춤 시 내부만 zoom → 빨간 선은 원래 위치 유지
   const pageBreakBg = `repeating-linear-gradient(to bottom,transparent 0,transparent calc(${pageMinH} - 2px),rgba(255,80,80,0.45) calc(${pageMinH} - 2px),rgba(255,80,80,0.45) ${pageMinH})`;
-  const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;`;
-  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;`;
+  const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;position:relative;overflow:hidden;`;
+  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;`;
 
   const innerContent = twoPerSheet
     ? `${headerHtml}<div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">${body}</div>${endHtml}`
@@ -7640,6 +7649,7 @@ function _tpBuildPrintHtml(questions, meta) {
 
   return `
     <div style="${outerStyle}">
+      ${watermarkHtml}
       <div class="a4-content" style="${innerStyle}">${innerContent}</div>
     </div>
   `;
