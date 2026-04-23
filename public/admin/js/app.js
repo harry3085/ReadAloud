@@ -7490,9 +7490,12 @@ window.tpOpenPrintModal = () => {
           <div style="font-size:16px;font-weight:700;">🖨 시험지 프리뷰 · ${esc(cfg.kindLabel)}</div>
           <div style="font-size:11px;color:var(--gray);">${selectedSets.length}개 세트 · 총 ${questions.length}문항 · A4 인쇄 최적화</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:12px;align-items:center;">
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;">
             <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintRefreshPreview()"> 답지 보기
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="브라우저 인쇄 시 '시트당 2페이지' 설정과 같이 쓰세요">
+            <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 시트당 2페이지
           </label>
           <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
           <button class="btn btn-primary" onclick="tpPrintNow()" style="font-size:12px;font-weight:700;">🖨 인쇄</button>
@@ -7571,7 +7574,7 @@ function _tpBuildTypeOptionsUI(sourceType) {
 }
 
 function _tpBuildPrintHtml(questions, meta) {
-  const { title, academy, date, bookName, chapName, showAnswers, sourceType, typeOpts } = meta;
+  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, sourceType, typeOpts } = meta;
 
   // 유형별 렌더러 라우팅
   const renderers = {
@@ -7584,38 +7587,50 @@ function _tpBuildPrintHtml(questions, meta) {
   const renderer = renderers[sourceType] || _printRenderSubj;
   const body = renderer(questions, { showAnswers, typeOpts: typeOpts || {} });
 
-  // thead 로 헤더를 감싸 매 페이지마다 반복 → 모든 페이지에서 첫 문제가 같은 Y 위치에서 시작
+  const headerHtml = `
+    <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
+          <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${esc(title||'시험')}</div>
+          <div style="font-size:10px;color:#555;margin-top:3px;">
+            ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
+            ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
+            · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
+          </div>
+        </div>
+        <div style="font-size:10px;text-align:right;line-height:1.7;flex-shrink:0;border:1px solid #999;padding:4px 8px;border-radius:4px;">
+          이름: <span style="display:inline-block;width:80px;border-bottom:1px solid #333;">&nbsp;</span><br>
+          반: <span style="display:inline-block;width:50px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:45px;border-bottom:1px solid #333;">&nbsp;</span>
+        </div>
+      </div>
+    </div>`;
+
+  const endHtml = `<div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>`;
+
+  // 두 모드:
+  // - 기본 (1-per-sheet): 헤더는 1페이지에만 (예전 방식, 2페이지+는 문제만 이어짐)
+  // - 2-per-sheet: thead 로 감싸 매 페이지 반복 (모든 페이지에서 첫 문제 Y 정렬)
+  if (twoPerSheet) {
+    return `
+      <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr><td style="padding:0;">${headerHtml}</td></tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:0;">${body}${endHtml}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   return `
     <div style="background:white;max-width:720px;margin:0 auto;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.12);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr><td style="padding:0;">
-            <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;">
-              <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:10px;color:#888;">${esc(academy||'')}</div>
-                  <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${esc(title||'시험')}</div>
-                  <div style="font-size:10px;color:#555;margin-top:3px;">
-                    ${bookName?`Book: <strong>${esc(bookName)}</strong>`:''}
-                    ${chapName?` · Chapter: <strong>${esc(chapName)}</strong>`:''}
-                    · 총 ${questions.length}문항 · 출제일: ${esc(date||'')}
-                  </div>
-                </div>
-                <div style="font-size:10px;text-align:right;line-height:1.7;flex-shrink:0;border:1px solid #999;padding:4px 8px;border-radius:4px;">
-                  이름: <span style="display:inline-block;width:80px;border-bottom:1px solid #333;">&nbsp;</span><br>
-                  반: <span style="display:inline-block;width:50px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:45px;border-bottom:1px solid #333;">&nbsp;</span>
-                </div>
-              </div>
-            </div>
-          </td></tr>
-        </thead>
-        <tbody>
-          <tr><td style="padding:0;">
-            ${body}
-            <div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>
-          </td></tr>
-        </tbody>
-      </table>
+      ${headerHtml}
+      ${body}
+      ${endHtml}
     </div>
   `;
 }
@@ -7813,6 +7828,7 @@ window.tpPrintRefreshPreview = () => {
     typeOpts.columns = parseInt(document.getElementById('tpOptVocabColumns')?.value) || 1;
   }
 
+  const twoPerSheetEl = document.getElementById('tpPrint2PerSheet');
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
@@ -7820,6 +7836,7 @@ window.tpPrintRefreshPreview = () => {
     bookName: ctx.bookName,
     chapName: ctx.chapName,
     showAnswers: !!showAnsEl?.checked,
+    twoPerSheet: !!twoPerSheetEl?.checked,
     sourceType: ctx.sourceType,
     typeOpts,
   });
