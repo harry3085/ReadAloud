@@ -7786,8 +7786,11 @@ function _printRenderMcq(questions, { showAnswers }) {
     return `
       <div style="margin-bottom:14px;page-break-inside:avoid;">
         <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.question || '')}</div>
-        ${showAnswers && q.sourcePageTitle ? `<div style="font-size:10px;color:#888;margin-left:16px;margin-bottom:3px;">출처: ${esc(q.sourcePageTitle)}</div>` : ''}
-        ${showAnswers && q.questionKo ? `<div style="font-size:11px;color:#2e7d32;margin-left:16px;margin-bottom:4px;">(${esc(q.questionKo)})</div>` : ''}
+        ${showAnswers && (q.sourcePageTitle || q.questionKo) ? `<div style="margin-left:16px;margin-bottom:4px;">
+          ${q.sourcePageTitle ? `<span style="font-size:10px;color:#888;">출처: ${esc(q.sourcePageTitle)}</span>` : ''}
+          ${q.sourcePageTitle && q.questionKo ? `<span style="font-size:10px;color:#ccc;margin:0 6px;">·</span>` : ''}
+          ${q.questionKo ? `<span style="font-size:11px;color:#2e7d32;">(${esc(q.questionKo)})</span>` : ''}
+        </div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-left:16px;">
           ${(q.choices || []).map((c, j) => `
             <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
