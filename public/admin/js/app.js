@@ -5749,7 +5749,14 @@ window.qsAssignSet = async (setId) => {
 };
 
 window.qsViewDetail = async (setId) => {
-  const s = _qsList.find(x => x.id === setId);
+  let s = _qsList.find(x => x.id === setId)
+       || (typeof _tpSets !== 'undefined' && _tpSets.find(x => x.id === setId));
+  if (!s) {
+    try {
+      const snap = await getDoc(doc(db,'genQuestionSets',setId));
+      if (snap.exists()) s = { id: snap.id, ...snap.data() };
+    } catch(e) {}
+  }
   if (!s) { showToast('세트를 찾을 수 없음'); return; }
 
   const html = `
@@ -6974,9 +6981,9 @@ function _tpRenderSetRow(s) {
   const folderName = [book?.name, chap?.name].filter(Boolean).join(' · ');
 
   return `
-    <div onclick="tpToggleSet('${esc(s.id)}')"
+    <div onclick="qsViewDetail('${esc(s.id)}')"
       style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;cursor:pointer;${_tpSelectedSets.has(s.id)?'background:#fff8e6;':''}">
-      <input type="checkbox" ${checked} onclick="event.stopPropagation();tpToggleSet('${esc(s.id)}')" style="flex-shrink:0;">
+      <input type="checkbox" ${checked} onclick="event.stopPropagation();tpToggleSet('${esc(s.id)}')" style="flex-shrink:0;" title="시험 배정 선택">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'(이름 없음)')}</div>
         <div style="font-size:11px;color:var(--gray);margin-top:2px;">
