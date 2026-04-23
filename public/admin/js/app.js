@@ -7497,6 +7497,9 @@ window.tpOpenPrintModal = () => {
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="한 페이지를 좌우 2단으로 분할">
             <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 2단 레이아웃
           </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="내용이 A4 1장을 초과하면 자동으로 축소해 한 페이지에 맞춤">
+            <input type="checkbox" id="tpPrintFitToPage" onchange="tpPrintRefreshPreview()"> 페이지 맞춤
+          </label>
           <select id="tpPrintOrientation" onchange="tpPrintRefreshPreview()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;">
             <option value="portrait">A4 세로</option>
             <option value="landscape">A4 가로</option>
@@ -7836,6 +7839,8 @@ window.tpPrintRefreshPreview = () => {
 
   const twoPerSheetEl = document.getElementById('tpPrint2PerSheet');
   const orientationEl = document.getElementById('tpPrintOrientation');
+  const fitToPageEl = document.getElementById('tpPrintFitToPage');
+  const orientation = orientationEl?.value || 'portrait';
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
@@ -7844,7 +7849,7 @@ window.tpPrintRefreshPreview = () => {
     chapName: ctx.chapName,
     showAnswers: !!showAnsEl?.checked,
     twoPerSheet: !!twoPerSheetEl?.checked,
-    orientation: orientationEl?.value || 'portrait',
+    orientation,
     sourceType: ctx.sourceType,
     typeOpts,
   });
@@ -7852,7 +7857,24 @@ window.tpPrintRefreshPreview = () => {
   if (ctx.sourceType === 'subjective') {
     setTimeout(() => _tpAdjustAnswerLines(), 0);
   }
+  // 페이지 맞춤: 내용 높이가 A4 1장을 넘으면 자동 축소
+  setTimeout(() => _tpApplyFitToPage(!!fitToPageEl?.checked, orientation), 0);
 };
+
+// zoom 비율 계산 후 적용 (내용 높이가 A4 1장보다 크면 축소)
+function _tpApplyFitToPage(enabled, orientation) {
+  const container = document.querySelector('#tpPrintArea > div');
+  if (!container) return;
+  container.style.zoom = '';
+  if (!enabled) return;
+  const contentH = container.scrollHeight;
+  const targetMm = orientation === 'landscape' ? 210 : 297;
+  const targetPx = targetMm * 96 / 25.4; // 96 DPI 기준
+  if (contentH > targetPx + 5) {
+    const ratio = targetPx / contentH;
+    container.style.zoom = ratio.toFixed(3);
+  }
+}
 
 window.tpPrintTogglePreview = () => tpPrintRefreshPreview();
 
@@ -7861,6 +7883,7 @@ window.tpPrintNow = () => {
   if (!area) { showToast('프리뷰 영역을 찾을 수 없습니다'); return; }
 
   const orientation = document.getElementById('tpPrintOrientation')?.value === 'landscape' ? 'landscape' : 'portrait';
+  const fitToPage = !!document.getElementById('tpPrintFitToPage')?.checked;
 
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) { showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요'); return; }
@@ -7889,11 +7912,22 @@ window.tpPrintNow = () => {
 <body>
   ${area.innerHTML}
   <script>
+    window.__FIT = ${fitToPage};
+    window.__ORIENT = ${JSON.stringify(orientation)};
     window.onload = function(){
       // 로고 이미지가 로드된 뒤 인쇄 (안 깨져서 나오도록)
       const imgs = Array.from(document.images || []);
       const pending = imgs.filter(img => !img.complete);
-      const done = function(){ setTimeout(function(){ window.print(); }, 200); };
+      const fit = function(){
+        if (!window.__FIT) return;
+        const c = document.querySelector('body > div');
+        if (!c) return;
+        const h = c.scrollHeight;
+        const targetMm = window.__ORIENT === 'landscape' ? 210 : 297;
+        const targetPx = targetMm * 96 / 25.4;
+        if (h > targetPx + 5) c.style.zoom = (targetPx / h).toFixed(3);
+      };
+      const done = function(){ fit(); setTimeout(function(){ window.print(); }, 200); };
       if (pending.length === 0) { done(); return; }
       let left = pending.length;
       const check = function(){ if (--left <= 0) done(); };
