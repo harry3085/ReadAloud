@@ -649,7 +649,12 @@ window.saveStudent = async() => {
   if(!username||!name||!pw){showToast('아이디, 이름, 비밀번호는 필수입니다.');return;}
   if(pw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
   const email=username+'@kunsori.app';
+  const usernameLower = username.toLowerCase();
+  const lookupKey = `${_ACADEMY_ID}_${usernameLower}`;
   try{
+    // username 중복 체크 (usernameLookup 기반)
+    const dup = await getDoc(doc(db, 'usernameLookup', lookupKey));
+    if(dup.exists()){showToast('이미 사용 중인 아이디입니다.');return;}
     const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
@@ -657,6 +662,7 @@ window.saveStudent = async() => {
     const cred=await cu(a2,email,pw);
     await so(a2);
     await setDoc(doc(db,'users',cred.user.uid),{
+      academyId: _ACADEMY_ID,
       username,name,email,group,role:'student',status:'active',
       birth:document.getElementById('sBirth').value,
       school:document.getElementById('sSchool').value.trim(),
@@ -665,6 +671,15 @@ window.saveStudent = async() => {
       parentName:document.getElementById('sParentName').value.trim(),
       parentPhone:document.getElementById('sParentPhone').value.trim(),
       createdAt:serverTimestamp()
+    });
+    // usernameLookup 같이 쓰기 — 신규 학생 로그인 가능하게
+    await setDoc(doc(db,'usernameLookup',lookupKey),{
+      academyId: _ACADEMY_ID,
+      usernameLower,
+      uid: cred.user.uid,
+      email,
+      role: 'student',
+      createdAt: serverTimestamp()
     });
     closeModal(); showToast('✅ 학생이 추가됐어요!'); await loadStudents('active');
   }catch(e){showToast('추가 실패: '+e.message);}
@@ -1899,6 +1914,8 @@ window.importStudentExcel = async() => {
     const name=(row[1]||'').toString().trim();
     if(!username||!name){failList.push(username||'?');fail++;continue;}
     const email=username+'@kunsori.app';
+    const usernameLower=username.toLowerCase();
+    const lookupKey=`${_ACADEMY_ID}_${usernameLower}`;
     try{
       const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
       const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
@@ -1908,6 +1925,7 @@ window.importStudentExcel = async() => {
       const cred=await cu(a2,email,'123456');
       await so(a2);
       await setDoc(doc(db,'users',cred.user.uid),{
+        academyId: _ACADEMY_ID,
         username, name, email,
         group:(row[2]||'').toString().trim(),
         birth:(row[3]||'').toString().trim(),
@@ -1917,6 +1935,11 @@ window.importStudentExcel = async() => {
         parentName:(row[7]||'').toString().trim(),
         parentPhone:(row[8]||'').toString().trim(),
         role:'student', status:'active', createdAt:serverTimestamp()
+      });
+      // usernameLookup 같이 쓰기 (일괄 등록 학생도 로그인 가능해야 함)
+      await setDoc(doc(db,'usernameLookup',lookupKey),{
+        academyId:_ACADEMY_ID, usernameLower, uid:cred.user.uid,
+        email, role:'student', createdAt:serverTimestamp()
       });
       success++;
     }catch(e){ console.log(username,'실패:',e.message); failList.push(username); fail++; }
