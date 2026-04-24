@@ -41,15 +41,38 @@ module.exports = async (req, res) => {
     const auth = getAuth();
     const db = getFirestore();
 
-    // 삭제 전 users 문서에서 username 확인 (lookup 동반 삭제용)
+    // 삭제 전 username 수집 (lookup 동반 삭제용)
+    // 출처: (1) users 문서 (2) Auth email (3) usernameLookup 역조회
     let usernameLower = null;
+
+    // (1) users/{uid} 에서 확인
     try {
       const userSnap = await db.doc('users/' + uid).get();
       if (userSnap.exists) {
         const un = userSnap.data().username;
         if (un) usernameLower = String(un).toLowerCase();
       }
-    } catch (_) { /* users 읽기 실패해도 진행 */ }
+    } catch (_) {}
+
+    // (2) Auth email 에서 추출 (username@kunsori.app 패턴)
+    if (!usernameLower) {
+      try {
+        const authUser = await auth.getUser(uid);
+        if (authUser.email && authUser.email.endsWith('@kunsori.app')) {
+          usernameLower = authUser.email.replace(/@kunsori\.app$/i, '').toLowerCase();
+        }
+      } catch (_) {}
+    }
+
+    // (3) usernameLookup 역조회 (uid 로 where)
+    if (!usernameLower) {
+      try {
+        const qs = await db.collection('usernameLookup').where('uid', '==', uid).limit(1).get();
+        if (!qs.empty) {
+          usernameLower = qs.docs[0].data().usernameLower || qs.docs[0].id.replace(`${DEFAULT_ACADEMY_ID}_`, '');
+        }
+      } catch (_) {}
+    }
 
     // 1. Firebase Auth 삭제 (없어도 OK)
     let authDeleted = false;
@@ -69,7 +92,7 @@ module.exports = async (req, res) => {
       try {
         await db.doc(`usernameLookup/${DEFAULT_ACADEMY_ID}_${usernameLower}`).delete();
         lookupDeleted = true;
-      } catch (_) { /* lookup 삭제 실패해도 치명적 아님 */ }
+      } catch (_) {}
     }
 
     return res.status(200).json({
