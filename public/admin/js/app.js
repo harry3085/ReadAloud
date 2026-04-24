@@ -620,12 +620,7 @@ window.restoreStudent = async(id) => {
   if(currentPage==='student-pause') await loadStudents('pause');
   else await loadStudents('out');
 };
-window.deleteStudent = async(id,name) => {
-  if(!await showConfirm(`"${name}" 학생을 삭제할까요?`))return;
-  await deleteDoc(doc(db,'users',id));
-  showToast('삭제됐어요.');
-  await loadStudents(currentPage==='student-out'?'out':currentPage==='student-pause'?'pause':'active');
-};
+// (구버전 window.deleteStudent 제거 — 아래 Auth+Firestore 통합 삭제 사용)
 window.openStudentModal = async() => {
   const classSnap=await getDocs(collection(db,'groups'));
   const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
@@ -681,7 +676,12 @@ window.saveStudent = async() => {
       createdAt:serverTimestamp()
     });
     closeModal(); showToast('✅ 학생이 추가됐어요!'); await loadStudents('active');
-  }catch(e){showToast('추가 실패: '+e.message);}
+  }catch(e){
+    const msg = e.code==='auth/email-already-in-use'
+      ? '이 아이디로 이미 가입된 계정이 Firebase 에 남아있습니다.\n관리자가 Console 에서 해당 이메일을 삭제한 뒤 다시 시도해주세요.'
+      : e.message;
+    await showAlert('추가 실패', msg);
+  }
 };
 
 
@@ -1678,8 +1678,8 @@ async function deleteUserFull(uid, name){
     });
     const result = await res.json();
     if(result.success){ showToast('✅ 계정이 완전 삭제됐어요!'); return true; }
-    else { showToast('❌ 삭제 실패: '+result.error); return false; }
-  } catch(e){ showToast('❌ 삭제 실패: '+e.message); return false; }
+    else { await showAlert('삭제 실패', result.error); return false; }
+  } catch(e){ await showAlert('삭제 실패', e.message); return false; }
 }
 
 // ── 삭제 함수 오버라이드 (Auth 포함 삭제) ────────────────
