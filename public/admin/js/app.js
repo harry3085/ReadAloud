@@ -41,23 +41,6 @@ let currentPage = 'dashboard';
 let studentCurrentPage = 1;
 const PAGE_SIZE = 10;
 
-// 멀티테넌시 Phase 0 — 현재는 default 학원 고정. 추후 서브도메인/학원코드 기반 동적 결정.
-const _ACADEMY_ID = 'default';
-
-// users/{uid} 삭제 시 usernameLookup 같이 정리. 못 찾아도 무시하고 계속.
-async function _deleteUserWithLookup(uid) {
-  try {
-    const userSnap = await getDoc(doc(db, 'users', uid));
-    if (userSnap.exists()) {
-      const un = userSnap.data().username;
-      if (un) {
-        await deleteDoc(doc(db, 'usernameLookup', `${_ACADEMY_ID}_${un.toLowerCase()}`)).catch(() => {});
-      }
-    }
-  } catch (_) {}
-  await deleteDoc(doc(db, 'users', uid));
-}
-
 // Gemini API 호출 로거 (일별 집계, 대시보드 위젯용)
 async function _logApiCall(endpoint){
   try {
@@ -608,7 +591,7 @@ window.restoreStudent = async(id) => {
 };
 window.deleteStudent = async(id,name) => {
   if(!await showConfirm(`"${name}" 학생을 삭제할까요?`))return;
-  await _deleteUserWithLookup(id);
+  await deleteDoc(doc(db,'users',id));
   showToast('삭제됐어요.');
   await loadStudents(currentPage==='student-out'?'out':currentPage==='student-pause'?'pause':'active');
 };
@@ -1737,7 +1720,7 @@ window.deleteSelectedStudent = async() => {
   const ids = getCheckedIds('studentTableBody');
   if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
   if(!await showConfirm(`선택한 ${ids.length}명을 삭제할까요?`))return;
-  for(const id of ids) await _deleteUserWithLookup(id);
+  for(const id of ids) await deleteDoc(doc(db,'users',id));
   showToast('삭제됐어요.'); await loadStudents('active');
 };
 window.restoreSelectedStudent = async(status) => {
@@ -1759,7 +1742,7 @@ window.deleteSelectedOutStudent = async() => {
   const ids = getCheckedIds('outTableBody');
   if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
   if(!(await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?`)))return;
-  for(const id of ids) await _deleteUserWithLookup(id);
+  for(const id of ids) await deleteDoc(doc(db,'users',id));
   showToast('삭제됐어요.'); await loadStudents('out');
 };
 

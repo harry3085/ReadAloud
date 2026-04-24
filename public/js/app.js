@@ -81,21 +81,8 @@ document.addEventListener('click', e=>{if(!e.target.closest('.home-header')){doc
 // 추후: 서브도메인 또는 학원코드 입력으로 academyId 결정.
 const _LOGIN_ACADEMY_ID = 'default';
 
-// users/{uid} 삭제 시 usernameLookup 같이 삭제 (관리자용)
-async function _deleteUserWithLookup(uid) {
-  try {
-    const userSnap = await getDoc(doc(db, 'users', uid));
-    if (userSnap.exists()) {
-      const un = userSnap.data().username;
-      if (un) {
-        await deleteDoc(doc(db, 'usernameLookup', `${_LOGIN_ACADEMY_ID}_${un.toLowerCase()}`)).catch(() => {});
-      }
-    }
-  } catch (_) {}
-  await deleteDoc(doc(db, 'users', uid));
-}
-
 // usernameLookup/{academyId}_{usernameLower} 로 email 조회.
+// 누락 시 null 반환 → 호출자가 레거시 users 쿼리로 폴백.
 async function _lookupUserByUsername(usernameRaw) {
   try {
     const key = `${_LOGIN_ACADEMY_ID}_${usernameRaw.toLowerCase()}`;
@@ -120,11 +107,20 @@ window.doLogin = async () => {
   if(document.getElementById('saveIdCheck').checked) localStorage.setItem('savedId',uid);
   else localStorage.removeItem('savedId');
   try {
-    // usernameLookup 으로 email/uid 조회 (pre-auth 허용된 유일한 경로)
+    // 1단계: usernameLookup 으로 email/uid 조회 (신규 경로)
+    let profileUid = null;
+    let profileEmail = null;
     const lookup = await _lookupUserByUsername(uid);
-    if (!lookup) { err.textContent = '존재하지 않는 아이디입니다.'; return; }
-    const profileUid = lookup.uid;
-    const profileEmail = lookup.email;
+    if (lookup) {
+      profileUid = lookup.uid;
+      profileEmail = lookup.email;
+    } else {
+      // 폴백: 레거시 users 쿼리 (lookup 에 없는 사용자 대응)
+      const snap = await getDocs(query(collection(db,'users'), where('username','==',uid)));
+      if(snap.empty){err.textContent='존재하지 않는 아이디입니다.';return;}
+      profileUid = snap.docs[0].id;
+      profileEmail = snap.docs[0].data().email;
+    }
 
     // 2단계: Firebase Auth 로그인 (기존과 동일)
     await signInWithEmailAndPassword(auth, profileEmail, pw);
@@ -2956,28 +2952,17 @@ window.saveUser=async()=>{
     if(!username||!name||!pw){showToast('아이디, 이름, 비밀번호는 필수입니다.');return;}
     if(pw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
     const email=username+'@kunsori.app';
-    const usernameLower = username.toLowerCase();
-    const lookupKey = `${_LOGIN_ACADEMY_ID}_${usernameLower}`;
     try{
-      // 중복 확인 — usernameLookup 문서 조회 (isSignedIn 관리자 상태)
-      const dup = await getDoc(doc(db, 'usernameLookup', lookupKey));
-      if(dup.exists()){showToast('이미 사용 중인 아이디입니다.');return;}
+      // 중복 확인
+      const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
+      if(!dup.empty){showToast('이미 사용 중인 아이디입니다.');return;}
       const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
       const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
       let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia(firebaseConfig,'sec');}
       const auth2=ga(secApp);
       const cred=await cu(auth2,email,pw);
       await so(auth2);
-      await setDoc(doc(db,'users',cred.user.uid),{academyId:_LOGIN_ACADEMY_ID,username,name,email,group,role:'student',parentName,parentPhone,memo,avatarUrl:'',createdAt:serverTimestamp()});
-      // usernameLookup 도 같이 쓰기 (신규 학생 로그인 가능하게)
-      await setDoc(doc(db,'usernameLookup',lookupKey),{
-        academyId:_LOGIN_ACADEMY_ID,
-        usernameLower,
-        uid:cred.user.uid,
-        email,
-        role:'student',
-        createdAt:serverTimestamp()
-      });
+      await setDoc(doc(db,'users',cred.user.uid),{username,name,email,group,role:'student',parentName,parentPhone,memo,avatarUrl:'',createdAt:serverTimestamp()});
       cancelEditUser();showToast('✅ 학생 계정이 추가됐어요!');await loadAdminUsers();
     }catch(e){
       console.error(e);
@@ -3039,7 +3024,7 @@ window.deleteCurrentStudent=()=>{
 window.deleteStudent=async(uid,name)=>{
   if(!await showConfirm(name+' 학생을 삭제할까요?', 'Firestore 계정이 삭제되고 로그인이 차단됩니다.'))return;
   try{
-    await _deleteUserWithLookup(uid);
+    await deleteDoc(doc(db,'users',uid));
     closeModal('studentDetailModal');
     showToast('✅ '+name+' 계정이 삭제됐어요!');
     await loadAdminUsers();
@@ -3634,10 +3619,8 @@ window.doSignup=async()=>{
   if(pw.length<6){err.textContent='비밀번호는 6자 이상이어야 합니다.';return;}
   const email=username+'@kunsori.app';
   try{
-    // 중복 체크 — usernameLookup 문서 직접 조회 (pre-auth read 허용됨)
-    const dupKey = `${_LOGIN_ACADEMY_ID}_${username.toLowerCase()}`;
-    const dup = await getDoc(doc(db, 'usernameLookup', dupKey));
-    if(dup.exists()){err.textContent='이미 사용 중인 아이디입니다.';return;}
+    const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
+    if(!dup.empty){err.textContent='이미 사용 중인 아이디입니다.';return;}
     const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e2){secApp=ia(firebaseConfig,'sec');}
@@ -3645,8 +3628,6 @@ window.doSignup=async()=>{
     const cred=await cu(auth2,email,pw);
     await so(auth2);
     // 그룹은 미정으로 등록 (관리자가 나중에 배정)
-    // 참고: usernameLookup 은 작성하지 않음 — 신규 학생은 로그인 전 상태라 쓰기 권한 없음.
-    //       관리자가 나중에 반 배정할 때 일반 관리 스크립트/서버 API 로 보충 예정 (Phase 2).
     await setDoc(doc(db,'users',cred.user.uid),{username,name,email,phone,group:'미배정',role:'student',parentName,parentPhone,avatarUrl:'',createdAt:serverTimestamp()});
     showToast('✅ 가입 완료! 관리자가 그룹을 배정하면 이용 가능합니다.');
     show('login');
