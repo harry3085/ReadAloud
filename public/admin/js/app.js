@@ -24,11 +24,33 @@ function showConfirm(title,sub=''){
     modal.style.display='flex';
     const ok=document.getElementById('confirmOk');
     const cancel=document.getElementById('confirmCancel');
+    cancel.style.display='';  // (showAlert 가 숨겼을 수 있으므로 복원)
     const done=(val)=>{modal.style.display='none';ok.onclick=null;cancel.onclick=null;resolve(val);};
     ok.onclick=()=>done(true);
     cancel.onclick=()=>done(false);
   });
 }
+
+// 입력 검증 실패·중요 경고용 — confirmModal 재사용, Cancel 버튼은 숨김
+function showAlert(title, sub=''){
+  return new Promise(resolve=>{
+    document.getElementById('confirmTitle').textContent=title;
+    document.getElementById('confirmSub').textContent=sub;
+    const modal=document.getElementById('confirmModal');
+    modal.style.display='flex';
+    const ok=document.getElementById('confirmOk');
+    const cancel=document.getElementById('confirmCancel');
+    cancel.style.display='none';
+    const done=()=>{
+      modal.style.display='none';
+      cancel.style.display='';
+      ok.onclick=null;
+      resolve();
+    };
+    ok.onclick=done;
+  });
+}
+window.showAlert=showAlert;
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -638,8 +660,8 @@ window.saveStudent = async() => {
   const name=document.getElementById('sName').value.trim();
   const pw=document.getElementById('sPw').value;
   const group=document.getElementById('sGroup').value;
-  if(!username||!name||!pw){showToast('아이디, 이름, 비밀번호는 필수입니다.');return;}
-  if(pw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
+  if(!username||!name||!pw){await showAlert('입력 확인','아이디, 이름, 비밀번호는 필수입니다.');return;}
+  if(pw.length<6){await showAlert('비밀번호 확인','비밀번호는 6자 이상이어야 합니다.');return;}
   const email=username+'@kunsori.app';
   try{
     const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
