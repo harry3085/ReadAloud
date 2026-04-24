@@ -2174,6 +2174,73 @@ function _rv2BlobToBase64(blob) {
   });
 }
 
+// Gemini 전송 전 오디오 앞부분만 잘라 전송 (토큰 비용 절감)
+// 원본 blob 은 Storage 에 그대로 업로드 — Gemini 전송용 사본만 잘림
+// 실패 시 원본 blob 반환 (디코딩 불가 포맷 등 폴백)
+async function _trimAudioForGemini(blob, maxSeconds) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return blob;
+    const ctx = new Ctx();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    if (buf.duration <= maxSeconds) {
+      await ctx.close();
+      return blob;
+    }
+    const sr = buf.sampleRate;
+    const numCh = Math.min(buf.numberOfChannels, 2);
+    const maxSamples = Math.floor(maxSeconds * sr);
+    const trimmed = ctx.createBuffer(numCh, maxSamples, sr);
+    for (let ch = 0; ch < numCh; ch++) {
+      const src = buf.getChannelData(ch);
+      const dst = trimmed.getChannelData(ch);
+      for (let i = 0; i < maxSamples; i++) dst[i] = src[i];
+    }
+    const wav = _audioBufferToWav(trimmed);
+    await ctx.close();
+    console.log(`[trim] ${(blob.size/1024).toFixed(0)}KB → ${(wav.size/1024).toFixed(0)}KB (${buf.duration.toFixed(1)}s → ${maxSeconds}s)`);
+    return wav;
+  } catch (e) {
+    console.warn('[trim] 실패 → 원본 사용:', e.message);
+    return blob;
+  }
+}
+
+function _audioBufferToWav(audioBuffer) {
+  const numCh = audioBuffer.numberOfChannels;
+  const sr = audioBuffer.sampleRate;
+  const bits = 16;
+  const len = audioBuffer.length;
+  const dataLen = len * numCh * (bits / 8);
+  const arr = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(arr);
+  const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sr, true);
+  view.setUint32(28, sr * numCh * (bits / 8), true);
+  view.setUint16(32, numCh * (bits / 8), true);
+  view.setUint16(34, bits, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLen, true);
+  let off = 44;
+  const channels = [];
+  for (let ch = 0; ch < numCh; ch++) channels.push(audioBuffer.getChannelData(ch));
+  for (let i = 0; i < len; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      let s = Math.max(-1, Math.min(1, channels[ch][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+  }
+  return new Blob([arr], { type: 'audio/wav' });
+}
+
 function _rv2ShowSubmitting(title, subtitle) {
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
@@ -2224,8 +2291,11 @@ async function _rv2Submit() {
 
     const checkResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
       try {
-        const base64 = await _rv2BlobToBase64(r.blob);
-        console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length}`);
+        // Gemini 전송용으로 앞부분만 잘라 전송 (토큰 비용 82% 절감)
+        const trimmed = await _trimAudioForGemini(r.blob, evalSec + 5);
+        const base64 = await _rv2BlobToBase64(trimmed);
+        const sendMime = trimmed.type || r.mime;
+        console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length} mime=${sendMime}`);
         const res = await fetch('/api/check-recording', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2233,7 +2303,7 @@ async function _rv2Submit() {
             mode: 'check',
             originalText: q.fullText,
             audioBase64: base64,
-            mimeType: r.mime,
+            mimeType: sendMime,
             evaluationSeconds: evalSec,
           }),
         });
@@ -2262,7 +2332,10 @@ async function _rv2Submit() {
     if (passed && !lastResult.error) {
       _rv2ShowSubmitting('💬 상세 피드백 생성 중...', '마지막 녹음이 임계점을 통과했어요!');
       try {
-        const base64 = await _rv2BlobToBase64(_rv2.savedRounds[_RV2_ROUNDS - 1].blob);
+        const lastBlob = _rv2.savedRounds[_RV2_ROUNDS - 1].blob;
+        const trimmed = await _trimAudioForGemini(lastBlob, evalSec + 5);
+        const base64 = await _rv2BlobToBase64(trimmed);
+        const sendMime = trimmed.type || _rv2.savedRounds[_RV2_ROUNDS - 1].mime;
         const fbRes = await fetch('/api/check-recording', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2270,7 +2343,7 @@ async function _rv2Submit() {
             mode: 'feedback',
             originalText: q.fullText,
             audioBase64: base64,
-            mimeType: _rv2.savedRounds[_RV2_ROUNDS - 1].mime,
+            mimeType: sendMime,
             evaluationSeconds: evalSec,
           }),
         });
