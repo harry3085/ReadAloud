@@ -8,6 +8,8 @@
     "seed:default-academy:apply": "node scripts/admin/create-default-academy.js --apply",
     "migrate:add-academy-id": "node scripts/migrate/add-academy-id.js",
     "migrate:add-academy-id:apply": "node scripts/migrate/add-academy-id.js --apply",
+    "migrate:backfill-claims": "node scripts/migrate/backfill-custom-claims.js",
+    "migrate:backfill-claims:apply": "node scripts/migrate/backfill-custom-claims.js --apply",
     "backup": "node scripts/backup/export-all.js"
   },
   "dependencies": {
