@@ -77,6 +77,26 @@ window.toggleDropdown = id => {
 document.addEventListener('click', e=>{if(!e.target.closest('.home-header')){document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');}});
 
 // ── 로그인 ─────────────────────────────────────────────────
+// 현재는 academyId='default' 고정 (멀티테넌시 전환 Phase 0).
+// 추후: 서브도메인 또는 학원코드 입력으로 academyId 결정.
+const _LOGIN_ACADEMY_ID = 'default';
+
+// usernameLookup/{academyId}_{usernameLower} 로 email 조회.
+// 누락 시 null 반환 → 호출자가 레거시 users 쿼리로 폴백.
+async function _lookupUserByUsername(usernameRaw) {
+  try {
+    const key = `${_LOGIN_ACADEMY_ID}_${usernameRaw.toLowerCase()}`;
+    const snap = await getDoc(doc(db, 'usernameLookup', key));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    if (!d || !d.uid || !d.email) return null;
+    return { uid: d.uid, email: d.email, role: d.role };
+  } catch (e) {
+    console.warn('[usernameLookup] 조회 실패, 레거시 경로로 폴백:', e.message);
+    return null;
+  }
+}
+
 window.doLogin = async () => {
   const uid = document.getElementById('usernameInput').value.trim();
   const pw  = document.getElementById('passwordInput').value.trim();
@@ -87,16 +107,39 @@ window.doLogin = async () => {
   if(document.getElementById('saveIdCheck').checked) localStorage.setItem('savedId',uid);
   else localStorage.removeItem('savedId');
   try {
-    const snap = await getDocs(query(collection(db,'users'), where('username','==',uid)));
-    if(snap.empty){err.textContent='존재하지 않는 아이디입니다.';return;}
-    const profile = snap.docs[0].data();
-    await signInWithEmailAndPassword(auth, profile.email, pw);
-    userProfile = {...profile, uid: snap.docs[0].id};
+    // 1단계: usernameLookup 으로 email/uid 조회 (신규 경로)
+    let profileUid = null;
+    let profileEmail = null;
+    const lookup = await _lookupUserByUsername(uid);
+    if (lookup) {
+      profileUid = lookup.uid;
+      profileEmail = lookup.email;
+    } else {
+      // 폴백: 레거시 users 쿼리 (lookup 에 없는 사용자 대응)
+      const snap = await getDocs(query(collection(db,'users'), where('username','==',uid)));
+      if(snap.empty){err.textContent='존재하지 않는 아이디입니다.';return;}
+      profileUid = snap.docs[0].id;
+      profileEmail = snap.docs[0].data().email;
+    }
+
+    // 2단계: Firebase Auth 로그인 (기존과 동일)
+    await signInWithEmailAndPassword(auth, profileEmail, pw);
+
+    // 3단계: users/{uid} 에서 프로필 전체 로드 (로그인 완료된 상태라 읽기 권한 OK)
+    const profileSnap = await getDoc(doc(db, 'users', profileUid));
+    if (!profileSnap.exists()) {
+      err.textContent = '프로필을 찾을 수 없습니다. 관리자에게 문의하세요.';
+      await signOut(auth);
+      return;
+    }
+    const profile = profileSnap.data();
+
+    userProfile = {...profile, uid: profileUid};
     currentUser = auth.currentUser;
     localStorage.setItem('lastLoginAt', Date.now().toString());
     if(profile.role==='admin'){
       // PC 관리자 앱으로 이동
-      localStorage.setItem('adminProfile', JSON.stringify({...profile, uid: snap.docs[0].id}));
+      localStorage.setItem('adminProfile', JSON.stringify({...profile, uid: profileUid}));
       window.location.href = '/admin/';
     } else {
       document.getElementById('greetName').textContent=profile.name+' 님';
