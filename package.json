@@ -12,7 +12,9 @@
     "migrate:backfill-claims:apply": "node scripts/migrate/backfill-custom-claims.js --apply",
     "migrate:username-lookup": "node scripts/migrate/create-username-lookup.js",
     "migrate:username-lookup:apply": "node scripts/migrate/create-username-lookup.js --apply",
-    "backup": "node scripts/backup/export-all.js"
+    "backup": "node scripts/backup/export-all.js",
+    "cleanup:auth-orphans": "node scripts/cleanup/auth-orphans.js",
+    "cleanup:auth-orphans:apply": "node scripts/cleanup/auth-orphans.js --apply"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.5",
