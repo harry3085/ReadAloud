@@ -189,7 +189,8 @@ thead th.sortable[data-orig-text]{color:var(--teal);font-weight:700;}
 #modalBox::-webkit-resizer{border-width:8px;border-style:solid;border-color:transparent var(--teal) var(--teal) transparent;border-radius:0 0 4px 0;}
 
 /* ── 토스트 ── */
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+/* index.html 의 inline style(opacity:0) 이 specificity 높아 class 만으론 이기지 못함 → !important 필수 */
+#toast.show{opacity:1 !important;transform:translateX(-50%) translateY(0) !important;}
 
 /* ── 문제 세트 테이블 컬럼 리사이즈 핸들 ── */
 .qs-col-resize{background:transparent;transition:background .15s;}
