@@ -26,13 +26,15 @@ const EMAIL_DOMAIN = '@kunsori.app';
 
 function initAdmin() {
   if (getApps().length > 0) return;
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      `Vercel env vars missing — PROJECT_ID=${!!projectId}, CLIENT_EMAIL=${!!clientEmail}, PRIVATE_KEY=${!!privateKey}. Vercel 대시보드에서 환경변수 확인 후 Redeploy 필요.`
+    );
+  }
+  initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
 module.exports = async (req, res) => {
