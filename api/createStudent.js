@@ -24,14 +24,39 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const DEFAULT_ACADEMY_ID = 'default';
 const EMAIL_DOMAIN = '@kunsori.app';
 
+function normalizePrivateKey(raw) {
+  if (!raw) return '';
+  let k = String(raw);
+  // 앞뒤 공백 제거
+  k = k.trim();
+  // 전체를 감싸는 따옴표 제거 (Vercel 붙여넣기 실수 방지)
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1);
+  }
+  // CRLF → LF
+  k = k.replace(/\r\n/g, '\n');
+  // 리터럴 \n 을 실제 개행으로 변환 (단일행 저장된 경우)
+  k = k.replace(/\\n/g, '\n');
+  return k;
+}
+
 function initAdmin() {
   if (getApps().length > 0) return;
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
+
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error(
-      `Vercel env vars missing — PROJECT_ID=${!!projectId}, CLIENT_EMAIL=${!!clientEmail}, PRIVATE_KEY=${!!privateKey}. Vercel 대시보드에서 환경변수 확인 후 Redeploy 필요.`
+      `Vercel env vars missing — PROJECT_ID=${!!projectId}, CLIENT_EMAIL=${!!clientEmail}, PRIVATE_KEY=${!!privateKey}.`
+    );
+  }
+  // PEM 형식 최소 검증
+  if (!privateKey.startsWith('-----BEGIN') || !privateKey.includes('-----END')) {
+    throw new Error(
+      `FIREBASE_PRIVATE_KEY 형식 오류 — BEGIN/END 블록이 누락되거나 깨졌습니다. ` +
+      `길이=${privateKey.length}, 첫20자='${privateKey.slice(0, 20)}'. ` +
+      `Vercel 대시보드에서 -----BEGIN PRIVATE KEY----- 부터 -----END PRIVATE KEY----- 까지 전체를 그대로 붙여넣고 Redeploy 하세요.`
     );
   }
   initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
