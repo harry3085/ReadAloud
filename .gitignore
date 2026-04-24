@@ -12,6 +12,10 @@
 *service-account*.json
 *-credentials.json
 google-vision-key.json
+scripts/.firebase-admin-key.json
+
+# Firestore 로컬 백업 (용량 큼 + 민감 데이터)
+backups/
 
 # 🆕 Node 의존성 (용량 커서 GitHub 올리면 안 됨)
 node_modules/
