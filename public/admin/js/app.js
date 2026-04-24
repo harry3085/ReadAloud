@@ -6,7 +6,16 @@ import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } f
 
 // ── 유틸 ─────────────────────────────────────────────────
 function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-function showToast(msg){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+let _toastTimer=null;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  if(!t)return;
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'),2500);
+}
+window.showToast=showToast;
 function showConfirm(title,sub=''){
   return new Promise(resolve=>{
     document.getElementById('confirmTitle').textContent=title;
@@ -1635,14 +1644,7 @@ document.getElementById('modalOverlay').addEventListener('click', e => {
   if(_modalMouseDownOnOverlay && e.target === document.getElementById('modalOverlay')) closeModal();
 });
 
-let toastTimer=null;
-window.showToast = (msg) => {
-  let t=document.getElementById('adminToast');
-  if(!t){t=document.createElement('div');t.id='adminToast';t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#222;color:white;padding:10px 20px;border-radius:10px;font-size:14px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;';document.body.appendChild(t);}
-  t.textContent=msg;t.style.opacity='1';
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>{t.style.opacity='0';},2500);
-};
+// (중복 showToast 제거 — 상단 유틸 섹션의 showToast 사용)
 
 // ── Auth + Firestore 동시 삭제 ────────────────────────────
 async function deleteUserFull(uid, name){
