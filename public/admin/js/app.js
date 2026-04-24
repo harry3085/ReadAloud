@@ -7458,6 +7458,9 @@ window.tpPublish = async () => {
 // 시험지 인쇄 (Phase 4 — printOnly 유형 전용)
 // ══════════════════════════════════════════════════════════════════════════
 
+// 시험지 출력 기본 스타일 값 (툴바 input 초기값 + fallback)
+const _TP_PRINT_DEFAULTS = { fontSize: 13, lineHeight: 1.7, qGap: 18 };
+
 window.tpOpenPrintModal = () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled || !cfg.actions?.includes('print')) return;
@@ -7531,6 +7534,34 @@ window.tpOpenPrintModal = () => {
           </div>
         </div>
         ${typeOptionsHtml}
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+          <span style="font-size:11px;font-weight:600;color:var(--gray);">📐 스타일 조정</span>
+          <label style="font-size:11px;color:var(--gray);display:flex;align-items:center;gap:5px;">
+            글자크기:
+            <input type="number" id="tpOptFontSize" value="${_TP_PRINT_DEFAULTS.fontSize}" min="9" max="20" step="1"
+              oninput="tpPrintRefreshPreview()"
+              style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <span style="color:#bbb;font-size:10px;">px (기본 ${_TP_PRINT_DEFAULTS.fontSize})</span>
+          </label>
+          <label style="font-size:11px;color:var(--gray);display:flex;align-items:center;gap:5px;">
+            줄간격:
+            <input type="number" id="tpOptLineHeight" value="${_TP_PRINT_DEFAULTS.lineHeight}" min="1.0" max="2.5" step="0.1"
+              oninput="tpPrintRefreshPreview()"
+              style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <span style="color:#bbb;font-size:10px;">배 (기본 ${_TP_PRINT_DEFAULTS.lineHeight})</span>
+          </label>
+          <label style="font-size:11px;color:var(--gray);display:flex;align-items:center;gap:5px;">
+            문제간격:
+            <input type="number" id="tpOptQGap" value="${_TP_PRINT_DEFAULTS.qGap}" min="0" max="60" step="2"
+              oninput="tpPrintRefreshPreview()"
+              style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+            <span style="color:#bbb;font-size:10px;">px (기본 ${_TP_PRINT_DEFAULTS.qGap})</span>
+          </label>
+          <button onclick="tpPrintResetStyle()" title="기본값으로 되돌리기"
+            style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;color:var(--gray);">
+            ↺ 리셋
+          </button>
+        </div>
       </div>
 
       <div style="flex:1;overflow-y:auto;padding:20px;background:#e0e0e0;min-height:0;">
@@ -7582,6 +7613,9 @@ function _tpBuildTypeOptionsUI(sourceType) {
 
 function _tpBuildPrintHtml(questions, meta) {
   const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts } = meta;
+  const fontSize = meta.fontSize ?? _TP_PRINT_DEFAULTS.fontSize;
+  const lineHeight = meta.lineHeight ?? _TP_PRINT_DEFAULTS.lineHeight;
+  const qGap = meta.qGap ?? _TP_PRINT_DEFAULTS.qGap;
   const isLandscape = orientation === 'landscape';
   // 실물 A4: 세로 210×297mm, 가로 297×210mm. 여백 8mm 10mm 를 padding 으로 포함.
   const pageW = isLandscape ? '297mm' : '210mm';
@@ -7641,7 +7675,7 @@ function _tpBuildPrintHtml(questions, meta) {
   // 외곽(용지+경계선) 과 내부(내용) 를 분리: 페이지 맞춤 시 내부만 zoom → 빨간 선은 원래 위치 유지
   const pageBreakBg = `repeating-linear-gradient(to bottom,transparent 0,transparent calc(${pageMinH} - 2px),rgba(255,80,80,0.45) calc(${pageMinH} - 2px),rgba(255,80,80,0.45) ${pageMinH})`;
   const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;position:relative;overflow:hidden;`;
-  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;`;
+  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;--p-font:${fontSize}px;--p-line:${lineHeight};--q-gap:${qGap}px;`;
 
   const innerContent = twoPerSheet
     ? `${headerHtml}<div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">${body}</div>${endHtml}`
@@ -7660,10 +7694,10 @@ function _tpBuildPrintHtml(questions, meta) {
 function _printRenderSubj(questions, { showAnswers }) {
   // 상단에 공통 지시문 한 번만, 각 문항은 번호 + 영어 문장 (번호를 영문 앞으로)
   const items = questions.map((q, i) => `
-    <div style="margin-bottom:22px;page-break-inside:avoid;">
+    <div style="margin-bottom:var(--q-gap);page-break-inside:avoid;">
       <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
-        <div data-fb-sent="${i}" style="flex:1;font-size:13px;line-height:1.7;padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;">${esc(q.sentence || '')}</div>
+        <div style="font-size:var(--p-font);font-weight:700;min-width:22px;">${i+1}.</div>
+        <div data-fb-sent="${i}" style="flex:1;font-size:var(--p-font);line-height:var(--p-line);padding:9px 12px;background:#f5f5f5;border-left:3px solid #333;">${esc(q.sentence || '')}</div>
       </div>
       ${showAnswers && q.sampleAnswerKo
         ? `<div style="font-size:11px;line-height:1.5;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;color:#1b5e20;margin-left:30px;"><strong>모범답안:</strong> ${esc(q.sampleAnswerKo)}</div>`
@@ -7681,17 +7715,9 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
   const fmt = typeOpts?.format || 'mixed';         // mixed | short | mcq
   const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
   const cols = parseInt(typeOpts?.columns) === 2 ? 2 : 1;
-  const narrow = cols === 2;
 
-  // 2단일 때는 폰트/여백/MCQ 레이아웃 축소
-  const fSize = narrow ? 11 : 13;
-  const choiceFSize = narrow ? 10 : 12;
-  const itemMb = narrow ? 8 : 14;
-  const qMinWidth = narrow ? 70 : 140;
-  const lineH = narrow ? 16 : 20;
-  const leftPad = narrow ? 10 : 18;
-  // 2단이면 각 행이 1열, 1단이면 4지선다가 2x2
-  const choiceGridStyle = narrow
+  // 2단일 때 MCQ 선지 그리드는 세로 1열 (좁은 너비에서 2x2 불가), 1단은 2x2
+  const choiceGridStyle = cols === 2
     ? 'display:flex;flex-direction:column;gap:2px;'
     : 'display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;';
 
@@ -7704,16 +7730,14 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
     const question = thisDir === 'en2ko' ? q.word : q.meaning;
     const answer = thisDir === 'en2ko' ? q.meaning : q.word;
 
-    const wrap = `margin-bottom:${itemMb}px;break-inside:avoid;page-break-inside:avoid;`;
+    const wrap = `margin-bottom:var(--q-gap);break-inside:avoid;page-break-inside:avoid;`;
 
     if (thisFmt === 'short') {
-      // align-items:baseline → 문제 텍스트와 정답 텍스트의 베이스라인 정렬
-      // 답란은 padding-bottom 으로 텍스트 아래에 밑줄이 자연스럽게 붙도록
       return `
-        <div style="${wrap}display:flex;align-items:baseline;gap:8px;min-height:${lineH}px;">
-          <div style="font-size:${fSize}px;font-weight:700;min-width:22px;">${i+1}.</div>
-          <div style="font-size:${fSize}px;font-weight:600;min-width:${qMinWidth}px;">${esc(question)}</div>
-          <div style="flex:1;border-bottom:1px solid #aaa;padding-bottom:2px;font-size:${fSize-1}px;color:#2e7d32;font-weight:700;">
+        <div style="${wrap}display:flex;align-items:baseline;gap:8px;line-height:var(--p-line);">
+          <div style="font-size:var(--p-font);font-weight:700;min-width:22px;">${i+1}.</div>
+          <div style="font-size:var(--p-font);font-weight:600;min-width:140px;">${esc(question)}</div>
+          <div style="flex:1;border-bottom:1px solid #aaa;padding-bottom:2px;font-size:calc(var(--p-font) - 1px);color:#2e7d32;font-weight:700;">
             ${showAnswers ? esc(answer) : '&nbsp;'}
           </div>
         </div>`;
@@ -7726,10 +7750,10 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
     const correctIdx = opts.indexOf(answer);
     return `
       <div style="${wrap}">
-        <div style="font-size:${fSize}px;font-weight:700;margin-bottom:3px;">${i+1}. ${esc(question)}</div>
-        <div style="${choiceGridStyle}margin-left:${leftPad}px;">
+        <div style="font-size:var(--p-font);font-weight:700;margin-bottom:3px;">${i+1}. ${esc(question)}</div>
+        <div style="${choiceGridStyle}margin-left:18px;">
           ${opts.map((opt, j) => `
-            <div style="font-size:${choiceFSize}px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+            <div style="font-size:calc(var(--p-font) - 1px);${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
               ${['①','②','③','④'][j]} ${esc(opt)}${showAnswers && j === correctIdx ? ' ✓' : ''}
             </div>`).join('')}
         </div>
@@ -7747,13 +7771,13 @@ function _printRenderUnscramble(questions, { showAnswers }) {
     const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
     const shuffled = chunks.slice().sort(() => Math.random() - 0.5);
     return `
-      <div style="margin-bottom:22px;page-break-inside:avoid;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:6px;">${i+1}. ${esc(q.meaningKo || '')}</div>
+      <div style="margin-bottom:var(--q-gap);page-break-inside:avoid;">
+        <div style="font-size:var(--p-font);font-weight:700;margin-bottom:6px;line-height:var(--p-line);">${i+1}. ${esc(q.meaningKo || '')}</div>
         <div style="margin-left:20px;border-bottom:1px solid #888;min-height:26px;padding:4px;${showAnswers ? 'background:#f0fdf4;' : ''}">
-          ${showAnswers ? `<span style="font-size:13px;color:#2e7d32;font-weight:700;">${esc(chunks.join(' '))}</span>` : ''}
+          ${showAnswers ? `<span style="font-size:var(--p-font);color:#2e7d32;font-weight:700;">${esc(chunks.join(' '))}</span>` : ''}
         </div>
         <div style="margin-left:20px;margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
-          ${shuffled.map(c => `<span style="padding:4px 10px;background:white;border:1px solid #bbb;border-radius:4px;font-size:12px;font-family:'Times New Roman',serif;">${esc(c)}</span>`).join('')}
+          ${shuffled.map(c => `<span style="padding:4px 10px;background:white;border:1px solid #bbb;border-radius:4px;font-size:calc(var(--p-font) - 1px);font-family:'Times New Roman',serif;">${esc(c)}</span>`).join('')}
         </div>
       </div>`;
   }).join('');
@@ -7777,9 +7801,9 @@ function _printRenderBlank(questions, { showAnswers }) {
       }
     }
     return `
-      <div style="margin-bottom:14px;page-break-inside:avoid;display:flex;gap:8px;align-items:baseline;">
-        <div style="font-size:13px;font-weight:700;min-width:22px;">${i+1}.</div>
-        <div style="flex:1;font-size:14px;line-height:2;padding:6px 12px;background:#f9fafb;border-left:3px solid #333;">${html}</div>
+      <div style="margin-bottom:var(--q-gap);page-break-inside:avoid;display:flex;gap:8px;align-items:baseline;">
+        <div style="font-size:var(--p-font);font-weight:700;min-width:22px;">${i+1}.</div>
+        <div style="flex:1;font-size:var(--p-font);line-height:var(--p-line);padding:6px 12px;background:#f9fafb;border-left:3px solid #333;">${html}</div>
       </div>`;
   }).join('');
   return `
@@ -7794,8 +7818,8 @@ function _printRenderMcq(questions, { showAnswers }) {
   return questions.map((q, i) => {
     const correctIdx = (q.choices || []).findIndex(c => c.isAnswer);
     return `
-      <div style="margin-bottom:14px;page-break-inside:avoid;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">${i+1}. ${esc(q.question || '')}</div>
+      <div style="margin-bottom:var(--q-gap);page-break-inside:avoid;">
+        <div style="font-size:var(--p-font);font-weight:700;margin-bottom:4px;line-height:var(--p-line);">${i+1}. ${esc(q.question || '')}</div>
         ${showAnswers && (q.sourcePageTitle || q.questionKo) ? `<div style="margin-left:16px;margin-bottom:4px;">
           ${q.sourcePageTitle ? `<span style="font-size:10px;color:#888;">출처: ${esc(q.sourcePageTitle)}</span>` : ''}
           ${q.sourcePageTitle && q.questionKo ? `<span style="font-size:10px;color:#ccc;margin:0 6px;">·</span>` : ''}
@@ -7803,7 +7827,7 @@ function _printRenderMcq(questions, { showAnswers }) {
         </div>` : ''}
         <div style="display:grid;grid-template-columns:1fr;gap:4px;margin-left:16px;">
           ${(q.choices || []).map((c, j) => `
-            <div style="font-size:12px;${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
+            <div style="font-size:calc(var(--p-font) - 1px);line-height:var(--p-line);${showAnswers && j === correctIdx ? 'color:#2e7d32;font-weight:700;' : ''}">
               ${['①','②','③','④'][j]} ${esc(c.text || '')}${showAnswers && j === correctIdx ? ' ✓' : ''}
             </div>`).join('')}
         </div>
@@ -7820,7 +7844,11 @@ function _tpAdjustAnswerLines() {
     const ansDiv = area.querySelector(`[data-fb-ans="${qIdx}"]`);
     if (!ansDiv) return;  // 모범답안 표시 중이면 없음
     const cs = getComputedStyle(sDiv);
-    const lineHeight = parseFloat(cs.lineHeight) || 22;
+    const fontPx = parseFloat(cs.fontSize) || 13;
+    let lineHeight = parseFloat(cs.lineHeight);
+    // unitless(배수) 면 fontSize 곱해 px 로, 유효하지 않으면 fallback
+    if (!isFinite(lineHeight) || lineHeight <= 0) lineHeight = fontPx * 1.7;
+    else if (lineHeight < 6) lineHeight = lineHeight * fontPx;
     const inner = sDiv.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     const lines = Math.max(1, Math.round(inner / lineHeight));
     ansDiv.innerHTML = Array.from({length: lines}, () =>
@@ -7855,6 +7883,17 @@ window.tpPrintRefreshPreview = () => {
   const orientationEl = document.getElementById('tpPrintOrientation');
   const fitToPageEl = document.getElementById('tpPrintFitToPage');
   const orientation = orientationEl?.value || 'portrait';
+
+  // 스타일 조정 input → 유효값 클램프 (빈값/NaN/범위 밖은 기본값)
+  const clamp = (v, lo, hi, def) => {
+    const n = parseFloat(v);
+    if (!isFinite(n)) return def;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  const fontSize = clamp(document.getElementById('tpOptFontSize')?.value, 9, 20, _TP_PRINT_DEFAULTS.fontSize);
+  const lineHeight = clamp(document.getElementById('tpOptLineHeight')?.value, 1.0, 2.5, _TP_PRINT_DEFAULTS.lineHeight);
+  const qGap = clamp(document.getElementById('tpOptQGap')?.value, 0, 60, _TP_PRINT_DEFAULTS.qGap);
+
   area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
@@ -7866,6 +7905,9 @@ window.tpPrintRefreshPreview = () => {
     orientation,
     sourceType: ctx.sourceType,
     typeOpts,
+    fontSize,
+    lineHeight,
+    qGap,
   });
   // 주관식 답란 줄 수 맞추기 (subj 전용)
   if (ctx.sourceType === 'subjective') {
@@ -7893,6 +7935,16 @@ function _tpApplyFitToPage(enabled, orientation) {
 }
 
 window.tpPrintTogglePreview = () => tpPrintRefreshPreview();
+
+window.tpPrintResetStyle = () => {
+  const f = document.getElementById('tpOptFontSize');
+  const l = document.getElementById('tpOptLineHeight');
+  const g = document.getElementById('tpOptQGap');
+  if (f) f.value = _TP_PRINT_DEFAULTS.fontSize;
+  if (l) l.value = _TP_PRINT_DEFAULTS.lineHeight;
+  if (g) g.value = _TP_PRINT_DEFAULTS.qGap;
+  tpPrintRefreshPreview();
+};
 
 window.tpPrintNow = () => {
   const area = document.getElementById('tpPrintArea');
