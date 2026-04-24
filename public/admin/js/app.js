@@ -4412,7 +4412,7 @@ function _qgRenderOptions(type) {
 
   const saved = _qgLoadOpts(type);
 
-  panel.innerHTML = cfg.options.map(opt => {
+  const optionsHtml = cfg.options.map(opt => {
     const val = saved[opt.key] !== undefined ? saved[opt.key] : opt.default;
     const id = 'qgOpt_' + opt.key;
     const labelRow = `<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;">${esc(opt.label)}</div>`;
@@ -4449,6 +4449,11 @@ function _qgRenderOptions(type) {
     }
     return '';
   }).join('');
+
+  // 'word' (단어시험) 전용 Wordshap 입력 섹션 — 통과점수 아래, AI 로 문제 생성 버튼 위
+  const wordshapHtml = (type === 'word') ? _qgBuildWordshapSection() : '';
+  panel.innerHTML = optionsHtml + wordshapHtml;
+  if (type === 'word') setTimeout(() => window._qgWordshapUpdateStatus?.(), 0);
 
   if (btn) {
     if (!cfg.enabled) {
@@ -4869,6 +4874,150 @@ async function _qgCallRecording(opts) {
     if (btn) btn.disabled = false;
   }
 }
+
+// ─── Wordshap: 클립보드 '영단어[Tab]해석' 직접 입력 (AI 호출 없이 즉시 세트 생성) ───
+function _qgBuildWordshapSection() {
+  return `
+    <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 Wordshap · 클립보드 입력</div>
+        <button class="btn btn-secondary" onclick="qgWordshapPaste()"
+          style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
+      </div>
+      <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
+        각 줄: <code style="background:white;padding:1px 5px;border-radius:3px;font-size:10px;">영단어/숙어<span style="color:#c33;font-weight:700;">[Tab]</span>해석</code>
+      </div>
+      <textarea id="qgWordshapInput" rows="5" spellcheck="false"
+        oninput="_qgWordshapUpdateStatus()"
+        placeholder="apple&#9;사과&#10;banana&#9;바나나&#10;give up&#9;포기하다"
+        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
+      <div id="qgWordshapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
+      <button class="btn btn-primary" onclick="qgRunWordshap()" id="qgWordshapBtn"
+        style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
+        📋 Wordshap 실행
+      </button>
+    </div>
+  `;
+}
+
+// 각 줄을 '영단어[Tab]해석' 으로 파싱. 반환: { questions, errors }
+function _qgParseWordshap(text) {
+  const lines = (text || '').split(/\r?\n/);
+  const questions = [];
+  const errors = [];
+  const seenWords = new Set();
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return; // 빈 줄 스킵
+
+    const tabIdx = trimmed.indexOf('\t');
+    if (tabIdx < 0) {
+      errors.push({ line: i + 1, msg: 'Tab 구분자 없음' });
+      return;
+    }
+    const word = trimmed.slice(0, tabIdx).trim();
+    const meaning = trimmed.slice(tabIdx + 1).trim();
+
+    if (!word || !meaning) { errors.push({ line: i + 1, msg: '영단어 또는 해석 누락' }); return; }
+    if (word.length > 60)   { errors.push({ line: i + 1, msg: `영단어 너무 김 (${word.length}자)` }); return; }
+    if (meaning.length > 200) { errors.push({ line: i + 1, msg: `해석 너무 김 (${meaning.length}자)` }); return; }
+
+    const key = word.toLowerCase();
+    if (seenWords.has(key)) { errors.push({ line: i + 1, msg: `중복: ${word}` }); return; }
+    seenWords.add(key);
+
+    questions.push({
+      type: 'vocab',
+      word, meaning,
+      example: '', exampleKo: '',
+      sourcePageId: '', sourcePageTitle: '',
+      difficulty: 'medium',
+    });
+  });
+
+  return { questions, errors };
+}
+
+window._qgWordshapUpdateStatus = () => {
+  const ta = document.getElementById('qgWordshapInput');
+  const status = document.getElementById('qgWordshapStatus');
+  if (!ta || !status) return;
+  if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
+  const { questions, errors } = _qgParseWordshap(ta.value);
+  const parts = [];
+  if (questions.length) parts.push(`<span style="color:#0a7a3a;font-weight:700;">✓ ${questions.length}개 단어</span>`);
+  if (errors.length)   parts.push(`<span style="color:#c33;">⚠ ${errors.length}줄 오류</span>`);
+  status.innerHTML = parts.join(' · ') || '<span style="color:#c33;">파싱 결과 없음</span>';
+};
+
+window.qgWordshapPaste = async () => {
+  const ta = document.getElementById('qgWordshapInput');
+  if (!ta) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text || '';
+    window._qgWordshapUpdateStatus();
+    ta.focus();
+  } catch(e) {
+    showToast('클립보드 읽기 실패 — textarea 에 직접 Ctrl+V 로 붙여넣으세요');
+    ta.focus();
+  }
+};
+
+window.qgRunWordshap = async () => {
+  const ta = document.getElementById('qgWordshapInput');
+  if (!ta) return;
+  const { questions, errors } = _qgParseWordshap(ta.value);
+
+  if (questions.length === 0) {
+    showToast('저장할 단어가 없습니다 — 형식: 영단어[Tab]해석');
+    return;
+  }
+
+  const parts = [_qgActiveBook?.name, _qgActiveChapter?.name, 'Wordshap'].filter(Boolean);
+  const setName = parts.join(' · ') || `Wordshap · ${new Date().toLocaleDateString('ko-KR')}`;
+
+  const errorNote = errors.length ? `\n(오류 ${errors.length}줄은 제외됩니다)` : '';
+  const ok = await showConfirm(
+    `"${setName}" 세트 저장?`,
+    `${questions.length}개 단어를 문제 세트로 저장합니다.${errorNote}`
+  );
+  if (!ok) return;
+
+  // 활성 Book/Chapter 있으면 sourcePages 로 기록 → 문제세트 목록의 폴더에 표시됨
+  const sourcePages = (_qgActiveBook || _qgActiveChapter) ? [{
+    pageId: '',
+    pageTitle: 'Wordshap 수동 입력',
+    bookId: _qgActiveBook?.id || '',
+    chapterId: _qgActiveChapter?.id || '',
+  }] : [];
+
+  const btn = document.getElementById('qgWordshapBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await addDoc(collection(db, 'genQuestionSets'), {
+      name: setName,
+      sourceType: 'vocab',
+      sourcePages,
+      questions,
+      questionCount: questions.length,
+      aiModel: 'Wordshap 수동 입력',
+      aiGeneratedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+      updatedAt: serverTimestamp(),
+    });
+    showToast(`✓ "${setName}" 저장됨 (${questions.length}단어)`);
+    ta.value = '';
+    window._qgWordshapUpdateStatus();
+    setTimeout(() => goPage('quiz-sets'), 400);
+  } catch(e) {
+    showToast('저장 실패: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
 
 // ─── Vocab API 호출 (Phase 6) ───
 async function _qgCallVocab(opts) {
