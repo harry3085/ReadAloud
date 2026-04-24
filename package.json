@@ -10,6 +10,8 @@
     "migrate:add-academy-id:apply": "node scripts/migrate/add-academy-id.js --apply",
     "migrate:backfill-claims": "node scripts/migrate/backfill-custom-claims.js",
     "migrate:backfill-claims:apply": "node scripts/migrate/backfill-custom-claims.js --apply",
+    "migrate:username-lookup": "node scripts/migrate/create-username-lookup.js",
+    "migrate:username-lookup:apply": "node scripts/migrate/create-username-lookup.js --apply",
     "backup": "node scripts/backup/export-all.js"
   },
   "dependencies": {
