@@ -4450,10 +4450,10 @@ function _qgRenderOptions(type) {
     return '';
   }).join('');
 
-  // 'word' (단어시험) 전용 Wordshap 입력 섹션 — 통과점수 아래, AI 로 문제 생성 버튼 위
-  const wordshapHtml = (type === 'word') ? _qgBuildWordshapSection() : '';
-  panel.innerHTML = optionsHtml + wordshapHtml;
-  if (type === 'word') setTimeout(() => window._qgWordshapUpdateStatus?.(), 0);
+  // 'word' (단어시험) 전용 Wordsnap 입력 섹션 — 통과점수 아래, AI 로 문제 생성 버튼 위
+  const wordsnapHtml = (type === 'word') ? _qgBuildWordsnapSection() : '';
+  panel.innerHTML = optionsHtml + wordsnapHtml;
+  if (type === 'word') setTimeout(() => window._qgWordsnapUpdateStatus?.(), 0);
 
   if (btn) {
     if (!cfg.enabled) {
@@ -4875,33 +4875,33 @@ async function _qgCallRecording(opts) {
   }
 }
 
-// ─── Wordshap: 클립보드 '영단어[Tab]해석' 직접 입력 (AI 호출 없이 즉시 세트 생성) ───
-function _qgBuildWordshapSection() {
+// ─── Wordsnap: 클립보드 '영단어[Tab]해석' 직접 입력 (AI 호출 없이 즉시 세트 생성) ───
+function _qgBuildWordsnapSection() {
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
-        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 Wordshap · 클립보드 입력</div>
-        <button class="btn btn-secondary" onclick="qgWordshapPaste()"
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 Wordsnap · 클립보드 입력</div>
+        <button class="btn btn-secondary" onclick="qgWordsnapPaste()"
           style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
       </div>
       <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
         각 줄: <code style="background:white;padding:1px 5px;border-radius:3px;font-size:10px;">영단어/숙어<span style="color:#c33;font-weight:700;">[Tab]</span>해석</code>
       </div>
-      <textarea id="qgWordshapInput" rows="5" spellcheck="false"
-        oninput="_qgWordshapUpdateStatus()"
+      <textarea id="qgWordsnapInput" rows="5" spellcheck="false"
+        oninput="_qgWordsnapUpdateStatus()"
         placeholder="apple&#9;사과&#10;banana&#9;바나나&#10;give up&#9;포기하다"
         style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
-      <div id="qgWordshapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
-      <button class="btn btn-primary" onclick="qgRunWordshap()" id="qgWordshapBtn"
+      <div id="qgWordsnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
+      <button class="btn btn-primary" onclick="qgRunWordsnap()" id="qgWordsnapBtn"
         style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
-        📋 Wordshap 실행
+        📋 Wordsnap 실행
       </button>
     </div>
   `;
 }
 
 // 각 줄을 '영단어[Tab]해석' 으로 파싱. 반환: { questions, errors }
-function _qgParseWordshap(text) {
+function _qgParseWordsnap(text) {
   const lines = (text || '').split(/\r?\n/);
   const questions = [];
   const errors = [];
@@ -4939,25 +4939,25 @@ function _qgParseWordshap(text) {
   return { questions, errors };
 }
 
-window._qgWordshapUpdateStatus = () => {
-  const ta = document.getElementById('qgWordshapInput');
-  const status = document.getElementById('qgWordshapStatus');
+window._qgWordsnapUpdateStatus = () => {
+  const ta = document.getElementById('qgWordsnapInput');
+  const status = document.getElementById('qgWordsnapStatus');
   if (!ta || !status) return;
   if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
-  const { questions, errors } = _qgParseWordshap(ta.value);
+  const { questions, errors } = _qgParseWordsnap(ta.value);
   const parts = [];
   if (questions.length) parts.push(`<span style="color:#0a7a3a;font-weight:700;">✓ ${questions.length}개 단어</span>`);
   if (errors.length)   parts.push(`<span style="color:#c33;">⚠ ${errors.length}줄 오류</span>`);
   status.innerHTML = parts.join(' · ') || '<span style="color:#c33;">파싱 결과 없음</span>';
 };
 
-window.qgWordshapPaste = async () => {
-  const ta = document.getElementById('qgWordshapInput');
+window.qgWordsnapPaste = async () => {
+  const ta = document.getElementById('qgWordsnapInput');
   if (!ta) return;
   try {
     const text = await navigator.clipboard.readText();
     ta.value = text || '';
-    window._qgWordshapUpdateStatus();
+    window._qgWordsnapUpdateStatus();
     ta.focus();
   } catch(e) {
     showToast('클립보드 읽기 실패 — textarea 에 직접 Ctrl+V 로 붙여넣으세요');
@@ -4965,18 +4965,18 @@ window.qgWordshapPaste = async () => {
   }
 };
 
-window.qgRunWordshap = async () => {
-  const ta = document.getElementById('qgWordshapInput');
+window.qgRunWordsnap = async () => {
+  const ta = document.getElementById('qgWordsnapInput');
   if (!ta) return;
-  const { questions, errors } = _qgParseWordshap(ta.value);
+  const { questions, errors } = _qgParseWordsnap(ta.value);
 
   if (questions.length === 0) {
     showToast('저장할 단어가 없습니다 — 형식: 영단어[Tab]해석');
     return;
   }
 
-  const parts = [_qgActiveBook?.name, _qgActiveChapter?.name, 'Wordshap'].filter(Boolean);
-  const setName = parts.join(' · ') || `Wordshap · ${new Date().toLocaleDateString('ko-KR')}`;
+  const parts = [_qgActiveBook?.name, _qgActiveChapter?.name, 'Wordsnap'].filter(Boolean);
+  const setName = parts.join(' · ') || `Wordsnap · ${new Date().toLocaleDateString('ko-KR')}`;
 
   const errorNote = errors.length ? `\n(오류 ${errors.length}줄은 제외됩니다)` : '';
   const ok = await showConfirm(
@@ -4988,12 +4988,12 @@ window.qgRunWordshap = async () => {
   // 활성 Book/Chapter 있으면 sourcePages 로 기록 → 문제세트 목록의 폴더에 표시됨
   const sourcePages = (_qgActiveBook || _qgActiveChapter) ? [{
     pageId: '',
-    pageTitle: 'Wordshap 수동 입력',
+    pageTitle: 'Wordsnap 수동 입력',
     bookId: _qgActiveBook?.id || '',
     chapterId: _qgActiveChapter?.id || '',
   }] : [];
 
-  const btn = document.getElementById('qgWordshapBtn');
+  const btn = document.getElementById('qgWordsnapBtn');
   if (btn) btn.disabled = true;
   try {
     await addDoc(collection(db, 'genQuestionSets'), {
@@ -5002,7 +5002,7 @@ window.qgRunWordshap = async () => {
       sourcePages,
       questions,
       questionCount: questions.length,
-      aiModel: 'Wordshap 수동 입력',
+      aiModel: 'Wordsnap 수동 입력',
       aiGeneratedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
@@ -5010,7 +5010,7 @@ window.qgRunWordshap = async () => {
     });
     showToast(`✓ "${setName}" 저장됨 (${questions.length}단어)`);
     ta.value = '';
-    window._qgWordshapUpdateStatus();
+    window._qgWordsnapUpdateStatus();
     setTimeout(() => goPage('quiz-sets'), 400);
   } catch(e) {
     showToast('저장 실패: ' + e.message);
@@ -6126,9 +6126,20 @@ window.qsEditSet = (setId) => {
     name: s.name || '',
     sourceType: s.sourceType || 'mcq',
     questions: JSON.parse(JSON.stringify(s.questions || [])),
+    sourcePages: JSON.parse(JSON.stringify(s.sourcePages || [])),
   };
   _qsRenderEditModal();
 };
+
+// 수정 중인 세트의 현재 주 Book ID (sourcePages 에서 최빈값, 없으면 '')
+function _qsEditCurrentBookId() {
+  const sp = _qsEditState?.sourcePages || [];
+  const ids = sp.map(p => p.bookId).filter(Boolean);
+  if (!ids.length) return '';
+  const counts = {};
+  ids.forEach(id => counts[id] = (counts[id]||0) + 1);
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
 
 function _qsRenderEditModal() {
   const st = _qsEditState;
@@ -6141,10 +6152,20 @@ function _qsRenderEditModal() {
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
       </div>
 
-      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;flex-shrink:0;">
-        <label style="font-size:11px;font-weight:700;color:var(--gray);">세트 이름</label>
-        <input type="text" id="qsEditName" value="${esc(st.name)}"
-          style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;flex-shrink:0;display:grid;grid-template-columns:1fr 280px;gap:12px;align-items:end;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--gray);">세트 이름</label>
+          <input type="text" id="qsEditName" value="${esc(st.name)}"
+            style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--gray);">📚 Book 폴더</label>
+          <select id="qsEditBook"
+            style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">
+            <option value="" ${!_qsEditCurrentBookId()?'selected':''}>(미지정)</option>
+            ${(_qsBooks||[]).map(b => `<option value="${esc(b.id)}" ${b.id===_qsEditCurrentBookId()?'selected':''}>${esc(b.name||'(이름 없음)')}</option>`).join('')}
+          </select>
+        </div>
       </div>
 
       <div id="qsEditQuestions" style="padding:14px 22px;flex:1;overflow-y:auto;min-height:0;">
@@ -6433,6 +6454,21 @@ window.qsSaveEdits = async () => {
     }
   }
 
+  // Book 폴더 변경 반영: 모든 sourcePages 엔트리의 bookId 를 선택값으로 덮어쓰기
+  // - Book 이 바뀌면 chapterId 는 구 Book 소속이라 폴더 일관성을 위해 비움
+  // - Book 이 같으면 chapterId 유지
+  // - sourcePages 가 비어있고 Book 을 선택했으면 단일 엔트리 생성 (Wordsnap 류 수동 세트)
+  const chosenBookId = document.getElementById('qsEditBook')?.value || '';
+  const originalBookId = _qsEditCurrentBookId();
+  let sourcePages = st.sourcePages || [];
+  if (sourcePages.length === 0) {
+    if (chosenBookId) {
+      sourcePages = [{ pageId: '', pageTitle: '', bookId: chosenBookId, chapterId: '' }];
+    }
+  } else if (chosenBookId !== originalBookId) {
+    sourcePages = sourcePages.map(p => ({ ...p, bookId: chosenBookId, chapterId: '' }));
+  }
+
   if (!(await showConfirm('수정사항을 저장할까요?', `${st.questions.length}문제 업데이트`))) return;
 
   try {
@@ -6440,6 +6476,7 @@ window.qsSaveEdits = async () => {
       name: newName,
       questions: st.questions,
       questionCount: st.questions.length,
+      sourcePages,
       updatedAt: serverTimestamp(),
     });
     showToast(`✓ "${newName}" 저장됨`);
