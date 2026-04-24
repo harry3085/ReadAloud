@@ -689,9 +689,15 @@ window.saveStudent = async() => {
         });
       } catch(_) { /* 롤백 실패해도 원래 에러 메시지를 우선 표시 */ }
     }
-    const msg = e.code==='auth/email-already-in-use'
-      ? '이 아이디로 이미 가입된 계정이 Firebase 에 남아있습니다.\n관리자가 Console 에서 해당 이메일을 삭제한 뒤 다시 시도해주세요.'
-      : e.message;
+    console.error('[saveStudent] error:', e);  // 전체 에러 객체 콘솔 덤프
+    let msg;
+    if (e.code === 'auth/email-already-in-use') {
+      msg = '이 아이디로 이미 가입된 계정이 Firebase 에 남아있습니다.\n관리자가 Console 에서 해당 이메일을 삭제한 뒤 다시 시도해주세요.';
+    } else if (e.code === 'permission-denied' || /insufficient permissions/i.test(e.message||'')) {
+      msg = '권한 에러입니다. 로그아웃 후 다시 로그인해 세션을 새로고침해 주세요.\n(' + (e.code||'') + ')';
+    } else {
+      msg = `[${e.code || 'unknown'}] ${e.message || String(e)}`;
+    }
     await showAlert('추가 실패', msg);
   }
 };
