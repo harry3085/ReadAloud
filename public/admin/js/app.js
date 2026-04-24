@@ -657,48 +657,33 @@ window.saveStudent = async() => {
   const group=document.getElementById('sGroup').value;
   if(!username||!name||!pw){await showAlert('입력 확인','아이디, 이름, 비밀번호는 필수입니다.');return;}
   if(pw.length<6){await showAlert('비밀번호 확인','비밀번호는 6자 이상이어야 합니다.');return;}
-  const email=username+'@kunsori.app';
-  let createdAuthUid = null;  // Auth 만 생성되고 Firestore 쓰기 실패 시 롤백용
   try{
-    const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
-    const a2=ga(secApp);
-    const cred=await cu(a2,email,pw);
-    createdAuthUid = cred.user.uid;
-    await so(a2);
-    await setDoc(doc(db,'users',cred.user.uid),{
-      username,name,email,group,role:'student',status:'active',
-      birth:document.getElementById('sBirth').value,
-      school:document.getElementById('sSchool').value.trim(),
-      grade:document.getElementById('sGrade').value.trim(),
-      phone:document.getElementById('sPhone').value.trim(),
-      parentName:document.getElementById('sParentName').value.trim(),
-      parentPhone:document.getElementById('sParentPhone').value.trim(),
-      createdAt:serverTimestamp()
+    // 서버 API 로 일원화 — Auth+Firestore+usernameLookup 트랜잭션적 처리 (orphan 방지)
+    const idToken = await currentUser.getIdToken();
+    const payload = {
+      idToken, username, password: pw, name, group,
+      birth: document.getElementById('sBirth').value,
+      school: document.getElementById('sSchool').value.trim(),
+      grade: document.getElementById('sGrade').value.trim(),
+      phone: document.getElementById('sPhone').value.trim(),
+      parentName: document.getElementById('sParentName').value.trim(),
+      parentPhone: document.getElementById('sParentPhone').value.trim(),
+    };
+    const res = await fetch('/api/createStudent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    createdAuthUid = null;  // 성공 — 롤백 불필요
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      console.error('[saveStudent] server error:', data);
+      await showAlert('추가 실패', data.error || '알 수 없는 오류');
+      return;
+    }
     closeModal(); showToast('✅ 학생이 추가됐어요!'); await loadStudents('active');
   }catch(e){
-    // Firestore 쓰기 실패로 Auth 만 남아있으면 서버 API 로 Auth 계정도 삭제 (orphan 방지)
-    if (createdAuthUid) {
-      try {
-        await fetch('/api/deleteUser', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ uid: createdAuthUid })
-        });
-      } catch(_) { /* 롤백 실패해도 원래 에러 메시지를 우선 표시 */ }
-    }
-    console.error('[saveStudent] error:', e);  // 전체 에러 객체 콘솔 덤프
-    let msg;
-    if (e.code === 'auth/email-already-in-use') {
-      msg = '이 아이디로 이미 가입된 계정이 Firebase 에 남아있습니다.\n관리자가 Console 에서 해당 이메일을 삭제한 뒤 다시 시도해주세요.';
-    } else if (e.code === 'permission-denied' || /insufficient permissions/i.test(e.message||'')) {
-      msg = '권한 에러입니다. 로그아웃 후 다시 로그인해 세션을 새로고침해 주세요.\n(' + (e.code||'') + ')';
-    } else {
-      msg = `[${e.code || 'unknown'}] ${e.message || String(e)}`;
-    }
-    await showAlert('추가 실패', msg);
+    console.error('[saveStudent] network error:', e);
+    await showAlert('추가 실패', `[${e.code || 'network'}] ${e.message || String(e)}`);
   }
 };
 
