@@ -7,9 +7,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // 관리자 판별 — Custom Claims 우선, 미주입 토큰은 기존 get() 폴백
+    // 폴백은 멀티테넌시 전환기(Phase 0~2)의 하위 호환용.
+    // Phase 2 완료(모든 세션이 claims 수신) 후 get() 분기 제거 예정.
     function isAdmin() {
-      return isSignedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isSignedIn() && (
+        request.auth.token.role == 'academy_admin' ||
+        request.auth.token.role == 'super_admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // 슈퍼 어드민 — 전체 학원 관리 권한 (Custom Claims 전용, 폴백 없음)
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.role == 'super_admin';
     }
 
     function isOwner(uid) {
@@ -156,6 +167,35 @@ service cloud.firestore {
         allow create, update: if isOwner(userId);
         allow delete: if isAdmin();
       }
+    }
+
+    // ────────────────────────────────────────────────────────
+    //   멀티테넌시 신규 컬렉션 (Phase 0 전환)
+    // ────────────────────────────────────────────────────────
+
+    // 플랜 정의 (lite/standard/pro)
+    // read: 모든 로그인 사용자 (클라이언트가 기능 게이팅용으로 읽음)
+    // write: super_admin 전용 (현재는 로컬 스크립트 admin SDK 로만 수정)
+    match /plans/{planId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // 학원 문서
+    // read: 모든 로그인 사용자 (현재 default 학원뿐이라 격리 불필요)
+    //       Phase 2 에서 academyId 필터로 축소 예정
+    // write: super_admin 전용
+    match /academies/{academyId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // username → (uid, email) 매핑 (로그인 전 조회 필수)
+    // read: 전체 공개 (단, 정확한 {academyId}_{usernameLower} 문서 ID 알아야 접근 가능)
+    // write: super_admin 전용 (학생 생성 서버 API 에서 admin SDK 로 쓰기)
+    match /usernameLookup/{id} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
   }
 }
