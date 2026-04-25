@@ -28,9 +28,10 @@ service cloud.firestore {
     }
 
     // ── 사용자 ───────────────────────────────────────────────
-    // 로그인 전 username 조회가 필요해 read는 허용 (향후 usernameLookup 컬렉션으로 분리 예정)
+    // read: 로그인 사용자만 (학생 랭킹·관리자 전체 조회용)
+    // pre-auth username 조회는 usernameLookup 컬렉션을 통해 처리 (B3 완료)
     match /users/{userId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create: if isAdmin();
       allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
@@ -192,10 +193,11 @@ service cloud.firestore {
 
     // username → (uid, email) 매핑 (로그인 전 조회 필수)
     // read: 전체 공개 (단, 정확한 {academyId}_{usernameLower} 문서 ID 알아야 접근 가능)
-    // write: super_admin 전용 (학생 생성 서버 API 에서 admin SDK 로 쓰기)
+    // create/update/delete: 관리자 (saveStudent / 학생삭제 클라이언트 호출 허용)
+    // 서버 API(api/createStudent, api/deleteUser)는 Admin SDK 라 Rules 우회
     match /usernameLookup/{id} {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow create, update, delete: if isAdmin();
     }
   }
 }
