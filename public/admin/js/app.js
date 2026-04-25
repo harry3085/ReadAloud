@@ -505,7 +505,7 @@ window.openClassModal = () => {
 window.saveClass = async() => {
   const name=document.getElementById('className').value.trim();
   const teacher=document.getElementById('classTeacher').value.trim();
-  if(!name){showToast('반 이름을 입력하세요.');return;}
+  if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
   await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp()});
   closeModal(); showToast('반이 생성됐어요!'); await loadClasses();
 };
@@ -579,7 +579,7 @@ window.toggleCheckAll = (cb) => {
 };
 window.bulkAction = async(action) => {
   const checked=[...document.querySelectorAll('#studentTableBody input[type=checkbox]:checked')].map(c=>c.value);
-  if(!checked.length){showToast('학생을 선택하세요.');return;}
+  if (!checked.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(action==='pause'){
     if(!await showConfirm(`선택한 ${checked.length}명을 휴원처리 할까요?`))return;
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:new Date().toISOString().slice(0,10)});
@@ -733,7 +733,7 @@ window.saveNotice = async() => {
   const title=document.getElementById('noticeTitle').value.trim();
   const content=document.getElementById('noticeContent').value.trim();
   const target=document.getElementById('noticeTarget').value;
-  if(!title||!content){showToast('제목과 내용을 입력하세요.');return;}
+  if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   await addDoc(collection(db,'notices'),{title,content,target,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp()});
   closeModal(); showToast('공지가 등록됐어요!'); await loadNotices();
 };
@@ -765,13 +765,13 @@ async function loadHwFileAdmin(){
 
 window.editSelectedHwFile = () => {
   const ids = getCheckedIds('hwfileTableBody');
-  if(ids.length !== 1){ showToast('수정할 파일을 하나만 선택하세요.'); return; }
+  if (ids.length !== 1) { showAlert('입력 확인', '수정할 파일을 하나만 선택하세요.'); return; }
   editHwFile(ids[0]);
 };
 
 window.editHwFile = async(id) => {
   const snap = await getDoc(doc(db,'hwFiles',id));
-  if(!snap.exists()){ showToast('파일 정보를 찾을 수 없습니다.'); return; }
+  if (!snap.exists()) { showAlert('입력 확인', '파일 정보를 찾을 수 없습니다.'); return; }
   const f = snap.data();
 
   // 반/학생 목록 로드
@@ -825,7 +825,7 @@ window.editHwFile = async(id) => {
 window.saveHwFileEdit = async(id) => {
   const name = document.getElementById('hwfEditName')?.value.trim();
   const targetVal = document.getElementById('hwfEditTarget')?.value||'all';
-  if(!name){ showToast('파일명을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
 
   let group = '전체', targetUid = null;
   if(targetVal.startsWith('group:')) group = targetVal.replace('group:','');
@@ -889,8 +889,8 @@ window.uploadHwFileAdmin = async() => {
   const targetVal = document.getElementById('hwfTarget')?.value||'all';
   const fileEl = document.getElementById('hwfFile');
   const file = fileEl?.files[0];
-  if(!name){ showToast('파일명을 입력하세요.'); return; }
-  if(!file){ showToast('파일을 선택하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
+  if (!file) { showAlert('입력 확인', '파일을 선택하세요.'); return; }
 
   // 대상 파싱
   let group = '전체', targetUid = null;
@@ -939,7 +939,7 @@ window.uploadHwFileAdmin = async() => {
 
 window.deleteSelectedHwFile = async() => {
   const ids = getCheckedIds('hwfileTableBody');
-  if(!ids.length){ showToast('삭제할 파일을 선택하세요.'); return; }
+  if (!ids.length) { showAlert('입력 확인', '삭제할 파일을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 파일 ${ids.length}개를 삭제할까요?`)) return;
   for(const id of ids){
     try{
@@ -1020,7 +1020,7 @@ window.savePayment = async() => {
   const amount=parseInt(document.getElementById('payAmount').value)||0;
   const due=document.getElementById('payDue').value;
   const status=document.getElementById('payStatus').value;
-  if(!title||!amount){showToast('항목과 금액을 입력하세요.');return;}
+  if (!title||!amount) { showAlert('입력 확인', '항목과 금액을 입력하세요.'); return; }
   await addDoc(collection(db,'payments'),{uid,userName,group,title,amount,due,status,createdAt:serverTimestamp()});
   closeModal(); showToast('✅ 등록됐어요!'); await loadPayments();
 };
@@ -1046,7 +1046,7 @@ window.sendMessage = async() => {
   if(type==='student') target=document.getElementById('msgStudent').value;
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
-  if(!title||!body){showToast('제목과 내용을 입력하세요.');return;}
+  if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   try{
     const res=await fetch('/api/sendPush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,target})});
     const result=await res.json();
@@ -1060,7 +1060,7 @@ window.saveMessage = async() => {
   if(type==='student') target=document.getElementById('msgStudent').value;
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
-  if(!title||!body){showToast('제목과 내용을 입력하세요.');return;}
+  if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp()});
   showToast('💾 저장됐어요!'); await loadMessages();
 };
@@ -1432,7 +1432,7 @@ function _adminBuildDetail(mode, comp){
 window.showScoreDetail = async(scoreId, testId) => {
   try{
     const scoreDoc = await getDoc(doc(db,'scores',scoreId));
-    if(!scoreDoc.exists()){ showToast('데이터 없음'); return; }
+    if (!scoreDoc.exists()) { showAlert('입력 확인', '데이터 없음'); return; }
     const s = scoreDoc.data();
     const mode = s.mode || s.testMode || '';
 
@@ -1688,7 +1688,7 @@ async function deleteUserFull(uid, name){
 // ── 삭제 함수 오버라이드 (Auth 포함 삭제) ────────────────
 window.deleteSelectedStudent = async() => {
   const ids = getCheckedIds('studentTableBody');
-  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`)))return;
   let ok=0;
   for(const id of ids){
@@ -1701,7 +1701,7 @@ window.deleteSelectedStudent = async() => {
 };
 window.deleteSelectedOutStudent = async() => {
   const ids = getCheckedIds('outTableBody');
-  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?`))return;
   let ok=0;
   for(const id of ids){
@@ -1726,12 +1726,12 @@ function getCheckedIds(tbodyId){
 // ── 클래스 선택 액션 ────────────────────────────────
 window.editSelectedClass = () => {
   const ids = getCheckedIds('classTableBody');
-  if(ids.length !== 1){showToast('수정할 반을 하나만 선택하세요.');return;}
+  if (ids.length !== 1) { showAlert('입력 확인', '수정할 반을 하나만 선택하세요.'); return; }
   editClass(ids[0]);
 };
 window.deleteSelectedClass = async() => {
   const ids = getCheckedIds('classTableBody');
-  if(!ids.length){showToast('삭제할 반을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '삭제할 반을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}개 반을 삭제할까요?`))return;
   for(const id of ids) await deleteDoc(doc(db,'groups',id));
   showToast('삭제됐어요.'); await loadClasses();
@@ -1740,21 +1740,21 @@ window.deleteSelectedClass = async() => {
 // ── 학생 선택 액션 ──────────────────────────────────
 window.editSelectedStudent = () => {
   const ids = getCheckedIds('studentTableBody');
-  if(ids.length !== 1){showToast('수정할 학생을 하나만 선택하세요.');return;}
+  if (ids.length !== 1) { showAlert('입력 확인', '수정할 학생을 하나만 선택하세요.'); return; }
   editStudent(ids[0]);
 };
 // (구버전 deleteSelectedStudent 제거 — 위쪽 line 1689 의 Auth+Firestore+lookup 통합 삭제 사용)
 window.restoreSelectedStudent = async(status) => {
   const tbodyId = status==='pause'?'pauseTableBody':'outTableBody';
   const ids = getCheckedIds(tbodyId);
-  if(!ids.length){showToast('학생을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 재원처리 할까요?`))return;
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:new Date().toISOString().slice(0,10)});
   showToast('재원처리 완료!'); await loadStudents(status);
 };
 window.outSelectedStudent = async() => {
   const ids = getCheckedIds('pauseTableBody');
-  if(!ids.length){showToast('학생을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
   showToast('퇴원처리 완료!'); await loadStudents('pause');
@@ -1764,12 +1764,12 @@ window.outSelectedStudent = async() => {
 // ── 공지 선택 액션 ──────────────────────────────────
 window.editSelectedNotice = () => {
   const ids = getCheckedIds('noticeTableBody');
-  if(ids.length !== 1){showToast('수정할 공지를 하나만 선택하세요.');return;}
+  if (ids.length !== 1) { showAlert('입력 확인', '수정할 공지를 하나만 선택하세요.'); return; }
   editNotice(ids[0]);
 };
 window.deleteSelectedNotice = async() => {
   const ids = getCheckedIds('noticeTableBody');
-  if(!ids.length){showToast('삭제할 공지를 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '삭제할 공지를 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}개 공지를 삭제할까요?`)))return;
   for(const id of ids) await deleteDoc(doc(db,'notices',id));
   showToast('삭제됐어요.'); await loadNotices();
@@ -1778,13 +1778,13 @@ window.deleteSelectedNotice = async() => {
 // ── 결제 선택 액션 ──────────────────────────────────
 window.markSelectedPaid = async() => {
   const ids = getCheckedIds('paymentTableBody');
-  if(!ids.length){showToast('항목을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '항목을 선택하세요.'); return; }
   for(const id of ids) await updateDoc(doc(db,'payments',id),{status:'paid'});
   showToast('납부완료 처리됐어요.'); await loadPayments();
 };
 window.deleteSelectedPayment = async() => {
   const ids = getCheckedIds('paymentTableBody');
-  if(!ids.length){showToast('삭제할 항목을 선택하세요.');return;}
+  if (!ids.length) { showAlert('입력 확인', '삭제할 항목을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}개를 삭제할까요?`)))return;
   for(const id of ids) await deleteDoc(doc(db,'payments',id));
   showToast('삭제됐어요.'); await loadPayments();
@@ -1794,19 +1794,19 @@ window.deleteSelectedPayment = async() => {
 // ── 시험 선택 액션 ──────────────────────────────────
 window.editSelectedTest = async() => {
   const ids = getCheckedIds('testListBody');
-  if(ids.length !== 1){showToast('수정할 시험을 하나만 선택하세요.');return;}
+  if (ids.length !== 1) { showAlert('입력 확인', '수정할 시험을 하나만 선택하세요.'); return; }
   openTestEditModal(ids[0]);
 };
 window.reprintSelectedTest = async() => {
   const ids = getCheckedIds('testListBody');
-  if(ids.length !== 1){showToast('재출력할 시험을 하나만 선택하세요.');return;}
+  if (ids.length !== 1) { showAlert('입력 확인', '재출력할 시험을 하나만 선택하세요.'); return; }
   reprintTest(ids[0]);
 };
 window.deleteSelectedTest = async() => {
   const rows = [...document.querySelectorAll('#testListBody input[type=checkbox]:checked')]
     .map(cb => ({ id: cb.value, src: cb.dataset.src || 'tests' }))
     .filter(r => r.id && r.id !== 'on');
-  if(!rows.length){showToast('삭제할 시험을 선택하세요.');return;}
+  if (!rows.length) { showAlert('입력 확인', '삭제할 시험을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${rows.length}개 시험을 삭제할까요?`)))return;
   for(const r of rows) {
     const coll = (r.src === 'genTests') ? 'genTests' : 'tests';
@@ -1848,7 +1848,7 @@ function processExcelFile(file){
       const wb = XLSX.read(ev.target.result, {type:'binary'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-      if(!rows || rows.length < 2){ showToast('데이터가 없습니다.'); return; }
+      if (!rows || rows.length < 2) { showAlert('입력 확인', '데이터가 없습니다.'); return; }
       const dataRows = rows.slice(1).filter(r=>(r[0]||'').toString().trim()||(r[1]||'').toString().trim());
       window._excelRows = rows;
       const headers = rows[0];
@@ -1884,9 +1884,9 @@ function processExcelFile(file){
 
 window.importStudentExcel = async() => {
   const rows = window._excelRows;
-  if(!rows||rows.length<2){ showToast('먼저 엑셀 파일을 업로드하세요.'); return; }
+  if (!rows||rows.length<2) { showAlert('입력 확인', '먼저 엑셀 파일을 업로드하세요.'); return; }
   const dataRows = rows.slice(1).filter(r=>(r[0]||'').toString().trim());
-  if(!dataRows.length){ showToast('등록할 학생이 없습니다.'); return; }
+  if (!dataRows.length) { showAlert('입력 확인', '등록할 학생이 없습니다.'); return; }
   if(!(await showConfirm(`${dataRows.length}명을 재원생으로 등록할까요?\n기본 비밀번호: 123456`))) return;
   const btn = document.getElementById('excelImportBtn');
   btn.textContent='등록 중... 0/'+dataRows.length; btn.disabled=true;
@@ -2187,7 +2187,7 @@ window.toggleTestProgress = async(testId, source='tests') => {
 
 window.openTestEditModal = async(testId) => {
   const snap = await getDoc(doc(db,'tests',testId));
-  if(!snap.exists()){ showToast('시험 데이터 없음'); return; }
+  if (!snap.exists()) { showAlert('입력 확인', '시험 데이터 없음'); return; }
   const t = snap.data();
   const isUnsc = t.testMode === 'unscramble';
 
@@ -2278,7 +2278,7 @@ window.addEditWordRow = () => {
 
 window.saveTestEdit = async(testId) => {
   const name = document.getElementById('editTestName')?.value.trim();
-  if(!name){ showToast('시험명을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '시험명을 입력하세요.'); return; }
   const passScore = parseInt(document.getElementById('editTestPass')?.value)||80;
   const active = document.getElementById('editTestActive')?.value === '1';
 
@@ -2290,7 +2290,7 @@ window.saveTestEdit = async(testId) => {
     const ko = tr.querySelector('[data-field="ko"]')?.value.trim()||'';
     if(en||ko) words.push({en, ko});
   });
-  if(!words.length){ showToast('단어를 하나 이상 입력하세요.'); return; }
+  if (!words.length) { showAlert('입력 확인', '단어를 하나 이상 입력하세요.'); return; }
 
   closeModal();
 
@@ -2359,7 +2359,7 @@ window.exportStudentExcel = async(status='active') => {
   try{
     const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
     const students = snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!students.length){showToast('내보낼 학생이 없습니다.');return;}
+    if (!students.length) { showAlert('입력 확인', '내보낼 학생이 없습니다.'); return; }
 
     const statusLabel = {active:'재원생',pause:'휴원생',out:'퇴원생'};
     let headers, rows;
@@ -2420,7 +2420,7 @@ window.editClass = async(id) => {
 window.updateClass = async(id) => {
   const name = document.getElementById('editClassName').value.trim();
   const teacher = document.getElementById('editClassTeacher').value.trim();
-  if(!name){showToast('반 이름을 입력하세요.');return;}
+  if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
   await updateDoc(doc(db,'groups',id),{name,teacher});
   closeModal(); showToast('✅ 반 정보가 수정됐어요!'); await loadClasses();
 };
@@ -2469,7 +2469,7 @@ window.editStudent = async(id) => {
 };
 window.updateStudent = async(id) => {
   const name = document.getElementById('euName').value.trim();
-  if(!name){showToast('이름을 입력하세요.');return;}
+  if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   const data = {
     name, group:document.getElementById('euGroup').value,
     birth:document.getElementById('euBirth').value,
@@ -2517,7 +2517,7 @@ window.updateNotice = async(id) => {
   const title = document.getElementById('enTitle').value.trim();
   const content = document.getElementById('enContent').value.trim();
   const target = document.getElementById('enTarget').value;
-  if(!title||!content){showToast('제목과 내용을 입력하세요.');return;}
+  if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   await updateDoc(doc(db,'notices',id),{title,content,target});
   closeModal(); showToast('✅ 공지가 수정됐어요!'); await loadNotices();
 };
@@ -2912,7 +2912,7 @@ window.genRemoveImage = (i) => { _genImages.splice(i,1); _genRenderThumbnails();
 
 // ── OCR 실행 ──
 window.runGenOcr = async () => {
-  if (!_genImages.length) { showToast('이미지를 먼저 업로드하세요.'); return; }
+  if (!_genImages.length) { showAlert('입력 확인', '이미지를 먼저 업로드하세요.'); return; }
   const btn = document.getElementById('genOcrBtn');
   const status = document.getElementById('genOcrStatus');
   btn.disabled = true;
@@ -3014,7 +3014,7 @@ window.genEditPage = () => {
 window.genDoEditPage = async (pid) => {
   const title=document.getElementById('gnET')?.value.trim();
   const text=document.getElementById('gnEX')?.value.trim();
-  if (!title){ showToast('제목을 입력하세요.'); return; }
+  if (!title) { showAlert('입력 확인', '제목을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
     closeModal(); await loadGenerator();
@@ -3025,7 +3025,7 @@ window.genSavePage = async () => {
   const pid=document.getElementById('genEditPageId')?.value;
   const title=document.getElementById('genEditTitle')?.value.trim();
   const text=document.getElementById('genEditText')?.value;
-  if (!pid||!title){ showToast('제목을 입력하세요.'); return; }
+  if (!pid||!title) { showAlert('입력 확인', '제목을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
     const page = _genPages.find(p=>p.id===pid);
@@ -3055,7 +3055,7 @@ window.genExcludePages = async () => {
 
 window.genMovePages = async () => {
   if (!_genCheckedPages.size) return;
-  if (!_genChapters.length){ showToast('Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
+  if (!_genChapters.length) { showAlert('입력 확인', 'Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
   const chapters = _genRecentSort(_genChapters);
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -3109,7 +3109,7 @@ window.genCreateChapter = () => {
 };
 window.genDoCreateChapter = async () => {
   const name=document.getElementById('gnCN')?.value.trim();
-  if (!name){ showToast('이름을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await addDoc(collection(db,'genChapters'),{
       name, bookId:null, bookName:'', order:_genChapters.length+1, pageCount:0,
@@ -3144,7 +3144,7 @@ window.genEditChapter = () => {
 };
 window.genDoEditChapter = async (cid) => {
   const name=document.getElementById('gnCE')?.value.trim();
-  if (!name){ showToast('이름을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genChapters',cid),{name, updatedAt:serverTimestamp()});
     await Promise.all(_genPages.filter(p=>p.chapterId===cid).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterName:name})));
@@ -3176,7 +3176,7 @@ window.genExcludeChapters = async () => {
 
 window.genMoveChapters = async () => {
   if (!_genCheckedChapters.size) return;
-  if (!_genBooks.length){ showToast('Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
+  if (!_genBooks.length) { showAlert('입력 확인', 'Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
   const books = _genRecentSort(_genBooks);
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -3231,7 +3231,7 @@ window.genCreateBook = () => {
 };
 window.genDoCreateBook = async () => {
   const name=document.getElementById('gnBN')?.value.trim();
-  if (!name){ showToast('이름을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await addDoc(collection(db,'genBooks'),{
       name, chapterCount:0, pageCount:0,
@@ -3266,7 +3266,7 @@ window.genEditBook = () => {
 };
 window.genDoEditBook = async (bid) => {
   const name=document.getElementById('gnBE')?.value.trim();
-  if (!name){ showToast('이름을 입력하세요.'); return; }
+  if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genBooks',bid),{name, updatedAt:serverTimestamp()});
     await Promise.all([
@@ -3405,16 +3405,16 @@ window.cleanupOnPresetChange = () => {
 
 // ─── 단일 페이지 AI 정리 (에디터 버튼) ───
 window.genCleanupActivePage = async () => {
-  if (!_genActivePage) { showToast('Page 를 먼저 선택하세요'); return; }
-  if (!_cleanupActivePresetId) { showToast('프리셋을 먼저 선택하세요'); return; }
+  if (!_genActivePage) { showAlert('입력 확인', 'Page 를 먼저 선택하세요'); return; }
+  if (!_cleanupActivePresetId) { showAlert('입력 확인', '프리셋을 먼저 선택하세요'); return; }
 
   const page = _genPages.find(p => p.id === _genActivePage);
   if (!page) return;
   const preset = _cleanupPresets.find(p => p.id === _cleanupActivePresetId);
-  if (!preset) { showToast('프리셋을 찾을 수 없습니다'); return; }
+  if (!preset) { showAlert('입력 확인', '프리셋을 찾을 수 없습니다'); return; }
 
   const currentText = document.getElementById('genEditText')?.value || page.text || '';
-  if (currentText.trim().length < 5) { showToast('정리할 본문이 너무 짧습니다'); return; }
+  if (currentText.trim().length < 5) { showAlert('입력 확인', '정리할 본문이 너무 짧습니다'); return; }
 
   const btn = document.getElementById('genCleanupBtn');
   if (btn) { btn.disabled = true; btn.textContent = '🤖 AI 호출 중...'; }
@@ -3486,8 +3486,8 @@ window.cleanupApplySingle = async (pageId) => {
 
 // ─── 일괄 AI 정리 (Page 툴바 버튼) ───
 window.genCleanupBatch = async () => {
-  if (_genCheckedPages.size === 0) { showToast('Page 를 1개 이상 체크하세요'); return; }
-  if (_cleanupPresets.length === 0) { showToast('프리셋이 없습니다'); return; }
+  if (_genCheckedPages.size === 0) { showAlert('입력 확인', 'Page 를 1개 이상 체크하세요'); return; }
+  if (_cleanupPresets.length === 0) { showAlert('입력 확인', '프리셋이 없습니다'); return; }
 
   // 프리셋 선택 모달 먼저
   const presetId = await _cleanupPickPresetModal();
@@ -3496,7 +3496,7 @@ window.genCleanupBatch = async () => {
   if (!preset) return;
 
   const targets = _genPages.filter(p => _genCheckedPages.has(p.id) && (p.text||'').trim().length >= 5);
-  if (targets.length === 0) { showToast('본문이 충분한 페이지가 없습니다'); return; }
+  if (targets.length === 0) { showAlert('입력 확인', '본문이 충분한 페이지가 없습니다'); return; }
 
   _cleanupBatchResults = [];
   _cleanupBatchTabIdx = 0;
@@ -3818,8 +3818,8 @@ window.cleanupSavePreset = async (id) => {
   const order = parseInt(document.getElementById('cleanupEditOrder')?.value || '0') || 0;
   const prompt = document.getElementById('cleanupEditPrompt')?.value || '';
 
-  if (name.length < 1) { showToast('이름을 입력하세요'); return; }
-  if (prompt.trim().length < 10) { showToast('프롬프트는 최소 10자 이상이어야 합니다'); return; }
+  if (name.length < 1) { showAlert('입력 확인', '이름을 입력하세요'); return; }
+  if (prompt.trim().length < 10) { showAlert('입력 확인', '프롬프트는 최소 10자 이상이어야 합니다'); return; }
 
   try {
     if (id) {
@@ -3887,10 +3887,7 @@ window.cleanupDeletePreset = async (id) => {
 window.cleanupRestoreDefaults = async () => {
   const existingNames = new Set(_cleanupPresets.map(p => p.name));
   const missing = _CLEANUP_DEFAULT_PRESETS.filter(p => !existingNames.has(p.name));
-  if (missing.length === 0) {
-    showToast('모든 기본 프리셋이 이미 존재합니다');
-    return;
-  }
+  if (missing.length === 0) { showAlert('입력 확인', '모든 기본 프리셋이 이미 존재합니다'); return; }
   const ok = await showConfirm(`${missing.length}개의 기본 프리셋을 복원하시겠습니까?`, missing.map(p => '• ' + p.name).join('\n'));
   if (!ok) return;
   try {
@@ -4537,13 +4534,10 @@ window.qgGenerate = async () => {
   const cfg = QG_TYPE_OPTIONS[type];
   if (!cfg) return;
 
-  if (!cfg.enabled) {
-    showToast(`${cfg.label}은(는) ${cfg.phaseLabel} 이후 구현 예정입니다`);
-    return;
-  }
+  if (!cfg.enabled) { showAlert('입력 확인', '${cfg.label}은(는) ${cfg.phaseLabel} 이후 구현 예정입니다'); return; }
 
   if (_qgSelectedPageIds.size === 0) {
-    showToast('Page 를 먼저 선택하세요');
+    showAlert('입력 확인', 'Page 를 먼저 선택하세요');
     const status0 = document.getElementById('qgStatus');
     if (status0) status0.innerHTML = `<span style="color:#c33;">Page 를 먼저 선택하세요</span>`;
     return;
@@ -4709,7 +4703,7 @@ function _qgGenFillBlankLocal(opts) {
 
   if (allSentences.length === 0) {
     if (status) status.innerHTML = '<span style="color:#c33;">❌ 빈칸을 만들 문장이 부족합니다</span>';
-    showToast('선택한 Page에 적절한 문장이 없습니다 (20~250자)');
+    showAlert('입력 확인', '선택한 Page에 적절한 문장이 없습니다 (20~250자)');
     if (btn) btn.disabled = false;
     return;
   }
@@ -4985,10 +4979,7 @@ window.qgRunWordsnap = async () => {
   if (!ta) return;
   const { questions, errors } = _qgParseWordsnap(ta.value);
 
-  if (questions.length === 0) {
-    showToast('저장할 단어가 없습니다 — 형식: 영단어[Tab]해석');
-    return;
-  }
+  if (questions.length === 0) { showAlert('입력 확인', '저장할 단어가 없습니다 — 형식: 영단어[Tab]해석'); return; }
 
   const parts = [_qgActiveBook?.name, _qgActiveChapter?.name, 'Wordsnap'].filter(Boolean);
   const setName = parts.join(' · ') || `Wordsnap · ${new Date().toLocaleDateString('ko-KR')}`;
@@ -5147,10 +5138,7 @@ function _qgBuildSetDefaultName(suffix) {
 // ─── 녹음숙제 로컬 생성기 (Phase 5.5) ───
 // API 호출 없이 선택한 Page 의 전체 본문을 1문제로 구성. 3회 반복 녹음 전제.
 function _qgBuildRecordingSet(opts) {
-  if (_qgSelectedPageIds.size === 0) {
-    showToast('Page 를 선택하세요');
-    return;
-  }
+  if (_qgSelectedPageIds.size === 0) { showAlert('입력 확인', 'Page 를 선택하세요'); return; }
 
   const status = document.getElementById('qgStatus');
   if (status) status.innerHTML = '📝 문제 세트 구성 중...';
@@ -5268,10 +5256,7 @@ function _qgBuildDefaultName() {
 
 // ─── 결과 모달 (Phase 2.5) ───
 function _qgShowResultModal(data) {
-  if (!_qgGenerated.length) {
-    showToast('AI가 문제를 생성하지 못했습니다. 본문이 너무 짧거나 부적절할 수 있습니다.');
-    return;
-  }
+  if (!_qgGenerated.length) { showAlert('입력 확인', 'AI가 문제를 생성하지 못했습니다. 본문이 너무 짧거나 부적절할 수 있습니다.'); return; }
   _qgModel = data.model || '';
 
   const defaultName = data.defaultName || _qgBuildDefaultName();
@@ -5459,17 +5444,14 @@ window.qgSaveSet = async () => {
   const nameInput = document.getElementById('qgSetName');
   const name = (nameInput?.value || '').trim();
   if (!name) {
-    showToast('세트 이름을 입력하세요');
+    showAlert('입력 확인', '세트 이름을 입력하세요');
     nameInput?.focus();
     return;
   }
 
   // 제외된 문제 필터링
   const finalQuestions = _qgGenerated.filter((_, i) => !_qgExcluded.has(i));
-  if (finalQuestions.length === 0) {
-    showToast('저장할 문제가 하나도 없습니다');
-    return;
-  }
+  if (finalQuestions.length === 0) { showAlert('입력 확인', '저장할 문제가 하나도 없습니다'); return; }
 
   if (!(await showConfirm(`"${name}" 세트 저장`, `${finalQuestions.length}개 문제를 저장합니다.`))) return;
 
@@ -5938,16 +5920,13 @@ const _QS_SOURCE_TO_UI_TYPE = {
 
 window.qsAssignSet = async (setId) => {
   const s = _qsList.find(x => x.id === setId);
-  if (!s) { showToast('세트를 찾을 수 없음'); return; }
-  if (!s.sourceType) { showToast('세트 유형이 없어 배정할 수 없습니다'); return; }
+  if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
+  if (!s.sourceType) { showAlert('입력 확인', '세트 유형이 없어 배정할 수 없습니다'); return; }
 
   const type = _QS_SOURCE_TO_UI_TYPE[s.sourceType] || s.sourceType;
   const cfg = _TEST_TYPE_CONFIG?.[type];
   if (!cfg) { showToast('지원하지 않는 유형: ' + s.sourceType); return; }
-  if (!cfg.actions?.includes('assign')) {
-    showToast(`${cfg.kindLabel||type}은(는) 학생앱 배정이 지원되지 않습니다 (인쇄만 가능)`);
-    return;
-  }
+  if (!cfg.actions?.includes('assign')) { showAlert('입력 확인', '${cfg.kindLabel||type}은(는) 학생앱 배정이 지원되지 않습니다 (인쇄만 가능)'); return; }
 
   // 배정 인프라가 기대하는 전역 상태 세팅
   _activeTestType = type;
@@ -5970,7 +5949,7 @@ window.qsViewDetail = async (setId) => {
       if (snap.exists()) s = { id: snap.id, ...snap.data() };
     } catch(e) {}
   }
-  if (!s) { showToast('세트를 찾을 수 없음'); return; }
+  if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
 
   const html = `
     <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
@@ -6102,7 +6081,7 @@ window.qsRenameSet = async (setId) => {
   const newName = prompt('새 이름:', s.name||'');
   if (newName === null) return;
   const trimmed = newName.trim();
-  if (!trimmed) { showToast('빈 이름 불가'); return; }
+  if (!trimmed) { showAlert('입력 확인', '빈 이름 불가'); return; }
   try {
     await updateDoc(doc(db,'genQuestionSets',setId), {
       name: trimmed,
@@ -6134,7 +6113,7 @@ window.qsDeleteSet = async (setId) => {
 
 window.qsEditSet = (setId) => {
   const s = _qsList.find(x => x.id === setId);
-  if (!s) { showToast('세트를 찾을 수 없음'); return; }
+  if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
 
   _qsEditState = {
     setId: s.id,
@@ -6424,47 +6403,44 @@ window.qsSaveEdits = async () => {
   const st = _qsEditState;
   if (!st) return;
   const newName = document.getElementById('qsEditName')?.value.trim();
-  if (!newName) { showToast('세트 이름을 입력하세요'); return; }
+  if (!newName) { showAlert('입력 확인', '세트 이름을 입력하세요'); return; }
 
   // 검증 — 유형별
   for (let i = 0; i < st.questions.length; i++) {
     const q = st.questions[i];
     if (q.type === 'fill_blank') {
       const sentence = (q.sentence||'').trim();
-      if (!sentence) { showToast(`${i+1}번: 문장이 비어있음`); return; }
+      if (!sentence) { showAlert('입력 확인', '${i+1}번: 문장이 비어있음'); return; }
       const markerCount = (sentence.match(/___/g) || []).length;
-      if (markerCount === 0) { showToast(`${i+1}번: 문장에 ___ 마커가 없습니다`); return; }
+      if (markerCount === 0) { showAlert('입력 확인', '${i+1}번: 문장에 ___ 마커가 없습니다'); return; }
       const blanks = (q.blanks || []).filter(b => b && b.trim());
-      if (blanks.length !== markerCount) {
-        showToast(`${i+1}번: ___ ${markerCount}개 vs 정답 ${blanks.length}개 불일치`);
-        return;
-      }
+      if (blanks.length !== markerCount) { showAlert('입력 확인', '${i+1}번: ___ ${markerCount}개 vs 정답 ${blanks.length}개 불일치'); return; }
     } else if (q.type === 'subjective') {
-      if (!(q.sentence||'').trim()) { showToast(`${i+1}번: 원문이 비어있음`); return; }
+      if (!(q.sentence||'').trim()) { showAlert('입력 확인', '${i+1}번: 원문이 비어있음'); return; }
       // sampleAnswerKo 는 선택 항목
     } else if (q.type === 'vocab') {
-      if (!(q.word||'').trim()) { showToast(`${i+1}번: 영단어가 비어있음`); return; }
-      if (!(q.meaning||'').trim()) { showToast(`${i+1}번: 뜻이 비어있음`); return; }
+      if (!(q.word||'').trim()) { showAlert('입력 확인', '${i+1}번: 영단어가 비어있음'); return; }
+      if (!(q.meaning||'').trim()) { showAlert('입력 확인', '${i+1}번: 뜻이 비어있음'); return; }
     } else if (q.type === 'unscramble') {
       const chunked = (q.chunkedSentence||'').trim();
-      if (!chunked) { showToast(`${i+1}번: 영문이 비어있음`); return; }
+      if (!chunked) { showAlert('입력 확인', '${i+1}번: 영문이 비어있음'); return; }
       const chunks = chunked.split('/').map(s=>s.trim()).filter(Boolean);
-      if (chunks.length < 2) { showToast(`${i+1}번: 청크가 최소 2개 필요합니다`); return; }
-      if (!(q.meaningKo||'').trim()) { showToast(`${i+1}번: 한글 뜻이 비어있음`); return; }
+      if (chunks.length < 2) { showAlert('입력 확인', '${i+1}번: 청크가 최소 2개 필요합니다'); return; }
+      if (!(q.meaningKo||'').trim()) { showAlert('입력 확인', '${i+1}번: 한글 뜻이 비어있음'); return; }
     } else if (q.type === 'recording') {
       if (q.schemaV === 2) {
-        if (!(q.fullText||'').trim()) { showToast(`${i+1}번: 본문이 비어있음`); return; }
-        if (!(q.instructionKo||'').trim()) { showToast(`${i+1}번: 지시문이 비어있음`); return; }
+        if (!(q.fullText||'').trim()) { showAlert('입력 확인', '${i+1}번: 본문이 비어있음'); return; }
+        if (!(q.instructionKo||'').trim()) { showAlert('입력 확인', '${i+1}번: 지시문이 비어있음'); return; }
       } else {
-        if (!(q.sentence||'').trim()) { showToast(`${i+1}번: 녹음 문장이 비어있음`); return; }
+        if (!(q.sentence||'').trim()) { showAlert('입력 확인', '${i+1}번: 녹음 문장이 비어있음'); return; }
       }
     } else {
       // MCQ (기본)
-      if (!(q.question||'').trim()) { showToast(`${i+1}번: 질문이 비어있음`); return; }
+      if (!(q.question||'').trim()) { showAlert('입력 확인', '${i+1}번: 질문이 비어있음'); return; }
       const choices = q.choices || [];
-      if (choices.length !== 4) { showToast(`${i+1}번: 선택지는 4개여야 합니다`); return; }
+      if (choices.length !== 4) { showAlert('입력 확인', '${i+1}번: 선택지는 4개여야 합니다'); return; }
       const answerCount = choices.filter(c => c.isAnswer).length;
-      if (answerCount !== 1) { showToast(`${i+1}번: 정답이 정확히 1개여야 합니다`); return; }
+      if (answerCount !== 1) { showAlert('입력 확인', '${i+1}번: 정답이 정확히 1개여야 합니다'); return; }
       if (choices.some(c => !(c.text||'').trim())) { showToast(`${i+1}번: 빈 선택지가 있습니다`); return; }
     }
   }
@@ -6757,28 +6733,25 @@ window.mcqPublish = async () => {
 
     if (_mcqSelectedSets.size === 0) {
       console.warn('[mcqPublish] 중단: 선택된 세트 없음');
-      showToast('문제 세트를 1개 이상 선택하세요');
+      showAlert('입력 확인', '문제 세트를 1개 이상 선택하세요');
       return;
     }
     if (!name) {
       console.warn('[mcqPublish] 중단: 시험명 없음');
-      showToast('시험명을 입력하세요');
+      showAlert('입력 확인', '시험명을 입력하세요');
       document.getElementById('mcqName')?.focus();
       return;
     }
     if (_mcqTargets.length === 0) {
       console.warn('[mcqPublish] 중단: 배정 대상 없음');
-      showToast('배정 대상을 선택하세요');
+      showAlert('입력 확인', '배정 대상을 선택하세요');
       return;
     }
 
     const selectedSets = _mcqSets.filter(s => _mcqSelectedSets.has(s.id));
     const questions = selectedSets.flatMap(s => s.questions || []);
     console.log('[mcqPublish] 합쳐진 문제 수:', questions.length);
-    if (questions.length === 0) {
-      showToast('선택된 세트에 문제가 없습니다');
-      return;
-    }
+    if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
     const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${_mcqTargets.length}명/반\n통과점수 ${passScore}점`;
     const confirmed = await showConfirm(`"${name}" 시험을 배정할까요?`, summary);
@@ -7373,11 +7346,11 @@ window.tpClearSel = () => {
 window.tpOpenPublishModal = async () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled) return;
-  if (_tpSelectedSets.size === 0) { showToast('문제 세트를 선택하세요'); return; }
+  if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '문제 세트를 선택하세요'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
   const questions = selectedSets.flatMap(s => s.questions || []);
-  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+  if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
   let students = [];
   try {
@@ -7583,13 +7556,13 @@ window.tpPublish = async () => {
   const date = document.getElementById('tpDate')?.value || new Date().toISOString().slice(0,10);
   const targets = window._tpModalTargets || [];
 
-  if (!name) { showToast('시험명을 입력하세요'); document.getElementById('tpName')?.focus(); return; }
-  if (targets.length === 0) { showToast('배정 대상을 선택하세요'); return; }
-  if (_tpSelectedSets.size === 0) { showToast('문제 세트가 비어있습니다'); return; }
+  if (!name) { showAlert('입력 확인', '시험명을 입력하세요'); document.getElementById('tpName')?.focus(); return; }
+  if (targets.length === 0) { showAlert('입력 확인', '배정 대상을 선택하세요'); return; }
+  if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '문제 세트가 비어있습니다'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
   const questions = selectedSets.flatMap(s => s.questions || []);
-  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+  if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
   // Phase 5.5: recording-ai v2 의 경우 배정 모달에서 임계값·평가 시간 override
   if (cfg.testMode === 'recording-ai' && questions.some(q => q.schemaV === 2)) {
@@ -7665,11 +7638,11 @@ const _TP_PRINT_DEFAULTS = { fontSize: 13, lineHeight: 1.7, qGap: 18 };
 window.tpOpenPrintModal = () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled || !cfg.actions?.includes('print')) return;
-  if (_tpSelectedSets.size === 0) { showToast('문제 세트를 선택하세요'); return; }
+  if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '문제 세트를 선택하세요'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
   const questions = selectedSets.flatMap(s => s.questions || []);
-  if (questions.length === 0) { showToast('선택된 세트에 문제가 없습니다'); return; }
+  if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
   const sp = selectedSets[0]?.sourcePages?.[0] || {};
   const book = (_genBooks||[]).find(b => b.id === sp.bookId);
@@ -8149,13 +8122,13 @@ window.tpPrintResetStyle = () => {
 
 window.tpPrintNow = () => {
   const area = document.getElementById('tpPrintArea');
-  if (!area) { showToast('프리뷰 영역을 찾을 수 없습니다'); return; }
+  if (!area) { showAlert('입력 확인', '프리뷰 영역을 찾을 수 없습니다'); return; }
 
   const orientation = document.getElementById('tpPrintOrientation')?.value === 'landscape' ? 'landscape' : 'portrait';
   const fitToPage = !!document.getElementById('tpPrintFitToPage')?.checked;
 
   const win = window.open('', '_blank', 'width=900,height=1000');
-  if (!win) { showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요'); return; }
+  if (!win) { showAlert('입력 확인', '팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요'); return; }
 
   win.document.write(`<!DOCTYPE html>
 <html lang="ko">
@@ -8495,10 +8468,7 @@ window.qgSavePrompt = () => {
   const textarea = document.getElementById('qgPromptText');
   if (!textarea) return;
   const val = (textarea.value || '').trim();
-  if (val.length < 20) {
-    showToast('프롬프트가 너무 짧습니다 (최소 20자)');
-    return;
-  }
+  if (val.length < 20) { showAlert('입력 확인', '프롬프트가 너무 짧습니다 (최소 20자)'); return; }
   const apiType = _qgApiTypeOf(_qgPromptEditingType);
   const def = (_qgAiPromptDefaults[apiType] || '').trim();
   const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
@@ -8516,10 +8486,7 @@ window.qgSavePrompt = () => {
 window.qgResetPrompt = async () => {
   const apiType = _qgApiTypeOf(_qgPromptEditingType);
   const label = QG_TYPE_OPTIONS[_qgPromptEditingType]?.label || _qgPromptEditingType;
-  if (!_qgGetCustomPrompt(apiType)) {
-    showToast('이미 기본값 사용 중');
-    return;
-  }
+  if (!_qgGetCustomPrompt(apiType)) { showAlert('입력 확인', '이미 기본값 사용 중'); return; }
   if (!(await showConfirm('기본값으로 복원?', `${label}의 사용자 정의가 삭제됩니다.`))) return;
   _qgSetCustomPrompt(apiType, '');
   showToast('기본값으로 복원됨');
