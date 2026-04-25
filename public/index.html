@@ -38,9 +38,6 @@
       <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
         <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
       </div>
-      <div style="margin-top:14px;text-align:center;font-size:14px;color:var(--gray);">
-        계정이 없으신가요? <span onclick="goSignup()" style="color:var(--teal);font-weight:600;cursor:pointer;">학생 회원가입</span>
-      </div>
       <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:#FEF2EC;color:var(--teal);border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:600;cursor:pointer;">
         📱 홈화면에 추가
       </button>
@@ -48,33 +45,7 @@
     </div>
   </div>
 
-  <!-- 회원가입 -->
-  <div id="signup" class="screen">
-    <div class="page-header">
-      <button class="back-btn" onclick="show('login')">‹</button>
-      <span class="page-title">학생 회원가입</span>
-      <span></span>
-    </div>
-    <div class="scroll-content">
-      <div style="padding:16px;">
-        <div style="background:white;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
-          <div class="form-row"><label class="form-label">아이디 * (영문/숫자)</label><input class="form-input" id="signupId" placeholder="로그인에 사용할 아이디" autocomplete="off"></div>
-          <div class="form-row"><label class="form-label">이름 *</label><input class="form-input" id="signupName" placeholder="실명을 입력하세요"></div>
-          <div class="form-row"><label class="form-label">비밀번호 * (6자 이상)</label><input class="form-input" id="signupPw" type="password" placeholder="비밀번호"></div>
-          <div class="form-row"><label class="form-label">비밀번호 확인 *</label><input class="form-input" id="signupPw2" type="password" placeholder="비밀번호 재입력"></div>
-          <div class="form-row"><label class="form-label">연락처 *</label><input class="form-input" id="signupPhone" placeholder="010-0000-0000" type="tel"></div>
-          <div class="form-row"><label class="form-label">부모님 성함 (선택)</label><input class="form-input" id="signupParentName" placeholder="선택사항"></div>
-          <div class="form-row"><label class="form-label">부모님 연락처 (선택)</label><input class="form-input" id="signupParentPhone" placeholder="010-0000-0000" type="tel"></div>
-          <div style="background:#FFF8F6;border-radius:10px;padding:12px;font-size:13px;color:var(--gray);margin-bottom:10px;">
-            ℹ️ 그룹 배정은 관리자가 완료합니다. 가입 후 관리자에게 문의하세요.
-          </div>
-          <div class="login-error" id="signupError" style="margin-bottom:8px;"></div>
-          <button class="login-btn" onclick="doSignup()">가입하기</button>
-        </div>
-      </div>
-      <div style="height:20px;"></div>
-    </div>
-  </div>
+  <!-- (회원가입 화면 제거 — 학원장이 관리자앱에서 직접 등록하는 정책으로 일원화) -->
 
   <!-- STUDENT HOME -->
   <div id="home" class="screen">

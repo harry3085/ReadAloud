@@ -3584,55 +3584,7 @@ window.switchAdminTab=tab=>{
   else if(tab==='push'){renderAllGroupSelects();onPushTypeChange();loadSavedPushList();}
 };
 
-// ── 회원가입 ──────────────────────────────────────────────
-window.goSignup=async()=>{
-  // 그룹 목록 로드
-  try{
-    const snap=await getDocs(collection(db,'groups'));
-    const groups=snap.docs.map(d=>d.data());
-    const el=document.getElementById('signupGroup');
-    el.innerHTML=groups.map(g=>`<option value="${g.name}">${g.name}</option>`).join('')||'<option value="">그룹 없음</option>';
-  }catch(e){console.warn(e);}
-  ['signupId','signupName','signupPw','signupPw2','signupPhone','signupParentName','signupParentPhone'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('signupError').textContent='';
-  show('signup');
-};
-window.doSignup=async()=>{
-  const err=document.getElementById('signupError');
-  err.textContent='';
-  const username=document.getElementById('signupId').value.trim();
-  const name=document.getElementById('signupName').value.trim();
-  const pw=document.getElementById('signupPw').value;
-  const pw2=document.getElementById('signupPw2').value;
-  const phone=document.getElementById('signupPhone').value.trim();
-  const parentName=document.getElementById('signupParentName').value.trim();
-  const parentPhone=document.getElementById('signupParentPhone').value.trim();
-  if(!username||!name||!pw||!phone){err.textContent='아이디, 이름, 비밀번호, 연락처는 필수입니다.';return;}
-  if(!/^[a-zA-Z0-9]+$/.test(username)){err.textContent='아이디는 영문/숫자만 가능해요.';return;}
-  if(pw!==pw2){err.textContent='비밀번호가 일치하지 않습니다.';return;}
-  if(pw.length<6){err.textContent='비밀번호는 6자 이상이어야 합니다.';return;}
-  const email=username+'@kunsori.app';
-  try{
-    // 중복 확인 (usernameLookup 으로 — pre-auth users 쿼리 회피)
-    const _dupKey = `${_LOGIN_ACADEMY_ID}_${username.toLowerCase()}`;
-    const _dupSnap = await getDoc(doc(db,'usernameLookup',_dupKey));
-    if(_dupSnap.exists()){err.textContent='이미 사용 중인 아이디입니다.';return;}
-    const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-    const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e2){secApp=ia(firebaseConfig,'sec');}
-    const auth2=ga(secApp);
-    const cred=await cu(auth2,email,pw);
-    await so(auth2);
-    // 그룹은 미정으로 등록 (관리자가 나중에 배정)
-    await setDoc(doc(db,'users',cred.user.uid),{username,name,email,phone,group:'미배정',role:'student',parentName,parentPhone,avatarUrl:'',createdAt:serverTimestamp()});
-    showToast('✅ 가입 완료! 관리자가 그룹을 배정하면 이용 가능합니다.');
-    show('login');
-    document.getElementById('usernameInput').value=username;
-  }catch(e){
-    console.error(e);
-    err.textContent=e.code==='auth/email-already-in-use'?'이미 사용 중인 아이디입니다.':'가입 실패: '+e.message;
-  }
-};
+// (회원가입 기능 제거 — 학원장이 관리자앱에서 직접 학생 등록. 멀티테넌시 정책)
 
 
 // ── 뒤로가기 (History API 화면 스택) ─────────────────────
