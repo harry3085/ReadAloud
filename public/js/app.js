@@ -235,7 +235,7 @@ async function _updateGenTestBadge(testModes, badgeId) {
   try {
     const myGroup = userProfile.group || '';
     const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const myTests = filterMyTests(snap.docs.map(d => ({id:d.id,...d.data()})), myGroup, myUid)
       .filter(t => testModes.includes(t.testMode));
     const completedSet = new Set();
@@ -261,7 +261,7 @@ const updateFbBadge     = () => _updateGenTestBadge(['fill_blank'], 'blankBadge'
 
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
-  const snap = await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap = await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
   allNotices = snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
   const el = document.getElementById('noticePreview');
   if(!allNotices.length){el.innerHTML='<div class="empty-msg">공지사항이 없습니다</div>';return;}
@@ -278,7 +278,7 @@ async function loadNoticePreview(){
 async function loadHwFiles(){
   const group = userProfile?.group||'';
   const uid = currentUser?.uid||'';
-  const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap = await getDocs(query(collection(db,'hwFiles'),orderBy('createdAt','desc')));
   const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>{
     if(f.group==='전체') return true;
     if(f.group===group) return true;
@@ -335,7 +335,7 @@ window.viewNotice = noticeId => {
 
 window.goNoticeList = async()=>{
   const group=userProfile?.group||'';
-  const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
   allNotices=snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
   document.getElementById('noticeFullList').innerHTML=allNotices.map(n=>`
     <div class="notice-full-item" onclick="viewNotice('${n.id}')" style="cursor:pointer;">
@@ -466,7 +466,7 @@ async function _loadTestListByType(type) {
   try {
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === type);
 
@@ -1552,7 +1552,7 @@ async function loadRecAiList(){
   try{
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording');
 
@@ -2620,10 +2620,10 @@ window.switchRankTab=async (tab)=>{
 async function renderRanking(tab){
   const group=userProfile?.group,meUid=currentUser?.uid;
   const colors=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
-  const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
+  const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
   if(tab==='score'){
-    const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
+    const scoresSnap=await getDocs(query(collection(db,'scores'),where('group','==',group)));
     const scoresMap={};
     scoresSnap.docs.forEach(d=>{
       const s=d.data();
@@ -2695,7 +2695,7 @@ async function loadAdminData(){
 
 // ── 그룹 관리 (학생탭) ────────────────────────────────────
 async function loadGroups(){
-  const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
+  const snap=await getDocs(collection(db,'groups'));
   allGroups=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderGroupTags();
   renderUserGroupFilter();
@@ -2755,7 +2755,7 @@ window.deleteGroup=async(id,name)=>{
 
 // ── 단원/단어 관리 ─────────────────────────────────────────
 async function loadAdminUnits(){
-  const snap=await getDocs(query(collection(db,'units'),where('academyId','==',window.MY_ACADEMY_ID)));
+  const snap=await getDocs(collection(db,'units'));
   adminUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderUnitSelect();
   if(lastSelectedUnitId)renderWordTable();
@@ -2923,8 +2923,8 @@ window.importExcel=async (e)=>{
 async function loadAdminUsers(){
   const clrs=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
   const q2 = selectedUserGroupFilter==='all'
-    ? query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'))
-    : query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('group','==',selectedUserGroupFilter));
+    ? query(collection(db,'users'),where('role','==','student'))
+    : query(collection(db,'users'),where('role','==','student'),where('group','==',selectedUserGroupFilter));
   const snap=await getDocs(q2);
   const students=snap.docs.map(d=>({uid:d.id,...d.data()}));
   document.getElementById('studentCardList').innerHTML=students.map((u,i)=>`
@@ -3047,7 +3047,7 @@ window.deleteStudent=async(uid,name)=>{
 // ── 공지 관리 (클릭 수정 지원) ───────────────────────────
 let _editingNoticeId=null;
 async function loadAdminNotices(){
-  const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
   const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
   const el=document.getElementById('noticeCardList'); if(!el)return;
   el.innerHTML=notices.map(n=>`
@@ -3141,7 +3141,7 @@ window.uploadHwFile=async()=>{
 };
 
 async function loadAdminFiles(){
-  const snap=await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'hwFiles'),orderBy('createdAt','desc')));
   const files=snap.docs.map(d=>({id:d.id,...d.data()}));
   document.getElementById('fileTableBody').innerHTML=files.map(f=>`<tr>
     <td style="font-size:13px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</td>
@@ -3167,14 +3167,14 @@ window.loadStats=async(group,btn)=>{
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   const usersQuery=group==='all'
-    ?query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'))
-    :query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('group','==',group));
+    ?query(collection(db,'users'),where('role','==','student'))
+    :query(collection(db,'users'),where('role','==','student'),where('group','==',group));
   const usersSnap=await getDocs(usersQuery);
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()}));
-  const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
+  const scoresSnap=await getDocs(collection(db,'scores'));
   const scoresMap={};
   scoresSnap.docs.forEach(d=>{const s=d.data();if(!scoresMap[s.uid])scoresMap[s.uid]=[];scoresMap[s.uid].push(s);});
-  const unitsSnap=await getDocs(query(collection(db,'units'),where('academyId','==',window.MY_ACADEMY_ID)));
+  const unitsSnap=await getDocs(collection(db,'units'));
   const units=unitsSnap.docs.map(d=>({id:d.id,...d.data()}));
   const el=document.getElementById('statsContent');
   if(!students.length){el.innerHTML='<div class="empty-msg">학생이 없습니다</div>';return;}
@@ -3205,7 +3205,7 @@ window.loadStats=async(group,btn)=>{
 // ── 결제 관리 ─────────────────────────────────────────────
 async function renderPaymentStudentSelect(){
   const el=document.getElementById('paymentStudent');if(!el)return;
-  const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
+  const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
   el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="${d.id}">${u.name||'?'} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
 }
 window.savePayment=async()=>{
@@ -3255,7 +3255,7 @@ window.startEditPayment=async (id)=>{
   showToast('수정할 내용을 변경 후 저장하세요.');
 };
 async function loadPayments(){
-  const snap=await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
   const payments=snap.docs.map(d=>({id:d.id,...d.data()}));
   const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
   const scls={paid:'paid',unpaid:'unpaid',pending:'pending'};
@@ -3289,7 +3289,7 @@ window.onPushTypeChange=async()=>{
   document.getElementById('pushGroupRow').style.display=isStudent?'none':'';
   document.getElementById('pushStudentRow').style.display=isStudent?'':'none';
   if(isStudent){
-    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
+    const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
     const el=document.getElementById('pushStudentTarget');
     el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="uid:${d.id}">${u.name} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
   }
@@ -3385,7 +3385,9 @@ function showNotifModal(title, body, docId){
 async function checkUnreadNotifs(){
   if(!currentUser) return;
   try{
-    const snap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('uid','==',currentUser.uid),
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
       where('read','==',false)
     ));
     await updateNotifBadge(snap.size);
@@ -3403,7 +3405,9 @@ async function updateNotifBadge(count){
   if(!badge) return;
   if(count===undefined && currentUser){
     try{
-      const snap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('uid','==',currentUser.uid),
+      const snap = await getDocs(query(
+        collection(db,'userNotifications'),
+        where('uid','==',currentUser.uid),
         where('read','==',false)
       ));
       count = snap.size;
@@ -3425,7 +3429,9 @@ window.openNotifPanel = async() => {
   panel.style.display='block';
   list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>';
   try{
-    const snap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('uid','==',currentUser.uid)
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid)
     ));
     const notifs = snap.docs
       .map(d=>({id:d.id,...d.data()}))
@@ -3467,7 +3473,9 @@ window.closeNotifPanel = () => {
 window.markAllNotifsRead = async() => {
   if(!currentUser) return;
   try{
-    const snap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('uid','==',currentUser.uid),
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
       where('read','==',false)
     ));
     await Promise.all(snap.docs.map(d=>updateDoc(d.ref,{read:true})));
@@ -3556,7 +3564,7 @@ window.delSavedPush=async (id)=>{
 async function loadSavedPushList(){
   const el=document.getElementById('savedPushList');if(!el)return;
   try{
-    const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'pushNotifications'),orderBy('createdAt','desc')));
     const items=snap.docs.map(d=>({id:d.id,...d.data()}));
     el.innerHTML=items.map(n=>{
       const isStudent=n.target?.startsWith('uid:');
