@@ -290,7 +290,7 @@ async function loadDashStats(){
 async function loadDashNotices(){
   const el=document.getElementById('dashNotices');
   try{
-    const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc'),limit(5)));
+    const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(5)));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">공지사항이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
@@ -306,7 +306,7 @@ async function loadDashNotices(){
 async function loadDashScores(){
   const el=document.getElementById('dashScores');
   try{
-    const snap=await getDocs(query(collection(db,'scores'),orderBy('createdAt','desc'),limit(20)));
+    const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(20)));
     if(snap.empty){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">시험 결과가 없습니다</td></tr>';return;}
 
     // testId로 교재명 보완
@@ -340,7 +340,7 @@ async function loadDashScores(){
 async function loadDashStudents(){
   const el=document.getElementById('dashStudents');
   try{
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active'),limit(8)));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active'),limit(8)));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">학생이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const u=d.data();
@@ -483,7 +483,7 @@ window.sortTable = (tableId, colIdx) => {
 // ── 클래스 관리 ──────────────────────────────────────
 async function loadClasses(){
   try{
-    const snap=await getDocs(query(collection(db,'groups'),orderBy('createdAt','asc')));
+    const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc')));
     const data=snap.docs.map(d=>({id:d.id,...d.data()}));
     initPagination('classTableBody', data, (g,i)=>`<tr>
       <td><input type="checkbox" value="${g.id}"></td>
@@ -605,7 +605,7 @@ window.bulkAction = async(action) => {
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
     showToast('퇴원처리 완료!'); await loadStudents('active');
   } else if(action==='assign'){
-    const classSnap=await getDocs(collection(db,'groups'));
+    const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
     const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
     showModal(`
       <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -638,7 +638,7 @@ window.restoreStudent = async(id) => {
 };
 // (구버전 window.deleteStudent 제거 — 아래 Auth+Firestore 통합 삭제 사용)
 window.openStudentModal = async() => {
-  const classSnap=await getDocs(collection(db,'groups'));
+  const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -708,7 +708,7 @@ window.saveStudent = async() => {
 async function loadNotices(){
   const el=document.getElementById('noticeTableBody');
   try{
-    const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
     const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
     initPagination('noticeTableBody', notices, (n,i)=>`<tr>
@@ -721,7 +721,7 @@ async function loadNotices(){
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 window.openNoticeModal = async() => {
-  const classSnap=await getDocs(collection(db,'groups'));
+  const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts='<option value="all">전체</option>'+classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -763,7 +763,7 @@ window.deleteNotice = async(id) => {
 async function loadHwFileAdmin(){
   const el = document.getElementById('hwfileTableBody'); if(!el) return;
   try{
-    const snap = await getDocs(query(collection(db,'hwFiles'), orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const files = snap.docs.map(d=>({id:d.id,...d.data()}));
     const icons={pdf:'📄',docx:'📝',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
     initPagination('hwfileTableBody', files, (f,i)=>`<tr>
@@ -791,7 +791,7 @@ window.editHwFile = async(id) => {
   const f = snap.data();
 
   // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
   const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
 
@@ -855,7 +855,7 @@ window.saveHwFileEdit = async(id) => {
 
 window.openHwFileModal = async() => {
   // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
   const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
 
@@ -973,7 +973,7 @@ window.deleteSelectedHwFile = async() => {
 async function loadPayments(){
   const el=document.getElementById('paymentTableBody');
   try{
-    const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const pays=snap.docs.map(d=>({id:d.id,...d.data()}));
     let total=0,paid=0,unpaid=0;
     pays.forEach(p=>{total+=p.amount||0;if(p.status==='paid')paid+=p.amount||0;else unpaid+=p.amount||0;});
@@ -1006,7 +1006,7 @@ window.delPayment = async(id) => {
   showToast('삭제됐어요.'); await loadPayments();
 };
 window.openPaymentModal = async() => {
-  const usersSnap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const opts=usersSnap.docs.map(d=>{const u=d.data();return `<option value="${d.id}|${u.name}|${u.group||''}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -1047,11 +1047,11 @@ window.onMsgTypeChange = async() => {
   document.getElementById('msgGroupRow').style.display=type==='group'?'':'none';
   document.getElementById('msgStudentRow').style.display=type==='student'?'':'none';
   if(type==='group'){
-    const snap=await getDocs(collection(db,'groups'));
+    const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
     document.getElementById('msgGroup').innerHTML=snap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   }
   if(type==='student'){
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     document.getElementById('msgStudent').innerHTML=snap.docs.map(d=>{const u=d.data();return`<option value="uid:${d.id}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
   }
 };
@@ -1083,7 +1083,7 @@ window.saveMessage = async() => {
 async function loadMessages(){
   const el=document.getElementById('savedMsgList');
   try{
-    const snap=await getDocs(query(collection(db,'pushNotifications'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송된 알림이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
@@ -1113,14 +1113,14 @@ window.showMsgReadStatus = async(pushId, title) => {
   listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
   try{
     // 이 알림(pushId)에 해당하는 userNotifications 조회
-    const snap = await getDocs(query(collection(db,'userNotifications'),where('pushId','==',pushId)));
+    const snap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('pushId','==',pushId)));
 
     // pushId 없는 경우 (구버전 알림) - createdAt 기준으로 title+body 매칭
     let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
 
     if(!notifs.length){
       // pushId 없는 구버전: title로 fallback
-      const fbSnap = await getDocs(query(collection(db,'userNotifications'),where('title','==',title)));
+      const fbSnap = await getDocs(query(collection(db,'userNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('title','==',title)));
       notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
     }
 
@@ -1131,7 +1131,7 @@ window.showMsgReadStatus = async(pushId, title) => {
 
     // uid 목록으로 학생 이름 조회
     const uids = [...new Set(notifs.map(n=>n.uid))];
-    const userSnap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+    const userSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
     const userMap = {};
     userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
 
@@ -1191,7 +1191,7 @@ async function initScoreReport(){
   const sel = document.getElementById('scoreClassFilter');
   if(sel && sel.options.length <= 1){
     try{
-      const snap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+      const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
       const groups = [...new Set(snap.docs.map(d=>d.data().group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
       groups.forEach(g=>{
         const opt = document.createElement('option');
@@ -1265,7 +1265,7 @@ window.loadScoreReport = async() => {
   const el=document.getElementById('scoreReportBody');
   el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
   try{
-    const snap=await getDocs(query(collection(db,'scores'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const scores=snap.docs.map(d=>({id:d.id,...d.data()}));
     const from=document.getElementById('scoreFrom').value;
     const to=document.getElementById('scoreTo').value;
@@ -1569,7 +1569,7 @@ window.showScoreDetail = async(scoreId, testId) => {
 async function loadPersonalStudentList(){
   const el=document.getElementById('personalStudentList');
   try{
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     const students=snap.docs.map(d=>({id:d.id,...d.data()}));
     el.innerHTML=students.map(u=>`
       <div onclick="loadPersonalScore('${u.id}')" style="padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
@@ -1586,7 +1586,7 @@ window.loadPersonalScore = async(uid) => {
   try{
     const userSnap=await getDoc(doc(db,'users',uid));
     const u=userSnap.data();
-    const scoresSnap=await getDocs(query(collection(db,'scores'),where('userId','==',uid),orderBy('createdAt','desc')));
+    const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('userId','==',uid),orderBy('createdAt','desc')));
     const scores=scoresSnap.docs.map(d=>d.data());
     const avg=scores.length?Math.round(scores.reduce((s,r)=>s+r.score,0)/scores.length):0;
     detail.innerHTML=`
@@ -2009,8 +2009,8 @@ window.loadTestList = async() => {
   try{
     // tests + genTests 병렬 로드
     const [snap, gSnap] = await Promise.all([
-      getDocs(query(collection(db,'tests'),orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
+      getDocs(query(collection(db,'tests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))),
+      getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
     ]);
     const tests = snap.docs.map(d=>({id:d.id,_src:'tests',...d.data()}));
     const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
@@ -2021,13 +2021,13 @@ window.loadTestList = async() => {
     }
 
     // scores 전체 로드 후 testId 별로 집계 (tests / genTests 공통)
-    const scoresSnap = await getDocs(collection(db,'scores'));
+    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
     const allScores = scoresSnap.docs.map(d=>d.data());
 
     // 학생 전체 (대상자 계산용 — 반 타겟을 uid 로 확장하려면 필요)
     if (!Array.isArray(allStudents) || allStudents.length === 0) {
       try {
-        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
         allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
       } catch(e) { console.warn('학생 로드 실패(대상자 집계 정확도 저하):', e); }
     }
@@ -2127,7 +2127,7 @@ window.toggleTestProgress = async(testId, source='tests') => {
         students.push({uid:tg.id, name:tg.name, group:tg.groupName||''});
       } else if(tg.type==='class') {
         const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
-        const gs = await getDocs(query(collection(db,'users'),where('group','==',gName)));
+        const gs = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',gName)));
         gs.docs.filter(d=>d.data().role==='student').forEach(d=>
           students.push({uid:d.id, name:d.data().name, group:d.data().group||''})
         );
@@ -2142,7 +2142,7 @@ window.toggleTestProgress = async(testId, source='tests') => {
     compSnap.docs.forEach(d=>{ compMap[d.id]=d.data(); });
 
     // 점수 목록 (응시 여부 확인용)
-    const scoreSnap = await getDocs(query(collection(db,'scores'),where('testId','==',testId)));
+    const scoreSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('testId','==',testId)));
     const scoreMap = {}; // uid → 최고점수
     scoreSnap.docs.forEach(d=>{
       const s=d.data();
@@ -2313,7 +2313,7 @@ window.saveTestEdit = async(testId) => {
   // 진행/완료 학생 확인
   const [compSnap, scoreSnap] = await Promise.all([
     getDocs(collection(db,'tests',testId,'userCompleted')),
-    getDocs(query(collection(db,'scores'),where('testId','==',testId)))
+    getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('testId','==',testId)))
   ]);
   const affectedUids = new Set();
   compSnap.docs.forEach(d=>affectedUids.add(d.id));
@@ -2373,7 +2373,7 @@ window.deleteTest = async(id) => {
 // ── 엑셀 내보내기 ────────────────────────────────────────
 window.exportStudentExcel = async(status='active') => {
   try{
-    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
+    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==',status)));
     const students = snap.docs.map(d=>({id:d.id,...d.data()}));
     if (!students.length) { showAlert('입력 확인', '내보낼 학생이 없습니다.'); return; }
 
@@ -2445,7 +2445,7 @@ window.updateClass = async(id) => {
 window.editStudent = async(id) => {
   const snap = await getDoc(doc(db,'users',id));
   const u = snap.data(); if(!u) return;
-  const classSnap = await getDocs(collection(db,'groups'));
+  const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts = classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${u.group===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -2504,7 +2504,7 @@ window.updateStudent = async(id) => {
 window.editNotice = async(id) => {
   const snap = await getDoc(doc(db,'notices',id));
   const n = snap.data(); if(!n) return;
-  const classSnap = await getDocs(collection(db,'groups'));
+  const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts = '<option value="all" '+(n.target==='all'?'selected':'')+'>전체</option>'
     + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${n.target===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`
@@ -2668,9 +2668,9 @@ window.loadGenerator = async () => {
   _genInitResizer();
   try {
     const [pSnap, cSnap, bSnap] = await Promise.all([
-      getDocs(query(collection(db,'genPages'), orderBy('serialNumber','asc'))),
-      getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
-      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+      getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('serialNumber','asc'))),
+      getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('order','asc'))),
+      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc'))),
     ]);
     _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
     _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
@@ -3369,11 +3369,11 @@ let _cleanupBatchPresetName = '';   // 현재 일괄 처리 중인 프리셋 이
 // ─── 프리셋 로드 + 최초 시드 ───
 async function _cleanupLoadPresets() {
   try {
-    const snap = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+    const snap = await getDocs(query(collection(db,'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('order', 'asc')));
     _cleanupPresets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (_cleanupPresets.length === 0) {
       await _cleanupSeedDefaults();
-      const snap2 = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+      const snap2 = await getDocs(query(collection(db,'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('order', 'asc')));
       _cleanupPresets = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
     }
     _cleanupRenderEditorSelect();
@@ -4068,9 +4068,9 @@ window.loadQuizGenerate = async () => {
   if (!_genPages.length && !_genBooks.length) {
     try {
       const [pSnap, cSnap, bSnap] = await Promise.all([
-        getDocs(query(collection(db,'genPages'), orderBy('serialNumber','asc'))),
-        getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
-        getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+        getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('serialNumber','asc'))),
+        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('order','asc'))),
+        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc'))),
       ]);
       _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
       _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
@@ -5515,8 +5515,8 @@ window.loadQuestionSets = async () => {
   try {
     _qsLoadPrefs();
     const [setSnap, bookSnap] = await Promise.all([
-      getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+      getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))),
+      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc'))),
     ]);
     _qsList = setSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     _qsBooks = bookSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -6510,9 +6510,7 @@ window.loadMcqAssign = async () => {
     // where('sourceType',…) + orderBy(createdAt) 복합 쿼리는 과거 저장 데이터의
     // sourceType 필드 편차(미입력/대소문자/다른 표기) 및 복합 인덱스 부재에 취약.
     // 전체 로드 후 클라이언트에서 MCQ 계열만 필터한다.
-    const snap = await getDocs(query(
-      collection(db,'genQuestionSets'),
-      orderBy('createdAt','desc')
+    const snap = await getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')
     ));
     _mcqSets = snap.docs
       .map(d => ({ id:d.id, ...d.data() }))
@@ -6654,7 +6652,7 @@ window.mcqClearSel = () => {
 window.mcqOpenTargetPicker = async () => {
   let students = [];
   try {
-    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     students = snap.docs.map(d=>({id:d.id,...d.data()}));
   } catch(e) {
     showToast('학생 목록 로드 실패: '+e.message);
@@ -6945,8 +6943,8 @@ async function _renderTestAssignDetail(type) {
   if (!_genBooks.length || !_genChapters.length) {
     try {
       const [bSnap, cSnap] = await Promise.all([
-        getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
-        getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
+        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc'))),
+        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('order','asc'))),
       ]);
       _genBooks = bSnap.docs.map(d => ({id:d.id, ...d.data()}));
       _genChapters = cSnap.docs.map(d => ({id:d.id, ...d.data()}));
@@ -6955,7 +6953,7 @@ async function _renderTestAssignDetail(type) {
 
   if (cfg.enabled && cfg.sourceType) {
     try {
-      const setSnap = await getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc')));
+      const setSnap = await getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
       _tpSets = setSnap.docs.map(d => ({id:d.id, ...d.data()}))
         .filter(s => (s.sourceType || 'mcq') === cfg.sourceType);
 
@@ -6963,7 +6961,7 @@ async function _renderTestAssignDetail(type) {
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
-        const testSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+        const testSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
         _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}))
           .filter(t => t.testMode === cfg.testMode);
       }
@@ -7297,13 +7295,13 @@ function _tpRenderTestRow(t) {
 
 async function _tpLoadTestStats() {
   try {
-    const scoresSnap = await getDocs(collection(db,'scores'));
+    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
     const allScores = scoresSnap.docs.map(d => d.data());
 
     // 학생 전체 로드 (대상자 계산용)
     if (!Array.isArray(allStudents) || allStudents.length === 0) {
       try {
-        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
         allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
       } catch(e) { console.warn('학생 로드 실패:', e); }
     }
@@ -7370,9 +7368,7 @@ window.tpOpenPublishModal = async () => {
 
   let students = [];
   try {
-    const snap = await getDocs(query(
-      collection(db,'users'),
-      where('role','==','student'),
+    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),
       where('status','==','active')
     ));
     students = snap.docs.map(d => ({id:d.id, ...d.data()}));
@@ -8232,7 +8228,7 @@ window.tpToggleTestProgress = async (testId) => {
         studentList.push({uid:tg.id, name:tg.name, group:''});
       } else {
         try {
-          const gs = await getDocs(query(collection(db,'users'), where('group','==',tg.id)));
+          const gs = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',tg.id)));
           gs.docs.filter(d => d.data().role==='student').forEach(d =>
             studentList.push({uid:d.id, name:d.data().name, group:d.data().group||''})
           );
