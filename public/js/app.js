@@ -111,16 +111,9 @@ window.doLogin = async () => {
     let profileUid = null;
     let profileEmail = null;
     const lookup = await _lookupUserByUsername(uid);
-    if (lookup) {
-      profileUid = lookup.uid;
-      profileEmail = lookup.email;
-    } else {
-      // 폴백: 레거시 users 쿼리 (lookup 에 없는 사용자 대응)
-      const snap = await getDocs(query(collection(db,'users'), where('username','==',uid)));
-      if(snap.empty){err.textContent='존재하지 않는 아이디입니다.';return;}
-      profileUid = snap.docs[0].id;
-      profileEmail = snap.docs[0].data().email;
-    }
+    if (!lookup) { err.textContent = '존재하지 않는 아이디입니다.'; return; }
+    profileUid = lookup.uid;
+    profileEmail = lookup.email;
 
     // 2단계: Firebase Auth 로그인 (기존과 동일)
     await signInWithEmailAndPassword(auth, profileEmail, pw);
@@ -2953,9 +2946,10 @@ window.saveUser=async()=>{
     if(pw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
     const email=username+'@kunsori.app';
     try{
-      // 중복 확인
-      const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
-      if(!dup.empty){showToast('이미 사용 중인 아이디입니다.');return;}
+      // 중복 확인 (usernameLookup 으로 — pre-auth users 쿼리 회피)
+      const _dupKey = `${_LOGIN_ACADEMY_ID}_${username.toLowerCase()}`;
+      const _dupSnap = await getDoc(doc(db,'usernameLookup',_dupKey));
+      if(_dupSnap.exists()){showToast('이미 사용 중인 아이디입니다.');return;}
       const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
       const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
       let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e){secApp=ia(firebaseConfig,'sec');}
@@ -3619,8 +3613,10 @@ window.doSignup=async()=>{
   if(pw.length<6){err.textContent='비밀번호는 6자 이상이어야 합니다.';return;}
   const email=username+'@kunsori.app';
   try{
-    const dup=await getDocs(query(collection(db,'users'),where('username','==',username)));
-    if(!dup.empty){err.textContent='이미 사용 중인 아이디입니다.';return;}
+    // 중복 확인 (usernameLookup 으로 — pre-auth users 쿼리 회피)
+    const _dupKey = `${_LOGIN_ACADEMY_ID}_${username.toLowerCase()}`;
+    const _dupSnap = await getDoc(doc(db,'usernameLookup',_dupKey));
+    if(_dupSnap.exists()){err.textContent='이미 사용 중인 아이디입니다.';return;}
     const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
     const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     let secApp;try{const {getApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');secApp=getApp('sec');}catch(e2){secApp=ia(firebaseConfig,'sec');}
