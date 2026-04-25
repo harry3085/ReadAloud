@@ -264,7 +264,7 @@ async function loadApiUsage(){
 
 async function loadDashStats(){
   try {
-    const usersSnap = await getDocs(collection(db,'users'));
+    const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID)));
     let active=0, pause=0, out=0;
     usersSnap.forEach(d=>{
       const s=d.data().status||'active';
@@ -278,11 +278,11 @@ async function loadDashStats(){
     document.getElementById('statActive').textContent = active;
     document.getElementById('statPause').textContent = pause;
 
-    const paySnap = await getDocs(query(collection(db,'payments'),where('status','==','unpaid')));
+    const paySnap = await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),where('status','==','unpaid')));
     document.getElementById('statUnpaid').textContent = paySnap.size;
 
     const today = new Date().toISOString().slice(0,10);
-    const testSnap = await getDocs(query(collection(db,'scores'),where('date','==',today)));
+    const testSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
     document.getElementById('statTests').textContent = testSnap.size;
   } catch(e){ console.log(e); }
 }
@@ -537,11 +537,11 @@ async function loadStudents(status='active'){
   const el=document.getElementById(elMap[status]);
   if(!el)return;
   try{
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==',status)));
     allStudents=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderStudentTable(status, allStudents);
     if(status==='active'){
-      const classSnap=await getDocs(collection(db,'groups'));
+      const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
       const sel=document.getElementById('studentClassFilter');
       if(sel) sel.innerHTML='<option value="">전체 반</option>'+classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
     }
