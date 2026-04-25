@@ -83,6 +83,21 @@ const _LOGIN_ACADEMY_ID = 'default';
 
 // usernameLookup/{academyId}_{usernameLower} 로 email 조회.
 // 누락 시 null 반환 → 호출자가 레거시 users 쿼리로 폴백.
+// 학원 컨텍스트 로드 — Custom Claims 우선, users 문서 폴백, 'default' 최종 폴백
+async function _loadMyAcademyContext(user, userDocData) {
+  let academyId = null, role = null;
+  try {
+    const tk = await user.getIdTokenResult();
+    academyId = tk.claims.academyId || null;
+    role = tk.claims.role || null;
+  } catch(_) {}
+  if (!academyId && userDocData) academyId = userDocData.academyId || null;
+  if (!academyId) academyId = 'default';
+  window.MY_ACADEMY_ID = academyId;
+  window.MY_ROLE = role || (userDocData && userDocData.role) || null;
+  console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
+}
+
 async function _lookupUserByUsername(usernameRaw) {
   try {
     const key = `${_LOGIN_ACADEMY_ID}_${usernameRaw.toLowerCase()}`;
@@ -129,6 +144,7 @@ window.doLogin = async () => {
 
     userProfile = {...profile, uid: profileUid};
     currentUser = auth.currentUser;
+    await _loadMyAcademyContext(auth.currentUser, profile);
     localStorage.setItem('lastLoginAt', Date.now().toString());
     if(profile.role==='admin'){
       // PC 관리자 앱으로 이동
@@ -3814,6 +3830,7 @@ onAuthStateChanged(auth, async (user)=>{
       if(snap.exists()){
         userProfile = {...snap.data(), uid:user.uid};
         currentUser = user;
+        await _loadMyAcademyContext(user, snap.data());
         // 활동 시각 갱신
         localStorage.setItem('lastLoginAt', Date.now().toString());
         if(userProfile.role==='admin'){

@@ -93,6 +93,21 @@ async function _geminiFetch(url, init){
 }
 
 // ── 인증 체크 ──────────────────────────────────────────
+// 학원 컨텍스트 로드 — Custom Claims 우선, users 문서 폴백, 'default' 최종 폴백
+async function _loadMyAcademyContext(user, userDocData) {
+  let academyId = null, role = null;
+  try {
+    const tk = await user.getIdTokenResult();
+    academyId = tk.claims.academyId || null;
+    role = tk.claims.role || null;
+  } catch(_) {}
+  if (!academyId && userDocData) academyId = userDocData.academyId || null;
+  if (!academyId) academyId = 'default';
+  window.MY_ACADEMY_ID = academyId;
+  window.MY_ROLE = role || (userDocData && userDocData.role) || null;
+  console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
+}
+
 onAuthStateChanged(auth, async user => {
   if(!user){ window.location.href='/'; return; }
   const snap = await getDoc(doc(db,'users',user.uid));
@@ -101,6 +116,7 @@ onAuthStateChanged(auth, async user => {
   }
   currentUser = user;
   adminProfile = {uid: user.uid, ...snap.data()};
+  await _loadMyAcademyContext(user, snap.data());
   document.getElementById('adminName').textContent = adminProfile.name || '관리자';
   await initDashboard();
 });
