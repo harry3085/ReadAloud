@@ -1743,13 +1743,7 @@ window.editSelectedStudent = () => {
   if(ids.length !== 1){showToast('수정할 학생을 하나만 선택하세요.');return;}
   editStudent(ids[0]);
 };
-window.deleteSelectedStudent = async() => {
-  const ids = getCheckedIds('studentTableBody');
-  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
-  if(!await showConfirm(`선택한 ${ids.length}명을 삭제할까요?`))return;
-  for(const id of ids) await deleteDoc(doc(db,'users',id));
-  showToast('삭제됐어요.'); await loadStudents('active');
-};
+// (구버전 deleteSelectedStudent 제거 — 위쪽 line 1689 의 Auth+Firestore+lookup 통합 삭제 사용)
 window.restoreSelectedStudent = async(status) => {
   const tbodyId = status==='pause'?'pauseTableBody':'outTableBody';
   const ids = getCheckedIds(tbodyId);
@@ -1765,13 +1759,7 @@ window.outSelectedStudent = async() => {
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
   showToast('퇴원처리 완료!'); await loadStudents('pause');
 };
-window.deleteSelectedOutStudent = async() => {
-  const ids = getCheckedIds('outTableBody');
-  if(!ids.length){showToast('삭제할 학생을 선택하세요.');return;}
-  if(!(await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?`)))return;
-  for(const id of ids) await deleteDoc(doc(db,'users',id));
-  showToast('삭제됐어요.'); await loadStudents('out');
-};
+// (구버전 deleteSelectedOutStudent 제거 — 위쪽 line 1702 의 Auth+Firestore+lookup 통합 삭제 사용)
 
 // ── 공지 선택 액션 ──────────────────────────────────
 window.editSelectedNotice = () => {
