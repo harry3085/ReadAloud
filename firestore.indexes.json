@@ -7,6 +7,14 @@
         { "fieldPath": "hwId", "order": "ASCENDING" },
         { "fieldPath": "uid", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

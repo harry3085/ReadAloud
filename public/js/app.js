@@ -261,7 +261,7 @@ const updateFbBadge     = () => _updateGenTestBadge(['fill_blank'], 'blankBadge'
 
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
-  const snap = await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
+  const snap = await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   allNotices = snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
   const el = document.getElementById('noticePreview');
   if(!allNotices.length){el.innerHTML='<div class="empty-msg">공지사항이 없습니다</div>';return;}
@@ -335,7 +335,7 @@ window.viewNotice = noticeId => {
 
 window.goNoticeList = async()=>{
   const group=userProfile?.group||'';
-  const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   allNotices=snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
   document.getElementById('noticeFullList').innerHTML=allNotices.map(n=>`
     <div class="notice-full-item" onclick="viewNotice('${n.id}')" style="cursor:pointer;">
@@ -3047,7 +3047,7 @@ window.deleteStudent=async(uid,name)=>{
 // ── 공지 관리 (클릭 수정 지원) ───────────────────────────
 let _editingNoticeId=null;
 async function loadAdminNotices(){
-  const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
   const el=document.getElementById('noticeCardList'); if(!el)return;
   el.innerHTML=notices.map(n=>`
@@ -3095,7 +3095,7 @@ window.saveNotice=async()=>{
     await updateDoc(doc(db,'notices',editId),{title,content,target,date:today});
     showToast('공지가 수정됐어요!');
   } else {
-    await addDoc(collection(db,'notices'),{title,content,target,date:today,createdAt:serverTimestamp()});
+    await addDoc(collection(db,'notices'),{title,content,target,date:today,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
     showToast('공지가 등록됐어요!');
   }
   cancelEditNotice(); await loadAdminNotices();

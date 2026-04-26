@@ -290,7 +290,7 @@ async function loadDashStats(){
 async function loadDashNotices(){
   const el=document.getElementById('dashNotices');
   try{
-    const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc'),limit(5)));
+    const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(5)));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">공지사항이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
@@ -708,7 +708,7 @@ window.saveStudent = async() => {
 async function loadNotices(){
   const el=document.getElementById('noticeTableBody');
   try{
-    const snap=await getDocs(query(collection(db,'notices'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
     const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
     initPagination('noticeTableBody', notices, (n,i)=>`<tr>
@@ -750,7 +750,7 @@ window.saveNotice = async() => {
   const content=document.getElementById('noticeContent').value.trim();
   const target=document.getElementById('noticeTarget').value;
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await addDoc(collection(db,'notices'),{title,content,target,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp()});
+  await addDoc(collection(db,'notices'),{title,content,target,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   closeModal(); showToast('공지가 등록됐어요!'); await loadNotices();
 };
 window.deleteNotice = async(id) => {
