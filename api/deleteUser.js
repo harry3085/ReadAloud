@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
       try {
         const qs = await db.collection('usernameLookup').where('uid', '==', uid).limit(1).get();
         if (!qs.empty) {
-          usernameLower = qs.docs[0].data().usernameLower || qs.docs[0].id.replace(`${DEFAULT_ACADEMY_ID}_`, '');
+          usernameLower = qs.docs[0].data().usernameLower || qs.docs[0].id;
         }
       } catch (_) {}
     }
@@ -90,7 +90,7 @@ module.exports = async (req, res) => {
     let lookupDeleted = false;
     if (usernameLower) {
       try {
-        await db.doc(`usernameLookup/${DEFAULT_ACADEMY_ID}_${usernameLower}`).delete();
+        await db.doc(`usernameLookup/${usernameLower}`).delete();
         lookupDeleted = true;
       } catch (_) {}
     }

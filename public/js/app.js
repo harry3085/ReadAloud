@@ -100,14 +100,16 @@ async function _loadMyAcademyContext(user, userDocData) {
 
 async function _lookupUserByUsername(usernameRaw) {
   try {
-    const key = `${_LOGIN_ACADEMY_ID}_${usernameRaw.toLowerCase()}`;
+    // usernameLookup 은 글로벌 유니크 (학원 prefix 없음).
+    // academyId 는 Custom Claims / users 문서에서 별도 결정.
+    const key = usernameRaw.toLowerCase();
     const snap = await getDoc(doc(db, 'usernameLookup', key));
     if (!snap.exists()) return null;
     const d = snap.data();
     if (!d || !d.uid || !d.email) return null;
     return { uid: d.uid, email: d.email, role: d.role };
   } catch (e) {
-    console.warn('[usernameLookup] 조회 실패, 레거시 경로로 폴백:', e.message);
+    console.warn('[usernameLookup] 조회 실패:', e.message);
     return null;
   }
 }

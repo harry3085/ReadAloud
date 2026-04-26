@@ -76,7 +76,7 @@ async function main() {
 
     stats.candidates++;
     const usernameLower = data.username.toLowerCase();
-    const key = `${DEFAULT_ACADEMY_ID}_${usernameLower}`;
+    const key = usernameLower; // 글로벌 유니크
     const priority = (data.status === 'active' ? 1_000_000_000_000 : 0) + getCreatedAtMillis(data);
 
     if (!byKey.has(key)) byKey.set(key, []);
@@ -154,7 +154,7 @@ async function main() {
   for (const e of toActuallyWrite) {
     const ref = db.collection('usernameLookup').doc(e.key);
     batch.set(ref, {
-      academyId: DEFAULT_ACADEMY_ID,
+      academyId: e.data.academyId || DEFAULT_ACADEMY_ID,
       usernameLower: e.usernameLower,
       uid: e.uid,
       email: e.data.email,

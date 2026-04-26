@@ -116,7 +116,7 @@ module.exports = async (req, res) => {
 
     const usernameLower = username.toLowerCase();
     const email = username + EMAIL_DOMAIN;
-    const lookupKey = `${DEFAULT_ACADEMY_ID}_${usernameLower}`;
+    const lookupKey = usernameLower; // 글로벌 유니크 (학원 prefix 없음)
 
     // 3. username 중복 체크 (usernameLookup 기반)
     const lookupSnap = await db.doc('usernameLookup/' + lookupKey).get();

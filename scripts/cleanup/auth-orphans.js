@@ -105,7 +105,7 @@ async function main() {
       continue;
     }
     // usernameLookup 도 같이 정리
-    const lookupKey = `${DEFAULT_ACADEMY_ID}_${o.username.toLowerCase()}`;
+    const lookupKey = o.username.toLowerCase();
     try {
       const ref = db.collection('usernameLookup').doc(lookupKey);
       const snap = await ref.get();

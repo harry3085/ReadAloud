@@ -150,13 +150,23 @@ async function main() {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const adminUsername = subdomain + '_admin';
+    const adminUsernameLower = adminUsername.toLowerCase();
     batch.set(db.doc(`users/${adminUid}`), {
       academyId: subdomain,
       role: 'admin',
-      username: subdomain + '_admin',
+      username: adminUsername,
       name: `${name} 학원장`,
       email: adminEmail,
       status: 'active',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    batch.set(db.doc(`usernameLookup/${adminUsernameLower}`), {
+      academyId: subdomain,
+      usernameLower: adminUsernameLower,
+      uid: adminUid,
+      email: adminEmail,
+      role: 'academy_admin',
       createdAt: FieldValue.serverTimestamp(),
     });
     await batch.commit();
