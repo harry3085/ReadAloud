@@ -122,16 +122,23 @@ window.doLogin = async () => {
   if(document.getElementById('saveIdCheck').checked) localStorage.setItem('savedId',uid);
   else localStorage.removeItem('savedId');
   try {
-    // 1단계: usernameLookup 으로 email/uid 조회 (신규 경로)
+    // 1단계: 입력값으로 email 결정
+    //   - '@' 포함 → 이메일 직접 (학원장/멀티학원 로그인 경로)
+    //   - 그 외 → usernameLookup/default_<username> 조회 (학생/default학원 경로)
     let profileUid = null;
     let profileEmail = null;
-    const lookup = await _lookupUserByUsername(uid);
-    if (!lookup) { err.textContent = '존재하지 않는 아이디입니다.'; return; }
-    profileUid = lookup.uid;
-    profileEmail = lookup.email;
+    if (uid.includes('@')) {
+      profileEmail = uid.toLowerCase();
+    } else {
+      const lookup = await _lookupUserByUsername(uid);
+      if (!lookup) { err.textContent = '존재하지 않는 아이디입니다.'; return; }
+      profileUid = lookup.uid;
+      profileEmail = lookup.email;
+    }
 
-    // 2단계: Firebase Auth 로그인 (기존과 동일)
+    // 2단계: Firebase Auth 로그인
     await signInWithEmailAndPassword(auth, profileEmail, pw);
+    if (!profileUid) profileUid = auth.currentUser.uid;
 
     // 3단계: users/{uid} 에서 프로필 전체 로드 (로그인 완료된 상태라 읽기 권한 OK)
     const profileSnap = await getDoc(doc(db, 'users', profileUid));
