@@ -2130,7 +2130,7 @@ window.toggleTestProgress = async(testId, source='genTests') => {
     students.sort((a,b)=>(a.group+a.name).localeCompare(b.group+b.name,'ko'));
 
     // 완료 목록
-    const compSnap = await getDocs(collection(db, coll, testId, 'userCompleted'));
+    const compSnap = await getDocs(collection(db, 'genTests', testId, 'userCompleted'));
     const compMap = {}; // uid → {score}
     compSnap.docs.forEach(d=>{ compMap[d.id]=d.data(); });
 
