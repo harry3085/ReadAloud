@@ -45,6 +45,7 @@ window.goTab = (id) => {
   const page = document.getElementById('page-' + id);
   if (page) page.style.display = '';
   if (id === 'academies') loadAcademies();
+  else if (id === 'users') runUserSearch();  // 진입 시 전체 표시
 };
 
 // ── 사용자 검색 ──────────────────────────────────────
@@ -60,10 +61,6 @@ window.runUserSearch = async () => {
   const tbody = document.getElementById('userSearchBody');
   const term = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
   const roleFilter = document.getElementById('userRoleFilter')?.value || '';
-  if (!term && !roleFilter) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색어 또는 role 필터 지정</td></tr>';
-    return;
-  }
   try {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
     const all = await _loadAllUsers();
