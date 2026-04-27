@@ -9,7 +9,6 @@ service cloud.firestore {
 
     // 관리자 판별 — Custom Claims 우선, 미주입 토큰은 기존 get() 폴백
     // 폴백은 멀티테넌시 전환기(Phase 0~2)의 하위 호환용.
-    // Phase 2 완료(모든 세션이 claims 수신) 후 get() 분기 제거 예정.
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.role == 'academy_admin' ||
@@ -27,9 +26,38 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── 멀티테넌시 헬퍼 (Phase 4-5) ────────────────────────────
+    // 호출자의 academyId (Custom Claims 기반)
+    function myAcademyId() {
+      return request.auth.token.academyId;
+    }
+
+    // 기존 문서가 호출자 학원에 속하는가 (read/update/delete 용)
+    // super_admin 은 모든 학원 접근 허용
+    function isMyAcademy() {
+      return isSuperAdmin() ||
+        (isSignedIn() && resource.data.academyId == myAcademyId());
+    }
+
+    // 신규 문서가 호출자 학원으로 생성되는가 (create 용)
+    function isCreatingForMyAcademy() {
+      return isSuperAdmin() ||
+        (isSignedIn() && request.resource.data.academyId == myAcademyId());
+    }
+
+    // 자기 학원 관리자 (academy_admin + 자기 학원) — read/update/delete
+    function isAdminOfMyAcademy() {
+      return isAdmin() && isMyAcademy();
+    }
+
+    // 자기 학원에 새 문서 만드는 관리자 — create
+    function isAdminCreatingForMyAcademy() {
+      return isAdmin() && isCreatingForMyAcademy();
+    }
+
     // ── 사용자 ───────────────────────────────────────────────
-    // read: 로그인 사용자만 (학생 랭킹·관리자 전체 조회용)
-    // pre-auth username 조회는 usernameLookup 컬렉션을 통해 처리 (B3 완료)
+    // read: 로그인 사용자 (학생 랭킹·관리자 전체 조회용 — 클라가 academyId 로 필터링)
+    //       향후 자기 학원만 보도록 강화 가능 (단, 모든 클라이언트 쿼리에 academyId 필터 강제 필요)
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isAdmin();
@@ -39,41 +67,45 @@ service cloud.firestore {
 
     // ── 그룹 ────────────────────────────────────────────────
     match /groups/{groupId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // ── 단원 (단어장) ────────────────────────────────────────
-    match /units/{unitId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isSuperAdmin() || resource.data.academyId == myAcademyId());
+      allow create: if isAdminCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
     }
 
     // ── 점수 ────────────────────────────────────────────────
+    // 학생: 자기 점수만 (uid 기반)
+    // 관리자: 자기 학원 점수만 (academyId 기반)
     match /scores/{scoreId} {
-      allow read: if isOwner(resource.data.uid) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read: if isOwner(resource.data.uid) || isAdminOfMyAcademy();
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && isCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
     }
 
     // ── 공지사항 ─────────────────────────────────────────────
+    // 학생도 자기 학원 공지만 read
     match /notices/{noticeId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isSuperAdmin() || resource.data.academyId == myAcademyId());
+      allow create: if isAdminCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
     }
 
     // ── 숙제 파일 ────────────────────────────────────────────
     match /hwFiles/{fileId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isSuperAdmin() || resource.data.academyId == myAcademyId());
+      allow create: if isAdminCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
     }
 
     // ── 사용자 알림 ──────────────────────────────────────────
+    // 학생: 자기 알림만 (uid 기반)
+    // 관리자: 자기 학원 알림만
     match /userNotifications/{notifId} {
-      allow read: if isOwner(resource.data.uid) || isAdmin();
-      allow create: if isAdmin();
+      allow read: if isOwner(resource.data.uid) || isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
       allow update: if isOwner(resource.data.uid);
-      allow delete: if isAdmin();
+      allow delete: if isAdminOfMyAcademy();
     }
 
     // ── FCM 토큰 ─────────────────────────────────────────────
@@ -84,15 +116,17 @@ service cloud.firestore {
 
     // ── 결제 (관리자 전용) ───────────────────────────────────
     match /payments/{paymentId} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
 
     // ── 저장된 푸시 목록 (관리자 전용) ──────────────────────
+    // 사용처 없음 (잔재 컬렉션) — 관리자만 통과
     match /savedPushList/{pushId} {
       allow read, write: if isAdmin();
     }
 
-    // ── 교재 ─────────────────────────────────────────────
+    // ── 교재 (레거시 — 시험지 출력 제거됨, 다음 정리 후보) ─
     match /books/{bookId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
@@ -102,43 +136,49 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
     }
-
-    // ── 교재 폴더 ─────────────────────────────────────────
     match /folders/{folderId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /units/{unitId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
     // ── 푸시 알림 목록 (관리자 전용) ─────────────────────
     match /pushNotifications/{pushId} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
 
-    // ── Generator (관리자 전용) ───────────────────────────
+    // ── Generator (관리자 전용 — 자기 학원만) ──────────────
     match /genBooks/{id} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
     match /genChapters/{id} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
     match /genPages/{id} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
 
     // ── AI 문제 세트 (관리자 전용) ────────────────────────
     match /genQuestionSets/{id} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
 
     // ── AI 정리 프리셋 (관리자 전용) ──────────────────────
     match /genCleanupPresets/{id} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
     }
 
-    // ── API 호출 카운터 (Gemini 사용량 추적) ───────────────
-    // read: 관리자만 (위젯 표시용)
-    // write: 로그인 사용자 (학생 앱에서 check-recording 호출 후 증가)
-    // delete 금지 (감사 흔적 유지)
+    // ── API 호출 카운터 (Gemini 사용량 추적 — 글로벌) ──────
+    // 학원 무관 (Gemini 일일 쿼터는 프로젝트 단위)
     match /apiUsage/{day} {
       allow read: if isAdmin();
       allow create, update: if isSignedIn();
@@ -146,11 +186,13 @@ service cloud.firestore {
     }
 
     // ── AI 시험 배정 (관리자 작성, 학생 읽기) ─────────────
+    // 학생도 자기 학원 시험만 read (클라가 이미 academyId 필터)
     match /genTests/{testId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isSuperAdmin() || resource.data.academyId == myAcademyId());
+      allow create: if isAdminCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
 
-      // 학생별 응시 완료 기록
+      // 학생별 응시 완료 기록 — uid 기반 격리 (자기 응시 기록만)
       match /userCompleted/{userId} {
         allow read: if isOwner(userId) || isAdmin();
         allow create, update: if isOwner(userId);
@@ -159,30 +201,26 @@ service cloud.firestore {
     }
 
     // ────────────────────────────────────────────────────────
-    //   멀티테넌시 신규 컬렉션 (Phase 0 전환)
+    //   멀티테넌시 컬렉션 (Phase 0 전환)
     // ────────────────────────────────────────────────────────
 
-    // 플랜 정의 (lite/standard/pro)
-    // read: 모든 로그인 사용자 (클라이언트가 기능 게이팅용으로 읽음)
-    // write: super_admin 전용 (현재는 로컬 스크립트 admin SDK 로만 수정)
+    // 플랜 정의 (lite/standard/pro) — 모든 학원 공통 카탈로그
     match /plans/{planId} {
       allow read: if isSignedIn();
       allow write: if isSuperAdmin();
     }
 
     // 학원 문서
-    // read: 모든 로그인 사용자 (현재 default 학원뿐이라 격리 불필요)
-    //       Phase 2 에서 academyId 필터로 축소 예정
+    // read: 자기 학원만 (Phase 4-5 강화 — 자기 학원 정보만 노출)
     // write: super_admin 전용
     match /academies/{academyId} {
-      allow read: if isSignedIn();
+      allow read: if isSuperAdmin() || (isSignedIn() && academyId == myAcademyId());
       allow write: if isSuperAdmin();
     }
 
     // username → (uid, email) 매핑 (로그인 전 조회 필수)
-    // read: 전체 공개 (단, 정확한 {academyId}_{usernameLower} 문서 ID 알아야 접근 가능)
-    // create/update/delete: 관리자 (saveStudent / 학생삭제 클라이언트 호출 허용)
-    // 서버 API(api/createStudent, api/deleteUser)는 Admin SDK 라 Rules 우회
+    // read: 전체 공개 (정확한 username ID 알아야 접근)
+    // create/update/delete: 관리자 (server API 가 Admin SDK 로 처리)
     match /usernameLookup/{id} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
