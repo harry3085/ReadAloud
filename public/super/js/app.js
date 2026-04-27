@@ -67,7 +67,12 @@ window.runUserSearch = async () => {
   const roleFilter = document.getElementById('userRoleFilter')?.value || '';
   try {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
-    const all = await _loadAllUsers();
+    const [all] = await Promise.all([
+      _loadAllUsers(),
+      _academiesCache.length === 0 ? loadAcademies() : Promise.resolve(),
+    ]);
+    const academyNameMap = {};
+    _academiesCache.forEach(a => { academyNameMap[a.id] = a.name || a.id; });
     let filtered = all;
     if (roleFilter) filtered = filtered.filter(u => u.role === roleFilter);
     if (term) {
@@ -84,17 +89,20 @@ window.runUserSearch = async () => {
       const d = t?.toDate ? t.toDate() : null;
       return d ? d.toISOString().slice(0, 10) : '-';
     };
-    tbody.innerHTML = filtered.slice(0, 200).map(u => `
+    tbody.innerHTML = filtered.slice(0, 200).map(u => {
+      const acaName = u.academyId ? (academyNameMap[u.academyId] || u.academyId) : '-';
+      const acaId = u.academyId || '';
+      return `
       <tr style="cursor:pointer;" onclick="onUserRowClick('${u.uid}')">
         <td class="td-main">${esc(u.name || '-')}</td>
         <td class="td-mono">${esc(u.username || '-')}</td>
         <td class="td-sub">${esc(u.email || '-')}</td>
-        <td>${esc(u.academyId || '-')}</td>
+        <td>${esc(acaName)}${acaId && acaId !== acaName ? `<span style="color:#bbb;font-size:11px;margin-left:4px;">(${esc(acaId)})</span>` : ''}</td>
         <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : (u.role === 'admin' ? 'badge-teal' : '')}">${esc(u.role || '-')}</span></td>
         <td class="td-sub">${esc(u.status || '-')}</td>
         <td class="td-sub">${fmtDate(u.createdAt)}</td>
-      </tr>
-    `).join('') + (filtered.length > 200 ? `<tr><td colspan="7" style="text-align:center;color:#bbb;padding:8px;">... 외 ${filtered.length - 200}건 (검색어 더 좁히기)</td></tr>` : '');
+      </tr>`;
+    }).join('') + (filtered.length > 200 ? `<tr><td colspan="7" style="text-align:center;color:#bbb;padding:8px;">... 외 ${filtered.length - 200}건 (검색어 더 좁히기)</td></tr>` : '');
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">검색 실패: ${esc(e.message)}</td></tr>`;
   }
