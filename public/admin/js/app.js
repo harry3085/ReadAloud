@@ -2649,7 +2649,7 @@ function _genRenderBooks() {
     _genToolbar('book'); return;
   }
   const sorted = _genApplySortSearch('books', _genBooks, 'name');
-  if (cnt) cnt.textContent = `${sorted.length}/${_genBooks.length}개`;
+  if (cnt) cnt.textContent = (_genSearch.books ? `${sorted.length}/${_genBooks.length}` : `${_genBooks.length}`) + '개';
   if (!sorted.length) {
     el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">검색 결과 없음</div>';
     _genToolbar('book'); return;
@@ -2684,7 +2684,7 @@ function _genRenderChapters() {
     _genToolbar('chapter'); return;
   }
   const sorted = _genApplySortSearch('chapters', filtered, 'name');
-  if (cnt) cnt.textContent = `${sorted.length}/${filtered.length}개`;
+  if (cnt) cnt.textContent = (_genSearch.chapters ? `${sorted.length}/${filtered.length}` : `${filtered.length}`) + '개';
   if (!sorted.length) {
     el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">검색 결과 없음</div>';
     _genToolbar('chapter'); return;
