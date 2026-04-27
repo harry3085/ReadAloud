@@ -5,10 +5,15 @@
 //
 // 환경변수: GEMINI_API_KEY (Google AI Studio에서 발급)
 
-// 모델 폴백 체인: Preview가 불안정할 수 있으므로 실패 시 안정판으로 자동 전환
-// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
-// (2.5 계열은 일일 한도 적고 결과 편차로 일관성 저하)
+// 모델 폴백 체인 (2026-04-27 유료 티어 전환):
+//   1차 2.5-flash-lite — GA 안정 + 빠름 + 저렴 (95%+ 1차 통과)
+//   2차 2.5-flash      — 같은 family (결과 일관성 ↑) + 더 capable
+//   3차 3.1-flash-lite — 다른 family (2.5 전체 장애 시 대체)
+// 503/429 transient 에러는 같은 모델로 1회 재시도(800ms backoff) 후 다음 모델.
+// 4xx 비-rate-limit (400/401/403) 는 폴백 안 함 (동일 결과 예상).
 const GEMINI_MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
   'gemini-3.1-flash-lite-preview',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -354,34 +359,47 @@ module.exports = async function handler(req, res) {
       : SYSTEM_PROMPTS[quizType];
     const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, req.body || {});
 
-    // ─── Gemini API 호출 (폴백 체인) ───
+    // ─── Gemini API 호출 (폴백 체인 + 동일 모델 1회 재시도) ───
     let lastError = null;
+    let lastStatus = null;
     let usedModel = null;
     let rawText = null;
     let usage = null;
 
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const isTransient = (status) => status === 503 || status === 429;
+
+    outer:
     for (const model of GEMINI_MODELS) {
-      try {
-        const result = await callGemini(model, apiKey, systemPrompt, userPrompt);
-        if (result.ok) {
-          usedModel = model;
-          rawText = result.text;
-          usage = result.usage;
-          break;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await callGemini(model, apiKey, systemPrompt, userPrompt);
+          if (result.ok) {
+            usedModel = model;
+            rawText = result.text;
+            usage = result.usage;
+            break outer;
+          }
+          lastError = result.error;
+          lastStatus = result.status || null;
+          // 4xx 비-transient (400/401/403) 는 다른 모델도 동일 에러 — 즉시 중단
+          if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+            return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+          }
+          // 503/429 → 같은 모델 1회 재시도 (800ms backoff)
+          if (isTransient(lastStatus) && attempt === 0) {
+            console.warn(`[generate-quiz] ${model} ${lastStatus} → 800ms 후 재시도`);
+            await sleep(800);
+            continue;
+          }
+          // 그 외 (404 / 5xx 등) → 다음 모델
+          console.warn(`[generate-quiz] ${model} 실패(${lastStatus}) → 다음 모델`);
+          continue outer;
+        } catch (e) {
+          lastError = e.message;
+          console.warn(`[generate-quiz] ${model} exception:`, e.message);
+          if (attempt === 0) { await sleep(800); continue; }  // 네트워크 오류도 1회 재시도
         }
-        lastError = result.error;
-        // 4xx는 모델 문제라기보단 입력/할당량 문제일 수 있음 — 폴백해도 소용없을 가능성
-        if (result.status && result.status >= 400 && result.status < 500 && result.status !== 404) {
-          // 404는 모델 이름 오류일 수 있으니 다음 모델로 폴백
-          return res.status(502).json({
-            error: 'AI service error',
-            detail: lastError,
-            model,
-          });
-        }
-      } catch (e) {
-        lastError = e.message;
-        console.warn(`Model ${model} failed, trying next:`, e.message);
       }
     }
 

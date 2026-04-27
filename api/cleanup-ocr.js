@@ -3,8 +3,10 @@
 // POST body: { text, systemPrompt }
 // Response: { success, cleaned, model, usage }
 
-// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
+// 폴백 체인 (2026-04-27 유료 티어 전환): 2.5-flash-lite → 2.5-flash → 3.1-flash-lite
 const GEMINI_MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
   'gemini-3.1-flash-lite-preview',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -39,26 +41,42 @@ module.exports = async function handler(req, res) {
     const inputText = text.slice(0, MAX_INPUT_CHARS);
 
     let lastError = null;
+    let lastStatus = null;
     let usedModel = null;
     let cleaned = null;
     let usage = null;
 
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const isTransient = (status) => status === 503 || status === 429;
+
+    outer:
     for (const model of GEMINI_MODELS) {
-      try {
-        const result = await callGemini(model, apiKey, systemPrompt.trim(), inputText);
-        if (result.ok) {
-          usedModel = model;
-          cleaned = result.text;
-          usage = result.usage;
-          break;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await callGemini(model, apiKey, systemPrompt.trim(), inputText);
+          if (result.ok) {
+            usedModel = model;
+            cleaned = result.text;
+            usage = result.usage;
+            break outer;
+          }
+          lastError = result.error;
+          lastStatus = result.status || null;
+          if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+            return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+          }
+          if (isTransient(lastStatus) && attempt === 0) {
+            console.warn(`[cleanup-ocr] ${model} ${lastStatus} → 800ms 후 재시도`);
+            await sleep(800);
+            continue;
+          }
+          console.warn(`[cleanup-ocr] ${model} 실패(${lastStatus}) → 다음 모델`);
+          continue outer;
+        } catch (e) {
+          lastError = e.message;
+          console.warn(`[cleanup-ocr] ${model} exception:`, e.message);
+          if (attempt === 0) { await sleep(800); continue; }
         }
-        lastError = result.error;
-        if (result.status && result.status >= 400 && result.status < 500 && result.status !== 404) {
-          return res.status(502).json({ error: 'AI service error', detail: lastError, model });
-        }
-      } catch (e) {
-        lastError = e.message;
-        console.warn(`Model ${model} failed, trying next:`, e.message);
       }
     }
 

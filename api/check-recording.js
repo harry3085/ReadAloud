@@ -3,11 +3,11 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// 단일 모델 정책: gemini-3.1-flash-lite-preview 만 사용
-// 이유: 2.5 계열은 일일 한도 20/day 로 녹음숙제(1회 3건 병렬)에 부적합하고,
-// 모델 간 결과 편차로 학생·관리자 경험 일관성 해침. 3.1 은 500/day 로 충분.
-// 실패 시 같은 모델로 최대 2회 재시도.
+// 폴백 체인 (2026-04-27 유료 티어 전환): 2.5-flash-lite → 2.5-flash → 3.1-flash-lite
+// 같은 모델로 최대 2회 재시도 후 다음 모델로 폴백 (transient 에러 처리).
 const MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
   'gemini-3.1-flash-lite-preview',
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
