@@ -180,9 +180,14 @@ service cloud.firestore {
     // ── API 호출 카운터 (학원별 일별 집계) ─────────────────
     // doc id = `{academyId}_{YYYY-MM-DD}`, body 에 academyId 필드
     // read: 자기 학원 관리자만 (super_admin 은 모든 학원)
+    //       비존재 문서는 첫 호출 전 상태이므로 통과 — 클라가 0 으로 처리
     // create/update: 로그인 사용자 (자기 학원으로만 — academyId 일치)
     match /apiUsage/{id} {
-      allow read: if isAdmin() && isMyAcademy();
+      allow read: if isAdmin() && (
+        isSuperAdmin() ||
+        resource == null ||
+        resource.data.academyId == myAcademyId()
+      );
       allow create, update: if isSignedIn() && isCreatingForMyAcademy();
       allow delete: if false;
     }

@@ -87,11 +87,15 @@ async function _logApiCall(endpoint){
   } catch(e) { /* silent */ }
 }
 
-// fetch + 자동 로깅 wrapper — /api/generate-quiz / /api/cleanup-ocr 호출 시 사용
+// fetch + 자동 로깅 wrapper — /api/generate-quiz / /api/cleanup-ocr / /api/ocr 호출 시 사용
 async function _geminiFetch(url, init){
   const res = await fetch(url, init);
   const ep = String(url).replace(/^\/api\//, '');
   _logApiCall(ep);
+  // 대시보드 위젯 자동 갱신 (1.5초 후 — increment 반영 대기)
+  if (currentPage === 'dashboard' && typeof loadApiUsage === 'function') {
+    setTimeout(() => loadApiUsage(), 1500);
+  }
   return res;
 }
 
