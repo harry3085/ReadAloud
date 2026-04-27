@@ -2120,8 +2120,12 @@ window.toggleTestProgress = async(testId, source='genTests') => {
         students.push({uid:tg.id, name:tg.name, group:tg.groupName||''});
       } else if(tg.type==='class') {
         const gName = tg.groupName || (tg.name||'').replace(/\s*전체\s*$/,'').trim() || tg.id;
-        const gs = await getDocs(query(collection(db,'users'),where('group','==',gName)));
-        gs.docs.filter(d=>d.data().role==='student').forEach(d=>
+        const gs = await getDocs(query(collection(db,'users'),
+          where('academyId','==',window.MY_ACADEMY_ID),
+          where('role','==','student'),
+          where('group','==',gName)
+        ));
+        gs.docs.forEach(d=>
           students.push({uid:d.id, name:d.data().name, group:d.data().group||''})
         );
       }
@@ -2135,7 +2139,10 @@ window.toggleTestProgress = async(testId, source='genTests') => {
     compSnap.docs.forEach(d=>{ compMap[d.id]=d.data(); });
 
     // 점수 목록 (응시 여부 확인용)
-    const scoreSnap = await getDocs(query(collection(db,'scores'),where('testId','==',testId)));
+    const scoreSnap = await getDocs(query(collection(db,'scores'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('testId','==',testId)
+    ));
     const scoreMap = {}; // uid → 최고점수
     scoreSnap.docs.forEach(d=>{
       const s=d.data();
