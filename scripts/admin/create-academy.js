@@ -150,7 +150,8 @@ async function main() {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    const adminUsername = subdomain + '_admin';
+    // 학원장 username = subdomain 그대로 (접미사 없음, 2026-04-27 정책)
+    const adminUsername = subdomain;
     const adminUsernameLower = adminUsername.toLowerCase();
     batch.set(db.doc(`users/${adminUid}`), {
       academyId: subdomain,

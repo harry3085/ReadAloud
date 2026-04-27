@@ -128,7 +128,8 @@ module.exports = async (req, res) => {
     }
 
     // 6. Firestore 쓰기 (academies + users + usernameLookup batch)
-    const adminUsername = (subdomain + '_admin').toLowerCase();
+    // 학원장 username = subdomain 그대로 (접미사 없음, 2026-04-27 정책)
+    const adminUsername = subdomain.toLowerCase();
     try {
       const batch = db.batch();
       batch.set(academyRef, {

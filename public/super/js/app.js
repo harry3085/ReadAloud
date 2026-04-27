@@ -140,7 +140,7 @@ window.openAcademyCreateModal = () => {
           <input id="newAdEmail" type="email" placeholder="owner@example.com" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
         <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">임시 비밀번호 *</div>
           <input id="newAdPw" type="text" placeholder="8자 이상 (학원장에게 전달)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-        <div style="font-size:11px;color:var(--gray);">※ 학원장 username 은 자동으로 <code>{학원코드}_admin</code> 으로 생성됩니다.</div>
+        <div style="font-size:11px;color:var(--gray);">※ 학원장 username 은 학원코드(subdomain)와 동일하게 자동 생성됩니다.</div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>

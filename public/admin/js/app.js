@@ -124,12 +124,6 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
-
-  // super_admin 전용 — 슈퍼 관리자 앱 링크 노출
-  if (window.MY_ROLE === 'super_admin') {
-    const link = document.getElementById('nav-super-admin-link');
-    if (link) link.style.display = '';
-  }
 }
 
 onAuthStateChanged(auth, async user => {
