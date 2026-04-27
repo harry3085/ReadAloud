@@ -6,18 +6,22 @@
 <title>큰소리 영어 — 슈퍼 관리자</title>
 <link rel="stylesheet" href="/admin/style.css">
 <style>
-  /* admin/style.css 의 html,body{overflow:hidden} 을 super 앱에선 풀기 */
-  html, body { overflow: auto !important; height: auto !important; min-height: 100%; }
-  .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
+  /* main 영역만 스크롤. header/tabs/검색창은 고정 */
+  html, body { overflow: hidden !important; height: 100% !important; }
+  body { display: flex; flex-direction: column; }
+  .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
   .super-header .title { font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px; }
   .super-header .title img { width:32px; height:32px; }
   .super-header .right { display:flex; gap:10px; align-items:center; }
   .super-header .right a { color:white; text-decoration:none; padding:6px 12px; border:1px solid rgba(255,255,255,.4); border-radius:6px; font-size:13px; }
   .super-header .right a:hover { background:rgba(255,255,255,.15); }
-  .super-main { padding:22px; max-width:1280px; margin:0 auto; }
-  .super-tabs { display:flex; gap:6px; border-bottom:1px solid #ddd; margin-bottom:18px; }
+  .super-main { flex:1; overflow-y:auto; padding:22px; max-width:1280px; width:100%; margin:0 auto; box-sizing:border-box; }
+  /* 탭은 main 의 스크롤 영역 안에서 sticky — 스크롤해도 위에 붙어 보임 */
+  .super-tabs { display:flex; gap:6px; border-bottom:1px solid #ddd; margin-bottom:18px; position:sticky; top:0; background:var(--bg, #f7f7f7); z-index:30; padding-top:2px; }
   .super-tabs button { background:none; border:none; padding:10px 16px; cursor:pointer; font-size:14px; color:#666; border-bottom:2px solid transparent; }
   .super-tabs button.active { color:var(--teal); border-bottom-color:var(--teal); font-weight:700; }
+  /* 사용자 검색의 검색바 — 탭 아래 sticky */
+  #page-users > .card:first-child { position:sticky; top:46px; z-index:20; }
 </style>
 </head>
 <body>
