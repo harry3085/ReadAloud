@@ -236,9 +236,9 @@ async function loadApiUsage(){
     const y = yestSnap.exists() ? yestSnap.data() : { total: 0 };
     const bE = t.byEndpoint || {};
     const items = [
-      { key: 'check-recording', label: '🎤 녹음 평가' },
-      { key: 'generate-quiz',   label: '✨ 문제 생성' },
-      { key: 'cleanup-ocr',     label: '📝 OCR 정리' },
+      { keys: ['check-recording'],          label: '🎤 녹음숙제' },
+      { keys: ['generate-quiz'],            label: '✨ AI Generator' },
+      { keys: ['ocr', 'cleanup-ocr'],       label: '📝 AI OCR' },
     ];
     const total = t.total || 0;
     const pct = Math.min(100, Math.round((total / 500) * 100));
@@ -252,11 +252,14 @@ async function loadApiUsage(){
         <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s;"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
-        ${items.map(it => `
+        ${items.map(it => {
+          const cnt = it.keys.reduce((s,k) => s + (bE[k] || 0), 0);
+          return `
           <div style="display:flex;justify-content:space-between;">
             <span>${it.label}</span>
-            <span style="font-weight:600;color:var(--text);">${bE[it.key] || 0}</span>
-          </div>`).join('')}
+            <span style="font-weight:600;color:var(--text);">${cnt}</span>
+          </div>`;
+        }).join('')}
       </div>
       <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:10px;color:#bbb;">
         어제: ${y.total || 0}회
@@ -2957,7 +2960,7 @@ window.runGenOcr = async () => {
   for (let i=0; i<_genImages.length; i++) {
     if (status) status.textContent = `처리 중... (${i+1}/${_genImages.length})`;
     try {
-      const res = await fetch('/api/ocr',{
+      const res = await _geminiFetch('/api/ocr',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({imageBase64:_genImages[i].base64,mimeType:_genImages[i].mimeType}),
