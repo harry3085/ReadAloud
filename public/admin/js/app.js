@@ -2592,19 +2592,69 @@ function _genRecentSort(arr) {
   return [...arr].sort((a,b) => t(b) - t(a));
 }
 
+// ── 정렬 + 검색 (Book/Chapter/Page 공통) ───────────────
+// kind: 'books' | 'chapters' | 'pages'
+// 기본 'recent' (최근순). 같은 헤더 클릭 시 'name' 토글, 다시 클릭 시 'recent' 로
+const _genSort = { books: 'recent', chapters: 'recent', pages: 'recent' };
+const _genSearch = { books: '', chapters: '', pages: '' };
+
+window.genToggleSort = (kind) => {
+  _genSort[kind] = _genSort[kind] === 'recent' ? 'name' : 'recent';
+  if (kind === 'books') _genRenderBooks();
+  else if (kind === 'chapters') _genRenderChapters();
+  else if (kind === 'pages') _genRenderPages();
+};
+
+window.genUpdateSearch = (kind, value) => {
+  _genSearch[kind] = String(value || '').trim().toLowerCase();
+  if (kind === 'books') _genRenderBooks();
+  else if (kind === 'chapters') _genRenderChapters();
+  else if (kind === 'pages') _genRenderPages();
+};
+
+function _genApplySortSearch(kind, arr, nameKey = 'name') {
+  let result = arr;
+  // 검색
+  const term = _genSearch[kind];
+  if (term) {
+    result = result.filter(x => String(x[nameKey] || x.title || '').toLowerCase().includes(term));
+  }
+  // 정렬
+  if (_genSort[kind] === 'name') {
+    result = [...result].sort((a,b) =>
+      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko'));
+  } else {
+    result = _genRecentSort(result);
+  }
+  return result;
+}
+
+function _genUpdateSortMark(kind) {
+  const id = kind === 'books' ? 'genBookSortMark' : kind === 'chapters' ? 'genChapterSortMark' : 'genPageSortMark';
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = _genSort[kind] === 'name' ? '· 이름순 ▼' : '· 최근순 ▼';
+}
+
 function _genRenderBooks() {
   const el = document.getElementById('genBookList');
   const cnt = document.getElementById('genBookCount');
   const clearBtn = document.getElementById('genBookClearBtn');
   if (clearBtn) clearBtn.style.display = (_genActiveBook || _genCheckedBooks.size > 0) ? '' : 'none';
+  _genUpdateSortMark('books');
   if (!el) return;
   if (!_genBooks.length) {
     el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Book이 없습니다</div>';
     if (cnt) cnt.textContent = '';
     _genToolbar('book'); return;
   }
-  if (cnt) cnt.textContent = _genBooks.length + '개';
-  el.innerHTML = _genRecentSort(_genBooks).map(b => {
+  const sorted = _genApplySortSearch('books', _genBooks, 'name');
+  if (cnt) cnt.textContent = `${sorted.length}/${_genBooks.length}개`;
+  if (!sorted.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">검색 결과 없음</div>';
+    _genToolbar('book'); return;
+  }
+  el.innerHTML = sorted.map(b => {
     const chCnt = _genChapters.filter(c=>c.bookId===b.id).length;
     const pgCnt = _genPages.filter(p=>p.bookId===b.id).length;
     const active = _genActiveBook === b.id;
@@ -2625,6 +2675,7 @@ function _genRenderChapters() {
   const cnt = document.getElementById('genChapterCount');
   const clearBtn = document.getElementById('genChapterClearBtn');
   if (clearBtn) clearBtn.style.display = (_genActiveChapter || _genCheckedChapters.size > 0) ? '' : 'none';
+  _genUpdateSortMark('chapters');
   if (!el) return;
   const filtered = _genFilteredChapters();
   if (!filtered.length) {
@@ -2632,8 +2683,13 @@ function _genRenderChapters() {
     if (cnt) cnt.textContent = '';
     _genToolbar('chapter'); return;
   }
-  if (cnt) cnt.textContent = filtered.length + '개';
-  el.innerHTML = _genRecentSort(filtered).map(c => {
+  const sorted = _genApplySortSearch('chapters', filtered, 'name');
+  if (cnt) cnt.textContent = `${sorted.length}/${filtered.length}개`;
+  if (!sorted.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">검색 결과 없음</div>';
+    _genToolbar('chapter'); return;
+  }
+  el.innerHTML = sorted.map(c => {
     const pgCnt = _genPages.filter(p=>p.chapterId===c.id).length;
     const active = _genActiveChapter === c.id;
     return `
@@ -2651,16 +2707,18 @@ function _genRenderChapters() {
 function _genRenderPages() {
   const el = document.getElementById('genPageList');
   const cnt = document.getElementById('genPageCount');
+  _genUpdateSortMark('pages');
   if (!el) return;
   const filtered = _genFilteredPages();
-  const total = filtered.length;
+  const sorted = _genApplySortSearch('pages', filtered, 'title');
+  const total = sorted.length;
   const totalPgs = Math.ceil(total / _genPageSize) || 1;
   if (_genPageCur > totalPgs) _genPageCur = 1;
   const start = (_genPageCur-1)*_genPageSize;
-  const slice = filtered.slice(start, start+_genPageSize);
-  if (cnt) cnt.textContent = total + '개';
+  const slice = sorted.slice(start, start+_genPageSize);
+  if (cnt) cnt.textContent = (filtered.length === total ? total : `${total}/${filtered.length}`) + '개';
   if (!total) {
-    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">Page가 없습니다</div>';
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">' + (filtered.length ? '검색 결과 없음' : 'Page가 없습니다') + '</div>';
     _genRenderPagePaging(0,0); _genToolbar('page'); return;
   }
   el.innerHTML = slice.map(p => {
@@ -4008,9 +4066,12 @@ function _qgRender() {
   const root = document.getElementById('quizGenRoot');
   if (!root) return;
 
-  const books = _genBooks || [];
-  const chapters = _qgFilteredChapters();
-  const pages = _qgFilteredPages();
+  const allBooks = _genBooks || [];
+  const allChapters = _qgFilteredChapters();
+  const allPages = _qgFilteredPages();
+  const books = _qgApplySortSearch('books', allBooks, 'name');
+  const chapters = _qgApplySortSearch('chapters', allChapters, 'name');
+  const pages = _qgApplySortSearch('pages', allPages, 'title');
 
   root.innerHTML = `
     <div id="qgTopRow" style="display:flex;gap:0;height:calc(100vh - 210px);min-height:520px;">
@@ -4018,8 +4079,11 @@ function _qgRender() {
       <!-- 1. Book 컬럼 -->
       <div id="qgBookPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-          <span>📚 Book <span style="font-size:11px;color:var(--gray);font-weight:400;">${books.length}개</span></span>
+          <span style="cursor:pointer;user-select:none;" onclick="qgToggleSort('books')">📚 Book <span style="font-size:11px;color:var(--gray);font-weight:400;">${books.length === allBooks.length ? books.length : `${books.length}/${allBooks.length}`}개</span> <span style="font-size:10px;color:var(--gray);font-weight:400;">${_qgSortLabel('books')}</span></span>
           ${_qgActiveBook ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgClearBook()">해제</button>` : ''}
+        </div>
+        <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+          <input type="search" id="qgBookSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('books',this.value)" value="${esc(_qgSearch.books)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${books.length === 0
@@ -4047,8 +4111,11 @@ function _qgRender() {
       <!-- 2. Chapter 컬럼 -->
       <div id="qgChapterPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-          <span>📖 Chapter <span style="font-size:11px;color:var(--gray);font-weight:400;">${chapters.length}개</span></span>
+          <span style="cursor:pointer;user-select:none;" onclick="qgToggleSort('chapters')">📖 Chapter <span style="font-size:11px;color:var(--gray);font-weight:400;">${chapters.length === allChapters.length ? chapters.length : `${chapters.length}/${allChapters.length}`}개</span> <span style="font-size:10px;color:var(--gray);font-weight:400;">${_qgSortLabel('chapters')}</span></span>
           ${_qgActiveChapter ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgClearChapter()">해제</button>` : ''}
+        </div>
+        <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+          <input type="search" id="qgChapterSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('chapters',this.value)" value="${esc(_qgSearch.chapters)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${chapters.length === 0
@@ -4077,11 +4144,14 @@ function _qgRender() {
       <!-- 3. Page 컬럼 (체크박스 다중 선택) -->
       <div id="qgPagePane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-          <span>📄 Page <span style="font-size:11px;color:var(--gray);font-weight:400;">${pages.length}개 · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 · <span id="qgTokenEst"></span></span></span>
+          <span style="cursor:pointer;user-select:none;" onclick="qgToggleSort('pages')">📄 Page <span style="font-size:11px;color:var(--gray);font-weight:400;">${pages.length === allPages.length ? pages.length : `${pages.length}/${allPages.length}`}개 · 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 · <span id="qgTokenEst"></span></span> <span style="font-size:10px;color:var(--gray);font-weight:400;">${_qgSortLabel('pages')}</span></span>
           <div style="display:flex;gap:4px;flex-shrink:0;">
             <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectAll()">전체</button>
             <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectNone()">해제</button>
           </div>
+        </div>
+        <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+          <input type="search" id="qgPageSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('pages',this.value)" value="${esc(_qgSearch.pages)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${pages.length === 0
@@ -4225,6 +4295,43 @@ function _qgFilteredPages() {
   }
   return all;
 }
+
+// 정렬 + 검색 (Book/Chapter/Page 공통)
+const _qgSort = { books: 'recent', chapters: 'recent', pages: 'recent' };
+const _qgSearch = { books: '', chapters: '', pages: '' };
+
+window.qgToggleSort = (kind) => {
+  _qgSort[kind] = _qgSort[kind] === 'recent' ? 'name' : 'recent';
+  _qgRender();
+};
+window.qgUpdateSearch = (kind, value) => {
+  _qgSearch[kind] = String(value || '').trim().toLowerCase();
+  _qgRender();
+  // focus 복원
+  const id = kind === 'books' ? 'qgBookSearch' : kind === 'chapters' ? 'qgChapterSearch' : 'qgPageSearch';
+  const inp = document.getElementById(id);
+  if (inp) {
+    inp.value = _qgSearch[kind];
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+};
+
+function _qgApplySortSearch(kind, arr, nameKey = 'name') {
+  let result = arr;
+  const term = _qgSearch[kind];
+  if (term) {
+    result = result.filter(x => String(x[nameKey] || x.title || '').toLowerCase().includes(term));
+  }
+  if (_qgSort[kind] === 'name') {
+    result = [...result].sort((a,b) =>
+      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko'));
+  } else {
+    result = _genRecentSort(result);
+  }
+  return result;
+}
+function _qgSortLabel(kind) { return _qgSort[kind] === 'name' ? '· 이름순' : '· 최근순'; }
 
 // ─── Book / Chapter 선택 핸들러 ───
 window.qgSelectBook = (bookId) => {

@@ -695,12 +695,13 @@
 
         <!-- Page -->
         <div class="card" style="flex:1;min-width:0;padding:0;overflow:hidden;display:flex;flex-direction:column;">
-          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <span>📄 Page</span><span id="genPageCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span>
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
+            <span style="cursor:pointer;user-select:none;" onclick="genToggleSort('pages')">📄 Page <span id="genPageCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span> <span id="genPageSortMark" style="font-size:10px;color:var(--gray);"></span></span>
           </div>
           <div style="padding:5px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;">
             <input type="checkbox" id="genPageCheckAll" onchange="genToggleCheckAll('page',this)">
-            <label for="genPageCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;">전체 선택</label>
+            <label for="genPageCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;white-space:nowrap;">전체</label>
+            <input type="search" id="genPageSearch" placeholder="🔍 검색" oninput="genUpdateSearch('pages',this.value)" style="flex:1;min-width:0;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
           </div>
           <div id="genPageList" style="flex:1;overflow-y:auto;"></div>
           <div style="padding:6px 8px;border-top:1px solid var(--border);background:#fafafa;flex-shrink:0;">
@@ -719,12 +720,13 @@
         <!-- Chapter -->
         <div class="card" style="flex:1;min-width:0;padding:0;overflow:hidden;display:flex;flex-direction:column;">
           <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-            <span>📖 Chapter <span id="genChapterCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span></span>
+            <span style="cursor:pointer;user-select:none;" onclick="genToggleSort('chapters')">📖 Chapter <span id="genChapterCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span> <span id="genChapterSortMark" style="font-size:10px;color:var(--gray);"></span></span>
             <button id="genChapterClearBtn" class="btn btn-secondary" style="font-size:11px;padding:3px 8px;display:none;" onclick="genClearChapter()">해제</button>
           </div>
           <div style="padding:5px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;">
             <input type="checkbox" id="genChapterCheckAll" onchange="genToggleCheckAll('chapter',this)">
-            <label for="genChapterCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;">전체 선택</label>
+            <label for="genChapterCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;white-space:nowrap;">전체</label>
+            <input type="search" id="genChapterSearch" placeholder="🔍 검색" oninput="genUpdateSearch('chapters',this.value)" style="flex:1;min-width:0;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
           </div>
           <div id="genChapterList" style="flex:1;overflow-y:auto;"></div>
           <div style="padding:10px 8px;border-top:1px solid var(--border);background:#fafafa;flex-shrink:0;">
@@ -741,12 +743,13 @@
         <!-- Book -->
         <div class="card" style="flex:1;min-width:0;padding:0;overflow:hidden;display:flex;flex-direction:column;">
           <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-            <span>📚 Book <span id="genBookCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span></span>
+            <span style="cursor:pointer;user-select:none;" onclick="genToggleSort('books')">📚 Book <span id="genBookCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span> <span id="genBookSortMark" style="font-size:10px;color:var(--gray);"></span></span>
             <button id="genBookClearBtn" class="btn btn-secondary" style="font-size:11px;padding:3px 8px;display:none;" onclick="genClearBook()">해제</button>
           </div>
           <div style="padding:5px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;">
             <input type="checkbox" id="genBookCheckAll" onchange="genToggleCheckAll('book',this)">
-            <label for="genBookCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;">전체 선택</label>
+            <label for="genBookCheckAll" style="font-size:12px;color:var(--gray);cursor:pointer;margin:0;white-space:nowrap;">전체</label>
+            <input type="search" id="genBookSearch" placeholder="🔍 검색" oninput="genUpdateSearch('books',this.value)" style="flex:1;min-width:0;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
           </div>
           <div id="genBookList" style="flex:1;overflow-y:auto;"></div>
           <div style="padding:10px 8px;border-top:1px solid var(--border);background:#fafafa;flex-shrink:0;">
