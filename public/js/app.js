@@ -742,6 +742,8 @@ async function _mcqSubmit(){
   const s = _mcqTakeState;
   const t = s.test;
   if(!t || !currentUser) return;
+  if (s._submitted || s._submitting) return;
+  s._submitting = true;
 
   let correct = 0;
   s.questions.forEach((q, i) => {
@@ -782,9 +784,12 @@ async function _mcqSubmit(){
         questions: s.questions, answers: s.answers,
       });
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
+    s._submitted = true;
   }catch(e){
     console.error(e);
     showToast('점수 저장 실패: '+e.message);
+  } finally {
+    s._submitting = false;
   }
 
   _mcqRenderResult({ correct, wrong, total, score, passed, passScore,
@@ -1329,6 +1334,9 @@ function _fbSpeakWords(words){
 async function _fbSubmit(){
   _fbStopTimer();
   const s = _fbState;
+  if (!s.test || !currentUser) return;
+  if (s._submitted || s._submitting) return;
+  s._submitting = true;
   const t = s.test;
   if(!t || !currentUser) return;
 
@@ -1422,9 +1430,12 @@ async function _fbSubmit(){
         },
       });
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
+    s._submitted = true;
   }catch(e){
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
+  } finally {
+    s._submitting = false;
   }
 
   _fbRenderResult({
@@ -1832,9 +1843,12 @@ async function _raSubmit(){
   const s = _raState;
   const t = s.test;
   if(!t || !currentUser) return;
+  if (s._submitted || s._submitting) return;
+  s._submitting = true;
 
   const missing = s.recordings.findIndex(r => !r);
   if(missing !== -1){
+    s._submitting = false;  // 가드 해제 — 사용자가 다시 시도
     const ok = await showConfirm(`${missing+1}번 문제가 녹음되지 않았어요`, '되돌아가서 녹음하시겠어요?');
     if(ok){
       s.currentIdx = missing;
@@ -1909,12 +1923,14 @@ async function _raSubmit(){
         { merge: true }
       );
     }catch(e){ console.warn('genTest 완료 기록 실패', e); }
-
+    s._submitted = true;
     _raRenderResult(uploadedUrls.length);
   }catch(e){
     console.error(e);
     showToast('업로드 실패: ' + e.message);
     _raRenderStep();
+  } finally {
+    s._submitting = false;
   }
 }
 
@@ -2291,11 +2307,13 @@ async function _rv2Submit() {
     showToast('3회 녹음이 모두 필요합니다');
     return;
   }
+  if (_rv2._submitted || _rv2._submitting) return;
+  _rv2._submitting = true;
   const t = _rv2.test;
   const q = _rv2.question;
   const threshold = q.accuracyThreshold || 70;
   const evalSec = q.evaluationSeconds || 60;
-  if (!currentUser) { showToast('로그인이 필요해요'); return; }
+  if (!currentUser) { _rv2._submitting = false; showToast('로그인이 필요해요'); return; }
 
   _rv2ShowSubmitting('🎤 녹음 업로드 중...', '3개 파일 Storage 에 저장');
 
@@ -2446,9 +2464,11 @@ async function _rv2Submit() {
     _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
     const allAudioUrls = uploadResults.map(u => u.audioUrl);
     console.log('[rv2Submit] DONE');
+    _rv2._submitted = true;
     _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
+    _rv2._submitting = false;  // 재시도 가능하도록
     // 화면에 에러 유지 표시 (토스트는 짧게 사라지므로)
     const screen = document.getElementById('recAiQuiz');
     if (screen) {
@@ -2471,6 +2491,8 @@ async function _rv2Submit() {
     } else {
       showToast(`제출 실패 (${stage}): ${e.message}`);
     }
+  } finally {
+    if (!_rv2._submitted) _rv2._submitting = false;
   }
 }
 
@@ -4696,6 +4718,8 @@ async function _uqSubmit() {
   const s = _uqState;
   const t = s.test;
   if (!t || !currentUser) return;
+  if (s._submitted || s._submitting) return;
+  s._submitting = true;
 
   let correct = 0;
   const total = s.questions.length;
@@ -4735,9 +4759,12 @@ async function _uqSubmit() {
         questions: s.questions, answers: s.answers,
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+    s._submitted = true;
   } catch(e) {
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
+  } finally {
+    s._submitting = false;
   }
   _uqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore,
     questions: s.questions, answers: s.answers });
