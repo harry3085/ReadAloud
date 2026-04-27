@@ -6,7 +6,7 @@
 <title>큰소리 영어 — 슈퍼 관리자</title>
 <link rel="stylesheet" href="/admin/style.css">
 <style>
-  /* main 영역만 스크롤. header/tabs/검색창은 고정 */
+  /* viewport 전체 고정 — 페이지 자체는 스크롤 안 함. 표 안만 스크롤 */
   html, body { overflow: hidden !important; height: 100% !important; }
   body { display: flex; flex-direction: column; }
   .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -15,13 +15,17 @@
   .super-header .right { display:flex; gap:10px; align-items:center; }
   .super-header .right a { color:white; text-decoration:none; padding:6px 12px; border:1px solid rgba(255,255,255,.4); border-radius:6px; font-size:13px; }
   .super-header .right a:hover { background:rgba(255,255,255,.15); }
-  .super-main { flex:1; overflow-y:auto; padding:22px; max-width:1280px; width:100%; margin:0 auto; box-sizing:border-box; }
-  /* 탭은 main 의 스크롤 영역 안에서 sticky — 스크롤해도 위에 붙어 보임 */
-  .super-tabs { display:flex; gap:6px; border-bottom:1px solid #ddd; margin-bottom:18px; position:sticky; top:0; background:var(--bg, #f7f7f7); z-index:30; padding-top:2px; }
+  /* main 도 스크롤 X. 자식 .page.active 가 flex column 으로 표 영역만 스크롤 */
+  .super-main { flex:1; overflow:hidden; padding:22px; max-width:1280px; width:100%; margin:0 auto; box-sizing:border-box; display:flex; flex-direction:column; }
+  .super-tabs { display:flex; gap:6px; border-bottom:1px solid #ddd; margin-bottom:14px; flex-shrink:0; }
   .super-tabs button { background:none; border:none; padding:10px 16px; cursor:pointer; font-size:14px; color:#666; border-bottom:2px solid transparent; }
   .super-tabs button.active { color:var(--teal); border-bottom-color:var(--teal); font-weight:700; }
-  /* 사용자 검색의 검색바 — 탭 아래 sticky */
-  #page-users > .card:first-child { position:sticky; top:46px; z-index:20; }
+  /* admin/style.css 의 .page{display:none}/.page.active{display:block} override */
+  .page.active { display:flex !important; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+  /* 표 카드 = 영역 채우고 자체 스크롤 */
+  .card-scroll { flex:1; min-height:0; overflow-y:auto; }
+  /* 표 헤더 sticky — 스크롤해도 컬럼 헤더 고정 */
+  .card-scroll table.table thead th { position:sticky; top:0; background:#f8f9fa; z-index:5; }
 </style>
 </head>
 <body>
@@ -47,10 +51,10 @@
 
   <!-- 학원 관리 -->
   <div class="page active" id="page-academies">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;flex-shrink:0;">
       <button class="btn btn-primary" onclick="openAcademyCreateModal()">+ 신규 학원</button>
     </div>
-    <div class="card" style="padding:0;">
+    <div class="card card-scroll" style="padding:0;">
       <table class="table">
         <thead>
           <tr>
@@ -72,7 +76,7 @@
 
   <!-- 사용자 검색 -->
   <div class="page" id="page-users">
-    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-shrink:0;">
       <input id="userSearchInput" type="text" placeholder="이름 / 이메일 / username / uid" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;" onkeyup="if(event.key==='Enter')runUserSearch()">
       <select id="userRoleFilter" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
         <option value="">전체 role</option>
@@ -82,7 +86,7 @@
       </select>
       <button class="btn btn-primary" onclick="runUserSearch()">🔍 검색</button>
     </div>
-    <div class="card" style="padding:0;">
+    <div class="card card-scroll" style="padding:0;">
       <table class="table">
         <thead>
           <tr>
