@@ -25,6 +25,7 @@
     "sync-claims": "node scripts/admin/sync-claims.js",
     "sync-claims:apply": "node scripts/admin/sync-claims.js --apply",
     "reset-password": "node scripts/admin/reset-password.js",
+    "set-usage": "node scripts/diag/set-usage.js",
     "cleanup:auth-orphans": "node scripts/cleanup/auth-orphans.js",
     "cleanup:auth-orphans:apply": "node scripts/cleanup/auth-orphans.js --apply",
     "cleanup:firestore-orphans": "node scripts/cleanup/firestore-orphans.js",
