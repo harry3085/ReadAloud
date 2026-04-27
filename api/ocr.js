@@ -1,4 +1,5 @@
 const vision = require('@google-cloud/vision');
+const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -6,7 +7,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { imageBase64, mimeType } = req.body;
+    const { idToken, imageBase64, mimeType } = req.body;
+
+    // 인증 + AI 월 쿼터 (Vision 도 학원 AI 비용에 합산)
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+    if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
+
     if (!imageBase64) {
       return res.status(400).json({ error: 'imageBase64 required' });
     }
@@ -51,6 +57,7 @@ module.exports = async function handler(req, res) {
 
     const confidence = wordCount > 0 ? Math.round((totalConf / wordCount) * 100) : 0;
 
+    await incrementUsage(q);
     res.status(200).json({ success: true, text, confidence, blockCount, provider: 'google-vision' });
   } catch (err) {
     console.error('OCR error:', err);

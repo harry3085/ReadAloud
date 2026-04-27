@@ -1,7 +1,10 @@
 // api/cleanup-ocr.js
 // OCR 결과 텍스트를 Gemini 로 프롬프트 기반 정리
-// POST body: { text, systemPrompt }
+// POST body: { idToken, text, systemPrompt }
 // Response: { success, cleaned, model, usage }
+// 인증: idToken 검증 + 학원 AI 월 쿼터 (Phase 3)
+
+const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 
 // 폴백 체인 (2026-04-27 유료 티어 전환): 2.5-flash-lite → 2.5-flash → 3.1-flash-lite
 const GEMINI_MODELS = [
@@ -29,7 +32,11 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { text, systemPrompt } = req.body || {};
+    const { idToken, text, systemPrompt } = req.body || {};
+
+    // 인증 + 쿼터 (Phase 3)
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+    if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
 
     if (typeof text !== 'string' || text.trim().length < 5) {
       return res.status(400).json({ error: '정리할 본문이 너무 짧거나 비어 있습니다' });
@@ -88,6 +95,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    await incrementUsage(q);
     return res.status(200).json({
       success: true,
       model: usedModel,

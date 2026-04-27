@@ -1,9 +1,12 @@
 // api/generate-quiz.js
-// Google Gemini 3.1 Flash-Lite (Preview)로 객관식 4지선다 문제를 자동 생성
-// POST body: { pages: [{id, title, text}], count?: number, type?: 'mcq' }
+// Google Gemini 로 객관식/주관식/단어/녹음/언스크램블/빈칸 문제를 자동 생성
+// POST body: { idToken, pages: [{id, title, text}], count?: number, type?: 'mcq' }
 // Response: { success, questions: [...] }
 //
 // 환경변수: GEMINI_API_KEY (Google AI Studio에서 발급)
+// 인증: idToken 검증 + 학원 AI 월 쿼터 체크 (Phase 3)
+
+const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 
 // 모델 폴백 체인 (2026-04-27 유료 티어 전환):
 //   1차 2.5-flash-lite — GA 안정 + 빠름 + 저렴 (95%+ 1차 통과)
@@ -311,7 +314,11 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { pages, count, type, customSystemPrompt } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt } = req.body || {};
+
+    // ─── 인증 + 쿼터 체크 (Phase 3) ───
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+    if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
 
     // ─── 입력 검증 ───
     if (!Array.isArray(pages) || pages.length === 0) {
@@ -471,6 +478,9 @@ module.exports = async function handler(req, res) {
 
     // 목표 초과는 잘라냄
     if (validated.length > targetCount) validated = validated.slice(0, targetCount);
+
+    // 학원 AI 월 사용량 +1 (Phase 3)
+    await incrementUsage(q);
 
     return res.status(200).json({
       success: true,

@@ -1102,10 +1102,12 @@ window.fbUseHint = async () => {
 async function _fbFetchTranslation(sentence) {
   if (!sentence || sentence.trim().length < 2) return '';
   try {
+    const idToken = currentUser ? await currentUser.getIdToken() : '';
     const res = await fetch('/api/cleanup-ocr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        idToken,
         text: sentence,
         systemPrompt: '다음 영어 문장을 자연스러운 한국어로 번역하세요. 번역문만 한 줄로 출력하고, 인용부호·설명·부연 없이 깔끔하게. 직역이 아닌 의역을 선호하세요.',
       }),
@@ -2320,10 +2322,12 @@ async function _rv2Submit() {
         const base64 = await _rv2BlobToBase64(trimmed);
         const sendMime = trimmed.type || r.mime;
         console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length} mime=${sendMime}`);
+        const idToken = currentUser ? await currentUser.getIdToken() : '';
         const res = await fetch('/api/check-recording', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            idToken,
             mode: 'check',
             originalText: q.fullText,
             audioBase64: base64,
@@ -2360,10 +2364,12 @@ async function _rv2Submit() {
         const trimmed = await _trimAudioForGemini(lastBlob, evalSec + 5);
         const base64 = await _rv2BlobToBase64(trimmed);
         const sendMime = trimmed.type || _rv2.savedRounds[_RV2_ROUNDS - 1].mime;
+        const idToken2 = currentUser ? await currentUser.getIdToken() : '';
         const fbRes = await fetch('/api/check-recording', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            idToken: idToken2,
             mode: 'feedback',
             originalText: q.fullText,
             audioBase64: base64,

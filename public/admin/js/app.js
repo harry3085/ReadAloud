@@ -87,9 +87,20 @@ async function _logApiCall(endpoint){
   } catch(e) { /* silent */ }
 }
 
-// fetch + 자동 로깅 wrapper — /api/generate-quiz / /api/cleanup-ocr / /api/ocr 호출 시 사용
+// fetch + idToken 자동주입 + 사용량 로깅 wrapper
+// /api/generate-quiz / /api/cleanup-ocr / /api/ocr 호출 시 사용
 async function _geminiFetch(url, init){
-  const res = await fetch(url, init);
+  // body 에 idToken 자동 주입 (Phase 3 — 서버 인증)
+  let finalInit = init;
+  try {
+    if (init?.body && currentUser) {
+      const idToken = await currentUser.getIdToken();
+      const bodyObj = JSON.parse(init.body);
+      if (!bodyObj.idToken) bodyObj.idToken = idToken;
+      finalInit = { ...init, body: JSON.stringify(bodyObj) };
+    }
+  } catch(_) {}
+  const res = await fetch(url, finalInit);
   const ep = String(url).replace(/^\/api\//, '');
   _logApiCall(ep);
   // 대시보드 위젯 자동 갱신 (1.5초 후 — increment 반영 대기)

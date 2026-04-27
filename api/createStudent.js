@@ -117,6 +117,23 @@ module.exports = async (req, res) => {
     }
     if (!callerAcademyId) callerAcademyId = DEFAULT_ACADEMY_ID;
 
+    // 학생 한도 체크 (Phase 3)
+    try {
+      const acadSnap = await db.doc('academies/' + callerAcademyId).get();
+      if (acadSnap.exists) {
+        const ad = acadSnap.data();
+        const cur = (ad.usage && ad.usage.activeStudentsCount) || 0;
+        const limit = ad.studentLimit || Infinity;
+        if (cur >= limit) {
+          return res.status(429).json({
+            success: false,
+            error: `학생 수 한도 초과 (${cur}/${limit}). 플랜 업그레이드 또는 학생 한도 증설 필요.`,
+            limit, currentCount: cur,
+          });
+        }
+      }
+    } catch (e) { console.warn('[createStudent] 학원 조회 실패:', e.message); }
+
     // 2. 입력 검증
     if (!username || !name || !password) {
       return res.status(400).json({ success: false, error: '아이디, 이름, 비밀번호는 필수입니다.' });
@@ -194,6 +211,13 @@ module.exports = async (req, res) => {
         createdAt: FieldValue.serverTimestamp(),
       });
       await batch.commit();
+
+      // 학생 카운터 +1 (Phase 3)
+      try {
+        await db.doc('academies/' + callerAcademyId).update({
+          'usage.activeStudentsCount': FieldValue.increment(1),
+        });
+      } catch (e) { console.warn('[createStudent] activeStudentsCount 증가 실패:', e.message); }
     } catch (e) {
       // Firestore 실패 — Auth 롤백
       try { await auth.deleteUser(uid); } catch (_) {}
