@@ -243,44 +243,82 @@ async function loadApiUsage(){
     const today = new Date().toISOString().slice(0,10);
     const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0,10);
     const academyId = window.MY_ACADEMY_ID || 'default';
-    const [todaySnap, yestSnap] = await Promise.all([
+
+    // apiUsage(일별) + academies(월별 누적+한도) + plans(한도 정의) 동시 조회
+    const [todaySnap, yestSnap, acadSnap] = await Promise.all([
       getDoc(doc(db, 'apiUsage', `${academyId}_${today}`)),
       getDoc(doc(db, 'apiUsage', `${academyId}_${yesterday}`)),
+      getDoc(doc(db, 'academies', academyId)),
     ]);
+    const acad = acadSnap.exists() ? acadSnap.data() : {};
+    const planId = acad.planId || 'lite';
+    const planSnap = await getDoc(doc(db, 'plans', planId));
+    const plan = planSnap.exists() ? planSnap.data() : {};
+    const limits = plan.limits || {};
+    const usage = acad.usage || {};
+
     const t = todaySnap.exists() ? todaySnap.data() : { total: 0, byEndpoint: {} };
     const y = yestSnap.exists() ? yestSnap.data() : { total: 0 };
-    // nested + flat (옛 'byEndpoint.X' 키) 둘 다 처리
     const bE = t.byEndpoint || {};
     const cnt = (k) => (bE[k] || 0) + (t['byEndpoint.' + k] || 0);
+
     const items = [
-      { keys: ['check-recording'],          label: '🎤 녹음숙제' },
-      { keys: ['generate-quiz'],            label: '✨ AI Generator' },
-      { keys: ['ocr', 'cleanup-ocr'],       label: '📝 AI OCR' },
+      { keys: ['check-recording'],    label: '🎤 녹음숙제' },
+      { keys: ['generate-quiz'],      label: '✨ AI Generator' },
+      { keys: ['ocr', 'cleanup-ocr'], label: '📝 AI OCR' },
     ];
     const total = t.total || 0;
     const pct = Math.min(100, Math.round((total / 500) * 100));
     const barColor = pct >= 80 ? '#dc2626' : (pct >= 50 ? '#f59e0b' : '#059669');
+
+    // 월별 한도 분수
+    const studentCur = usage.activeStudentsCount || 0;
+    const studentLim = acad.studentLimit || 30;
+    const aiCur = usage.aiCallsThisMonth || 0;
+    const aiLim = limits.aiQuotaPerMonth || '∞';
+    const recCur = usage.recordingCallsThisMonth || 0;
+    const recLim = limits.perTypeQuota?.recording?.check || '∞';
+
+    const fracBar = (cur, lim) => {
+      if (typeof lim !== 'number' || lim <= 0) return '';
+      const p = Math.min(100, Math.round((cur / lim) * 100));
+      const c = p >= 90 ? '#dc2626' : (p >= 70 ? '#f59e0b' : '#059669');
+      return `<div style="height:3px;background:#eee;border-radius:2px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:${p}%;background:${c};"></div></div>`;
+    };
+
     body.innerHTML = `
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
-        <span style="font-size:18px;font-weight:800;color:var(--text);">${total}</span>
-        <span style="font-size:11px;color:var(--gray);">/ 500 (일일 한도)</span>
+      <!-- 플랜 + 월별 한도 -->
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+        <span class="badge badge-teal" style="font-size:11px;">${esc((plan.displayName || planId).toUpperCase())}</span>
+        <span style="font-size:11px;color:var(--gray);">${esc(acad.name || '')}</span>
       </div>
-      <div style="height:5px;background:#eee;border-radius:3px;overflow:hidden;margin-bottom:10px;">
-        <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s;"></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;margin-bottom:10px;">
+        <div>
+          <div style="display:flex;justify-content:space-between;"><span>👥 학생</span><span><b>${studentCur}</b>/${studentLim}</span></div>
+          ${fracBar(studentCur, studentLim)}
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출</span><span><b>${aiCur}</b>/${aiLim}</span></div>
+          ${fracBar(aiCur, aiLim)}
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;"><span>🎤 녹음 월 평가</span><span><b>${recCur}</b>/${recLim}</span></div>
+          ${fracBar(recCur, recLim)}
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
-        ${items.map(it => {
-          const sum = it.keys.reduce((s,k) => s + cnt(k), 0);
-          return `
-          <div style="display:flex;justify-content:space-between;">
-            <span>${it.label}</span>
-            <span style="font-weight:600;color:var(--text);">${sum}</span>
-          </div>`;
-        }).join('')}
+
+      <!-- 오늘 항목별 -->
+      <div style="border-top:1px dashed #eee;padding-top:8px;margin-bottom:6px;">
+        <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">오늘 호출</div>
+        <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
+          ${items.map(it => {
+            const sum = it.keys.reduce((s,k) => s + cnt(k), 0);
+            return `<div style="display:flex;justify-content:space-between;"><span>${it.label}</span><span style="font-weight:600;color:var(--text);">${sum}</span></div>`;
+          }).join('')}
+        </div>
       </div>
-      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #eee;font-size:10px;color:#bbb;">
-        어제: ${y.total || 0}회
-      </div>`;
+
+      <div style="font-size:10px;color:#bbb;">총 오늘: ${total}회 · 어제: ${y.total || 0}회</div>`;
   } catch(e) {
     body.innerHTML = '<div style="color:#bbb;font-size:11px;">집계 로드 실패</div>';
   }
