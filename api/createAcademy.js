@@ -127,7 +127,8 @@ module.exports = async (req, res) => {
       console.warn('[createAcademy] setCustomUserClaims 실패:', e.message);
     }
 
-    // 6. Firestore 쓰기 (academies + users batch)
+    // 6. Firestore 쓰기 (academies + users + usernameLookup batch)
+    const adminUsername = (subdomain + '_admin').toLowerCase();
     try {
       const batch = db.batch();
       batch.set(academyRef, {
@@ -158,10 +159,18 @@ module.exports = async (req, res) => {
       batch.set(db.doc(`users/${adminUid}`), {
         academyId: subdomain,
         role: 'admin',  // 기존 클라이언트 호환 (admin 검사용)
-        username: subdomain + '_admin',
+        username: adminUsername,
         name: `${name} 학원장`,
         email: adminEmail,
         status: 'active',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      batch.set(db.doc(`usernameLookup/${adminUsername}`), {
+        academyId: subdomain,
+        usernameLower: adminUsername,
+        uid: adminUid,
+        email: adminEmail,
+        role: 'academy_admin',
         createdAt: FieldValue.serverTimestamp(),
       });
       await batch.commit();
@@ -175,6 +184,7 @@ module.exports = async (req, res) => {
       success: true,
       academyId: subdomain,
       adminUid,
+      adminUsername,
       adminEmail,
       planId,
     });

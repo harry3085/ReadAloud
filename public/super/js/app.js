@@ -110,6 +110,76 @@ window.closeModal = () => {
   if (overlay) overlay.style.display = 'none';
 };
 
+// ── 신규 학원 추가 모달 ──────────────────────────────
+window.openAcademyCreateModal = () => {
+  const planOpts = Object.keys(_plansCache).length
+    ? Object.keys(_plansCache).map(pid => `<option value="${esc(pid)}">${esc(_plansCache[pid].displayName || pid)}</option>`).join('')
+    : '<option value="lite">Lite</option><option value="standard">Standard</option><option value="pro">Pro</option>';
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">+ 신규 학원 등록</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학원명 *</div>
+          <input id="newAcName" type="text" placeholder="예: ABC공부방" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학원코드 (subdomain) *</div>
+          <input id="newAcSubdomain" type="text" placeholder="영소문자/숫자/_/- (예: abc)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:monospace;"></div>
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
+            <select id="newAcPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
+            <select id="newAcLimit" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+              <option value="30">30명</option><option value="60">60명</option><option value="100">100명</option>
+            </select></div>
+        </div>
+        <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보</div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일 *</div>
+          <input id="newAdEmail" type="email" placeholder="owner@example.com" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">임시 비밀번호 *</div>
+          <input id="newAdPw" type="text" placeholder="8자 이상 (학원장에게 전달)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div style="font-size:11px;color:var(--gray);">※ 학원장 username 은 자동으로 <code>{학원코드}_admin</code> 으로 생성됩니다.</div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="submitNewAcademy()">등록</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.submitNewAcademy = async () => {
+  const name = (document.getElementById('newAcName')?.value || '').trim();
+  const subdomain = (document.getElementById('newAcSubdomain')?.value || '').trim().toLowerCase();
+  const planId = document.getElementById('newAcPlan')?.value || 'lite';
+  const studentLimit = parseInt(document.getElementById('newAcLimit')?.value) || 30;
+  const adminEmail = (document.getElementById('newAdEmail')?.value || '').trim().toLowerCase();
+  const adminPassword = (document.getElementById('newAdPw')?.value || '').trim();
+
+  if (!name) { showToast('학원명을 입력하세요'); return; }
+  if (!subdomain || !/^[a-z0-9_-]+$/.test(subdomain)) { showToast('학원코드: 영소문자/숫자/_/- 만'); return; }
+  if (subdomain === 'default') { showToast("'default' 는 예약된 코드"); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) { showToast('유효한 이메일'); return; }
+  if (adminPassword.length < 8) { showToast('비밀번호 8자 이상'); return; }
+
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/createAcademy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, name, subdomain, adminEmail, adminPassword, planId, studentLimit }),
+    });
+    const j = await r.json();
+    if (!j.success) { showToast('등록 실패: ' + (j.error || j.detail || '')); return; }
+    closeModal();
+    showToast(`✅ ${name} 등록 완료 (username: ${j.adminUsername})`);
+    await loadAcademies();
+  } catch (e) {
+    showToast('등록 오류: ' + e.message);
+  }
+};
+
 // ── 학원 상세 / 편집 모달 ────────────────────────────
 window.openAcademyModal = async (academyId) => {
   const a = _academiesCache.find(x => x.id === academyId);
