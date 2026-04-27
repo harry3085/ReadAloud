@@ -93,15 +93,29 @@ module.exports = async (req, res) => {
     // 관리자 권한 확인 (Custom Claims 또는 Firestore users.role=='admin' 폴백)
     const claimsRole = caller.role;
     let isAdminUser = (claimsRole === 'academy_admin' || claimsRole === 'super_admin');
+    let callerAcademyId = caller.academyId || null;
+    let callerDocCache = null;
     if (!isAdminUser) {
       try {
         const cs = await db.doc('users/' + caller.uid).get();
-        if (cs.exists && cs.data().role === 'admin') isAdminUser = true;
+        callerDocCache = cs.exists ? cs.data() : null;
+        if (callerDocCache && callerDocCache.role === 'admin') isAdminUser = true;
       } catch (_) {}
     }
     if (!isAdminUser) {
       return res.status(403).json({ success: false, error: '관리자 권한이 필요합니다.' });
     }
+    // 호출자 academyId 결정 — Custom Claims 우선, users 문서 폴백, 'default' 최종
+    if (!callerAcademyId) {
+      try {
+        if (!callerDocCache) {
+          const cs = await db.doc('users/' + caller.uid).get();
+          callerDocCache = cs.exists ? cs.data() : null;
+        }
+        callerAcademyId = (callerDocCache && callerDocCache.academyId) || null;
+      } catch (_) {}
+    }
+    if (!callerAcademyId) callerAcademyId = DEFAULT_ACADEMY_ID;
 
     // 2. 입력 검증
     if (!username || !name || !password) {
@@ -144,7 +158,7 @@ module.exports = async (req, res) => {
     // 5. Custom Claims 주입
     try {
       await auth.setCustomUserClaims(uid, {
-        academyId: DEFAULT_ACADEMY_ID,
+        academyId: callerAcademyId,
         role: 'student',
       });
     } catch (e) {
@@ -156,7 +170,7 @@ module.exports = async (req, res) => {
     try {
       const batch = db.batch();
       batch.set(db.doc('users/' + uid), {
-        academyId: DEFAULT_ACADEMY_ID,
+        academyId: callerAcademyId,
         username,
         name,
         email,
@@ -172,7 +186,7 @@ module.exports = async (req, res) => {
         createdAt: FieldValue.serverTimestamp(),
       });
       batch.set(db.doc('usernameLookup/' + lookupKey), {
-        academyId: DEFAULT_ACADEMY_ID,
+        academyId: callerAcademyId,
         usernameLower,
         uid,
         email,
