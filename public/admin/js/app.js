@@ -2007,15 +2007,11 @@ function _computeTestStats(t, scoresArr, students) {
 window.loadTestList = async() => {
   const el = document.getElementById('testListBody');
   try{
-    // tests + genTests 병렬 로드
-    const [snap, gSnap] = await Promise.all([
-      getDocs(query(collection(db,'tests'),orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
-    ]);
-    const tests = snap.docs.map(d=>({id:d.id,_src:'tests',...d.data()}));
+    // genTests 만 로드 (레거시 tests 컬렉션 조회 제거 — Phase 6F)
+    const gSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))).catch(()=>({docs:[]}));
     const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
 
-    if(tests.length===0 && genTests.length===0){
+    if(genTests.length===0){
       el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';
       return;
     }
@@ -2044,8 +2040,8 @@ window.loadTestList = async() => {
       };
     };
 
-    // 병합 + createdAt desc 재정렬
-    const combined = [...tests, ...genTests]
+    // genTests 만 (Phase 6F: 레거시 tests 제거됨)
+    const combined = genTests
       .map(attachStats)
       .sort((a,b)=>{
         const at = a.createdAt?.toMillis?.() || 0;
@@ -2091,7 +2087,7 @@ window.loadTestList = async() => {
   }
 };
 
-window.toggleTestProgress = async(testId, source='tests') => {
+window.toggleTestProgress = async(testId, source='genTests') => {
   const progressRow = document.getElementById('progress-'+testId);
   if(!progressRow){ console.warn('progress row not found:', testId); return; }
 
@@ -2114,8 +2110,7 @@ window.toggleTestProgress = async(testId, source='tests') => {
   contentEl.innerHTML = '<span style="color:#bbb;">로딩 중...</span>';
 
   try{
-    const coll = (source === 'genTests') ? 'genTests' : 'tests';
-    const testDoc = await getDoc(doc(db, coll, testId));
+    const testDoc = await getDoc(doc(db, 'genTests', testId));
     if(!testDoc.exists()){ contentEl.textContent='시험 데이터 없음'; return; }
     const t = testDoc.data();
     const targets = t.targets||[];
@@ -5020,6 +5015,7 @@ window.qgRunWordsnap = async () => {
   try {
     await addDoc(collection(db, 'genQuestionSets'), {
       name: setName,
+      academyId: window.MY_ACADEMY_ID || 'default',
       sourceType: 'vocab',
       sourcePages,
       questions,
@@ -5487,6 +5483,7 @@ window.qgSaveSet = async () => {
   try {
     await addDoc(collection(db,'genQuestionSets'), {
       name,
+      academyId: window.MY_ACADEMY_ID || 'default',
       sourceType: finalQuestions[0]?.type || 'mcq',
       sourcePages,
       questions: finalQuestions,
@@ -5515,7 +5512,7 @@ window.loadQuestionSets = async () => {
   try {
     _qsLoadPrefs();
     const [setSnap, bookSnap] = await Promise.all([
-      getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc'))),
+      getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc'))),
       getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
     ]);
     _qsList = setSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -6512,6 +6509,7 @@ window.loadMcqAssign = async () => {
     // 전체 로드 후 클라이언트에서 MCQ 계열만 필터한다.
     const snap = await getDocs(query(
       collection(db,'genQuestionSets'),
+      where('academyId','==',window.MY_ACADEMY_ID),
       orderBy('createdAt','desc')
     ));
     _mcqSets = snap.docs
@@ -6956,7 +6954,7 @@ async function _renderTestAssignDetail(type) {
 
   if (cfg.enabled && cfg.sourceType) {
     try {
-      const setSnap = await getDocs(query(collection(db,'genQuestionSets'), orderBy('createdAt','desc')));
+      const setSnap = await getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
       _tpSets = setSnap.docs.map(d => ({id:d.id, ...d.data()}))
         .filter(s => (s.sourceType || 'mcq') === cfg.sourceType);
 
