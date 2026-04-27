@@ -4279,6 +4279,8 @@ async function _vqSubmit() {
   const s = _vqState;
   const t = s.test;
   if (!t || !currentUser) return;
+  if (s._submitted || s._submitting) return;  // 이중 저장 방지
+  s._submitting = true;
 
   let correct = 0;
   const total = s.questions.length;
@@ -4316,9 +4318,12 @@ async function _vqSubmit() {
         questions: s.questions, answers: s.answers,
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+    s._submitted = true;
   } catch(e) {
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
+  } finally {
+    s._submitting = false;
   }
   _vqRenderResult({
     correct, wrong: total - correct, total, score, passed, passScore,
