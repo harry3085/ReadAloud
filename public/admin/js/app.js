@@ -3387,11 +3387,11 @@ let _cleanupBatchPresetName = '';   // 현재 일괄 처리 중인 프리셋 이
 // ─── 프리셋 로드 + 최초 시드 ───
 async function _cleanupLoadPresets() {
   try {
-    const snap = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+    const snap = await getDocs(query(collection(db, 'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order', 'asc')));
     _cleanupPresets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (_cleanupPresets.length === 0) {
       await _cleanupSeedDefaults();
-      const snap2 = await getDocs(query(collection(db, 'genCleanupPresets'), orderBy('order', 'asc')));
+      const snap2 = await getDocs(query(collection(db, 'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order', 'asc')));
       _cleanupPresets = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
     }
     _cleanupRenderEditorSelect();
@@ -3409,6 +3409,7 @@ async function _cleanupSeedDefaults() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       createdBy: uid,
+      academyId: window.MY_ACADEMY_ID || 'default',
     })
   ));
 }
@@ -3868,6 +3869,7 @@ window.cleanupSavePreset = async (id) => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: auth.currentUser?.uid || '',
+        academyId: window.MY_ACADEMY_ID || 'default',
       });
     }
     showToast(id ? '수정 완료' : '추가 완료');
@@ -3891,6 +3893,7 @@ window.cleanupDuplicatePreset = async (id) => {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
     });
     showToast('복제 완료');
     await _cleanupLoadPresets();
@@ -3932,6 +3935,7 @@ window.cleanupRestoreDefaults = async () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: uid,
+        academyId: window.MY_ACADEMY_ID || 'default',
       })
     ));
     showToast(`${missing.length}개 복원됨`);

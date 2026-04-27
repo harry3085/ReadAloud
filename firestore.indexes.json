@@ -95,6 +95,14 @@
         { "fieldPath": "academyId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "genCleanupPresets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
