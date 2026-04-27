@@ -2681,9 +2681,9 @@ window.loadGenerator = async () => {
   _genInitResizer();
   try {
     const [pSnap, cSnap, bSnap] = await Promise.all([
-      getDocs(query(collection(db,'genPages'), orderBy('serialNumber','asc'))),
-      getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
-      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+      getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc'))),
+      getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc'))),
+      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
     ]);
     _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
     _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
@@ -2965,6 +2965,7 @@ window.runGenOcr = async () => {
         text:data.text||'', ocrConfidence:(data.confidence||0)/100,
         ocrProvider:data.provider||'google-vision', imageUrl:'', edited:false,
         createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+        academyId: window.MY_ACADEMY_ID || 'default',
       });
       saved++;
     } catch(e){ showToast(`[${i+1}] 오류: ${e.message}`); }
@@ -3009,6 +3010,7 @@ window.genDoCreatePage = async () => {
       chapterId:null, chapterName:'', bookId:null, bookName:'',
       text:text||'', ocrConfidence:0, ocrProvider:'', imageUrl:'', edited:true,
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+      academyId: window.MY_ACADEMY_ID || 'default',
     });
     closeModal(); await loadGenerator();
   } catch(e){ showToast('저장 실패: '+e.message); }
@@ -3143,6 +3145,7 @@ window.genDoCreateChapter = async () => {
     await addDoc(collection(db,'genChapters'),{
       name, bookId:null, bookName:'', order:_genChapters.length+1, pageCount:0,
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+      academyId: window.MY_ACADEMY_ID || 'default',
     });
     closeModal(); await loadGenerator();
   } catch(e){ showToast('저장 실패: '+e.message); }
@@ -3265,6 +3268,7 @@ window.genDoCreateBook = async () => {
     await addDoc(collection(db,'genBooks'),{
       name, chapterCount:0, pageCount:0,
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+      academyId: window.MY_ACADEMY_ID || 'default',
     });
     closeModal(); await loadGenerator();
   } catch(e){ showToast('저장 실패: '+e.message); }
@@ -4081,9 +4085,9 @@ window.loadQuizGenerate = async () => {
   if (!_genPages.length && !_genBooks.length) {
     try {
       const [pSnap, cSnap, bSnap] = await Promise.all([
-        getDocs(query(collection(db,'genPages'), orderBy('serialNumber','asc'))),
-        getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
-        getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+        getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc'))),
+        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc'))),
+        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
       ]);
       _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
       _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
@@ -5531,7 +5535,7 @@ window.loadQuestionSets = async () => {
     _qsLoadPrefs();
     const [setSnap, bookSnap] = await Promise.all([
       getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
+      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
     ]);
     _qsList = setSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     _qsBooks = bookSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -6962,8 +6966,8 @@ async function _renderTestAssignDetail(type) {
   if (!_genBooks.length || !_genChapters.length) {
     try {
       const [bSnap, cSnap] = await Promise.all([
-        getDocs(query(collection(db,'genBooks'), orderBy('createdAt','asc'))),
-        getDocs(query(collection(db,'genChapters'), orderBy('order','asc'))),
+        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
+        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc'))),
       ]);
       _genBooks = bSnap.docs.map(d => ({id:d.id, ...d.data()}));
       _genChapters = cSnap.docs.map(d => ({id:d.id, ...d.data()}));
