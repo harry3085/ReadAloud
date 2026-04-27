@@ -4047,7 +4047,7 @@ function _qgRender() {
       <!-- 2. Chapter 컬럼 -->
       <div id="qgChapterPane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-          <span>📖 Chapter <span style="font-size:11px;color:var(--gray);font-weight:400;">${_qgActiveBook ? `${chapters.length}개 · ${esc(_qgActiveBook.name)}` : '모두 표시'}</span></span>
+          <span>📖 Chapter <span style="font-size:11px;color:var(--gray);font-weight:400;">${chapters.length}개</span></span>
           ${_qgActiveChapter ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgClearChapter()">해제</button>` : ''}
         </div>
         <div style="flex:1;overflow-y:auto;">
