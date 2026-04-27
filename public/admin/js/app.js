@@ -2723,12 +2723,17 @@ function _genRenderPages() {
   }
   el.innerHTML = slice.map(p => {
     const active = _genActivePage === p.id;
+    const book = (_genBooks||[]).find(b => b.id === p.bookId);
+    const chap = (_genChapters||[]).find(c => c.id === p.chapterId);
+    const subpath = [book?.name, chap?.name].filter(Boolean).join(' › ') || '미지정';
+    const preview = (p.text||'').slice(0, 80);
     return `
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f0f0f0;background:${active?'var(--teal-light)':''};cursor:pointer;transition:background .1s;" onclick="genClickPage('${p.id}')">
-      <input type="checkbox" data-id="${p.id}" ${_genCheckedPages.has(p.id)?'checked':''} onchange="genOnPageCheck(this)" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-bottom:1px solid #f0f0f0;background:${active?'var(--teal-light)':''};cursor:pointer;transition:background .1s;" onclick="genClickPage('${p.id}')">
+      <input type="checkbox" data-id="${p.id}" ${_genCheckedPages.has(p.id)?'checked':''} onchange="genOnPageCheck(this)" onclick="event.stopPropagation()" style="margin-top:3px;flex-shrink:0;">
       <div style="flex:1;min-width:0;pointer-events:none;">
         <div style="font-weight:600;color:${active?'var(--teal)':'var(--text)'};font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title||'Page '+p.serialNumber)}</div>
-        <div style="font-size:11px;color:${p.chapterId?'var(--gray)':'#bbb'};font-style:${p.chapterId?'normal':'italic'};">#${p.serialNumber} · ${p.chapterId?esc(p.chapterName||''):'미지정'}</div>
+        <div style="font-size:11px;color:${p.chapterId?'var(--gray)':'#bbb'};font-style:${p.chapterId?'normal':'italic'};margin-top:1px;">#${p.serialNumber} · ${esc(subpath)}</div>
+        ${preview ? `<div style="font-size:10px;color:#aaa;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(preview)}${(p.text||'').length>80?'…':''}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -4083,7 +4088,7 @@ function _qgRender() {
           ${_qgActiveBook ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgClearBook()">해제</button>` : ''}
         </div>
         <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
-          <input type="search" id="qgBookSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('books',this.value)" value="${esc(_qgSearch.books)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
+          <input type="search" id="qgBookSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('books',this.value,event.isComposing)" value="${esc(_qgSearch.books)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${books.length === 0
@@ -4115,7 +4120,7 @@ function _qgRender() {
           ${_qgActiveChapter ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgClearChapter()">해제</button>` : ''}
         </div>
         <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
-          <input type="search" id="qgChapterSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('chapters',this.value)" value="${esc(_qgSearch.chapters)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
+          <input type="search" id="qgChapterSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('chapters',this.value,event.isComposing)" value="${esc(_qgSearch.chapters)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${chapters.length === 0
@@ -4151,7 +4156,7 @@ function _qgRender() {
           </div>
         </div>
         <div style="padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
-          <input type="search" id="qgPageSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('pages',this.value)" value="${esc(_qgSearch.pages)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
+          <input type="search" id="qgPageSearch" placeholder="🔍 검색" oninput="qgUpdateSearch('pages',this.value,event.isComposing)" value="${esc(_qgSearch.pages)}" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:11px;outline:none;">
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${pages.length === 0
@@ -4304,17 +4309,25 @@ window.qgToggleSort = (kind) => {
   _qgSort[kind] = _qgSort[kind] === 'recent' ? 'name' : 'recent';
   _qgRender();
 };
-window.qgUpdateSearch = (kind, value) => {
-  _qgSearch[kind] = String(value || '').trim().toLowerCase();
-  _qgRender();
-  // focus 복원
-  const id = kind === 'books' ? 'qgBookSearch' : kind === 'chapters' ? 'qgChapterSearch' : 'qgPageSearch';
-  const inp = document.getElementById(id);
-  if (inp) {
-    inp.value = _qgSearch[kind];
-    inp.focus();
-    inp.setSelectionRange(inp.value.length, inp.value.length);
+let _qgSearchTimer = null;
+window.qgUpdateSearch = (kind, value, isComposing) => {
+  // 한글 IME 조립 중이면 state 만 업데이트 (render 안 함)
+  if (isComposing) {
+    _qgSearch[kind] = String(value || '').trim().toLowerCase();
+    return;
   }
+  _qgSearch[kind] = String(value || '').trim().toLowerCase();
+  clearTimeout(_qgSearchTimer);
+  _qgSearchTimer = setTimeout(() => {
+    _qgRender();
+    const id = kind === 'books' ? 'qgBookSearch' : kind === 'chapters' ? 'qgChapterSearch' : 'qgPageSearch';
+    const inp = document.getElementById(id);
+    if (inp) {
+      inp.value = _qgSearch[kind];
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+  }, 150);
 };
 
 function _qgApplySortSearch(kind, arr, nameKey = 'name') {
