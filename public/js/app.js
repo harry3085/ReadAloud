@@ -2633,7 +2633,7 @@ window.switchRankTab=async (tab)=>{
 async function renderRanking(tab){
   const group=userProfile?.group,meUid=currentUser?.uid;
   const colors=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
-  const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group)));
+  const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
   if(tab==='score'){
     const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
@@ -2936,8 +2936,8 @@ window.importExcel=async (e)=>{
 async function loadAdminUsers(){
   const clrs=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
   const q2 = selectedUserGroupFilter==='all'
-    ? query(collection(db,'users'),where('role','==','student'))
-    : query(collection(db,'users'),where('role','==','student'),where('group','==',selectedUserGroupFilter));
+    ? query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'))
+    : query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('group','==',selectedUserGroupFilter));
   const snap=await getDocs(q2);
   const students=snap.docs.map(d=>({uid:d.id,...d.data()}));
   document.getElementById('studentCardList').innerHTML=students.map((u,i)=>`
@@ -3180,8 +3180,8 @@ window.loadStats=async(group,btn)=>{
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   const usersQuery=group==='all'
-    ?query(collection(db,'users'),where('role','==','student'))
-    :query(collection(db,'users'),where('role','==','student'),where('group','==',group));
+    ?query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'))
+    :query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('group','==',group));
   const usersSnap=await getDocs(usersQuery);
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()}));
   const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
@@ -3218,7 +3218,7 @@ window.loadStats=async(group,btn)=>{
 // ── 결제 관리 ─────────────────────────────────────────────
 async function renderPaymentStudentSelect(){
   const el=document.getElementById('paymentStudent');if(!el)return;
-  const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
+  const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
   el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="${d.id}">${u.name||'?'} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
 }
 window.savePayment=async()=>{
@@ -3302,7 +3302,7 @@ window.onPushTypeChange=async()=>{
   document.getElementById('pushGroupRow').style.display=isStudent?'none':'';
   document.getElementById('pushStudentRow').style.display=isStudent?'':'none';
   if(isStudent){
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student')));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
     const el=document.getElementById('pushStudentTarget');
     el.innerHTML=snap.docs.map(d=>{const u=d.data();return `<option value="uid:${d.id}">${u.name} (${u.group||'-'})</option>`;}).join('')||'<option>학생 없음</option>';
   }

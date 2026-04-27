@@ -340,7 +340,7 @@ async function loadDashScores(){
 async function loadDashStudents(){
   const el=document.getElementById('dashStudents');
   try{
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active'),limit(8)));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active'),limit(8)));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">학생이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const u=d.data();
@@ -791,7 +791,7 @@ window.editHwFile = async(id) => {
   const f = snap.data();
 
   // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
   const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
 
@@ -855,7 +855,7 @@ window.saveHwFileEdit = async(id) => {
 
 window.openHwFileModal = async() => {
   // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
   const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
 
@@ -1006,7 +1006,7 @@ window.delPayment = async(id) => {
   showToast('삭제됐어요.'); await loadPayments();
 };
 window.openPaymentModal = async() => {
-  const usersSnap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+  const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
   const opts=usersSnap.docs.map(d=>{const u=d.data();return `<option value="${d.id}|${u.name}|${u.group||''}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -1051,7 +1051,7 @@ window.onMsgTypeChange = async() => {
     document.getElementById('msgGroup').innerHTML=snap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   }
   if(type==='student'){
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     document.getElementById('msgStudent').innerHTML=snap.docs.map(d=>{const u=d.data();return`<option value="uid:${d.id}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
   }
 };
@@ -1131,7 +1131,7 @@ window.showMsgReadStatus = async(pushId, title) => {
 
     // uid 목록으로 학생 이름 조회
     const uids = [...new Set(notifs.map(n=>n.uid))];
-    const userSnap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+    const userSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
     const userMap = {};
     userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
 
@@ -1191,7 +1191,7 @@ async function initScoreReport(){
   const sel = document.getElementById('scoreClassFilter');
   if(sel && sel.options.length <= 1){
     try{
-      const snap = await getDocs(query(collection(db,'users'),where('role','==','student')));
+      const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
       const groups = [...new Set(snap.docs.map(d=>d.data().group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
       groups.forEach(g=>{
         const opt = document.createElement('option');
@@ -1569,7 +1569,7 @@ window.showScoreDetail = async(scoreId, testId) => {
 async function loadPersonalStudentList(){
   const el=document.getElementById('personalStudentList');
   try{
-    const snap=await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     const students=snap.docs.map(d=>({id:d.id,...d.data()}));
     el.innerHTML=students.map(u=>`
       <div onclick="loadPersonalScore('${u.id}')" style="padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
@@ -2023,7 +2023,7 @@ window.loadTestList = async() => {
     // 학생 전체 (대상자 계산용 — 반 타겟을 uid 로 확장하려면 필요)
     if (!Array.isArray(allStudents) || allStudents.length === 0) {
       try {
-        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID), where('role','==','student')));
         allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
       } catch(e) { console.warn('학생 로드 실패(대상자 집계 정확도 저하):', e); }
     }
@@ -2368,7 +2368,7 @@ window.deleteTest = async(id) => {
 // ── 엑셀 내보내기 ────────────────────────────────────────
 window.exportStudentExcel = async(status='active') => {
   try{
-    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==',status)));
+    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==',status)));
     const students = snap.docs.map(d=>({id:d.id,...d.data()}));
     if (!students.length) { showAlert('입력 확인', '내보낼 학생이 없습니다.'); return; }
 
@@ -6652,7 +6652,7 @@ window.mcqClearSel = () => {
 window.mcqOpenTargetPicker = async () => {
   let students = [];
   try {
-    const snap = await getDocs(query(collection(db,'users'),where('role','==','student'),where('status','==','active')));
+    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     students = snap.docs.map(d=>({id:d.id,...d.data()}));
   } catch(e) {
     showToast('학생 목록 로드 실패: '+e.message);
@@ -7302,7 +7302,7 @@ async function _tpLoadTestStats() {
     // 학생 전체 로드 (대상자 계산용)
     if (!Array.isArray(allStudents) || allStudents.length === 0) {
       try {
-        const sSnap = await getDocs(query(collection(db,'users'), where('role','==','student')));
+        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID), where('role','==','student')));
         allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
       } catch(e) { console.warn('학생 로드 실패:', e); }
     }
@@ -7371,6 +7371,7 @@ window.tpOpenPublishModal = async () => {
   try {
     const snap = await getDocs(query(
       collection(db,'users'),
+      where('academyId','==',window.MY_ACADEMY_ID),
       where('role','==','student'),
       where('status','==','active')
     ));
