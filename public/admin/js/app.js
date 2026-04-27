@@ -2481,6 +2481,8 @@ window.editStudent = async(id) => {
 window.updateStudent = async(id) => {
   const name = document.getElementById('euName').value.trim();
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
+  const newPw = (document.getElementById('euPw')?.value || '').trim();
+  if (newPw && newPw.length < 6) { showAlert('비밀번호 확인', '비밀번호는 6자 이상이어야 합니다.'); return; }
   const data = {
     name, group:document.getElementById('euGroup').value,
     birth:document.getElementById('euBirth').value,
@@ -2490,9 +2492,24 @@ window.updateStudent = async(id) => {
     parentName:document.getElementById('euParentName').value.trim(),
     parentPhone:document.getElementById('euParentPhone').value.trim(),
   };
-  await updateDoc(doc(db,'users',id), data);
-  closeModal(); showToast('✅ 학생 정보가 수정됐어요!');
-  await loadStudents(currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active');
+  try {
+    await updateDoc(doc(db,'users',id), data);
+    if (newPw) {
+      const idToken = await currentUser.getIdToken();
+      const r = await fetch('/api/updateStudentPassword', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ idToken, uid: id, password: newPw }),
+      });
+      const j = await r.json();
+      if (!j.success) { showAlert('비밀번호 변경 실패', j.error || '서버 오류'); return; }
+    }
+    closeModal();
+    showToast(newPw ? '✅ 학생 정보 + 비밀번호 변경 완료' : '✅ 학생 정보가 수정됐어요!');
+    await loadStudents(currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active');
+  } catch(e) {
+    showAlert('저장 실패', e.message);
+  }
 };
 
 // ── 공지 수정 ────────────────────────────────────────────

@@ -18,8 +18,12 @@
     "show-firebase-env": "node scripts/show-firebase-env.js",
     "create-academy": "node scripts/admin/create-academy.js",
     "promote-super-admin": "node scripts/admin/promote-super-admin.js",
+    "sync-claims": "node scripts/admin/sync-claims.js",
+    "sync-claims:apply": "node scripts/admin/sync-claims.js --apply",
     "cleanup:auth-orphans": "node scripts/cleanup/auth-orphans.js",
-    "cleanup:auth-orphans:apply": "node scripts/cleanup/auth-orphans.js --apply"
+    "cleanup:auth-orphans:apply": "node scripts/cleanup/auth-orphans.js --apply",
+    "cleanup:firestore-orphans": "node scripts/cleanup/firestore-orphans.js",
+    "cleanup:firestore-orphans:apply": "node scripts/cleanup/firestore-orphans.js --apply"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.5",
