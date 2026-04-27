@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>큰소리 영어 — 슈퍼 관리자</title>
+<link rel="stylesheet" href="/admin/style.css">
+<style>
+  .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; }
+  .super-header .title { font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .super-header .title img { width:32px; height:32px; }
+  .super-header .right { display:flex; gap:10px; align-items:center; }
+  .super-header .right a { color:white; text-decoration:none; padding:6px 12px; border:1px solid rgba(255,255,255,.4); border-radius:6px; font-size:13px; }
+  .super-header .right a:hover { background:rgba(255,255,255,.15); }
+  .super-main { padding:22px; max-width:1280px; margin:0 auto; }
+  .super-tabs { display:flex; gap:6px; border-bottom:1px solid #ddd; margin-bottom:18px; }
+  .super-tabs button { background:none; border:none; padding:10px 16px; cursor:pointer; font-size:14px; color:#666; border-bottom:2px solid transparent; }
+  .super-tabs button.active { color:var(--teal); border-bottom-color:var(--teal); font-weight:700; }
+</style>
+</head>
+<body>
+
+<header class="super-header">
+  <div class="title">
+    <img src="/icons/icon-192.png" alt="">
+    슈퍼 관리자
+  </div>
+  <div class="right">
+    <span id="superName" style="font-size:13px;">…</span>
+    <a href="/admin/">↩ 학원장 앱</a>
+    <a href="#" onclick="doLogout();return false;" style="background:rgba(0,0,0,.15);">로그아웃</a>
+  </div>
+</header>
+
+<main class="super-main">
+  <div class="super-tabs">
+    <button class="active" id="tab-academies" onclick="goTab('academies')">🏢 학원 관리</button>
+    <button id="tab-tools" onclick="goTab('tools')">🛠 도구</button>
+  </div>
+
+  <!-- 학원 관리 -->
+  <div class="page active" id="page-academies">
+    <div class="card" style="padding:0;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>학원명</th>
+            <th>Subdomain</th>
+            <th>플랜</th>
+            <th>학생 한도</th>
+            <th>사용량 (이번 달)</th>
+            <th>생성일</th>
+            <th>상태</th>
+          </tr>
+        </thead>
+        <tbody id="academiesTableBody">
+          <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 도구 -->
+  <div class="page" id="page-tools" style="display:none;">
+    <div class="card" style="padding:18px;">
+      <div style="font-weight:700;margin-bottom:10px;">외부 대시보드</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="btn btn-primary" href="https://aistudio.google.com/rate-limit?timeRange=last-90-days&project=readaloud-51113" target="_blank" rel="noopener">🤖 Gemini 사용량 (Google)</a>
+        <a class="btn btn-secondary" href="https://console.firebase.google.com/project/readaloud-51113/overview" target="_blank" rel="noopener">🔥 Firebase Console</a>
+        <a class="btn btn-secondary" href="https://vercel.com/harry-kims-projects-2eb6982d/readaloud-app" target="_blank" rel="noopener">▲ Vercel</a>
+      </div>
+      <div style="margin-top:18px;font-size:12px;color:var(--gray);">
+        ※ Gemini 공식 대시보드는 슈퍼 관리자만 접근 가능. 학원장(academy_admin) 은 자기 학원 위젯만 볼 수 있음.
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 모달 -->
+<div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center;">
+  <div id="modalBox" style="background:white;border-radius:12px;max-width:95vw;max-height:90vh;overflow:auto;"></div>
+</div>
+<div id="toast" style="position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#222;color:white;padding:10px 20px;border-radius:6px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:300;"></div>
+
+<script type="module" src="/super/js/app.js"></script>
+</body>
+</html>

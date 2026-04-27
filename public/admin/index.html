@@ -142,12 +142,11 @@
     </div>
 
     <!-- super_admin 전용 — JS 가 role 확인 후 노출 -->
-    <div id="nav-super-admin-section" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid #eee;">
-      <div style="font-size:11px;color:var(--gray);padding:0 14px 8px;font-weight:700;letter-spacing:.5px;">SUPER ADMIN</div>
-      <div class="nav-item" onclick="goPage('academies')" id="nav-academies">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
-        학원 관리
-      </div>
+    <div id="nav-super-admin-link" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid #eee;">
+      <a href="/super/" class="nav-item" style="background:#fef3e8;color:var(--teal-dark);font-weight:700;text-decoration:none;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        슈퍼 관리자 앱 →
+      </a>
     </div>
   </div>
 </nav>
@@ -844,33 +843,6 @@
       <div><div class="page-title">🎤 녹음숙제</div><div class="page-sub">본문 문장을 AI가 추출해 녹음 숙제로 배정합니다</div></div>
     </div>
     <div id="recAiAssignRoot"></div>
-  </div>
-
-  <!-- super_admin: 학원 관리 -->
-  <div class="page" id="page-academies">
-    <div class="page-header">
-      <div><div class="page-title">🏢 학원 관리</div><div class="page-sub">전체 학원 목록 / 플랜 / 사용량</div></div>
-      <button class="btn btn-primary" onclick="openAcademyCreateModal()" id="btnNewAcademy" disabled style="opacity:.5;">+ 신규 학원 (개발 중)</button>
-    </div>
-
-    <div class="card" style="padding:0;">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>학원명</th>
-            <th>Subdomain</th>
-            <th>플랜</th>
-            <th>학생 한도</th>
-            <th>사용량</th>
-            <th class="sortable" onclick="sortTable('academiesTableBody',5)">생성일</th>
-            <th>상태</th>
-          </tr>
-        </thead>
-        <tbody id="academiesTableBody">
-          <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>
-        </tbody>
-      </table>
-    </div>
   </div>
 
 </main>
