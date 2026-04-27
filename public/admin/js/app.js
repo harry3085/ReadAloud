@@ -72,11 +72,14 @@ let currentPage = 'dashboard';
 let studentCurrentPage = 1;
 const PAGE_SIZE = 10;
 
-// Gemini API 호출 로거 (일별 집계, 대시보드 위젯용)
+// Gemini API 호출 로거 (학원별 일별 집계, 대시보드 위젯용)
 async function _logApiCall(endpoint){
   try {
     const today = new Date().toISOString().slice(0,10);
-    await setDoc(doc(db, 'apiUsage', today), {
+    const academyId = window.MY_ACADEMY_ID || 'default';
+    await setDoc(doc(db, 'apiUsage', `${academyId}_${today}`), {
+      academyId,
+      date: today,
       total: increment(1),
       [`byEndpoint.${endpoint}`]: increment(1),
       lastAt: serverTimestamp(),
@@ -224,9 +227,10 @@ async function loadApiUsage(){
   try {
     const today = new Date().toISOString().slice(0,10);
     const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0,10);
+    const academyId = window.MY_ACADEMY_ID || 'default';
     const [todaySnap, yestSnap] = await Promise.all([
-      getDoc(doc(db, 'apiUsage', today)),
-      getDoc(doc(db, 'apiUsage', yesterday)),
+      getDoc(doc(db, 'apiUsage', `${academyId}_${today}`)),
+      getDoc(doc(db, 'apiUsage', `${academyId}_${yesterday}`)),
     ]);
     const t = todaySnap.exists() ? todaySnap.data() : { total: 0, byEndpoint: {} };
     const y = yestSnap.exists() ? yestSnap.data() : { total: 0 };

@@ -177,11 +177,13 @@ service cloud.firestore {
       allow create: if isAdminCreatingForMyAcademy();
     }
 
-    // ── API 호출 카운터 (Gemini 사용량 추적 — 글로벌) ──────
-    // 학원 무관 (Gemini 일일 쿼터는 프로젝트 단위)
-    match /apiUsage/{day} {
-      allow read: if isAdmin();
-      allow create, update: if isSignedIn();
+    // ── API 호출 카운터 (학원별 일별 집계) ─────────────────
+    // doc id = `{academyId}_{YYYY-MM-DD}`, body 에 academyId 필드
+    // read: 자기 학원 관리자만 (super_admin 은 모든 학원)
+    // create/update: 로그인 사용자 (자기 학원으로만 — academyId 일치)
+    match /apiUsage/{id} {
+      allow read: if isAdmin() && isMyAcademy();
+      allow create, update: if isSignedIn() && isCreatingForMyAcademy();
       allow delete: if false;
     }
 

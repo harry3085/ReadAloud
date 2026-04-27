@@ -562,11 +562,14 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
     </div>`;
 }
 
-// Gemini API 호출 로거 (일별 집계, 위젯용)
+// Gemini API 호출 로거 (학원별 일별 집계, 위젯용)
 async function _logApiCall(endpoint){
   try {
     const today = new Date().toISOString().slice(0,10);
-    await setDoc(doc(db, 'apiUsage', today), {
+    const academyId = window.MY_ACADEMY_ID || 'default';
+    await setDoc(doc(db, 'apiUsage', `${academyId}_${today}`), {
+      academyId,
+      date: today,
       total: increment(1),
       [`byEndpoint.${endpoint}`]: increment(1),
       lastAt: serverTimestamp(),
