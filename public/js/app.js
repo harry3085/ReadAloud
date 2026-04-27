@@ -287,7 +287,7 @@ async function loadNoticePreview(){
 async function loadHwFiles(){
   const group = userProfile?.group||'';
   const uid = currentUser?.uid||'';
-  const snap = await getDocs(query(collection(db,'hwFiles'),orderBy('createdAt','desc')));
+  const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>{
     if(f.group==='전체') return true;
     if(f.group===group) return true;
@@ -3145,7 +3145,7 @@ window.uploadHwFile=async()=>{
     });
     const url=await getDownloadURL(storageRef);
     const today=new Date().toISOString().slice(0,10);
-    await addDoc(collection(db,'hwFiles'),{name,url,group,type,date:today,storageRef:storageRef.fullPath,createdAt:serverTimestamp()});
+    await addDoc(collection(db,'hwFiles'),{name,url,group,type,date:today,storageRef:storageRef.fullPath,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
     document.getElementById('newFileName').value='';document.getElementById('selectedFileName').textContent='파일을 선택하세요';
     document.getElementById('hwFileInput').value='';selectedHwFile=null;
     progressEl.style.display='none';progressBar.style.width='0%';
@@ -3154,7 +3154,7 @@ window.uploadHwFile=async()=>{
 };
 
 async function loadAdminFiles(){
-  const snap=await getDocs(query(collection(db,'hwFiles'),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   const files=snap.docs.map(d=>({id:d.id,...d.data()}));
   document.getElementById('fileTableBody').innerHTML=files.map(f=>`<tr>
     <td style="font-size:13px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</td>

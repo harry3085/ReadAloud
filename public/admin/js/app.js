@@ -763,7 +763,7 @@ window.deleteNotice = async(id) => {
 async function loadHwFileAdmin(){
   const el = document.getElementById('hwfileTableBody'); if(!el) return;
   try{
-    const snap = await getDocs(query(collection(db,'hwFiles'), orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
     const files = snap.docs.map(d=>({id:d.id,...d.data()}));
     const icons={pdf:'📄',docx:'📝',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
     initPagination('hwfileTableBody', files, (f,i)=>`<tr>
@@ -941,7 +941,8 @@ window.uploadHwFileAdmin = async() => {
       type: ext,
       date: today,
       storagePath: path,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      academyId: window.MY_ACADEMY_ID || 'default',
     });
 
     closeModal();
