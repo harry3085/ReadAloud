@@ -54,6 +54,44 @@ window.goTab = (id) => {
 
 // ── 사용자 검색 ──────────────────────────────────────
 let _allUsersCache = null;
+let _userSortKey = 'name';
+let _userSortDir = 1;  // 1 asc, -1 desc
+
+window.sortUsers = (key) => {
+  if (_userSortKey === key) _userSortDir *= -1;
+  else { _userSortKey = key; _userSortDir = 1; }
+  runUserSearch();
+};
+
+function _applyUserSort(arr) {
+  const k = _userSortKey;
+  const dir = _userSortDir;
+  return [...arr].sort((a, b) => {
+    let av, bv;
+    if (k === 'createdAt') {
+      av = a.createdAt?.toMillis?.() || 0;
+      bv = b.createdAt?.toMillis?.() || 0;
+    } else if (k === 'academyName') {
+      av = a.academyName || '';
+      bv = b.academyName || '';
+    } else {
+      av = String(a[k] || '');
+      bv = String(b[k] || '');
+    }
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
+function _renderSortMarks() {
+  ['name','username','email','academyName','role','status','createdAt'].forEach(k => {
+    const el = document.getElementById('sortMark-' + k);
+    if (!el) return;
+    if (k === _userSortKey) el.textContent = _userSortDir === 1 ? '▲' : '▼';
+    else el.textContent = '';
+  });
+}
 async function _loadAllUsers() {
   if (_allUsersCache) return _allUsersCache;
   const snap = await getDocs(collection(db, 'users'));
@@ -73,7 +111,7 @@ window.runUserSearch = async () => {
     ]);
     const academyNameMap = {};
     _academiesCache.forEach(a => { academyNameMap[a.id] = a.name || a.id; });
-    let filtered = all;
+    let filtered = all.map(u => ({ ...u, academyName: u.academyId ? (academyNameMap[u.academyId] || u.academyId) : '' }));
     if (roleFilter) filtered = filtered.filter(u => u.role === roleFilter);
     if (term) {
       filtered = filtered.filter(u => {
@@ -81,6 +119,8 @@ window.runUserSearch = async () => {
         return fields.some(f => f.includes(term));
       });
     }
+    filtered = _applyUserSort(filtered);
+    _renderSortMarks();
     if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">결과 없음</td></tr>';
       return;
@@ -90,7 +130,7 @@ window.runUserSearch = async () => {
       return d ? d.toISOString().slice(0, 10) : '-';
     };
     tbody.innerHTML = filtered.slice(0, 200).map(u => {
-      const acaName = u.academyId ? (academyNameMap[u.academyId] || u.academyId) : '-';
+      const acaName = u.academyName || '-';
       const acaId = u.academyId || '';
       return `
       <tr style="cursor:pointer;" onclick="onUserRowClick('${u.uid}')">

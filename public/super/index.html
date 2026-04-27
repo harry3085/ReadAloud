@@ -6,7 +6,9 @@
 <title>큰소리 영어 — 슈퍼 관리자</title>
 <link rel="stylesheet" href="/admin/style.css">
 <style>
-  .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; }
+  /* admin/style.css 의 html,body{overflow:hidden} 을 super 앱에선 풀기 */
+  html, body { overflow: auto !important; height: auto !important; min-height: 100%; }
+  .super-header { background:linear-gradient(135deg,#E8714A,#D85A30); color:white; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
   .super-header .title { font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px; }
   .super-header .title img { width:32px; height:32px; }
   .super-header .right { display:flex; gap:10px; align-items:center; }
@@ -80,13 +82,13 @@
       <table class="table">
         <thead>
           <tr>
-            <th>이름</th>
-            <th>username</th>
-            <th>이메일</th>
-            <th>학원명</th>
-            <th>역할</th>
-            <th>상태</th>
-            <th>가입일</th>
+            <th class="sortable" onclick="sortUsers('name')">이름 <span id="sortMark-name"></span></th>
+            <th class="sortable" onclick="sortUsers('username')">username <span id="sortMark-username"></span></th>
+            <th class="sortable" onclick="sortUsers('email')">이메일 <span id="sortMark-email"></span></th>
+            <th class="sortable" onclick="sortUsers('academyName')">학원명 <span id="sortMark-academyName"></span></th>
+            <th class="sortable" onclick="sortUsers('role')">역할 <span id="sortMark-role"></span></th>
+            <th class="sortable" onclick="sortUsers('status')">상태 <span id="sortMark-status"></span></th>
+            <th class="sortable" onclick="sortUsers('createdAt')">가입일 <span id="sortMark-createdAt"></span></th>
           </tr>
         </thead>
         <tbody id="userSearchBody">
