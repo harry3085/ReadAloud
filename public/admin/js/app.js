@@ -306,7 +306,7 @@ async function loadDashNotices(){
 async function loadDashScores(){
   const el=document.getElementById('dashScores');
   try{
-    const snap=await getDocs(query(collection(db,'scores'),orderBy('createdAt','desc'),limit(20)));
+    const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(20)));
     if(snap.empty){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">시험 결과가 없습니다</td></tr>';return;}
 
     // testId로 교재명 보완
@@ -1265,7 +1265,7 @@ window.loadScoreReport = async() => {
   const el=document.getElementById('scoreReportBody');
   el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
   try{
-    const snap=await getDocs(query(collection(db,'scores'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const scores=snap.docs.map(d=>({id:d.id,...d.data()}));
     const from=document.getElementById('scoreFrom').value;
     const to=document.getElementById('scoreTo').value;
@@ -2017,7 +2017,7 @@ window.loadTestList = async() => {
     }
 
     // scores 전체 로드 후 testId 별로 집계 (tests / genTests 공통)
-    const scoresSnap = await getDocs(collection(db,'scores'));
+    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
     const allScores = scoresSnap.docs.map(d=>d.data());
 
     // 학생 전체 (대상자 계산용 — 반 타겟을 uid 로 확장하려면 필요)
@@ -7296,7 +7296,7 @@ function _tpRenderTestRow(t) {
 
 async function _tpLoadTestStats() {
   try {
-    const scoresSnap = await getDocs(collection(db,'scores'));
+    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
     const allScores = scoresSnap.docs.map(d => d.data());
 
     // 학생 전체 로드 (대상자 계산용)

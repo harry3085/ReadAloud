@@ -752,6 +752,7 @@ async function _mcqSubmit(){
 
   try{
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid,
       userId: currentUser.uid,
       userName: userProfile?.name || '',
@@ -1370,6 +1371,7 @@ async function _fbSubmit(){
 
   try{
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid,
       userId: currentUser.uid,
       userName: userProfile?.name || '',
@@ -1862,6 +1864,7 @@ async function _raSubmit(){
     const today = new Date().toISOString().slice(0,10);
 
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid,
       userId: currentUser.uid,
       userName: userProfile?.name || '',
@@ -2390,6 +2393,7 @@ async function _rv2Submit() {
     }));
 
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid,
       userId: currentUser.uid,
       userName: userProfile?.name || '',
@@ -2632,7 +2636,7 @@ async function renderRanking(tab){
   const usersSnap=await getDocs(query(collection(db,'users'),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
   if(tab==='score'){
-    const scoresSnap=await getDocs(query(collection(db,'scores'),where('group','==',group)));
+    const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
     const scoresMap={};
     scoresSnap.docs.forEach(d=>{
       const s=d.data();
@@ -3180,7 +3184,7 @@ window.loadStats=async(group,btn)=>{
     :query(collection(db,'users'),where('role','==','student'),where('group','==',group));
   const usersSnap=await getDocs(usersQuery);
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()}));
-  const scoresSnap=await getDocs(collection(db,'scores'));
+  const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
   const scoresMap={};
   scoresSnap.docs.forEach(d=>{const s=d.data();if(!scoresMap[s.uid])scoresMap[s.uid]=[];scoresMap[s.uid].push(s);});
   const unitsSnap=await getDocs(collection(db,'units'));
@@ -4278,6 +4282,7 @@ async function _vqSubmit() {
 
   try {
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid, userId: currentUser.uid,
       userName: userProfile?.name || '', name: userProfile?.name || '',
       group: userProfile?.group || '',
@@ -4691,6 +4696,7 @@ async function _uqSubmit() {
 
   try {
     await addDoc(collection(db,'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid, userId: currentUser.uid,
       userName: userProfile?.name || '', name: userProfile?.name || '',
       group: userProfile?.group || '',
