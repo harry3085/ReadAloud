@@ -47,6 +47,136 @@ window.goTab = (id) => {
   if (id === 'academies') loadAcademies();
 };
 
+// ── 사용자 검색 ──────────────────────────────────────
+let _allUsersCache = null;
+async function _loadAllUsers() {
+  if (_allUsersCache) return _allUsersCache;
+  const snap = await getDocs(collection(db, 'users'));
+  _allUsersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  return _allUsersCache;
+}
+
+window.runUserSearch = async () => {
+  const tbody = document.getElementById('userSearchBody');
+  const term = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+  const roleFilter = document.getElementById('userRoleFilter')?.value || '';
+  if (!term && !roleFilter) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색어 또는 role 필터 지정</td></tr>';
+    return;
+  }
+  try {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
+    const all = await _loadAllUsers();
+    let filtered = all;
+    if (roleFilter) filtered = filtered.filter(u => u.role === roleFilter);
+    if (term) {
+      filtered = filtered.filter(u => {
+        const fields = [u.name, u.email, u.username, u.uid].map(s => String(s || '').toLowerCase());
+        return fields.some(f => f.includes(term));
+      });
+    }
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">결과 없음</td></tr>';
+      return;
+    }
+    const fmtDate = (t) => {
+      const d = t?.toDate ? t.toDate() : null;
+      return d ? d.toISOString().slice(0, 10) : '-';
+    };
+    tbody.innerHTML = filtered.slice(0, 200).map(u => `
+      <tr style="cursor:pointer;" onclick="onUserRowClick('${u.uid}')">
+        <td class="td-main">${esc(u.name || '-')}</td>
+        <td class="td-mono">${esc(u.username || '-')}</td>
+        <td class="td-sub">${esc(u.email || '-')}</td>
+        <td>${esc(u.academyId || '-')}</td>
+        <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : (u.role === 'admin' ? 'badge-teal' : '')}">${esc(u.role || '-')}</span></td>
+        <td class="td-sub">${esc(u.status || '-')}</td>
+        <td class="td-sub">${fmtDate(u.createdAt)}</td>
+      </tr>
+    `).join('') + (filtered.length > 200 ? `<tr><td colspan="7" style="text-align:center;color:#bbb;padding:8px;">... 외 ${filtered.length - 200}건 (검색어 더 좁히기)</td></tr>` : '');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">검색 실패: ${esc(e.message)}</td></tr>`;
+  }
+};
+
+window.onUserRowClick = async (uid) => {
+  const all = await _loadAllUsers();
+  const u = all.find(x => x.uid === uid);
+  if (!u) { showToast('사용자 없음'); return; }
+  if (u.role === 'admin' && u.academyId) {
+    // 학원장 → 학원 모달
+    if (!_academiesCache.length) await loadAcademies();
+    openAcademyModal(u.academyId);
+  } else {
+    // 학생 / super_admin → 사용자 단독 편집 모달
+    openUserEditModal(uid);
+  }
+};
+
+window.openUserEditModal = (uid) => {
+  const u = (_allUsersCache || []).find(x => x.uid === uid);
+  if (!u) return;
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(520px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">👤 ${esc(u.name || '-')} <span style="color:#999;font-weight:400;font-size:13px;">(${esc(u.role || '-')} / ${esc(u.academyId || '-')})</span></div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이름</div>
+          <input id="ueName" type="text" value="${esc(u.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">username</div>
+          <input id="ueUsername" type="text" value="${esc(u.username || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일</div>
+          <input id="ueEmail" type="email" value="${esc(u.email || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">새 비밀번호 (변경 시)</div>
+          <input id="uePw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <input type="hidden" id="ueUid" value="${esc(u.uid)}">
+        <input type="hidden" id="ueOrigName" value="${esc(u.name || '')}">
+        <input type="hidden" id="ueOrigUsername" value="${esc(u.username || '')}">
+        <input type="hidden" id="ueOrigEmail" value="${esc(u.email || '')}">
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveUserEdit()">저장</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.saveUserEdit = async () => {
+  const uid = document.getElementById('ueUid')?.value;
+  const fields = {};
+  const newName = (document.getElementById('ueName')?.value || '').trim();
+  const newUsername = (document.getElementById('ueUsername')?.value || '').trim().toLowerCase();
+  const newEmail = (document.getElementById('ueEmail')?.value || '').trim().toLowerCase();
+  const newPw = (document.getElementById('uePw')?.value || '').trim();
+  const origName = document.getElementById('ueOrigName')?.value || '';
+  const origUsername = document.getElementById('ueOrigUsername')?.value || '';
+  const origEmail = document.getElementById('ueOrigEmail')?.value || '';
+  if (newName && newName !== origName) fields.name = newName;
+  if (newUsername && newUsername !== origUsername.toLowerCase()) fields.username = newUsername;
+  if (newEmail && newEmail !== origEmail.toLowerCase()) fields.email = newEmail;
+  if (newPw) fields.password = newPw;
+  if (Object.keys(fields).length === 0) { showToast('변경된 항목 없음'); return; }
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/superAdmin/updateAcademyAdmin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, uid, fields }),
+    });
+    const j = await r.json();
+    if (!j.success) { showToast('저장 실패: ' + j.error); return; }
+    closeModal();
+    _allUsersCache = null; // 캐시 무효화
+    showToast('✅ 저장됨');
+    runUserSearch();
+  } catch (e) {
+    showToast('오류: ' + e.message);
+  }
+};
+
 let _currentUser = null;
 let _currentProfile = null;
 let _academiesCache = [];

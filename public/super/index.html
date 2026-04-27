@@ -35,6 +35,7 @@
 <main class="super-main">
   <div class="super-tabs">
     <button class="active" id="tab-academies" onclick="goTab('academies')">🏢 학원 관리</button>
+    <button id="tab-users" onclick="goTab('users')">👥 사용자 검색</button>
     <button id="tab-tools" onclick="goTab('tools')">🛠 도구</button>
   </div>
 
@@ -58,6 +59,38 @@
         </thead>
         <tbody id="academiesTableBody">
           <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 사용자 검색 -->
+  <div class="page" id="page-users" style="display:none;">
+    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+      <input id="userSearchInput" type="text" placeholder="이름 / 이메일 / username / uid" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;" onkeyup="if(event.key==='Enter')runUserSearch()">
+      <select id="userRoleFilter" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+        <option value="">전체 role</option>
+        <option value="student">학생</option>
+        <option value="admin">학원장</option>
+        <option value="super_admin">super_admin</option>
+      </select>
+      <button class="btn btn-primary" onclick="runUserSearch()">🔍 검색</button>
+    </div>
+    <div class="card" style="padding:0;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>이름</th>
+            <th>username</th>
+            <th>이메일</th>
+            <th>학원</th>
+            <th>역할</th>
+            <th>상태</th>
+            <th>가입일</th>
+          </tr>
+        </thead>
+        <tbody id="userSearchBody">
+          <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색어 입력 후 Enter 또는 🔍 클릭</td></tr>
         </tbody>
       </table>
     </div>
