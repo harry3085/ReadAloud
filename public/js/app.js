@@ -244,7 +244,7 @@ async function _updateGenTestBadge(testModes, badgeId) {
   try {
     const myGroup = userProfile.group || '';
     const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
     const myTests = filterMyTests(snap.docs.map(d => ({id:d.id,...d.data()})), myGroup, myUid)
       .filter(t => testModes.includes(t.testMode));
     const completedSet = new Set();
@@ -475,7 +475,7 @@ async function _loadTestListByType(type) {
   try {
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === type);
 
@@ -1561,7 +1561,7 @@ async function loadRecAiList(){
   try{
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
     const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
     const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording');
 

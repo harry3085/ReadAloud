@@ -2010,7 +2010,7 @@ window.loadTestList = async() => {
     // tests + genTests 병렬 로드
     const [snap, gSnap] = await Promise.all([
       getDocs(query(collection(db,'tests'),orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genTests'),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
+      getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))).catch(()=>({docs:[]})),
     ]);
     const tests = snap.docs.map(d=>({id:d.id,_src:'tests',...d.data()}));
     const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
@@ -6785,6 +6785,7 @@ window.mcqPublish = async () => {
     const docRef = await addDoc(collection(db,'genTests'), {
       name,
       academy: '큰소리영어',
+      academyId: window.MY_ACADEMY_ID || 'default',
       date,
       testMode: 'mcq',
       targetType, targetId, targetName,
@@ -6963,7 +6964,7 @@ async function _renderTestAssignDetail(type) {
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
-        const testSnap = await getDocs(query(collection(db,'genTests'), orderBy('createdAt','desc')));
+        const testSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
         _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}))
           .filter(t => t.testMode === cfg.testMode);
       }
@@ -7618,7 +7619,9 @@ window.tpPublish = async () => {
 
   try {
     await addDoc(collection(db,'genTests'), {
-      name, academy:'큰소리영어', date,
+      name, academy:'큰소리영어',
+      academyId: window.MY_ACADEMY_ID || 'default',
+      date,
       testMode: cfg.testMode,
       targetType, targetId, targetName, targets: [...targets],
       active: true,
