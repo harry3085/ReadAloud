@@ -718,8 +718,9 @@
 
         <!-- Chapter -->
         <div class="card" style="flex:1;min-width:0;padding:0;overflow:hidden;display:flex;flex-direction:column;">
-          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <span>📖 Chapter</span><span id="genChapterCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span>
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
+            <span>📖 Chapter <span id="genChapterCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span></span>
+            <button id="genChapterClearBtn" class="btn btn-secondary" style="font-size:11px;padding:3px 8px;display:none;" onclick="genClearChapter()">해제</button>
           </div>
           <div style="padding:5px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;">
             <input type="checkbox" id="genChapterCheckAll" onchange="genToggleCheckAll('chapter',this)">
@@ -739,8 +740,9 @@
 
         <!-- Book -->
         <div class="card" style="flex:1;min-width:0;padding:0;overflow:hidden;display:flex;flex-direction:column;">
-          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <span>📚 Book</span><span id="genBookCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span>
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
+            <span>📚 Book <span id="genBookCount" style="font-size:11px;color:var(--gray);font-weight:400;"></span></span>
+            <button id="genBookClearBtn" class="btn btn-secondary" style="font-size:11px;padding:3px 8px;display:none;" onclick="genClearBook()">해제</button>
           </div>
           <div style="padding:5px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;">
             <input type="checkbox" id="genBookCheckAll" onchange="genToggleCheckAll('book',this)">
