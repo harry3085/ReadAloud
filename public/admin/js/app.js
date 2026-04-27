@@ -81,7 +81,7 @@ async function _logApiCall(endpoint){
       academyId,
       date: today,
       total: increment(1),
-      [`byEndpoint.${endpoint}`]: increment(1),
+      byEndpoint: { [endpoint]: increment(1) },
       lastAt: serverTimestamp(),
     }, { merge: true });
   } catch(e) { /* silent */ }
@@ -238,7 +238,9 @@ async function loadApiUsage(){
     ]);
     const t = todaySnap.exists() ? todaySnap.data() : { total: 0, byEndpoint: {} };
     const y = yestSnap.exists() ? yestSnap.data() : { total: 0 };
+    // nested + flat (옛 'byEndpoint.X' 키) 둘 다 처리
     const bE = t.byEndpoint || {};
+    const cnt = (k) => (bE[k] || 0) + (t['byEndpoint.' + k] || 0);
     const items = [
       { keys: ['check-recording'],          label: '🎤 녹음숙제' },
       { keys: ['generate-quiz'],            label: '✨ AI Generator' },
@@ -257,11 +259,11 @@ async function loadApiUsage(){
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
         ${items.map(it => {
-          const cnt = it.keys.reduce((s,k) => s + (bE[k] || 0), 0);
+          const sum = it.keys.reduce((s,k) => s + cnt(k), 0);
           return `
           <div style="display:flex;justify-content:space-between;">
             <span>${it.label}</span>
-            <span style="font-weight:600;color:var(--text);">${cnt}</span>
+            <span style="font-weight:600;color:var(--text);">${sum}</span>
           </div>`;
         }).join('')}
       </div>

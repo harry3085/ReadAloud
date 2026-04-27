@@ -571,7 +571,7 @@ async function _logApiCall(endpoint){
       academyId,
       date: today,
       total: increment(1),
-      [`byEndpoint.${endpoint}`]: increment(1),
+      byEndpoint: { [endpoint]: increment(1) },
       lastAt: serverTimestamp(),
     }, { merge: true });
   } catch(e) { /* silent: logging 실패해도 앱 동작엔 영향 없음 */ }

@@ -16,6 +16,8 @@
     "migrate:relocate-lookup:apply": "node scripts/migrate/relocate-username-lookup.js --apply",
     "migrate:relocate-api-usage": "node scripts/migrate/relocate-api-usage.js",
     "migrate:relocate-api-usage:apply": "node scripts/migrate/relocate-api-usage.js --apply",
+    "migrate:fix-api-usage": "node scripts/migrate/fix-api-usage-nested.js",
+    "migrate:fix-api-usage:apply": "node scripts/migrate/fix-api-usage-nested.js --apply",
     "backup": "node scripts/backup/export-all.js",
     "show-firebase-env": "node scripts/show-firebase-env.js",
     "create-academy": "node scripts/admin/create-academy.js",
