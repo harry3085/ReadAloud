@@ -289,6 +289,39 @@ window.closeModal = () => {
   if (overlay) overlay.style.display = 'none';
 };
 
+// ── 학원 관리 합계 카드 ───────────────────────────────
+function _renderAcademiesSummary(academies, planMap) {
+  const el = document.getElementById('academiesSummary');
+  if (!el) return;
+  let totalStudents = 0, totalAi = 0, totalRec = 0, totalLimit = 0, totalAiLimit = 0;
+  let active = 0;
+  academies.forEach(a => {
+    const u = a.usage || {};
+    const p = planMap[a.planId] || {};
+    totalStudents += (u.activeStudentsCount || 0);
+    totalAi += (u.aiCallsThisMonth || 0);
+    totalRec += (u.recordingCallsThisMonth || 0);
+    totalLimit += (a.studentLimit || 0);
+    totalAiLimit += (p.limits?.aiQuotaPerMonth || 0);
+    if (a.billingStatus === 'active') active++;
+  });
+  const aiPct = totalAiLimit ? Math.min(100, Math.round((totalAi / totalAiLimit) * 100)) : 0;
+  const studentPct = totalLimit ? Math.min(100, Math.round((totalStudents / totalLimit) * 100)) : 0;
+  const card = (label, big, sub, color) => `
+    <div class="card" style="padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">${label}</div>
+      <div style="font-size:22px;font-weight:800;color:${color || 'var(--text)'};line-height:1.1;">${big}</div>
+      ${sub ? `<div style="font-size:10px;color:#999;margin-top:4px;">${sub}</div>` : ''}
+    </div>`;
+  el.innerHTML = [
+    card('🏢 학원 수', `${academies.length}`, `${active} active`, 'var(--teal)'),
+    card('👥 총 학생', `${totalStudents}`, `한도 ${totalLimit} (${studentPct}%)`),
+    card('✨ AI 월 호출', `${totalAi}`, `한도 ${totalAiLimit || '-'} (${aiPct}%)`, aiPct >= 70 ? '#f59e0b' : 'var(--text)'),
+    card('🎤 녹음 월 평가', `${totalRec}`, '학원별 한도 합', ''),
+    card('💳 active', `${active}/${academies.length}`, '결제 활성', active === academies.length ? '#059669' : '#dc2626'),
+  ].join('');
+}
+
 // ── 신규 학원 추가 모달 ──────────────────────────────
 window.openAcademyCreateModal = () => {
   const planOpts = Object.keys(_plansCache).length
@@ -565,6 +598,7 @@ async function loadAcademies() {
 
     _academiesCache = academies;
     _plansCache = planMap;
+    _renderAcademiesSummary(academies, planMap);
     el.innerHTML = academies.map(a => `
       <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
         <td class="td-main">${esc(a.name || '-')}</td>
