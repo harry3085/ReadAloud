@@ -483,7 +483,7 @@ window.sortTable = (tableId, colIdx) => {
 // ── 클래스 관리 ──────────────────────────────────────
 async function loadClasses(){
   try{
-    const snap=await getDocs(query(collection(db,'groups'),orderBy('createdAt','asc')));
+    const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','asc')));
     const data=snap.docs.map(d=>({id:d.id,...d.data()}));
     initPagination('classTableBody', data, (g,i)=>`<tr>
       <td><input type="checkbox" value="${g.id}"></td>
@@ -522,7 +522,7 @@ window.saveClass = async() => {
   const name=document.getElementById('className').value.trim();
   const teacher=document.getElementById('classTeacher').value.trim();
   if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
-  await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp()});
+  await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   closeModal(); showToast('반이 생성됐어요!'); await loadClasses();
 };
 window.deleteClass = async(id,name) => {
@@ -605,7 +605,7 @@ window.bulkAction = async(action) => {
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
     showToast('퇴원처리 완료!'); await loadStudents('active');
   } else if(action==='assign'){
-    const classSnap=await getDocs(collection(db,'groups'));
+    const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
     const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
     showModal(`
       <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -638,7 +638,7 @@ window.restoreStudent = async(id) => {
 };
 // (구버전 window.deleteStudent 제거 — 아래 Auth+Firestore 통합 삭제 사용)
 window.openStudentModal = async() => {
-  const classSnap=await getDocs(collection(db,'groups'));
+  const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -721,7 +721,7 @@ async function loadNotices(){
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 window.openNoticeModal = async() => {
-  const classSnap=await getDocs(collection(db,'groups'));
+  const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts='<option value="all">전체</option>'+classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -1047,7 +1047,7 @@ window.onMsgTypeChange = async() => {
   document.getElementById('msgGroupRow').style.display=type==='group'?'':'none';
   document.getElementById('msgStudentRow').style.display=type==='student'?'':'none';
   if(type==='group'){
-    const snap=await getDocs(collection(db,'groups'));
+    const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
     document.getElementById('msgGroup').innerHTML=snap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   }
   if(type==='student'){
@@ -2440,7 +2440,7 @@ window.updateClass = async(id) => {
 window.editStudent = async(id) => {
   const snap = await getDoc(doc(db,'users',id));
   const u = snap.data(); if(!u) return;
-  const classSnap = await getDocs(collection(db,'groups'));
+  const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts = classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${u.group===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -2499,7 +2499,7 @@ window.updateStudent = async(id) => {
 window.editNotice = async(id) => {
   const snap = await getDoc(doc(db,'notices',id));
   const n = snap.data(); if(!n) return;
-  const classSnap = await getDocs(collection(db,'groups'));
+  const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   const opts = '<option value="all" '+(n.target==='all'?'selected':'')+'>전체</option>'
     + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${n.target===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
   showModal(`

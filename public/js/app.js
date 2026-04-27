@@ -2704,7 +2704,7 @@ async function loadAdminData(){
 
 // ── 그룹 관리 (학생탭) ────────────────────────────────────
 async function loadGroups(){
-  const snap=await getDocs(collection(db,'groups'));
+  const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
   allGroups=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderGroupTags();
   renderUserGroupFilter();
@@ -2752,7 +2752,7 @@ window.filterByUserGroup=async (val)=>{
 window.addGroup=async()=>{
   const name=document.getElementById('newGroupName').value.trim(); if(!name)return;
   if(allGroups.find(g=>g.name===name)){showToast('이미 있는 그룹이에요.');return;}
-  await addDoc(collection(db,'groups'),{name,createdAt:serverTimestamp()});
+  await addDoc(collection(db,'groups'),{name,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   document.getElementById('newGroupName').value='';
   showToast('그룹 추가됐어요!'); await loadGroups();
 };
