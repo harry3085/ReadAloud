@@ -155,7 +155,10 @@ window.doLogin = async () => {
     currentUser = auth.currentUser;
     await _loadMyAcademyContext(auth.currentUser, profile);
     localStorage.setItem('lastLoginAt', Date.now().toString());
-    if(profile.role==='admin'){
+    if(profile.role==='super_admin'){
+      // 슈퍼 관리자 전용 앱으로 직행
+      window.location.href = '/super/';
+    } else if(profile.role==='admin'){
       // PC 관리자 앱으로 이동
       localStorage.setItem('adminProfile', JSON.stringify({...profile, uid: profileUid}));
       window.location.href = '/admin/';
