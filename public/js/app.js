@@ -3515,7 +3515,8 @@ window.savePushOnly=async()=>{
   if(!title||!body){showToast('제목과 내용을 입력하세요.');return;}
   const today=new Date().toISOString().slice(0,10);
   await addDoc(collection(db,'pushNotifications'),{
-    target, title, body, sent:false, date:today, createdAt:serverTimestamp()
+    target, title, body, sent:false, date:today, createdAt:serverTimestamp(),
+    academyId: window.MY_ACADEMY_ID || 'default',
   });
   showToast('💾 알림이 저장됐어요!');
   await loadSavedPushList();
@@ -3577,7 +3578,7 @@ window.delSavedPush=async (id)=>{
 async function loadSavedPushList(){
   const el=document.getElementById('savedPushList');if(!el)return;
   try{
-    const snap=await getDocs(query(collection(db,'pushNotifications'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const items=snap.docs.map(d=>({id:d.id,...d.data()}));
     el.innerHTML=items.map(n=>{
       const isStudent=n.target?.startsWith('uid:');

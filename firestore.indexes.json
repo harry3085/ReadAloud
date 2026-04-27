@@ -87,6 +87,14 @@
         { "fieldPath": "academyId", "order": "ASCENDING" },
         { "fieldPath": "serialNumber", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pushNotifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

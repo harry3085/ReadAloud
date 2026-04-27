@@ -1078,13 +1078,13 @@ window.saveMessage = async() => {
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp()});
+  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   showToast('💾 저장됐어요!'); await loadMessages();
 };
 async function loadMessages(){
   const el=document.getElementById('savedMsgList');
   try{
-    const snap=await getDocs(query(collection(db,'pushNotifications'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송된 알림이 없습니다</div>';return;}
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
@@ -2344,7 +2344,8 @@ window.saveTestEdit = async(testId) => {
       type: 'test_updated',
       testId,
       read: false,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      academyId: window.MY_ACADEMY_ID || 'default',
     })));
 
     showToast(`✅ 수정 완료 · ${affectedUids.size}명에게 알림 발송`);
