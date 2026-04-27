@@ -1065,7 +1065,8 @@ window.sendMessage = async() => {
   const body=document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   try{
-    const res=await fetch('/api/sendPush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,target})});
+    const idToken = await currentUser.getIdToken();
+    const res=await fetch('/api/sendPush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,target,idToken})});
     const result=await res.json();
     showToast(result.success?'✅ '+result.message:'⚠️ '+(result.message||result.error));
   }catch(e){showToast('❌ 발송 실패: '+e.message);}

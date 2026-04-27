@@ -3532,10 +3532,11 @@ window.sendPushNotification=async()=>{
   btns[0].textContent='발송 중...';
 
   try {
+    const idToken = await currentUser.getIdToken();
     const res = await fetch('/api/sendPush', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, body, target }),
+      body: JSON.stringify({ title, body, target, idToken }),
     });
     const result = await res.json();
     if(result.success) {
