@@ -333,20 +333,13 @@ async function loadDashScores(){
     const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(20)));
     if(snap.empty){el.innerHTML='<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">시험 결과가 없습니다</td></tr>';return;}
 
-    // testId로 교재명 보완
-    const testIds=[...new Set(snap.docs.map(d=>d.data().testId).filter(Boolean))];
-    const testMap={};
-    await Promise.all(testIds.map(async id=>{
-      try{ const d=await getDoc(doc(db,'tests',id)); if(d.exists()) testMap[id]=d.data(); }catch(e){console.warn(e);}
-    }));
-
     el.innerHTML=snap.docs.map((d,i)=>{
       const s=d.data();
-      const t=testMap[s.testId]||{};
-      const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || t.testMode || 'vocab');
+      const t={};  // 레거시 tests fallback 제거 (Phase 6F)
+      const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || 'vocab');
       const pct=s.score||0;
       const badge=pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
-      // 교재명: bookName 우선, 없으면 testMap의 bookName, 없으면 unitName
+      // 교재명: bookName 우선, 없으면 unitName
       const bookName = s.bookName || t.bookName || s.unitName || '-';
       return `<tr>
         <td>${i+1}</td>
@@ -1310,21 +1303,13 @@ window.loadScoreReport = async() => {
       _srData=[]; return;
     }
 
-    // testId로 교재명·시험명 보완
-    const testIds=[...new Set(filtered.map(s=>s.testId).filter(Boolean))];
-    const testMap={};
-    await Promise.all(testIds.map(async id=>{
-      try{ const d=await getDoc(doc(db,'tests',id)); if(d.exists()) testMap[id]=d.data(); }catch(e){console.warn(e);}
-    }));
-
-    // 정렬용 필드 정규화
+    // 정렬용 필드 정규화 (레거시 tests fallback 제거 — Phase 6F)
     _srData = filtered.map(s=>{
-      const t=testMap[s.testId]||{};
-      const m = s.mode || s.testMode || t.testMode || 'vocab';
+      const m = s.mode || s.testMode || 'vocab';
       return {
         ...s,
-        bookName: s.bookName||t.bookName||s.unitName||'-',
-        testName: s.testName||t.name||'-',
+        bookName: s.bookName||s.unitName||'-',
+        testName: s.testName||'-',
         mode: m,  // 표준 키 유지 (vocab/fill_blank/mcq/unscramble/recording/subjective)
         score: s.score||0,
         correct: s.correct||0,
@@ -1834,26 +1819,13 @@ window.deleteSelectedPayment = async() => {
 
 
 // ── 시험 선택 액션 ──────────────────────────────────
-window.editSelectedTest = async() => {
-  const ids = getCheckedIds('testListBody');
-  if (ids.length !== 1) { showAlert('입력 확인', '수정할 시험을 하나만 선택하세요.'); return; }
-  openTestEditModal(ids[0]);
-};
-window.reprintSelectedTest = async() => {
-  const ids = getCheckedIds('testListBody');
-  if (ids.length !== 1) { showAlert('입력 확인', '재출력할 시험을 하나만 선택하세요.'); return; }
-  reprintTest(ids[0]);
-};
 window.deleteSelectedTest = async() => {
-  const rows = [...document.querySelectorAll('#testListBody input[type=checkbox]:checked')]
-    .map(cb => ({ id: cb.value, src: cb.dataset.src || 'tests' }))
-    .filter(r => r.id && r.id !== 'on');
-  if (!rows.length) { showAlert('입력 확인', '삭제할 시험을 선택하세요.'); return; }
-  if(!(await showConfirm(`선택한 ${rows.length}개 시험을 삭제할까요?`)))return;
-  for(const r of rows) {
-    const coll = (r.src === 'genTests') ? 'genTests' : 'tests';
-    await deleteDoc(doc(db, coll, r.id));
-  }
+  const ids = [...document.querySelectorAll('#testListBody input[type=checkbox]:checked')]
+    .map(cb => cb.value)
+    .filter(id => id && id !== 'on');
+  if (!ids.length) { showAlert('입력 확인', '삭제할 시험을 선택하세요.'); return; }
+  if(!(await showConfirm(`선택한 ${ids.length}개 시험을 삭제할까요?`)))return;
+  for(const id of ids) await deleteDoc(doc(db, 'genTests', id));
   showToast('삭제됐어요.'); await loadTestList();
 };
 
@@ -2220,176 +2192,6 @@ window.toggleTestProgress = async(testId, source='genTests') => {
 
     contentEl.innerHTML = html;
   }catch(e){ contentEl.textContent='불러오기 실패: '+e.message; }
-};
-
-window.openTestEditModal = async(testId) => {
-  const snap = await getDoc(doc(db,'tests',testId));
-  if (!snap.exists()) { showAlert('입력 확인', '시험 데이터 없음'); return; }
-  const t = snap.data();
-  const isUnsc = t.testMode === 'unscramble';
-
-  const wordsHtml = (t.words||[]).map((w,i)=>`
-    <tr>
-      <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
-      <td style="padding:4px;">
-        <input data-wi="${i}" data-field="en" value="${esc(w.en||'')}"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
-      </td>
-      <td style="padding:4px;">
-        <input data-wi="${i}" data-field="ko" value="${esc(w.ko||'')}"
-          style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;">
-      </td>
-      <td style="padding:4px;text-align:center;">
-        <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
-      </td>
-    </tr>`).join('');
-
-  showModal(`
-    <div style="width:min(900px,94vw);max-height:88vh;display:flex;flex-direction:column;">
-      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 시험 수정</div>
-      </div>
-      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
-        <div style="display:flex;flex-direction:column;gap:14px;">
-          <div>
-            <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">시험명</div>
-            <input id="editTestName" value="${esc(t.name||'')}"
-              style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;">
-          </div>
-          <div style="display:flex;gap:12px;">
-            <div style="flex:1;">
-              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">통과점수</div>
-              <input id="editTestPass" type="number" value="${t.passScore||80}" min="0" max="100"
-                style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;text-align:center;">
-            </div>
-            <div style="flex:1;">
-              <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">활성화</div>
-              <select id="editTestActive" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;">
-                <option value="1" ${t.active!==false?'selected':''}>활성</option>
-                <option value="0" ${t.active===false?'selected':''}>비활성</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:12px;color:var(--gray);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
-              <span>단어 목록 ${isUnsc?'<span style="color:#b45309;font-size:11px;">(언스크램블: / 로 청크 구분)</span>':''}</span>
-              <button onclick="addEditWordRow()" style="background:var(--teal);color:white;border:none;border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;">+ 추가</button>
-            </div>
-            <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
-              <table style="width:100%;border-collapse:collapse;">
-                <thead><tr style="background:#f8f9fa;font-size:11px;color:var(--gray);">
-                  <th style="padding:6px 4px;text-align:center;width:28px;">No</th>
-                  <th style="padding:6px 4px;text-align:left;">영어</th>
-                  <th style="padding:6px 4px;text-align:left;">한글</th>
-                  <th style="width:28px;"></th>
-                </tr></thead>
-                <tbody id="editWordList">${wordsHtml}</tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-        <button class="btn btn-primary" onclick="saveTestEdit('${testId}')">저장</button>
-      </div>
-    </div>`);
-};
-
-window.addEditWordRow = () => {
-  const tbody = document.getElementById('editWordList');
-  if(!tbody) return;
-  const i = tbody.rows.length;
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td style="padding:4px;color:var(--gray);font-size:12px;text-align:center;">${i+1}</td>
-    <td style="padding:4px;"><input data-wi="${i}" data-field="en" placeholder="영어"
-      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
-    <td style="padding:4px;"><input data-wi="${i}" data-field="ko" placeholder="한글"
-      style="width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;outline:none;"></td>
-    <td style="padding:4px;text-align:center;">
-      <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;line-height:1;">✕</button>
-    </td>`;
-  tbody.appendChild(tr);
-};
-
-window.saveTestEdit = async(testId) => {
-  const name = document.getElementById('editTestName')?.value.trim();
-  if (!name) { showAlert('입력 확인', '시험명을 입력하세요.'); return; }
-  const passScore = parseInt(document.getElementById('editTestPass')?.value)||80;
-  const active = document.getElementById('editTestActive')?.value === '1';
-
-  // 단어 수집
-  const rows = document.getElementById('editWordList')?.querySelectorAll('tr')||[];
-  const words = [];
-  rows.forEach(tr=>{
-    const en = tr.querySelector('[data-field="en"]')?.value.trim()||'';
-    const ko = tr.querySelector('[data-field="ko"]')?.value.trim()||'';
-    if(en||ko) words.push({en, ko});
-  });
-  if (!words.length) { showAlert('입력 확인', '단어를 하나 이상 입력하세요.'); return; }
-
-  closeModal();
-
-  // 진행/완료 학생 확인
-  const [compSnap, scoreSnap] = await Promise.all([
-    getDocs(collection(db,'tests',testId,'userCompleted')),
-    getDocs(query(collection(db,'scores'),where('testId','==',testId)))
-  ]);
-  const affectedUids = new Set();
-  compSnap.docs.forEach(d=>affectedUids.add(d.id));
-  scoreSnap.docs.forEach(d=>affectedUids.add(d.data().uid));
-
-  // 시험 데이터 업데이트
-  await updateDoc(doc(db,'tests',testId),{ name, passScore, active, words, updatedAt: serverTimestamp() });
-
-  // 영향받는 학생이 있으면 진도 초기화 + 알림 발송
-  if(affectedUids.size > 0){
-    const confirmed = await showConfirm(
-      `시험 내용이 수정됩니다`,
-      `응시/완료한 학생 ${affectedUids.size}명의 진도가 초기화되고 재응시 알림이 발송됩니다.`
-    );
-    if(!confirmed){
-      showToast('✅ 시험 내용만 수정됐어요 (진도 유지)');
-      await loadTestList();
-      return;
-    }
-
-    // userCompleted 삭제
-    await Promise.all(compSnap.docs.map(d=>deleteDoc(d.ref)));
-
-    // scores 삭제
-    await Promise.all(scoreSnap.docs.map(d=>deleteDoc(d.ref)));
-
-    // 알림 발송
-    await Promise.all([...affectedUids].map(uid=>addDoc(collection(db,'userNotifications'),{
-      uid,
-      title: '📝 시험이 수정됐어요',
-      body: `"${name}" 시험 내용이 수정되어 다시 응시해주세요.`,
-      type: 'test_updated',
-      testId,
-      read: false,
-      createdAt: serverTimestamp(),
-      academyId: window.MY_ACADEMY_ID || 'default',
-    })));
-
-    showToast(`✅ 수정 완료 · ${affectedUids.size}명에게 알림 발송`);
-  } else {
-    showToast('✅ 시험이 수정됐어요.');
-  }
-
-  await loadTestList();
-};
-
-window.reprintTest = async(id) => {
-  const snap = await getDoc(doc(db,'tests',id));
-  const t = snap.data(); if(!t) return;
-  printExamPDF(t.words||[], t.name, t.academy||'큰소리영어', t.date, 'both', t.qType||'both');
-};
-window.deleteTest = async(id) => {
-  if(!(await showConfirm('시험을 삭제할까요?')))return;
-  await deleteDoc(doc(db,'tests',id));
-  showToast('삭제됐어요.'); await loadTestList();
 };
 
 // ── 엑셀 내보내기 ────────────────────────────────────────

@@ -120,30 +120,12 @@ service cloud.firestore {
       allow create: if isAdminCreatingForMyAcademy();
     }
 
-    // ── 저장된 푸시 목록 (관리자 전용) ──────────────────────
-    // 사용처 없음 (잔재 컬렉션) — 관리자만 통과
-    match /savedPushList/{pushId} {
-      allow read, write: if isAdmin();
-    }
-
-    // ── 교재 (레거시 — 시험지 출력 제거됨, 다음 정리 후보) ─
-    match /books/{bookId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-
-      match /units/{unitId} {
-        allow read: if isSignedIn();
-        allow write: if isAdmin();
-      }
-    }
-    match /folders/{folderId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-    match /units/{unitId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
+    // ── 레거시 컬렉션 제거됨 (Phase 6F):
+    //   savedPushList — 코드 사용처 없음 (잔재)
+    //   books / books/{id}/units — 시험지 출력 제거 후 미사용
+    //   folders / units (top-level) — 시험지 출력 제거 후 미사용
+    //   tests (레거시 시험) — Phase 6F 에서 코드/규칙 제거
+    // 위 컬렉션 접근 시 기본 deny (Rules 미정의)
 
     // ── 푸시 알림 목록 (관리자 전용) ─────────────────────
     match /pushNotifications/{pushId} {
