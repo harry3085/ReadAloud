@@ -4495,7 +4495,7 @@ async function _qgCallMcq(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
@@ -4544,7 +4544,7 @@ async function _qgCallFillBlank(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
@@ -4712,7 +4712,7 @@ async function _qgCallSubjective(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
@@ -4753,7 +4753,7 @@ async function _qgCallRecording(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
@@ -4941,7 +4941,7 @@ async function _qgCallVocab(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
@@ -4990,7 +4990,7 @@ async function _qgCallUnscramble(opts) {
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '🤖 Gemini 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
 
   const selectedPages = (_genPages||[])
     .filter(p => _qgSelectedPageIds.has(p.id))
