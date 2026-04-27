@@ -2633,7 +2633,7 @@ function _genUpdateSortMark(kind) {
   const id = kind === 'books' ? 'genBookSortMark' : kind === 'chapters' ? 'genChapterSortMark' : 'genPageSortMark';
   const el = document.getElementById(id);
   if (!el) return;
-  el.textContent = _genSort[kind] === 'name' ? '· 이름순 ▼' : '· 최근순 ▼';
+  el.textContent = _genSort[kind] === 'name' ? '· 이름순▼' : '· 최근순▼';
 }
 
 function _genRenderBooks() {
@@ -4344,7 +4344,7 @@ function _qgApplySortSearch(kind, arr, nameKey = 'name') {
   }
   return result;
 }
-function _qgSortLabel(kind) { return _qgSort[kind] === 'name' ? '· 이름순' : '· 최근순'; }
+function _qgSortLabel(kind) { return _qgSort[kind] === 'name' ? '· 이름순▼' : '· 최근순▼'; }
 
 // ─── Book / Chapter 선택 핸들러 ───
 window.qgSelectBook = (bookId) => {
