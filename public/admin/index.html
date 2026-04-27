@@ -140,6 +140,15 @@
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       결제 관리
     </div>
+
+    <!-- super_admin 전용 — JS 가 role 확인 후 노출 -->
+    <div id="nav-super-admin-section" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid #eee;">
+      <div style="font-size:11px;color:var(--gray);padding:0 14px 8px;font-weight:700;letter-spacing:.5px;">SUPER ADMIN</div>
+      <div class="nav-item" onclick="goPage('academies')" id="nav-academies">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+        학원 관리
+      </div>
+    </div>
   </div>
 </nav>
 
@@ -835,6 +844,33 @@
       <div><div class="page-title">🎤 녹음숙제</div><div class="page-sub">본문 문장을 AI가 추출해 녹음 숙제로 배정합니다</div></div>
     </div>
     <div id="recAiAssignRoot"></div>
+  </div>
+
+  <!-- super_admin: 학원 관리 -->
+  <div class="page" id="page-academies">
+    <div class="page-header">
+      <div><div class="page-title">🏢 학원 관리</div><div class="page-sub">전체 학원 목록 / 플랜 / 사용량</div></div>
+      <button class="btn btn-primary" onclick="openAcademyCreateModal()" id="btnNewAcademy" disabled style="opacity:.5;">+ 신규 학원 (개발 중)</button>
+    </div>
+
+    <div class="card" style="padding:0;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>학원명</th>
+            <th>Subdomain</th>
+            <th>플랜</th>
+            <th>학생 한도</th>
+            <th>사용량</th>
+            <th class="sortable" onclick="sortTable('academiesTableBody',5)">생성일</th>
+            <th>상태</th>
+          </tr>
+        </thead>
+        <tbody id="academiesTableBody">
+          <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
 </main>

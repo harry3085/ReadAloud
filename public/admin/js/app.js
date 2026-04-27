@@ -124,6 +124,12 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
+
+  // super_admin 전용 사이드바 섹션 노출
+  if (window.MY_ROLE === 'super_admin') {
+    const sec = document.getElementById('nav-super-admin-section');
+    if (sec) sec.style.display = '';
+  }
 }
 
 onAuthStateChanged(auth, async user => {
@@ -163,6 +169,7 @@ const pageLabels = {
   'test-mcq':'내용이해_객관식',
   'test-subj':'해석하기_주관식',
   'test-rec-ai':'녹음숙제',
+  'academies':'학원 관리',
 };
 window.goPage = async(id) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -194,6 +201,7 @@ window.goPage = async(id) => {
   else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
   else if(id==='test-subj')       await _renderTestAssignDetail('subj');
   else if(id==='test-rec-ai')     await _renderTestAssignDetail('rec-ai');
+  else if(id==='academies')       await loadAcademies();
 };
 
 window.toggleNav = (group) => {
@@ -986,6 +994,61 @@ window.deleteSelectedHwFile = async() => {
   }
   showToast('삭제됐어요.'); await loadHwFileAdmin();
 };
+
+// ── super_admin: 학원 관리 ─────────────────────────────
+async function loadAcademies(){
+  const el = document.getElementById('academiesTableBody');
+  if (window.MY_ROLE !== 'super_admin') {
+    el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">슈퍼 관리자 권한이 필요합니다.</td></tr>';
+    return;
+  }
+  try {
+    el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
+    const [acadSnap, planSnap] = await Promise.all([
+      getDocs(query(collection(db,'academies'),orderBy('createdAt','asc'))),
+      getDocs(collection(db,'plans')),
+    ]);
+    const planMap = {};
+    planSnap.docs.forEach(d => { planMap[d.id] = d.data(); });
+
+    const academies = acadSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+    if (!academies.length) {
+      el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">학원이 없습니다.</td></tr>';
+      return;
+    }
+
+    const fmtDate = (t) => {
+      const d = t?.toDate ? t.toDate() : null;
+      return d ? d.toISOString().slice(0,10) : '-';
+    };
+    const fmtUsage = (a) => {
+      const u = a.usage || {};
+      const p = planMap[a.planId] || {};
+      const aiLimit = p.limits?.aiQuotaPerMonth || '∞';
+      const recLimit = p.limits?.perTypeQuota?.recording?.check || '∞';
+      return `<div style="font-size:11px;line-height:1.5;">
+        학생 ${u.activeStudentsCount||0}/${a.studentLimit||'∞'}<br>
+        AI ${u.aiCallsThisMonth||0}/${aiLimit}<br>
+        녹음 ${u.recordingCallsThisMonth||0}/${recLimit}
+      </div>`;
+    };
+
+    el.innerHTML = academies.map(a => `
+      <tr>
+        <td class="td-main">${esc(a.name||'-')}</td>
+        <td class="td-mono">${esc(a.subdomain||a.id)}</td>
+        <td><span class="badge badge-teal">${esc(a.planId||'-')}</span></td>
+        <td class="td-center">${a.studentLimit||'-'}</td>
+        <td>${fmtUsage(a)}</td>
+        <td class="td-sub">${fmtDate(a.createdAt)}</td>
+        <td><span class="badge ${a.billingStatus==='active'?'badge-green':'badge-red'}">${esc(a.billingStatus||'-')}</span></td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message)}</td></tr>`;
+  }
+}
 
 // ── 결제 관리 ────────────────────────────────────────
 async function loadPayments(){
