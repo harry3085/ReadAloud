@@ -41,11 +41,15 @@ window.doLogout = async () => {
 window.goTab = (id) => {
   document.querySelectorAll('.super-tabs button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + id)?.classList.add('active');
-  document.querySelectorAll('main .page').forEach(p => p.style.display = 'none');
+  // .page 는 admin/style.css 에서 display:none / .active=display:block 클래스 기반
+  document.querySelectorAll('main .page').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = '';  // 인라인 display 제거 — CSS 클래스로 위임
+  });
   const page = document.getElementById('page-' + id);
-  if (page) page.style.display = '';
+  if (page) page.classList.add('active');
   if (id === 'academies') loadAcademies();
-  else if (id === 'users') runUserSearch();  // 진입 시 전체 표시
+  else if (id === 'users') runUserSearch();
 };
 
 // ── 사용자 검색 ──────────────────────────────────────
