@@ -3236,7 +3236,7 @@ window.savePayment=async()=>{
   } else {
     const uSnap=await getDoc(doc(db,'users',uid));
     const uData=uSnap.data()||{};
-    await addDoc(collection(db,'payments'),{uid,userName:uData.name||'',group:uData.group||'',title,amount,due,status,memo,createdAt:serverTimestamp()});
+    await addDoc(collection(db,'payments'),{uid,userName:uData.name||'',group:uData.group||'',title,amount,due,status,memo,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
     showToast('✅ 결제 내역이 등록됐어요!');
   }
   cancelEditPayment();
@@ -3268,7 +3268,7 @@ window.startEditPayment=async (id)=>{
   showToast('수정할 내용을 변경 후 저장하세요.');
 };
 async function loadPayments(){
-  const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
+  const snap=await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
   const payments=snap.docs.map(d=>({id:d.id,...d.data()}));
   const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
   const scls={paid:'paid',unpaid:'unpaid',pending:'pending'};

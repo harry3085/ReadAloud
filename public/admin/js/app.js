@@ -973,7 +973,7 @@ window.deleteSelectedHwFile = async() => {
 async function loadPayments(){
   const el=document.getElementById('paymentTableBody');
   try{
-    const snap=await getDocs(query(collection(db,'payments'),orderBy('createdAt','desc')));
+    const snap=await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     const pays=snap.docs.map(d=>({id:d.id,...d.data()}));
     let total=0,paid=0,unpaid=0;
     pays.forEach(p=>{total+=p.amount||0;if(p.status==='paid')paid+=p.amount||0;else unpaid+=p.amount||0;});
@@ -1037,7 +1037,7 @@ window.savePayment = async() => {
   const due=document.getElementById('payDue').value;
   const status=document.getElementById('payStatus').value;
   if (!title||!amount) { showAlert('입력 확인', '항목과 금액을 입력하세요.'); return; }
-  await addDoc(collection(db,'payments'),{uid,userName,group,title,amount,due,status,createdAt:serverTimestamp()});
+  await addDoc(collection(db,'payments'),{uid,userName,group,title,amount,due,status,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   closeModal(); showToast('✅ 등록됐어요!'); await loadPayments();
 };
 
