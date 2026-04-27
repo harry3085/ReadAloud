@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -49,6 +49,8 @@ window.goTab = (id) => {
 
 let _currentUser = null;
 let _currentProfile = null;
+let _academiesCache = [];
+let _plansCache = {};
 
 // ── 인증 ─────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -106,6 +108,143 @@ window.openProfileModal = () => {
 window.closeModal = () => {
   const overlay = document.getElementById('modalOverlay');
   if (overlay) overlay.style.display = 'none';
+};
+
+// ── 학원 상세 / 편집 모달 ────────────────────────────
+window.openAcademyModal = async (academyId) => {
+  const a = _academiesCache.find(x => x.id === academyId);
+  if (!a) { showToast('학원 정보 없음'); return; }
+
+  // 학원장 (academy_admin) 조회 — 첫 번째 admin 1명
+  let admins = [];
+  try {
+    const qs = await getDocs(query(collection(db, 'users'),
+      where('academyId', '==', academyId),
+      where('role', '==', 'admin')
+    ));
+    admins = qs.docs.map(d => ({ uid: d.id, ...d.data() }));
+  } catch (e) { console.warn(e); }
+  const adminUser = admins[0] || null;
+
+  const planOpts = Object.keys(_plansCache).map(pid =>
+    `<option value="${esc(pid)}" ${a.planId === pid ? 'selected' : ''}>${esc(_plansCache[pid].displayName || pid)}</option>`
+  ).join('');
+
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(640px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">🏢 ${esc(a.name)} <span style="color:#999;font-weight:400;font-size:13px;">(${esc(a.subdomain || a.id)})</span></div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
+        <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;">학원 정보</div>
+
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학원명</div>
+          <input id="acName" type="text" value="${esc(a.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
+            <select id="acPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
+            <input id="acLimit" type="number" min="0" value="${a.studentLimit || 30}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">상태</div>
+            <select id="acStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+              <option value="active" ${a.billingStatus === 'active' ? 'selected' : ''}>active</option>
+              <option value="suspended" ${a.billingStatus === 'suspended' ? 'selected' : ''}>suspended</option>
+              <option value="cancelled" ${a.billingStatus === 'cancelled' ? 'selected' : ''}>cancelled</option>
+            </select></div>
+        </div>
+
+        <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보 ${adminUser ? '' : '(없음)'}</div>
+
+        ${adminUser ? `
+          <div style="display:flex;gap:12px;">
+            <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이름</div>
+              <input id="adName" type="text" value="${esc(adminUser.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+            <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">username</div>
+              <input id="adUsername" type="text" value="${esc(adminUser.username || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          </div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일</div>
+            <input id="adEmail" type="email" value="${esc(adminUser.email || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">새 비밀번호 (변경 시만)</div>
+            <input id="adPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <input type="hidden" id="adUid" value="${esc(adminUser.uid)}">
+          <input type="hidden" id="adOrigUsername" value="${esc(adminUser.username || '')}">
+          <input type="hidden" id="adOrigEmail" value="${esc(adminUser.email || '')}">
+          <input type="hidden" id="adOrigName" value="${esc(adminUser.name || '')}">
+        ` : `<div style="color:#888;font-size:13px;">학원장 계정이 없습니다. CLI 로 생성 필요.</div>`}
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveAcademy('${a.id}')">저장</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.saveAcademy = async (academyId) => {
+  const a = _academiesCache.find(x => x.id === academyId);
+  if (!a) return;
+  const idToken = await _currentUser.getIdToken();
+
+  // 학원 정보 변경분
+  const acFields = {};
+  const newName = (document.getElementById('acName')?.value || '').trim();
+  const newPlan = document.getElementById('acPlan')?.value;
+  const newLimit = parseInt(document.getElementById('acLimit')?.value);
+  const newStatus = document.getElementById('acStatus')?.value;
+  if (newName && newName !== a.name) acFields.name = newName;
+  if (newPlan && newPlan !== a.planId) acFields.planId = newPlan;
+  if (!isNaN(newLimit) && newLimit !== a.studentLimit) acFields.studentLimit = newLimit;
+  if (newStatus && newStatus !== a.billingStatus) acFields.billingStatus = newStatus;
+
+  // 학원장 정보 변경분
+  const adminFields = {};
+  let adminUid = null;
+  const uidEl = document.getElementById('adUid');
+  if (uidEl) {
+    adminUid = uidEl.value;
+    const origName = document.getElementById('adOrigName')?.value || '';
+    const origUsername = document.getElementById('adOrigUsername')?.value || '';
+    const origEmail = document.getElementById('adOrigEmail')?.value || '';
+    const adName = (document.getElementById('adName')?.value || '').trim();
+    const adUsername = (document.getElementById('adUsername')?.value || '').trim().toLowerCase();
+    const adEmail = (document.getElementById('adEmail')?.value || '').trim().toLowerCase();
+    const adPw = (document.getElementById('adPw')?.value || '').trim();
+    if (adName && adName !== origName) adminFields.name = adName;
+    if (adUsername && adUsername !== origUsername.toLowerCase()) adminFields.username = adUsername;
+    if (adEmail && adEmail !== origEmail.toLowerCase()) adminFields.email = adEmail;
+    if (adPw) adminFields.password = adPw;
+  }
+
+  const acChanged = Object.keys(acFields).length > 0;
+  const adminChanged = Object.keys(adminFields).length > 0;
+  if (!acChanged && !adminChanged) { showToast('변경된 항목 없음'); return; }
+
+  try {
+    if (acChanged) {
+      const r = await fetch('/api/superAdmin/updateAcademy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, academyId, fields: acFields }),
+      });
+      const j = await r.json();
+      if (!j.success) { showToast('학원 변경 실패: ' + j.error); return; }
+    }
+    if (adminChanged && adminUid) {
+      const r = await fetch('/api/superAdmin/updateAcademyAdmin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, uid: adminUid, fields: adminFields }),
+      });
+      const j = await r.json();
+      if (!j.success) { showToast('학원장 변경 실패: ' + j.error); return; }
+    }
+    closeModal();
+    showToast('✅ 저장됨');
+    await loadAcademies();
+  } catch (e) {
+    showToast('저장 오류: ' + e.message);
+  }
 };
 
 window.saveProfile = async () => {
@@ -175,8 +314,10 @@ async function loadAcademies() {
       </div>`;
     };
 
+    _academiesCache = academies;
+    _plansCache = planMap;
     el.innerHTML = academies.map(a => `
-      <tr>
+      <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
         <td class="td-main">${esc(a.name || '-')}</td>
         <td class="td-mono">${esc(a.subdomain || a.id)}</td>
         <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
