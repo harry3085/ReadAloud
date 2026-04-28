@@ -24,6 +24,7 @@
     "show-firebase-env": "node scripts/show-firebase-env.js",
     "create-academy": "node scripts/admin/create-academy.js",
     "create-super-admin": "node scripts/admin/create-super-admin.js",
+    "restore-academy": "node scripts/admin/restore-academy.js",
     "promote-super-admin": "node scripts/admin/promote-super-admin.js",
     "sync-claims": "node scripts/admin/sync-claims.js",
     "sync-claims:apply": "node scripts/admin/sync-claims.js --apply",
