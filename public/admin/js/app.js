@@ -7906,7 +7906,10 @@ window.tpOpenPrintModal = () => {
       q._printChunks = chunks.slice().sort(() => Math.random() - 0.5);
     });
   }
-  window._tpPrintState = { questions, sourceType };
+  // localStorage 키 — 같은 세트 조합이면 동일 키 (정렬해서 순서 무관)
+  const setIdsKey = Array.from(_tpSelectedSets).sort().join(',');
+  const perKey = `tpPrintOpts:${setIdsKey}`;
+  window._tpPrintState = { questions, sourceType, perKey };
   window._tpPrintContext = { questions, bookName, chapName, sourceType };
 
   // 섞기 버튼 노출 — vocab/mcq = 선지, unscramble = 청크
@@ -7924,8 +7927,60 @@ window.tpOpenPrintModal = () => {
     }
   }, 0);
 
+  // 옵션 복원 (하이브리드: 세트별 → 마지막 사용 폴백)
+  _tpRestorePrintOpts(perKey);
+
   tpPrintRefreshPreview();
 };
+
+// 인쇄 옵션 저장 키 (시험명·출제일은 매번 새로 시작)
+const _TP_OPT_INPUTS = {
+  // id : { type: 'check'|'value', key: 저장 키명 }
+  tpPrintShowAnswers:    { type: 'check', key: 'showAnswers' },
+  tpPrint2PerSheet:      { type: 'check', key: 'twoPerSheet' },
+  tpPrintFitToPage:      { type: 'check', key: 'fitToPage' },
+  tpPrintOrientation:    { type: 'value', key: 'orientation' },
+  tpPrintAcademy:        { type: 'value', key: 'academy' },
+  tpOptFontSize:         { type: 'value', key: 'fontSize' },
+  tpOptLineHeight:       { type: 'value', key: 'lineHeight' },
+  tpOptQGap:             { type: 'value', key: 'qGap' },
+  tpOptVocabFormat:      { type: 'value', key: 'vocabFormat' },
+  tpOptVocabDirection:   { type: 'value', key: 'vocabDirection' },
+  tpOptVocabColumns:     { type: 'value', key: 'vocabColumns' },
+};
+
+function _tpRestorePrintOpts(perKey) {
+  let opts = null;
+  try {
+    const raw = localStorage.getItem(perKey) || localStorage.getItem('tpPrintOpts:last');
+    if (raw) opts = JSON.parse(raw);
+  } catch (_) {}
+  if (!opts) return;
+  Object.entries(_TP_OPT_INPUTS).forEach(([id, cfg]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = opts[cfg.key];
+    if (v == null) return;
+    if (cfg.type === 'check') el.checked = !!v;
+    else el.value = v;
+  });
+}
+
+function _tpSavePrintOpts() {
+  const s = window._tpPrintState;
+  if (!s?.perKey) return;
+  const opts = {};
+  Object.entries(_TP_OPT_INPUTS).forEach(([id, cfg]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    opts[cfg.key] = cfg.type === 'check' ? el.checked : el.value;
+  });
+  try {
+    const json = JSON.stringify(opts);
+    localStorage.setItem(s.perKey, json);
+    localStorage.setItem('tpPrintOpts:last', json);
+  } catch (_) {}
+}
 
 // 🔀 문제 섞기 — questions 배열 순서만 바꿈 (각 문제의 _printSlots/choices 는 유지)
 window.tpPrintShuffleQuestions = () => {
@@ -8312,6 +8367,9 @@ window.tpPrintRefreshPreview = () => {
   }
   // 페이지 맞춤: 내용 높이가 A4 1장을 넘으면 자동 축소
   setTimeout(() => _tpApplyFitToPage(!!fitToPageEl?.checked, orientation), 0);
+
+  // 옵션 자동 저장 (세트별 + 마지막 사용)
+  _tpSavePrintOpts();
 };
 
 // zoom 비율 계산 후 적용 (내용 높이가 A4 1장보다 크면 축소)
