@@ -271,13 +271,14 @@ async function loadApiUsage(){
     const pct = Math.min(100, Math.round((total / 500) * 100));
     const barColor = pct >= 80 ? '#dc2626' : (pct >= 50 ? '#f59e0b' : '#059669');
 
-    // 월별 한도 분수
+    // 월별 한도 분수 — academy.customLimits 우선
+    const cl = acad.customLimits || {};
     const studentCur = usage.activeStudentsCount || 0;
     const studentLim = acad.studentLimit || 30;
     const aiCur = usage.aiCallsThisMonth || 0;
-    const aiLim = limits.aiQuotaPerMonth || '∞';
+    const aiLim = cl.aiQuotaPerMonth || limits.aiQuotaPerMonth || '∞';
     const recCur = usage.recordingCallsThisMonth || 0;
-    const recLim = limits.perTypeQuota?.recording?.check || '∞';
+    const recLim = cl.recordingPerMonth || limits.perTypeQuota?.recording?.check || '∞';
 
     const fracBar = (cur, lim) => {
       if (typeof lim !== 'number' || lim <= 0) return '';

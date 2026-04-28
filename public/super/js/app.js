@@ -298,11 +298,12 @@ function _renderAcademiesSummary(academies, planMap) {
   academies.forEach(a => {
     const u = a.usage || {};
     const p = planMap[a.planId] || {};
+    const cl = a.customLimits || {};
     totalStudents += (u.activeStudentsCount || 0);
     totalAi += (u.aiCallsThisMonth || 0);
     totalRec += (u.recordingCallsThisMonth || 0);
     totalLimit += (a.studentLimit || 0);
-    totalAiLimit += (p.limits?.aiQuotaPerMonth || 0);
+    totalAiLimit += (cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0);
     if (a.billingStatus === 'active') active++;
   });
   const aiPct = totalAiLimit ? Math.min(100, Math.round((totalAi / totalAiLimit) * 100)) : 0;
@@ -856,12 +857,16 @@ async function loadAcademies() {
     const fmtUsage = (a) => {
       const u = a.usage || {};
       const p = planMap[a.planId] || {};
-      const aiLimit = p.limits?.aiQuotaPerMonth ?? '∞';
-      const recLimit = p.limits?.perTypeQuota?.recording?.check ?? '∞';
+      const cl = a.customLimits || {};
+      const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || '∞';
+      const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || '∞';
+      const aiOver = !!cl.aiQuotaPerMonth;
+      const recOver = !!cl.recordingPerMonth;
+      const mark = (overridden) => overridden ? '<span title="override" style="color:#f59e0b;">*</span>' : '';
       return `<div style="font-size:11px;line-height:1.5;">
         학생 <b>${u.activeStudentsCount || 0}</b>/${a.studentLimit || '∞'}<br>
-        AI <b>${u.aiCallsThisMonth || 0}</b>/${aiLimit}<br>
-        녹음 <b>${u.recordingCallsThisMonth || 0}</b>/${recLimit}
+        AI <b>${u.aiCallsThisMonth || 0}</b>/${aiLimit}${mark(aiOver)}<br>
+        녹음 <b>${u.recordingCallsThisMonth || 0}</b>/${recLimit}${mark(recOver)}
       </div>`;
     };
 
