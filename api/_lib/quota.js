@@ -73,13 +73,14 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
   if (!planSnap.exists) return { error: '플랜 정보 없음', status: 500 };
   const plan = planSnap.data();
   const limits = plan.limits || {};
+  const overrides = academy.customLimits || {};  // 학원별 override (있으면 plan 무시)
 
   // 4) 월 자동 리셋 (lastResetAt 이 이번 달과 다르면 카운터 0)
   const ym = _currentYearMonth();
   const usage = academy.usage || {};
   const needsReset = (usage.lastResetAt !== ym);
 
-  // 5) 한도 체크
+  // 5) 한도 체크 (customLimits 우선, 없으면 plan)
   let counterField = null;  // usage 의 어느 필드를 increment 할지
   let currentCount = 0;
   let limit = Infinity;
@@ -88,12 +89,14 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
   if (quotaKind === 'ai') {
     counterField = 'aiCallsThisMonth';
     currentCount = needsReset ? 0 : (usage.aiCallsThisMonth || 0);
-    limit = limits.aiQuotaPerMonth || Infinity;
+    limit = overrides.aiQuotaPerMonth || limits.aiQuotaPerMonth || Infinity;
     kindLabel = 'AI 월 호출';
   } else if (quotaKind === 'recording') {
     counterField = 'recordingCallsThisMonth';
     currentCount = needsReset ? 0 : (usage.recordingCallsThisMonth || 0);
-    limit = (limits.perTypeQuota && limits.perTypeQuota.recording && limits.perTypeQuota.recording.check) || Infinity;
+    limit = overrides.recordingPerMonth
+         || (limits.perTypeQuota && limits.perTypeQuota.recording && limits.perTypeQuota.recording.check)
+         || Infinity;
     kindLabel = '녹음 평가 월';
   } else if (quotaKind === 'student') {
     counterField = null; // 별도 처리 — increment 가 아닌 추가 시점

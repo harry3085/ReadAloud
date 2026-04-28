@@ -25,7 +25,7 @@ const ACADEMY_COLLECTIONS = [
   'pushNotifications', 'userNotifications', 'genCleanupPresets', 'apiUsage',
 ];
 
-const UPDATE_ACADEMY_ALLOWED = new Set(['name', 'planId', 'studentLimit', 'billingStatus', 'grandfatheredPrice']);
+const UPDATE_ACADEMY_ALLOWED = new Set(['name', 'planId', 'studentLimit', 'billingStatus', 'grandfatheredPrice', 'customLimits']);
 
 async function _verifySuperAdmin(auth, idToken) {
   if (!idToken) return { error: '토큰 필요', status: 401 };
@@ -51,6 +51,15 @@ async function _updateAcademy(db, body) {
     let v = fields[k];
     if (k === 'studentLimit') v = parseInt(v) || 30;
     if (k === 'grandfatheredPrice') v = (v === null || v === '') ? null : Number(v);
+    if (k === 'customLimits' && v && typeof v === 'object') {
+      // 숫자만 받고 0/빈값은 필드 제거 (plan 기본 사용)
+      const cl = {};
+      for (const ck of ['aiQuotaPerMonth', 'recordingPerMonth']) {
+        const cv = parseInt(v[ck]);
+        if (!isNaN(cv) && cv > 0) cl[ck] = cv;
+      }
+      v = Object.keys(cl).length > 0 ? cl : null;  // null 이면 override 해제
+    }
     update[k] = v;
   }
   if (Object.keys(update).length === 0) return { status: 400, body: { success: false, error: '변경할 필드 없음' } };
