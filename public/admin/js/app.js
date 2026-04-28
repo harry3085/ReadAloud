@@ -7906,6 +7906,8 @@ window.tpOpenPrintModal = () => {
       // 렌더 시: rank < mcqRatio/100 이면 mcq, 아니면 short
       // MCQ 불가(canMcq=false) 면 rank=1.0 → 어떤 비율에서도 항상 short
       q._printFmtRank = canMcq ? Math.random() : 1.0;
+      // 방향(혼합) 용 rank — rank < en2KoRatio/100 이면 en2ko, 아니면 ko2en
+      q._printDirRank = Math.random();
     });
   } else if (sourceType === 'unscramble') {
     questions.forEach(q => {
@@ -7952,9 +7954,9 @@ const _TP_OPT_INPUTS = {
   tpOptLineHeight:       { type: 'value', key: 'lineHeight' },
   tpOptQGap:             { type: 'value', key: 'qGap' },
   tpOptVocabFormat:      { type: 'value', key: 'vocabFormat' },
-  tpOptVocabDirection:   { type: 'value', key: 'vocabDirection' },
   tpOptVocabColumns:     { type: 'value', key: 'vocabColumns' },
   tpOptVocabMcqRatio:    { type: 'value', key: 'vocabMcqRatio' },
+  tpOptVocabEn2KoRatio:  { type: 'value', key: 'vocabEn2KoRatio' },
 };
 
 function _tpRestorePrintOpts(perKey) {
@@ -7973,9 +7975,13 @@ function _tpRestorePrintOpts(perKey) {
     else el.value = v;
   });
   // 슬라이더 값 표시 sync
-  const r = document.getElementById('tpOptVocabMcqRatio');
-  const rv = document.getElementById('tpOptVocabMcqRatioVal');
-  if (r && rv) rv.textContent = r.value + '%';
+  const syncRange = (rangeId, valId) => {
+    const r = document.getElementById(rangeId);
+    const rv = document.getElementById(valId);
+    if (r && rv) rv.textContent = r.value + '%';
+  };
+  syncRange('tpOptVocabMcqRatio', 'tpOptVocabMcqRatioVal');
+  syncRange('tpOptVocabEn2KoRatio', 'tpOptVocabEn2KoRatioVal');
 }
 
 function _tpSavePrintOpts() {
@@ -8037,32 +8043,28 @@ function _tpBuildTypeOptionsUI(sourceType) {
   if (sourceType === 'vocab') {
     return `
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="객관식·주관식 배치 방식 (비율은 슬라이더로)">
           형식:
           <select id="tpOptVocabFormat" onchange="tpPrintRefreshPreview()"
             style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
             <option value="mixed">혼합(랜덤)</option>
             <option value="mixed_mcq_first">혼합(객→주)</option>
             <option value="mixed_short_first">혼합(주→객)</option>
-            <option value="short">주관식(스펠링)</option>
-            <option value="mcq">객관식</option>
           </select>
         </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
-          방향:
-          <select id="tpOptVocabDirection" onchange="tpPrintRefreshPreview()"
-            style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
-            <option value="mixed">혼합</option>
-            <option value="en2ko">영→한</option>
-            <option value="ko2en">한→영</option>
-          </select>
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="혼합 형식일 때 객관식 비율">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
           객관식비율:
           <input type="range" id="tpOptVocabMcqRatio" min="0" max="100" step="10" value="50"
             oninput="document.getElementById('tpOptVocabMcqRatioVal').textContent=this.value+'%';tpPrintRefreshPreview()"
             style="width:100px;">
           <span id="tpOptVocabMcqRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="영→한 비율 (0% = 전체 한→영, 100% = 전체 영→한)">
+          영→한비율:
+          <input type="range" id="tpOptVocabEn2KoRatio" min="0" max="100" step="10" value="50"
+            oninput="document.getElementById('tpOptVocabEn2KoRatioVal').textContent=this.value+'%';tpPrintRefreshPreview()"
+            style="width:100px;">
+          <span id="tpOptVocabEn2KoRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
           단수:
@@ -8188,6 +8190,8 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
   // 0% 도 유효 — || 폴백 쓰면 0 이 falsy 라 50 으로 둔갑
   const rawRatio = parseInt(typeOpts?.mcqRatio);
   const mcqRatio = Math.max(0, Math.min(100, isFinite(rawRatio) ? rawRatio : 50));
+  const rawDirRatio = parseInt(typeOpts?.en2KoRatio);
+  const en2KoRatio = Math.max(0, Math.min(100, isFinite(rawDirRatio) ? rawDirRatio : 50));
 
   // 2단일 때 MCQ 선지 그리드는 세로 1열 (좁은 너비에서 2x2 불가), 1단은 2x2
   const choiceGridStyle = cols === 2
@@ -8199,7 +8203,11 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
 
   const items = questions.map((q, i) => {
     let thisDir = dir;
-    if (dir === 'mixed') thisDir = i % 2 === 0 ? 'en2ko' : 'ko2en';
+    if (dir === 'mixed') {
+      // 사전 결정된 _printDirRank 와 슬라이더 값 비교 (옵션 바꿔도 rank 유지)
+      const dRank = (typeof q._printDirRank === 'number') ? q._printDirRank : 0.5;
+      thisDir = dRank < en2KoRatio / 100 ? 'en2ko' : 'ko2en';
+    }
     let thisFmt = fmt;
     const canMcq = Array.isArray(q._printSlots) && q._printSlots.length >= 4;
     if (fmt === 'mixed') {
@@ -8365,11 +8373,16 @@ window.tpPrintRefreshPreview = () => {
   // 유형별 옵션 수집
   const typeOpts = {};
   if (ctx.sourceType === 'vocab') {
-    typeOpts.format = document.getElementById('tpOptVocabFormat')?.value || 'mixed';
-    typeOpts.direction = document.getElementById('tpOptVocabDirection')?.value || 'mixed';
+    let fmt = document.getElementById('tpOptVocabFormat')?.value || 'mixed';
+    // 레거시 localStorage 호환: 옛 옵션 'short'/'mcq' 가 복원되면 'mixed' 로 폴백
+    if (fmt !== 'mixed' && fmt !== 'mixed_mcq_first' && fmt !== 'mixed_short_first') fmt = 'mixed';
+    typeOpts.format = fmt;
+    typeOpts.direction = 'mixed';  // 항상 혼합 — 비율은 en2KoRatio 슬라이더가 결정
     typeOpts.columns = parseInt(document.getElementById('tpOptVocabColumns')?.value) || 1;
     typeOpts.mcqRatio = parseInt(document.getElementById('tpOptVocabMcqRatio')?.value);
     if (!isFinite(typeOpts.mcqRatio)) typeOpts.mcqRatio = 50;
+    typeOpts.en2KoRatio = parseInt(document.getElementById('tpOptVocabEn2KoRatio')?.value);
+    if (!isFinite(typeOpts.en2KoRatio)) typeOpts.en2KoRatio = 50;
   }
 
   const twoPerSheetEl = document.getElementById('tpPrint2PerSheet');
