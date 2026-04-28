@@ -7894,11 +7894,18 @@ window.tpOpenPrintModal = () => {
   // 인쇄 상태 초기화 — 클론된 questions
   //   vocab      : 4지문 (_printSlots) 사전 결정
   //   unscramble : 청크 순서 (_printChunks) 사전 결정
-  if (sourceType === 'vocab' && questions.length >= 4) {
+  if (sourceType === 'vocab') {
+    const canMcq = questions.length >= 4;
     questions.forEach((q, i) => {
-      const others = questions.filter((_, j) => j !== i);
-      const wrongs = others.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-      q._printSlots = [q, ...wrongs];  // 0=정답, 1~3=오답 (초기 순서)
+      if (canMcq) {
+        const others = questions.filter((_, j) => j !== i);
+        const wrongs = others.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+        q._printSlots = [q, ...wrongs];  // 0=정답, 1~3=오답 (초기 순서)
+      }
+      // 혼합(랜덤) 용 사전 결정 rank (0~1) — 옵션 변경 시에도 유지
+      // 렌더 시: rank < mcqRatio/100 이면 mcq, 아니면 short
+      // MCQ 불가(canMcq=false) 면 rank=1.0 → 어떤 비율에서도 항상 short
+      q._printFmtRank = canMcq ? Math.random() : 1.0;
     });
   } else if (sourceType === 'unscramble') {
     questions.forEach(q => {
@@ -7947,6 +7954,7 @@ const _TP_OPT_INPUTS = {
   tpOptVocabFormat:      { type: 'value', key: 'vocabFormat' },
   tpOptVocabDirection:   { type: 'value', key: 'vocabDirection' },
   tpOptVocabColumns:     { type: 'value', key: 'vocabColumns' },
+  tpOptVocabMcqRatio:    { type: 'value', key: 'vocabMcqRatio' },
 };
 
 function _tpRestorePrintOpts(perKey) {
@@ -7964,6 +7972,10 @@ function _tpRestorePrintOpts(perKey) {
     if (cfg.type === 'check') el.checked = !!v;
     else el.value = v;
   });
+  // 슬라이더 값 표시 sync
+  const r = document.getElementById('tpOptVocabMcqRatio');
+  const rv = document.getElementById('tpOptVocabMcqRatioVal');
+  if (r && rv) rv.textContent = r.value + '%';
 }
 
 function _tpSavePrintOpts() {
@@ -8029,7 +8041,9 @@ function _tpBuildTypeOptionsUI(sourceType) {
           형식:
           <select id="tpOptVocabFormat" onchange="tpPrintRefreshPreview()"
             style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
-            <option value="mixed">혼합</option>
+            <option value="mixed">혼합(랜덤)</option>
+            <option value="mixed_mcq_first">혼합(객→주)</option>
+            <option value="mixed_short_first">혼합(주→객)</option>
             <option value="short">주관식(스펠링)</option>
             <option value="mcq">객관식</option>
           </select>
@@ -8042,6 +8056,13 @@ function _tpBuildTypeOptionsUI(sourceType) {
             <option value="en2ko">영→한</option>
             <option value="ko2en">한→영</option>
           </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="혼합 형식일 때 객관식 비율">
+          객관식비율:
+          <input type="range" id="tpOptVocabMcqRatio" min="0" max="100" step="10" value="50"
+            oninput="document.getElementById('tpOptVocabMcqRatioVal').textContent=this.value+'%';tpPrintRefreshPreview()"
+            style="width:100px;">
+          <span id="tpOptVocabMcqRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);">
           단수:
@@ -8160,20 +8181,36 @@ function _printRenderSubj(questions, { showAnswers }) {
 }
 
 function _printRenderVocab(questions, { showAnswers, typeOpts }) {
-  const fmt = typeOpts?.format || 'mixed';         // mixed | short | mcq
+  const fmt = typeOpts?.format || 'mixed';
+  // mixed = 혼합(랜덤), mixed_mcq_first = 혼합(객→주), mixed_short_first = 혼합(주→객), short, mcq
   const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
   const cols = parseInt(typeOpts?.columns) === 2 ? 2 : 1;
+  const mcqRatio = Math.max(0, Math.min(100, parseInt(typeOpts?.mcqRatio) || 50));
 
   // 2단일 때 MCQ 선지 그리드는 세로 1열 (좁은 너비에서 2x2 불가), 1단은 2x2
   const choiceGridStyle = cols === 2
     ? 'display:flex;flex-direction:column;gap:2px;'
     : 'display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;';
 
+  // 혼합(객→주)·혼합(주→객) 의 MCQ 개수
+  const mcqCount = Math.round(questions.length * mcqRatio / 100);
+
   const items = questions.map((q, i) => {
     let thisDir = dir;
     if (dir === 'mixed') thisDir = i % 2 === 0 ? 'en2ko' : 'ko2en';
     let thisFmt = fmt;
-    if (fmt === 'mixed') thisFmt = i % 2 === 0 ? 'short' : 'mcq';
+    const canMcq = Array.isArray(q._printSlots) && q._printSlots.length >= 4;
+    if (fmt === 'mixed') {
+      // 혼합(랜덤) — 사전 결정된 rank 와 슬라이더 값 비교 (옵션 바꿔도 rank 는 유지)
+      const rank = (typeof q._printFmtRank === 'number') ? q._printFmtRank : 0.5;
+      thisFmt = rank < mcqRatio / 100 ? 'mcq' : 'short';
+    } else if (fmt === 'mixed_mcq_first') {
+      thisFmt = i < mcqCount ? 'mcq' : 'short';
+    } else if (fmt === 'mixed_short_first') {
+      thisFmt = i >= (questions.length - mcqCount) ? 'mcq' : 'short';
+    }
+    // MCQ 불가 (4지문 못 만든 경우) → 무조건 short 폴백
+    if (thisFmt === 'mcq' && !canMcq) thisFmt = 'short';
 
     const question = thisDir === 'en2ko' ? q.word : q.meaning;
     const answer = thisDir === 'en2ko' ? q.meaning : q.word;
@@ -8329,6 +8366,8 @@ window.tpPrintRefreshPreview = () => {
     typeOpts.format = document.getElementById('tpOptVocabFormat')?.value || 'mixed';
     typeOpts.direction = document.getElementById('tpOptVocabDirection')?.value || 'mixed';
     typeOpts.columns = parseInt(document.getElementById('tpOptVocabColumns')?.value) || 1;
+    typeOpts.mcqRatio = parseInt(document.getElementById('tpOptVocabMcqRatio')?.value);
+    if (!isFinite(typeOpts.mcqRatio)) typeOpts.mcqRatio = 50;
   }
 
   const twoPerSheetEl = document.getElementById('tpPrint2PerSheet');
