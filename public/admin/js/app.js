@@ -7889,23 +7889,39 @@ window.tpOpenPrintModal = () => {
 
     </div>
   `;
-  showModal(html, { fullFlex: true });
+  showModal(html, { fullFlex: true, width: 'min(1240px, 96vw)' });
 
-  // 인쇄 상태 초기화 — 클론된 questions, vocab 의 경우 4지문(_printSlots) 사전 결정
+  // 인쇄 상태 초기화 — 클론된 questions
+  //   vocab      : 4지문 (_printSlots) 사전 결정
+  //   unscramble : 청크 순서 (_printChunks) 사전 결정
   if (sourceType === 'vocab' && questions.length >= 4) {
     questions.forEach((q, i) => {
       const others = questions.filter((_, j) => j !== i);
       const wrongs = others.slice().sort(() => Math.random() - 0.5).slice(0, 3);
       q._printSlots = [q, ...wrongs];  // 0=정답, 1~3=오답 (초기 순서)
     });
+  } else if (sourceType === 'unscramble') {
+    questions.forEach(q => {
+      const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
+      q._printChunks = chunks.slice().sort(() => Math.random() - 0.5);
+    });
   }
   window._tpPrintState = { questions, sourceType };
   window._tpPrintContext = { questions, bookName, chapName, sourceType };
 
-  // 선지 섞기 버튼 — vocab/mcq 만 노출
+  // 섞기 버튼 노출 — vocab/mcq = 선지, unscramble = 청크
   setTimeout(() => {
     const btn = document.getElementById('tpBtnShuffleC');
-    if (btn && (sourceType === 'mcq' || sourceType === 'vocab')) btn.style.display = '';
+    if (!btn) return;
+    if (sourceType === 'mcq' || sourceType === 'vocab') {
+      btn.style.display = '';
+      btn.textContent = '🔀 선지 섞기';
+      btn.title = '선지(①②③④) 순서 섞기';
+    } else if (sourceType === 'unscramble') {
+      btn.style.display = '';
+      btn.textContent = '🔀 청크 섞기';
+      btn.title = '단어/구 청크 순서 섞기';
+    }
   }, 0);
 
   tpPrintRefreshPreview();
@@ -7920,9 +7936,10 @@ window.tpPrintShuffleQuestions = () => {
   tpPrintRefreshPreview();
 };
 
-// 🔀 선지 섞기 — 각 문제의 선지 위치만 바꿈
-//   vocab : q._printSlots (정답+오답3) 순서 셔플
-//   mcq   : q.choices 순서 셔플 (isAnswer 마커는 객체에 붙어 있어 자동 추적)
+// 🔀 선지/청크 섞기 — 각 문제의 보기 위치만 바꿈
+//   vocab      : q._printSlots (정답+오답3) 순서 셔플
+//   mcq        : q.choices 순서 셔플 (isAnswer 마커는 객체에 붙어 있어 자동 추적)
+//   unscramble : q._printChunks 순서 셔플
 window.tpPrintShuffleChoices = () => {
   const s = window._tpPrintState;
   if (!s) return;
@@ -7936,6 +7953,12 @@ window.tpPrintShuffleChoices = () => {
     s.questions.forEach(q => {
       if (Array.isArray(q.choices) && q.choices.length >= 2) {
         q.choices = q.choices.slice().sort(() => Math.random() - 0.5);
+      }
+    });
+  } else if (s.sourceType === 'unscramble') {
+    s.questions.forEach(q => {
+      if (Array.isArray(q._printChunks) && q._printChunks.length >= 2) {
+        q._printChunks = q._printChunks.slice().sort(() => Math.random() - 0.5);
       }
     });
   }
@@ -8140,7 +8163,10 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
 function _printRenderUnscramble(questions, { showAnswers }) {
   return questions.map((q, i) => {
     const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
-    const shuffled = chunks.slice().sort(() => Math.random() - 0.5);
+    // 모달 진입 시 사전 결정된 _printChunks 사용 (섞기 버튼 누를 때만 갱신)
+    const shuffled = Array.isArray(q._printChunks) && q._printChunks.length === chunks.length
+      ? q._printChunks
+      : chunks;
     return `
       <div style="margin-bottom:var(--q-gap);page-break-inside:avoid;">
         <div style="font-size:var(--p-font);font-weight:700;margin-bottom:6px;line-height:var(--p-line);">${i+1}. ${esc(q.meaningKo || '')}</div>
