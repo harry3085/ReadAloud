@@ -125,27 +125,29 @@ Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSO
 Your task is to pick important vocabulary words from the given passages and provide Korean meanings.
 
 RULES:
-1. Pick meaningful CONTENT words (nouns, verbs, adjectives, adverbs).
+1. Generate questions directly from a vocabulary list document where English words (including phrases) and Korean meanings are organized and separated by tabs, preserving the original format.
+
+2. Pick meaningful CONTENT words (nouns, verbs, adjectives, adverbs).
    AVOID articles, prepositions, pronouns, common auxiliary verbs.
 
-2. For each word, provide:
+3. For each word, provide:
    - Korean meaning (natural, 1-3 words)
    - One example sentence from the passage (or adapted)
    - Korean translation of the example
 
-3. Each word should appear ONCE (no duplicates in the set).
+4. Each word should appear ONCE (no duplicates in the set).
 
-4. Prefer words that are:
+5. Prefer words that are:
    - Actually useful for middle/high school vocabulary building
    - Not too common (skip "go", "make", "have" etc. unless phrase verbs)
    - Not proper nouns (names of people/places)
 
-5. Difficulty:
+6. Difficulty:
    - easy: common 1000-word list
    - medium: intermediate vocabulary
    - hard: advanced vocabulary, less common words
 
-6. Output ONLY a valid JSON object (no markdown, no prose):
+7. Output ONLY a valid JSON object (no markdown, no prose):
 {
   "questions": [
     {
