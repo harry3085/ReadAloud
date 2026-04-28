@@ -8185,7 +8185,9 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
   // mixed = 혼합(랜덤), mixed_mcq_first = 혼합(객→주), mixed_short_first = 혼합(주→객), short, mcq
   const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
   const cols = parseInt(typeOpts?.columns) === 2 ? 2 : 1;
-  const mcqRatio = Math.max(0, Math.min(100, parseInt(typeOpts?.mcqRatio) || 50));
+  // 0% 도 유효 — || 폴백 쓰면 0 이 falsy 라 50 으로 둔갑
+  const rawRatio = parseInt(typeOpts?.mcqRatio);
+  const mcqRatio = Math.max(0, Math.min(100, isFinite(rawRatio) ? rawRatio : 50));
 
   // 2단일 때 MCQ 선지 그리드는 세로 1열 (좁은 너비에서 2x2 불가), 1단은 2x2
   const choiceGridStyle = cols === 2
