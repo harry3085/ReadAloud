@@ -396,18 +396,83 @@ window.openAcademyDeleteModal = async (academyId) => {
 
         <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;line-height:1.6;">
           <b>⚠️ 영구 삭제 — 복구 불가</b><br>
-          삭제 전에 <b>백업 JSON 다운로드</b>를 권장합니다.<br>
-          (다음 단계에서 백업 / 삭제 버튼 활성화 예정)
+          삭제 전에 <b>백업 JSON 다운로드</b> 필수. 복원: <code>npm run restore-academy --file backup.json --apply</code>
         </div>
 
+        <div id="acDelConfirmArea" style="display:none;padding:12px 14px;border:2px solid #dc2626;border-radius:8px;background:#fef2f2;">
+          <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px;">최종 확인</div>
+          <div style="font-size:12px;color:var(--text);margin-bottom:8px;line-height:1.5;">
+            아래 칸에 학원 코드(subdomain) <code style="background:white;padding:2px 6px;border-radius:4px;font-weight:700;">${esc(a.subdomain || a.id)}</code> 를 정확히 입력하세요.
+          </div>
+          <input id="acDelConfirmInput" type="text" placeholder="${esc(a.subdomain || a.id)}" oninput="onAcDelConfirmInput('${esc(a.subdomain || a.id)}')"
+            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:monospace;outline:none;">
+        </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;">
         <span id="acDelStatus" style="font-size:11px;color:var(--gray);"></span>
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
         <button class="btn btn-secondary" id="acDelBackupBtn" onclick="exportAcademyBackup('${esc(a.id)}')">📥 백업 다운로드</button>
-        <button class="btn btn-primary" disabled style="opacity:.5;background:#dc2626;border-color:#dc2626;">🗑 영구 삭제 (3단계)</button>
+        <button class="btn btn-primary" id="acDelDeleteBtn" disabled style="opacity:.5;background:#dc2626;border-color:#dc2626;" onclick="executeAcademyDelete('${esc(a.id)}','${esc(a.subdomain || a.id)}')">🗑 영구 삭제</button>
       </div>
     </div>`;
+};
+
+// 백업 다운로드 후 확정 영역 노출하도록 — exportAcademyBackup 의 마지막에 호출
+function _showAcDelConfirmArea() {
+  const area = document.getElementById('acDelConfirmArea');
+  if (area) area.style.display = '';
+}
+
+window.onAcDelConfirmInput = (expectedSubdomain) => {
+  const inp = document.getElementById('acDelConfirmInput');
+  const btn = document.getElementById('acDelDeleteBtn');
+  if (!inp || !btn) return;
+  const ok = inp.value.trim() === expectedSubdomain;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '.5';
+};
+
+window.executeAcademyDelete = async (academyId, subdomain) => {
+  const inp = document.getElementById('acDelConfirmInput');
+  const confirmSubdomain = (inp?.value || '').trim();
+  if (confirmSubdomain !== subdomain) { showToast('subdomain 불일치'); return; }
+
+  const yes = window.confirm(`정말로 학원 "${academyId}" 를 영구 삭제할까요?\n\n복구 불가합니다 (백업 JSON 으로만).`);
+  if (!yes) return;
+
+  const status = document.getElementById('acDelStatus');
+  const btn = document.getElementById('acDelDeleteBtn');
+  const backupBtn = document.getElementById('acDelBackupBtn');
+  if (btn) btn.disabled = true;
+  if (backupBtn) backupBtn.disabled = true;
+  if (inp) inp.disabled = true;
+  if (status) status.innerHTML = '<span style="color:#dc2626;">삭제 진행 중... (시간 좀 걸릴 수 있음)</span>';
+
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/superAdmin/deleteAcademy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, academyId, confirmSubdomain }),
+    });
+    const j = await r.json();
+    if (!j.success) {
+      if (status) status.innerHTML = `<span style="color:#dc2626;">삭제 실패: ${esc(j.error || '')}</span>`;
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+      if (inp) inp.disabled = false;
+      return;
+    }
+    closeModal();
+    const totalDeleted = Object.values(j.deleted).filter(v => typeof v === 'number').reduce((s,v) => s + v, 0);
+    showToast(`✅ 학원 영구 삭제 완료 (${totalDeleted} docs)`);
+    // 캐시 무효화 + 새로고침
+    _academiesCache = [];
+    _allUsersCache = null;
+    await loadAcademies();
+  } catch (e) {
+    if (status) status.innerHTML = `<span style="color:#dc2626;">오류: ${esc(e.message)}</span>`;
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    if (inp) inp.disabled = false;
+  }
 };
 
 // ── 백업 JSON 다운로드 (2단계) ────────────────────────
@@ -485,6 +550,8 @@ window.exportAcademyBackup = async (academyId) => {
     if (status) status.innerHTML = `<span style="color:#059669;">✓ 백업 완료 (${totalDocs} docs · ${(json.length/1024).toFixed(1)} KB)</span>`;
     showToast(`✅ 백업 다운로드 완료 (${totalDocs} docs)`);
     if (btn) btn.disabled = false;
+    // 백업 후 확정 영역 노출 (subdomain 입력 → 영구 삭제 가능)
+    _showAcDelConfirmArea();
   } catch (e) {
     if (status) status.innerHTML = `<span style="color:#dc2626;">백업 실패</span>`;
     showToast('백업 실패: ' + e.message);
