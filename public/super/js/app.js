@@ -322,6 +322,93 @@ function _renderAcademiesSummary(academies, planMap) {
   ].join('');
 }
 
+// ── 학원 삭제 모달 (위험) ─────────────────────────────
+window.openAcademyDeleteModal = async (academyId) => {
+  const a = _academiesCache.find(x => x.id === academyId);
+  if (!a) { showToast('학원 정보 없음'); return; }
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  // 1차: 영향 범위 로딩 화면
+  box.innerHTML = `
+    <div style="width:min(560px,94vw);padding:22px;text-align:center;">
+      <div style="font-size:14px;color:var(--gray);">영향 범위 조회 중...</div>
+    </div>`;
+  overlay.style.display = 'flex';
+
+  // API 호출
+  let counts = null;
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/superAdmin/getAcademyImpact', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, academyId }),
+    });
+    const j = await r.json();
+    if (!j.success) { showToast('조회 실패: ' + j.error); closeModal(); return; }
+    counts = j.counts;
+  } catch (e) {
+    showToast('조회 오류: ' + e.message); closeModal(); return;
+  }
+
+  const totalRows = (counts.users.total || 0)
+    + (counts.notices||0) + (counts.scores||0) + (counts.payments||0)
+    + (counts.hwFiles||0) + (counts.groups||0) + (counts.genTests||0)
+    + (counts.genQuestionSets||0) + (counts.genBooks||0) + (counts.genChapters||0)
+    + (counts.genPages||0) + (counts.pushNotifications||0) + (counts.userNotifications||0)
+    + (counts.genCleanupPresets||0) + (counts.apiUsage||0);
+
+  const row = (label, n) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>${label}</span><span style="font-weight:600;">${n}</span></div>`;
+
+  box.innerHTML = `
+    <div style="width:min(640px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);background:#fef2f2;">
+        <div style="font-size:17px;font-weight:700;color:#dc2626;">🗑 학원 영구 삭제 — ${esc(a.name)}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">subdomain: <code>${esc(a.subdomain || a.id)}</code></div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
+
+        <div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;">영향 범위 (이번 달 기준)</div>
+          <div style="background:#fafafa;border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+            ${row('👥 학원장', counts.users.admin)}
+            ${row('👥 학생', counts.users.student)}
+            ${row('📢 공지', counts.notices||0)}
+            ${row('📊 점수 (scores)', counts.scores||0)}
+            ${row('📝 시험 (genTests)', counts.genTests||0)}
+            ${row('📋 문제 세트 (genQuestionSets)', counts.genQuestionSets||0)}
+            ${row('📚 교재 (genBooks)', counts.genBooks||0)}
+            ${row('📖 챕터 (genChapters)', counts.genChapters||0)}
+            ${row('📄 페이지 (genPages)', counts.genPages||0)}
+            ${row('🏷 반 (groups)', counts.groups||0)}
+            ${row('💳 결제', counts.payments||0)}
+            ${row('📁 숙제파일', counts.hwFiles||0)}
+            ${row('🔔 푸시 + 알림', (counts.pushNotifications||0) + (counts.userNotifications||0))}
+            ${row('🧹 AI 정리 프리셋', counts.genCleanupPresets||0)}
+            ${row('📈 일별 API 사용량', counts.apiUsage||0)}
+            <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
+              <span>총 데이터 row</span><span>${totalRows}</span>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#888;margin-top:6px;">
+            ※ Storage (숙제파일/녹음파일) 의 실제 파일은 Firestore 외부라 별도 정리됩니다.
+          </div>
+        </div>
+
+        <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;line-height:1.6;">
+          <b>⚠️ 영구 삭제 — 복구 불가</b><br>
+          삭제 전에 <b>백업 JSON 다운로드</b>를 권장합니다.<br>
+          (다음 단계에서 백업 / 삭제 버튼 활성화 예정)
+        </div>
+
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+        <button class="btn btn-secondary" disabled style="opacity:.5;">📥 백업 다운로드 (개발 중)</button>
+        <button class="btn btn-primary" disabled style="opacity:.5;background:#dc2626;border-color:#dc2626;">🗑 영구 삭제 (개발 중)</button>
+      </div>
+    </div>`;
+};
+
 // ── 신규 학원 추가 모달 ──────────────────────────────
 window.openAcademyCreateModal = () => {
   const planOpts = Object.keys(_plansCache).length
@@ -456,6 +543,15 @@ window.openAcademyModal = async (academyId) => {
           <input type="hidden" id="adOrigEmail" value="${esc(adminUser.email || '')}">
           <input type="hidden" id="adOrigName" value="${esc(adminUser.name || '')}">
         ` : `<div style="color:#888;font-size:13px;">학원장 계정이 없습니다. CLI 로 생성 필요.</div>`}
+
+        <div style="margin-top:12px;padding:14px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;">
+          <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:6px;">⚠️ 위험 영역</div>
+          <div style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5;">
+            학원을 영구 삭제합니다. 소속 학생/시험/점수/공지 등 모든 데이터가 사라집니다.<br>
+            백업 JSON 다운로드 → 영구 삭제 단계로 진행됩니다.
+          </div>
+          <button class="btn btn-secondary" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca;" onclick="openAcademyDeleteModal('${a.id}')">🗑 학원 영구 삭제</button>
+        </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
