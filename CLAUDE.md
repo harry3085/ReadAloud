@@ -805,3 +805,79 @@ admin/app.js 제거된 함수들 (216줄 ↓):
 - 학원장 앱 사이드바·대시보드 추가 위젯 검토
 - 학생앱 admin 잔재 dead code (~1000줄) 통째 제거
 - Phase 5 출시 준비 (도메인 / 약관 / 결제)
+
+---
+
+## 2026-04-28 ~ 04-29: 인쇄 옵션 대규모 정비 + AI 자산 default 동기화 + 메모리 4건
+
+당일 SW v184 → v193 (~14건 commit). 사용자 요청 위주 정리/UX 개선.
+
+### 1) 인쇄 모달 셔플 아키텍처 (commit 0e249c6 외)
+- 진입 시 사전 결정 → 옵션 변경에도 보존, 섞기 버튼 누를 때만 갱신
+  - vocab `q._printSlots = [정답, 오답×3]` (4지문 사전 픽)
+  - mcq `q.choices` 클론 (학생앱도 응시마다 셔플)
+  - unscramble `q._printChunks` (사전 셔플)
+- [🔀 문제 섞기] (모든 유형) + [🔀 선지/청크 섞기] (vocab/mcq/unscramble) 버튼
+- 학생앱 `startReadingMcq` 매 응시마다 `q.choices` 셔플 (isAnswer 마커로 자동 추적)
+
+### 2) 인쇄 모달 폭 확대 + 옵션 자동 저장/복원
+- `showModal({ width: 'min(1240px, 96vw)' })` — 헤더 버튼 줄바꿈 해소
+- 옵션 자동 저장 (localStorage 하이브리드)
+  - 키 두 개: `tpPrintOpts:{선택 set IDs 정렬}` (세트별) + `tpPrintOpts:last` (마지막 사용)
+  - 복원 순서: 세트별 → last → 기본값
+  - 저장 대상 12개 (답지보기·2단·페이지맞춤·세로가로·학원명·글자크기·줄간격·문제간격·vocab(형식·단수·객관식비율·영→한비율))
+  - 미저장: 시험명(세트명 자동), 출제일(오늘)
+
+### 3) 단어시험 형식 옵션 단순화 — 슬라이더가 흡수
+- 형식 dropdown: 5개 → **3개** (혼합 랜덤 / 객→주 / 주→객)
+  - '주관식(스펠링)' '객관식' 제거 — 슬라이더 0% / 100% 가 동일 효과
+- 방향 dropdown 제거 — **영→한비율 슬라이더** 로 일원화 (0% = 한→영 / 100% = 영→한)
+- **객관식비율 슬라이더** 추가 (방향 옵션 옆 → 형식 옵션 옆으로 이동)
+- 각 문제에 `_printFmtRank` / `_printDirRank` 사전 결정 (모달 진입 시) — 슬라이더 변경에도 rank 유지
+- 0% / 100% 정확 반영 (`isFinite` 체크로 falsy 폴백 회피)
+- 레거시 localStorage 'short'/'mcq' 형식값은 'mixed' 자동 폴백
+
+### 4) AI OCR 클린업 프리셋 default 갱신 + 4학원 일괄 동기화 (ee9f4bf, cf1937c)
+- default 학원의 현재 4개 프리셋을 `_CLEANUP_DEFAULT_PRESETS` 에 반영 — 단어장(Snapshot) 갱신, '문장 전체 번역' 신규 추가
+- `scripts/diag/dump-cleanup-presets.js` — Firestore → 코드 형식 덤프 (재실행 가능)
+- `scripts/migrate/sync-cleanup-defaults.js` — 학원별 name 매칭 후 프리셋 갱신/추가 (DRY-RUN 기본, --apply)
+- 4학원 적용 결과: default 변경 없음 / dongbu 4개 신규 / ipark·raloud2 단어장 갱신 + '문장 전체 번역' 신규
+- 사용자 자작(이름이 source default 에 없는) 프리셋은 손대지 않음
+
+### 5) AI Generator vocab 프롬프트 default 갱신 (4fd5bd7)
+- `api/generate-quiz.js` `SYSTEM_PROMPTS.vocab` 1번 규칙 추가:
+  "단어장[Tab] 형식 문서를 그대로 반영" (단어장 클린업 프리셋 출력과 동일 패턴)
+- 다른 유형(mcq/fill_blank/unscramble/subjective/recording) 변동 없음
+- 학원장이 [📋 AI 프롬프트 편집] 모달에서 [💾 저장] 한 번 누르면 `val === def` 감지로 localStorage 자동 정리 (● 사라짐)
+
+### 6) 메모리 4건 추가 (다음 세션 컨텍스트)
+1. **`project_global_config_refactor.md`** — AI 프롬프트(localStorage) → Firestore 이전 + super_admin 글로벌 default 편집 UI. 클린업 프리셋도 동일 패턴 (이미 Firestore 라 default 시드만 옮기면 됨). 3단 fallback (코드 안전망 → 글로벌 default → 학원별 커스텀).
+2. **`feedback_storage_choice.md`** — 1인 1PC 타겟이라 사용자 개인 선호(인쇄 옵션 등)는 localStorage. 학원 단위 공유 데이터·super_admin 가시성 필요한 것만 Firestore. Firestore 비용 의식.
+3. **`project_v1_polish_cycle.md`** — Phase 5 출시 준비 후 v1.0 polish 사이클. 4 카테고리: 디자인 토큰화 → 컴포넌트 인벤토리 통합 (Lucide 아이콘 채택 — 사이드바가 이미 Feather 스타일) → 로직 패턴 수렴 → UX 플로우 감사. 사용자 트리거 대기.
+4. **`project_dashboard_calendar.md`** — 학원장 대시보드 큰 달력 + 학생 생일🎂·결제💳·시험📝 이벤트 통합 뷰. 사전 점검: `users.birthday` / `payments.dueDate` 필드 존재 여부.
+
+### 7) 작업 규칙 추가 (이번 세션 합의)
+- **JS `0 || fallback` 함정 금지**: 슬라이더·비율 등 0 이 유효한 입력에서 `parseInt(v) || 50` 쓰면 0 이 falsy 라 50 으로 둔갑. `isFinite(parseInt(v)) ? parseInt(v) : 50` 패턴 사용.
+- **데이터 보관 위치 결정**: 새 사용자 설정/선호 추가 시 — (a) 학원 공유 필요? (b) super_admin 가시성 필요? (c) 학원 백업에 포함되어야? — 셋 다 X 면 localStorage. 하나라도 ✓ 면 Firestore. ReadAloudApp 은 1인 1PC 타겟이라 대부분 localStorage 가 정답.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-04-29)
+- `public/admin/js/app.js`: ~8700줄 (인쇄 옵션·셔플 +200)
+- `api/generate-quiz.js`: vocab 프롬프트 1줄 추가
+- `scripts/diag/dump-cleanup-presets.js`: 신규 ~50줄
+- `scripts/migrate/sync-cleanup-defaults.js`: 신규 ~150줄
+- SW 캐시: `kunsori-v193`
+
+## 진행률 (2026-04-29)
+- 멀티테넌시 인프라: **~92%** (Phase 4 완료, Phase 3 완료)
+- super_admin 앱: **~85%** (학원 삭제 + 한도 override 완료, Free 플랜 추가)
+- 인쇄 시스템: **~95%** (옵션 자동 저장/복원, 셔플, 슬라이더 다 됨)
+- Phase 5 출시 준비: **0%**
+
+다음 세션 후보 (우선순위 순):
+1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제 연동 (Toss / Stripe)
+2. **글로벌 설정 Firestore 이전** (`project_global_config_refactor.md`) — appConfig/* + super_admin UI. 인쇄 옵션은 제외 (localStorage 유지)
+3. **학원장 대시보드 달력** (`project_dashboard_calendar.md`) — 큰 달력 + 학생 생일·결제·시험 이벤트
+4. **레거시 정리 Phase 6F** — `firestore.rules` 의 `books`/`folders`/`units` 규칙 제거
+5. **v1.0 Polish 사이클** (`project_v1_polish_cycle.md`) — 출시 직전. Lucide 아이콘 통일·디자인 토큰화·컴포넌트 통합·로직 수렴
