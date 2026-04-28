@@ -401,12 +401,95 @@ window.openAcademyDeleteModal = async (academyId) => {
         </div>
 
       </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <span id="acDelStatus" style="font-size:11px;color:var(--gray);"></span>
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
-        <button class="btn btn-secondary" disabled style="opacity:.5;">📥 백업 다운로드 (개발 중)</button>
-        <button class="btn btn-primary" disabled style="opacity:.5;background:#dc2626;border-color:#dc2626;">🗑 영구 삭제 (개발 중)</button>
+        <button class="btn btn-secondary" id="acDelBackupBtn" onclick="exportAcademyBackup('${esc(a.id)}')">📥 백업 다운로드</button>
+        <button class="btn btn-primary" disabled style="opacity:.5;background:#dc2626;border-color:#dc2626;">🗑 영구 삭제 (3단계)</button>
       </div>
     </div>`;
+};
+
+// ── 백업 JSON 다운로드 (2단계) ────────────────────────
+window.exportAcademyBackup = async (academyId) => {
+  const btn = document.getElementById('acDelBackupBtn');
+  const status = document.getElementById('acDelStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = '백업 생성 중...';
+  try {
+    const academySnap = await getDoc(doc(db, 'academies', academyId));
+    if (!academySnap.exists()) { showToast('학원 없음'); return; }
+    const academyData = academySnap.data();
+
+    const cols = [
+      'users', 'notices', 'scores', 'payments', 'hwFiles', 'groups',
+      'genTests', 'genQuestionSets', 'genBooks', 'genChapters', 'genPages',
+      'pushNotifications', 'userNotifications', 'genCleanupPresets', 'apiUsage',
+    ];
+
+    const data = {
+      _exportedAt: new Date().toISOString(),
+      _exportedBy: _currentUser?.email || _currentUser?.uid || 'unknown',
+      _schemaVersion: 1,
+      _note: '큰소리 영어 학원 백업 — Storage 파일은 별도',
+      academy: { id: academyId, ...academyData },
+      collections: {},
+    };
+
+    for (const col of cols) {
+      if (status) status.textContent = `백업 중: ${col}...`;
+      const snap = await getDocs(query(collection(db, col), where('academyId', '==', academyId)));
+      data.collections[col] = snap.docs.map(d => {
+        const obj = { id: d.id, ...d.data() };
+        // Timestamp → ISO string
+        for (const k of Object.keys(obj)) {
+          const v = obj[k];
+          if (v && typeof v.toDate === 'function') obj[k] = v.toDate().toISOString();
+        }
+        return obj;
+      });
+    }
+
+    // genTests 의 userCompleted 서브컬렉션 백업 (학생 응시 기록)
+    if (status) status.textContent = '백업 중: userCompleted (서브컬렉션)...';
+    const ucMap = {};
+    for (const t of data.collections.genTests) {
+      const ucSnap = await getDocs(collection(db, 'genTests', t.id, 'userCompleted'));
+      if (!ucSnap.empty) {
+        ucMap[t.id] = ucSnap.docs.map(d => {
+          const obj = { id: d.id, ...d.data() };
+          for (const k of Object.keys(obj)) {
+            const v = obj[k];
+            if (v && typeof v.toDate === 'function') obj[k] = v.toDate().toISOString();
+          }
+          return obj;
+        });
+      }
+    }
+    data.collections.genTests_userCompleted = ucMap;
+
+    // 다운로드
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `academy-backup-${academyId}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const totalDocs = Object.values(data.collections).reduce((s, v) =>
+      s + (Array.isArray(v) ? v.length : Object.values(v).reduce((s2, arr) => s2 + arr.length, 0)), 0);
+    if (status) status.innerHTML = `<span style="color:#059669;">✓ 백업 완료 (${totalDocs} docs · ${(json.length/1024).toFixed(1)} KB)</span>`;
+    showToast(`✅ 백업 다운로드 완료 (${totalDocs} docs)`);
+    if (btn) btn.disabled = false;
+  } catch (e) {
+    if (status) status.innerHTML = `<span style="color:#dc2626;">백업 실패</span>`;
+    showToast('백업 실패: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
 };
 
 // ── 신규 학원 추가 모달 ──────────────────────────────
