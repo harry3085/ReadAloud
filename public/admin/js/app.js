@@ -3441,12 +3441,13 @@ function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetNa
         <textarea readonly style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(original)}</textarea>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
-        <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:6px;">AI 결과 <span style="font-weight:400;color:var(--gray);font-size:11px;">(적용 시 원본 덮어쓰기)</span></div>
+        <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:6px;">AI 결과 <span style="font-weight:400;color:var(--gray);font-size:11px;">(편집 가능)</span></div>
         <textarea id="cleanupCompareEdit" style="flex:1;min-height:45vh;padding:10px;border:1px solid var(--teal);border-radius:6px;font-size:12px;font-family:monospace;resize:none;">${esc(cleaned)}</textarea>
       </div>
     </div>
     <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+      <button class="btn btn-secondary" onclick="cleanupSaveAsNew('${esc(pageId)}')">+ 새 페이지로 저장</button>
       <button class="btn btn-primary" onclick="cleanupApplySingle('${esc(pageId)}')">적용 (덮어쓰기)</button>
     </div>
   </div>`;
@@ -3466,6 +3467,39 @@ window.cleanupApplySingle = async (pageId) => {
     }
     closeModal();
     showToast('적용 완료');
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+// 새 Page 로 저장 (원본 유지) — 같은 Book/Chapter 안에 추가
+window.cleanupSaveAsNew = async (pageId) => {
+  const newText = document.getElementById('cleanupCompareEdit')?.value ?? '';
+  const orig = _genPages.find(p => p.id === pageId);
+  if (!orig) { showToast('원본 page 정보 없음'); return; }
+  try {
+    const maxSerial = _genPages.reduce((m,p) => Math.max(m, p.serialNumber||0), 0);
+    const docData = {
+      title: (orig.title || ('Page ' + orig.serialNumber)) + ' (정리)',
+      serialNumber: maxSerial + 1,
+      bookId: orig.bookId || null,
+      bookName: orig.bookName || '',
+      chapterId: orig.chapterId || null,
+      chapterName: orig.chapterName || '',
+      text: newText,
+      ocrConfidence: 0,
+      ocrProvider: 'cleanup',
+      imageUrl: '',
+      edited: true,
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    };
+    const ref = await addDoc(collection(db, 'genPages'), docData);
+    _genPages.push({ id: ref.id, ...docData, createdAt: { toMillis: () => Date.now() } });
+    closeModal();
+    showToast('✓ 새 페이지로 저장됨');
+    _genRenderPages();
   } catch (e) {
     showToast('저장 실패: ' + e.message);
   }
@@ -3598,6 +3632,7 @@ function _cleanupRenderBatchResult(presetName) {
          <button class="btn btn-secondary" onclick="cleanupBatchNext()">다음 →</button>
          <button class="btn btn-secondary" onclick="cleanupBatchFinish()">닫기</button>`
       : `<button class="btn btn-secondary" onclick="cleanupBatchSkip()">건너뜀</button>
+         <button class="btn btn-secondary" onclick="cleanupBatchSaveAsNew()">+ 새 페이지로 저장</button>
          <button class="btn btn-primary" onclick="cleanupBatchApply()">적용 (덮어쓰기)</button>
          <button class="btn btn-secondary" onclick="cleanupBatchNext()">다음 →</button>`;
 
@@ -3639,6 +3674,43 @@ window.cleanupBatchApply = async () => {
       if (textEl) textEl.value = edited;
     }
     // 다음 탭으로 자동 이동
+    if (idx < _cleanupBatchResults.length - 1) _cleanupBatchTabIdx = idx + 1;
+    _cleanupRenderBatchResult(_cleanupBatchPresetName);
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+window.cleanupBatchSaveAsNew = async () => {
+  const idx = _cleanupBatchTabIdx;
+  const cur = _cleanupBatchResults[idx];
+  if (!cur || cur.error) return;
+  const edited = document.getElementById('cleanupBatchEdit')?.value ?? cur.cleaned;
+  const orig = _genPages.find(p => p.id === cur.pageId);
+  if (!orig) { showToast('원본 page 정보 없음'); return; }
+  try {
+    const maxSerial = _genPages.reduce((m,p) => Math.max(m, p.serialNumber||0), 0);
+    const docData = {
+      title: (orig.title || ('Page ' + orig.serialNumber)) + ' (정리)',
+      serialNumber: maxSerial + 1,
+      bookId: orig.bookId || null,
+      bookName: orig.bookName || '',
+      chapterId: orig.chapterId || null,
+      chapterName: orig.chapterName || '',
+      text: edited,
+      ocrConfidence: 0,
+      ocrProvider: 'cleanup',
+      imageUrl: '',
+      edited: true,
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    };
+    const ref = await addDoc(collection(db, 'genPages'), docData);
+    _genPages.push({ id: ref.id, ...docData, createdAt: { toMillis: () => Date.now() } });
+    cur.applied = true;  // 처리 완료 표시
+    cur.cleaned = edited;
+    showToast('✓ 새 페이지로 저장됨');
     if (idx < _cleanupBatchResults.length - 1) _cleanupBatchTabIdx = idx + 1;
     _cleanupRenderBatchResult(_cleanupBatchPresetName);
   } catch (e) {
