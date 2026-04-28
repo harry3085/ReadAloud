@@ -126,8 +126,14 @@ window.runUserSearch = async () => {
       return;
     }
     const fmtDate = (t) => {
-      const d = t?.toDate ? t.toDate() : null;
-      return d ? d.toISOString().slice(0, 10) : '-';
+      if (!t) return '-';
+      let d;
+      if (typeof t.toDate === 'function') d = t.toDate();
+      else if (t.seconds !== undefined) d = new Date(t.seconds * 1000);
+      else if (t._seconds !== undefined) d = new Date(t._seconds * 1000);
+      else if (typeof t === 'string') d = new Date(t);
+      else return '-';
+      return isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 10);
     };
     tbody.innerHTML = filtered.slice(0, 200).map(u => {
       const acaName = u.academyName || '-';
@@ -851,8 +857,14 @@ async function loadAcademies() {
     }
 
     const fmtDate = (t) => {
-      const d = t?.toDate ? t.toDate() : null;
-      return d ? d.toISOString().slice(0, 10) : '-';
+      if (!t) return '-';
+      let d;
+      if (typeof t.toDate === 'function') d = t.toDate();
+      else if (t.seconds !== undefined) d = new Date(t.seconds * 1000);
+      else if (t._seconds !== undefined) d = new Date(t._seconds * 1000);
+      else if (typeof t === 'string') d = new Date(t);
+      else return '-';
+      return isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 10);
     };
     const fmtUsage = (a) => {
       const u = a.usage || {};
