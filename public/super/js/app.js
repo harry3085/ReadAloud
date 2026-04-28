@@ -211,9 +211,9 @@ window.saveUserEdit = async () => {
   if (Object.keys(fields).length === 0) { showToast('변경된 항목 없음'); return; }
   try {
     const idToken = await _currentUser.getIdToken();
-    const r = await fetch('/api/superAdmin/updateAcademyAdmin', {
+    const r = await fetch('/api/superAdmin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, uid, fields }),
+      body: JSON.stringify({ idToken, action: 'updateAcademyAdmin', uid, fields }),
     });
     const j = await r.json();
     if (!j.success) { showToast('저장 실패: ' + j.error); return; }
@@ -339,9 +339,9 @@ window.openAcademyDeleteModal = async (academyId) => {
   let counts = null;
   try {
     const idToken = await _currentUser.getIdToken();
-    const r = await fetch('/api/superAdmin/getAcademyImpact', {
+    const r = await fetch('/api/superAdmin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, academyId }),
+      body: JSON.stringify({ idToken, action: 'getAcademyImpact', academyId }),
     });
     const j = await r.json();
     if (!j.success) { showToast('조회 실패: ' + j.error); closeModal(); return; }
@@ -450,9 +450,9 @@ window.executeAcademyDelete = async (academyId, subdomain) => {
 
   try {
     const idToken = await _currentUser.getIdToken();
-    const r = await fetch('/api/superAdmin/deleteAcademy', {
+    const r = await fetch('/api/superAdmin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, academyId, confirmSubdomain }),
+      body: JSON.stringify({ idToken, action: 'deleteAcademy', academyId, confirmSubdomain }),
     });
     const j = await r.json();
     if (!j.success) {
@@ -752,17 +752,17 @@ window.saveAcademy = async (academyId) => {
 
   try {
     if (acChanged) {
-      const r = await fetch('/api/superAdmin/updateAcademy', {
+      const r = await fetch('/api/superAdmin', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, academyId, fields: acFields }),
+        body: JSON.stringify({ idToken, action: 'updateAcademy', academyId, fields: acFields }),
       });
       const j = await r.json();
       if (!j.success) { showToast('학원 변경 실패: ' + j.error); return; }
     }
     if (adminChanged && adminUid) {
-      const r = await fetch('/api/superAdmin/updateAcademyAdmin', {
+      const r = await fetch('/api/superAdmin', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, uid: adminUid, fields: adminFields }),
+        body: JSON.stringify({ idToken, action: 'updateAcademyAdmin', uid: adminUid, fields: adminFields }),
       });
       const j = await r.json();
       if (!j.success) { showToast('학원장 변경 실패: ' + j.error); return; }
