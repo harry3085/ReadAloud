@@ -4027,8 +4027,6 @@ const QG_TYPE_OPTIONS = {
     options: [
       { key:'count',      label:'문제수',         type:'number', default:20, min:5, max:100 },
       { key:'difficulty', label:'난이도(학년)',   type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
-      { key:'shuffleQ',   label:'문제 섞기',      type:'select', choices:['Off','On'], default:'On' },
-      { key:'shuffleA',   label:'정답 섞기',      type:'select', choices:['Off','On'], default:'On' },
       { key:'passScore',  label:'통과점수',       type:'number', default:80, min:0, max:100 },
     ],
   },
@@ -4042,7 +4040,6 @@ const QG_TYPE_OPTIONS = {
       { key:'count',       label:'문제수',       type:'number', default:10, min:3, max:50 },
       { key:'difficulty',  label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
       { key:'chunkCount',  label:'청크 갯수',    type:'number', default:4, min:2, max:8 },
-      { key:'shuffleQ',    label:'문제 섞기',    type:'select', choices:['Off','On'], default:'On' },
       { key:'passScore',   label:'통과점수',     type:'number', default:80, min:0, max:100 },
     ],
   },
@@ -5198,7 +5195,7 @@ async function _qgCallVocab(opts) {
 
     _qgGenerated = data.questions || [];
     _qgExcluded.clear();
-    if (opts.shuffleQ === 'On') _qgGenerated.sort(() => Math.random() - 0.5);
+    // 문제 순서 섞기 — 인쇄/시험 출제 단계에서 처리 (생성 단계 X)
 
     if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
@@ -5248,7 +5245,7 @@ async function _qgCallUnscramble(opts) {
 
     _qgGenerated = data.questions || [];
     _qgExcluded.clear();
-    if (opts.shuffleQ === 'On') _qgGenerated.sort(() => Math.random() - 0.5);
+    // 문제 순서 섞기 — 인쇄/시험 출제 단계에서 처리 (생성 단계 X)
 
     if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
@@ -7784,8 +7781,11 @@ window.tpOpenPrintModal = () => {
   if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '문제 세트를 선택하세요'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
-  const questions = selectedSets.flatMap(s => s.questions || []);
-  if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
+  const rawQuestions = selectedSets.flatMap(s => s.questions || []);
+  if (rawQuestions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
+
+  // 원본 보호: 클론 후 섞기 / _printSlots 부착에 사용
+  const questions = rawQuestions.map(q => ({ ...q, choices: Array.isArray(q.choices) ? q.choices.slice() : q.choices }));
 
   const sp = selectedSets[0]?.sourcePages?.[0] || {};
   const book = (_genBooks||[]).find(b => b.id === sp.bookId);
@@ -7814,6 +7814,8 @@ window.tpOpenPrintModal = () => {
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;">
             <input type="checkbox" id="tpPrintShowAnswers" onchange="tpPrintRefreshPreview()"> 답지 보기
           </label>
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpPrintShuffleQuestions()" title="문제 순서를 무작위로 섞기 (다시 누르면 새 순서)">🔀 문제 섞기</button>
+          <button class="btn btn-secondary" id="tpBtnShuffleC" style="font-size:11px;padding:4px 10px;display:none;" onclick="tpPrintShuffleChoices()" title="선지(①②③④) 순서 섞기">🔀 선지 섞기</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);cursor:pointer;" title="한 페이지를 좌우 2단으로 분할">
             <input type="checkbox" id="tpPrint2PerSheet" onchange="tpPrintRefreshPreview()"> 2단 레이아웃
           </label>
@@ -7888,7 +7890,55 @@ window.tpOpenPrintModal = () => {
     </div>
   `;
   showModal(html, { fullFlex: true });
+
+  // 인쇄 상태 초기화 — 클론된 questions, vocab 의 경우 4지문(_printSlots) 사전 결정
+  if (sourceType === 'vocab' && questions.length >= 4) {
+    questions.forEach((q, i) => {
+      const others = questions.filter((_, j) => j !== i);
+      const wrongs = others.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+      q._printSlots = [q, ...wrongs];  // 0=정답, 1~3=오답 (초기 순서)
+    });
+  }
+  window._tpPrintState = { questions, sourceType };
   window._tpPrintContext = { questions, bookName, chapName, sourceType };
+
+  // 선지 섞기 버튼 — vocab/mcq 만 노출
+  setTimeout(() => {
+    const btn = document.getElementById('tpBtnShuffleC');
+    if (btn && (sourceType === 'mcq' || sourceType === 'vocab')) btn.style.display = '';
+  }, 0);
+
+  tpPrintRefreshPreview();
+};
+
+// 🔀 문제 섞기 — questions 배열 순서만 바꿈 (각 문제의 _printSlots/choices 는 유지)
+window.tpPrintShuffleQuestions = () => {
+  const s = window._tpPrintState;
+  if (!s) return;
+  s.questions = s.questions.slice().sort(() => Math.random() - 0.5);
+  if (window._tpPrintContext) window._tpPrintContext.questions = s.questions;
+  tpPrintRefreshPreview();
+};
+
+// 🔀 선지 섞기 — 각 문제의 선지 위치만 바꿈
+//   vocab : q._printSlots (정답+오답3) 순서 셔플
+//   mcq   : q.choices 순서 셔플 (isAnswer 마커는 객체에 붙어 있어 자동 추적)
+window.tpPrintShuffleChoices = () => {
+  const s = window._tpPrintState;
+  if (!s) return;
+  if (s.sourceType === 'vocab') {
+    s.questions.forEach(q => {
+      if (Array.isArray(q._printSlots) && q._printSlots.length >= 2) {
+        q._printSlots = q._printSlots.slice().sort(() => Math.random() - 0.5);
+      }
+    });
+  } else if (s.sourceType === 'mcq') {
+    s.questions.forEach(q => {
+      if (Array.isArray(q.choices) && q.choices.length >= 2) {
+        q.choices = q.choices.slice().sort(() => Math.random() - 0.5);
+      }
+    });
+  }
   tpPrintRefreshPreview();
 };
 
@@ -7938,6 +7988,9 @@ function _tpBuildPrintHtml(questions, meta) {
   const pageW = isLandscape ? '297mm' : '210mm';
   const pageMinH = isLandscape ? '210mm' : '297mm';
 
+  // 문제 순서 / 선지 순서는 _tpPrintState 에서 이미 결정됨 (섞기 버튼으로 갱신).
+  const qs = questions;
+
   // 유형별 렌더러 라우팅
   const renderers = {
     subjective: _printRenderSubj,
@@ -7947,7 +8000,7 @@ function _tpBuildPrintHtml(questions, meta) {
     mcq: _printRenderMcq,
   };
   const renderer = renderers[sourceType] || _printRenderSubj;
-  const body = renderer(questions, { showAnswers, typeOpts: typeOpts || {} });
+  const body = renderer(qs, { showAnswers, typeOpts: typeOpts || {} });
 
   // 절대 경로로 로고 — 프리뷰와 팝업(인쇄창) 양쪽에서 로드되도록
   const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/icons/icon-192.png';
@@ -8059,12 +8112,13 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
           </div>
         </div>`;
     }
-    // MCQ: 같은 방향 다른 단어 3개를 오답으로
-    const candidates = questions.filter(x => x !== q);
-    const wrongs = candidates.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-    const opts = [answer, ...wrongs.map(w => thisDir === 'en2ko' ? w.meaning : w.word)]
-      .slice().sort(() => Math.random() - 0.5);
-    const correctIdx = opts.indexOf(answer);
+    // MCQ: _printSlots (모달 진입 시 사전 결정된 정답+오답3) 의 현재 순서 그대로 사용
+    // 섞기 버튼 안 눌렀으면 [정답,오답,오답,오답], 누르면 자리만 바뀜
+    const slots = Array.isArray(q._printSlots) && q._printSlots.length >= 4
+      ? q._printSlots
+      : [q]; // 4개 미만(문제 수<4)일 때 폴백
+    const opts = slots.map(s => thisDir === 'en2ko' ? s.meaning : s.word);
+    const correctIdx = slots.indexOf(q);
     return `
       <div style="${wrap}">
         <div style="font-size:var(--p-font);font-weight:700;margin-bottom:3px;">${i+1}. ${esc(question)}</div>
