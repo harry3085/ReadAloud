@@ -14,7 +14,7 @@
 //   --name        학원명 (필수)
 //   --subdomain   학원 ID (영소문자/숫자/_-, 필수, 'default' 금지)
 //   --admin-email 학원장 이메일 (필수)
-//   --plan        lite | standard | pro (기본: lite)
+//   --plan        free | lite | standard | pro (기본: lite)
 //   --limit       학생 수 한도 30/60/100 (기본: 30)
 //   --grandfathered <원>  (선택) 얼리어답터 가격 보장
 //   --password <pw>       (선택) 학원장 임시 비밀번호. 미지정 시 자동 생성
@@ -66,7 +66,7 @@ async function main() {
   if (!subdomain || !/^[a-z0-9_-]+$/.test(subdomain)) errs.push('--subdomain 영소문자/숫자/_- 만');
   if (subdomain === 'default') errs.push("'default' 는 예약된 학원 ID");
   if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) errs.push('--admin-email 유효한 이메일');
-  if (!['lite', 'standard', 'pro'].includes(planId)) errs.push("--plan 은 lite|standard|pro");
+  if (!['free', 'lite', 'standard', 'pro'].includes(planId)) errs.push("--plan 은 free|lite|standard|pro");
   if (errs.length) {
     console.error('\n❌ 입력 오류:\n  - ' + errs.join('\n  - '));
     console.error('\n예시: node scripts/admin/create-academy.js --name "ABC공부방" --subdomain "abc" --admin-email "owner@abc.com" --plan "lite" --limit 30 --apply');

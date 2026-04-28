@@ -91,8 +91,8 @@ module.exports = async (req, res) => {
     if (!adminPassword || adminPassword.length < 8) {
       return bad(res, 400, '학원장 임시 비밀번호는 8자 이상이어야 합니다.');
     }
-    if (!['lite', 'standard', 'pro'].includes(planId)) {
-      return bad(res, 400, "planId 는 'lite' | 'standard' | 'pro' 중 하나여야 합니다.");
+    if (!['free', 'lite', 'standard', 'pro'].includes(planId)) {
+      return bad(res, 400, "planId 는 'free' | 'lite' | 'standard' | 'pro' 중 하나여야 합니다.");
     }
 
     // 3. 중복 체크
