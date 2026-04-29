@@ -183,15 +183,9 @@ window.doLogin = async () => {
 window.confirmLogout = ()=>{document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');document.getElementById('logoutModal').classList.remove('hidden');};
 window.doLogout = async()=>{
   closeModal('logoutModal');
-  // 이 디바이스의 FCM 토큰만 fcmTokens array 에서 제거 (다른 디바이스 토큰은 유지)
-  if (currentUser && _myCurrentFcmToken) {
-    try {
-      await updateDoc(doc(db,'users',currentUser.uid), {
-        fcmTokens: arrayRemove(_myCurrentFcmToken),
-      });
-    } catch (e) { console.warn('logout fcmToken cleanup:', e.message); }
-    _myCurrentFcmToken = null;
-  }
+  // FCM 토큰은 의도적으로 유지 — 로그아웃해도 학원 알림 (숙제 독촉·긴급 정보) 계속 수신.
+  // 다른 user 가 같은 폰에 로그인하면 그 시점에 claim 으로 자동 이전됨.
+  _myCurrentFcmToken = null;
   await signOut(auth);
   currentUser=null; userProfile=null; clearTimers();
   localStorage.removeItem('lastLoginAt');
@@ -4013,8 +4007,9 @@ const VAPID_KEY = 'BGbPEBiwM8RHNH08eDa7xpX-bQB4T_GKoo9_cFYUttHRq8sAdn4157bMKNznq
 
 // 실제 FCM 토큰 발급 및 저장
 //   - fcmTokens (array): 멀티 디바이스 (학생 + 학부모 같은 ID 다른 폰) 지원
-//   - fcmToken (string): 레거시 호환 — 가장 최근 토큰을 그대로 유지
-//   - 현재 디바이스 토큰을 모듈 변수에 캐싱 (logout 시 그 토큰만 빼기 위해)
+//   - fcmToken (string): 레거시 호환 — 가장 최근 토큰
+//   - 모듈 변수에 캐시 (현재 디바이스 토큰 추적)
+//   - 서버 claim API 호출 (다른 user 가 가지고 있던 같은 토큰 → 제거. 디바이스 소유권 이전)
 let _myCurrentFcmToken = null;
 async function doRegisterToken() {
   if(!messaging || !currentUser) return false;
@@ -4022,10 +4017,22 @@ async function doRegisterToken() {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if(token) {
       _myCurrentFcmToken = token;
+      // 1) 자기 user doc 갱신 (Rules: isOwner 만 가능)
       await updateDoc(doc(db,'users',currentUser.uid), {
-        fcmToken: token,                    // legacy field (이번 디바이스 최신값)
-        fcmTokens: arrayUnion(token),       // 배열에 누적 (중복 자동 회피)
+        fcmToken: token,
+        fcmTokens: arrayUnion(token),
       });
+      // 2) 서버 claim — 같은 토큰 가진 다른 user 들에서 제거 (admin SDK 통해)
+      //    fire-and-forget — 실패해도 본인 토큰 등록은 됐으니 알림 수신은 정상
+      currentUser.getIdToken().then(idToken => {
+        fetch('/api/claimFcmToken', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, fcmToken: token }),
+        }).then(r => r.json()).then(data => {
+          if (data?.claimed > 0) console.log(`FCM 토큰 claim: ${data.claimed} user 에서 이전`);
+        }).catch(e => console.warn('FCM claim 실패:', e.message));
+      }).catch(e => console.warn('idToken 가져오기 실패:', e.message));
       console.log('FCM 토큰 등록 완료');
       return true;
     }
