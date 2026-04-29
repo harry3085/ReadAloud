@@ -4043,9 +4043,11 @@ async function registerFCMToken() {
   }, 3000);
 }
 
-// 포그라운드 알림 수신
+// 포그라운드 알림 수신 — onMessage 리스너 1회만 등록 (중복 시 모달 N번 뜸)
+let _fcmListenerBound = false;
 function setupForegroundMessage() {
-  if(!messaging) return;
+  if(!messaging || _fcmListenerBound) return;
+  _fcmListenerBound = true;
   onMessage(messaging, (payload) => {
     const { title, body } = payload.notification || {};
     showNotifModal(title||'알림', body||'');
