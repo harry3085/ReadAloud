@@ -118,7 +118,16 @@ module.exports = async (req, res) => {
     await batch.commit();
 
     // FCM 발송 (토큰 있는 학생만)
-    const tokens = users.map(u => u.fcmToken).filter(Boolean);
+    //   - users.fcmTokens (array) 우선 — 멀티 디바이스 (학생+학부모 같은 ID 다른 폰)
+    //   - users.fcmToken (string) — 레거시 fallback (마이그레이션 후엔 실효 X)
+    //   - Set 으로 dedup — 같은 폰을 여러 user 가 사용한 경우 중복 발송 방지
+    const tokens = [...new Set(
+      users.flatMap(u => {
+        const arr = Array.isArray(u.fcmTokens) ? u.fcmTokens : [];
+        const legacy = u.fcmToken ? [u.fcmToken] : [];
+        return [...arr, ...legacy];
+      }).filter(Boolean)
+    )];
     let sent = 0, failed = 0;
 
     if (tokens.length > 0) {
@@ -141,15 +150,28 @@ module.exports = async (req, res) => {
       sent = result.successCount;
       failed = result.failureCount;
 
-      // 실패 토큰 정리
+      // 실패 토큰 정리 — fcmTokens 배열에서 arrayRemove + 레거시 fcmToken 도 null
       const failedTokens = [];
-      result.responses.forEach((resp, i) => { if (!resp.success) failedTokens.push(tokens[i]); });
+      result.responses.forEach((resp, i) => {
+        if (!resp.success) {
+          const code = resp.error?.code || '';
+          // 영구 실패만 정리 (네트워크 일시 오류 제외)
+          if (code === 'messaging/registration-token-not-registered'
+              || code === 'messaging/invalid-registration-token') {
+            failedTokens.push(tokens[i]);
+          }
+        }
+      });
       if (failedTokens.length > 0) {
-        const usersSnap = await db.collection('users')
-          .where('fcmToken', 'in', failedTokens.slice(0, 10)).get();
         const cleanBatch = db.batch();
-        usersSnap.forEach(doc => cleanBatch.update(doc.ref, { fcmToken: null }));
-        await cleanBatch.commit();
+        // 각 실패 토큰별로 array-contains 쿼리 후 arrayRemove (10건씩 chunk)
+        for (const ft of failedTokens.slice(0, 50)) {
+          const sn1 = await db.collection('users').where('fcmTokens', 'array-contains', ft).get();
+          sn1.forEach(d => cleanBatch.update(d.ref, { fcmTokens: FieldValue.arrayRemove(ft) }));
+          const sn2 = await db.collection('users').where('fcmToken', '==', ft).get();
+          sn2.forEach(d => cleanBatch.update(d.ref, { fcmToken: null }));
+        }
+        try { await cleanBatch.commit(); } catch (e) { console.warn('failed token cleanup:', e.message); }
       }
     }
 

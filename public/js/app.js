@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp, increment, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -183,6 +183,15 @@ window.doLogin = async () => {
 window.confirmLogout = ()=>{document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');document.getElementById('logoutModal').classList.remove('hidden');};
 window.doLogout = async()=>{
   closeModal('logoutModal');
+  // 이 디바이스의 FCM 토큰만 fcmTokens array 에서 제거 (다른 디바이스 토큰은 유지)
+  if (currentUser && _myCurrentFcmToken) {
+    try {
+      await updateDoc(doc(db,'users',currentUser.uid), {
+        fcmTokens: arrayRemove(_myCurrentFcmToken),
+      });
+    } catch (e) { console.warn('logout fcmToken cleanup:', e.message); }
+    _myCurrentFcmToken = null;
+  }
   await signOut(auth);
   currentUser=null; userProfile=null; clearTimers();
   localStorage.removeItem('lastLoginAt');
@@ -4003,12 +4012,20 @@ _vqBindSpellInput();
 const VAPID_KEY = 'BGbPEBiwM8RHNH08eDa7xpX-bQB4T_GKoo9_cFYUttHRq8sAdn4157bMKNznq4lw_k1r0Xq6517LBKSyYaEgmG8';
 
 // 실제 FCM 토큰 발급 및 저장
+//   - fcmTokens (array): 멀티 디바이스 (학생 + 학부모 같은 ID 다른 폰) 지원
+//   - fcmToken (string): 레거시 호환 — 가장 최근 토큰을 그대로 유지
+//   - 현재 디바이스 토큰을 모듈 변수에 캐싱 (logout 시 그 토큰만 빼기 위해)
+let _myCurrentFcmToken = null;
 async function doRegisterToken() {
   if(!messaging || !currentUser) return false;
   try {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if(token) {
-      await updateDoc(doc(db,'users',currentUser.uid), { fcmToken: token });
+      _myCurrentFcmToken = token;
+      await updateDoc(doc(db,'users',currentUser.uid), {
+        fcmToken: token,                    // legacy field (이번 디바이스 최신값)
+        fcmTokens: arrayUnion(token),       // 배열에 누적 (중복 자동 회피)
+      });
       console.log('FCM 토큰 등록 완료');
       return true;
     }
@@ -4071,7 +4088,9 @@ function setupForegroundMessage() {
   }
 }
 
-// 알림 팝업 모달 (포그라운드 수신 + 미확인 표시)
+// 알림 팝업 모달 (포그라운드 수신 전용)
+// 이전엔 checkUnreadNotifs 가 이걸로 미확인 알림 순차 노출했지만, 2026-04-29 부터
+// 로그인 시엔 합산 summary 모달 (showUnreadSummaryModal) 만 띄우고 개별 노출 안 함.
 function showNotifModal(title, body, docId){
   const overlay = document.getElementById('notifModalOverlay');
   const titleEl = document.getElementById('notifModalTitle');
@@ -4088,12 +4107,39 @@ function showNotifModal(title, body, docId){
         try{ await updateDoc(doc(db,'userNotifications',docId),{read:true}); }catch(e){console.warn(e);}
       }
       await updateNotifBadge();
-      checkUnreadNotifs();
     };
   }
 }
 
-// 앱 진입 시 미확인 알림 순차 표시
+// 미확인 알림 합산 모달 (로그인 직후 1회만 표시)
+function showUnreadSummaryModal(count){
+  const existing = document.getElementById('unreadSummaryOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'unreadSummaryOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:18px;padding:24px 20px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.2);text-align:center;">
+      <div style="font-size:42px;margin-bottom:10px;">🔔</div>
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px;">확인하지 않은 알림</div>
+      <div style="font-size:14px;color:var(--gray);margin-bottom:18px;">미확인 알림이 <b style="color:var(--teal);">${count}건</b> 있어요</div>
+      <div style="display:flex;gap:8px;">
+        <button id="usmDismissBtn" style="flex:1;padding:11px;background:#f5f5f5;border:none;border-radius:12px;font-size:14px;color:#555;cursor:pointer;font-weight:600;">나중에</button>
+        <button id="usmOpenBtn" style="flex:1;padding:11px;background:var(--teal);color:white;border:none;border-radius:12px;font-size:14px;cursor:pointer;font-weight:700;">지금 확인</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('usmDismissBtn').onclick = () => overlay.remove();
+  document.getElementById('usmOpenBtn').onclick = () => {
+    overlay.remove();
+    if (typeof openNotifPanel === 'function') openNotifPanel();
+  };
+}
+
+// 앱 진입 시 미확인 알림 합산 표시 (1개 모달, 풀스크린 차단 X)
 async function checkUnreadNotifs(){
   if(!currentUser) return;
   try{
@@ -4104,10 +4150,7 @@ async function checkUnreadNotifs(){
     ));
     await updateNotifBadge(snap.size);
     if(snap.empty) return;
-    const sorted = snap.docs.sort((a,b)=>(a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0));
-    const first = sorted[0];
-    const d = first.data();
-    showNotifModal(d.title||'알림', d.body||'', first.id);
+    showUnreadSummaryModal(snap.size);
   }catch(e){ console.log('알림 확인 실패',e); }
 }
 
