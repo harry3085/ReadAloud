@@ -885,3 +885,166 @@ admin/app.js 제거된 함수들 (216줄 ↓):
 **완료 (이 세션 기준)**:
 - ✅ 레거시 Phase 6F 정리 — `books`/`folders`/`units` 규칙·코드 모두 제거됨 (commit 6102675 외)
 - ✅ OS 알림 끄기 매뉴얼 — `docs/notif-disable-guide.md` 작성
+
+---
+
+## 2026-04-29 (저녁) ~ 2026-04-30: 알림 시스템 + 녹음숙제 재설계
+
+당일 SW v184 → v206 (~30+ commit). 두 큰 영역의 대규모 정비.
+
+### 1) 학생앱 FCM 알림 시스템 재구축
+
+**FCM 함수 복구** (commit beeed1f) — Phase 6F 정리 시 잘못 제거된 학생용 FCM 코드 ~190줄 복원:
+- `VAPID_KEY`, `doRegisterToken`, `registerFCMToken`
+- `setupForegroundMessage`, `showNotifModal`, `checkUnreadNotifs`, `updateNotifBadge`
+- `requestNotifPermission`, `dismissNotifModal` (window)
+- `openNotifPanel`, `readNotif`, `closeNotifPanel`, `markAllNotifsRead` (window)
+
+**중복 표시 fix** (commit 7a77df2 → 4ceed81): 1 푸시가 2번 표시되던 두 원인 모두 해결
+- onMessage 리스너 중복 등록 → `_fcmListenerBound` 가드
+- sw.js + firebase-messaging-sw.js 둘 다 `onBackgroundMessage` 호출 → SW 분리 (옵션 1):
+  · `sw.js` = 캐시·fetch 만, FCM 코드 제거
+  · `firebase-messaging-sw.js` = FCM 전용. `messaging.onBackgroundMessage` 핸들러도 제거 (Firebase SDK 자동 표시 사용)
+  · `notificationclick` 만 firebase-messaging-sw.js 에 유지
+
+**알림 뱃지 갱신 3건** (commit bd6deb7):
+- 자동 로그인 시 `updateNotifBadge` + `checkUnreadNotifs` 호출 빠짐 → 추가
+- 새 푸시 도착 시 onMessage 콜백 끝에 `updateNotifBadge()` 추가
+- `visibilitychange` 리스너 — 백그라운드 → 포그라운드 복귀 시 자동 갱신
+
+**알림 인지 모달 + claim 패턴** (commit ed82b3a, a8c21a7):
+- 로그인 시 미확인 알림 합산 모달 (1건만, 풀스크린 차단 X) — `showUnreadSummaryModal`
+  · "미확인 알림 N건" + [지금 확인 / 나중에]
+- 멀티 디바이스: `users.fcmToken` (string) → `users.fcmTokens` (array)
+  · 마이그레이션: `scripts/migrate/fcm-tokens-to-array.js` 적용 (11건 변환)
+  · 학부모 같은 ID 다른 폰 로그인 → `arrayUnion` 으로 토큰 누적
+  · 같은 폰을 다른 user 가 로그인하면 새 user 가 토큰 소유권 이전 (claim)
+  · 신규 API `api/claimFcmToken.js` (admin SDK 로 다른 user.fcmTokens 에서 arrayRemove)
+- 로그아웃해도 토큰 유지 — 학원 알림 (숙제 독촉·긴급 정보) 이 도달해야 한다는 정책. 로그인 끊긴 상태에서도 푸시 도착. 같은 폰에 다른 user 로그인 시 자동 이전됨.
+
+**알림 데이터 격리·정리** (commit cf1937c, 6f8fa13):
+- pushNotifications + userNotifications 의 academyId 누락 doc 백필 (`scripts/migrate/backfill-notif-academy.js`)
+- 옛 테스트 데이터 일괄 정리 (`scripts/cleanup/wipe-notifications.js` — 88건 삭제)
+- userNotifications.academyId 가 빠져있어 admin 의 읽음 현황 모달이 'Missing or insufficient permissions' 로 실패하던 버그 해결
+
+**메시지 관리 (학원장)** (commit 0705864, c3eb975):
+- 발송 이력 행에 [♻ 재활용] 버튼 복원 — 옛 commit 45750ee 에서 dead 가 되었던 reuseMsg 함수 다시 호출
+- 메시지 관리 카드: 초안 (sent:false) / 발송 이력 (sent:true) 2 섹션 분리
+  · 초안 행: 점선 박스 + 노란 배경, 클릭=재활용
+  · 발송 이력 행: 실선 박스, 클릭=읽음 현황, ♻=재활용, ✕=cascade 삭제
+- `delMsg`: pushNotifications 삭제 시 관련 userNotifications 도 cascade 삭제 (학생 알림함에서도 사라짐)
+- 신규 `delDraftMsg` (초안 삭제, cascade 불필요)
+
+### 2) 녹음숙제 — 2단계 검증 + 단일 AI 평가 재설계
+
+**Pre-check 클라이언트 무결성 검사 5종** (commit a681d5a → b9d24ef):
+- 길이 (min/maxDurationSec)
+- VAD (Voice Activity Detection) — Web Audio API RMS 50ms 윈도우, 임계값 0.012
+- A. SHA-256 hash 비교 — 이전 라운드와 동일 녹음 차단 (재제출 부정 방지)
+- B. 다라운드 길이 일관성 — 평균 ±30% 벗어나면 reject
+- C. 음성 대역 에너지 (300~3400Hz, FFT downsampled 256 샘플) — 음악·소음 차단
+- D. spectral entropy — 단조로운 음 (`아아아` 패턴) 감지
+
+**완곡한 알림 메시지 + persistent UI**:
+- 토스트 → 화면 상단 빨간 박스 (재녹음까지 유지)
+- "직전 회차와 거의 같은 녹음 같아요. 새로 읽어볼까요?"
+- "조용한 곳에서 또렷이 읽어볼까요?" 등
+
+**N회 무결성 + 마지막 라운드만 AI 평가** (commit b9d24ef):
+- 시험별 `q.recordingCount` 1~4 회 (시험 배정 시 학원장 선택)
+- 매 라운드 무결성 통과만 메모리 보관 (Storage 업로드 X)
+- N회 다 통과 → [제출] → **마지막 라운드만 Storage 업로드 + AI 1회 호출**
+- AI 점수 ≥ 통과점수 → 결과 저장 + 완료
+- 미달 → 마지막 라운드만 다시 녹음 (이전 라운드 유지)
+- 비용 효과: AI 호출 4회 → 1회, Storage 3개 → 1개
+
+**서버 프롬프트 통합** (commit b9d24ef):
+- check + feedback 분리 호출 → 통합 1회 호출 (`buildEvalPrompt`)
+- responseSchema 도 통합 (score + missedWords + note + feedback 한 번에)
+- `evaluationSeconds` 0/null = 전체 평가, 양수 = 앞 N초만
+- 점수 미달이라도 피드백 항상 포함 (학습 효과, 비용 차이 미미)
+
+**시험 배정 모달 — 5 옵션 통합** (commit b414751):
+- 녹음 횟수 (1~4)
+- 최소 녹음시간 (초, 10~300)
+- 최대 녹음시간 (초, 60~1800)
+- 평가구간 select (전체 / 60·90·120·180초)
+- 성실도 임계값 (%, 20~80)
+- 통과점수 (모달 상단 공통)
+- 모두 시험 단위 (각 question 객체) 에 저장 — 시험·학년별 자유 조정
+- 학원 단위 default 페이지는 만들었다가 같은 commit 에서 제거 (학원 단위 doc 안 건드림으로 단순화)
+
+**AI Generator 정리**:
+- `QG_TYPE_OPTIONS.recording.options` 배열 비움 — accuracyThreshold·evaluationSeconds 제거
+- `_qgBuildRecordingSet` 도 두 필드 안 박음
+- 결과: AI Generator 단계는 페이지 선택만, 옵션 결정은 시험 배정 시점
+
+**결과 화면 + 학원장 화면**:
+- 학생: 단일 녹음 + AI 점수 vs 통과점수 비교 + 피드백 항상 표시 + 미통과 시 [🎙 마지막 다시] 버튼
+- 학원장: 시험 진행 현황 펼침·성적 리포트 상세 모두 마지막 녹음 1개로 단순화 + 피드백 details
+
+### 3) 그 외 정리
+
+**academyId 격리 누락** (commit 3109807): `tpToggleTestProgress` (시험 진행 현황 펼침) 의 그룹 학생 쿼리에 academyId 필터 빠짐 → 'TEST반' 같이 이름 겹치는 그룹의 다른 학원 학생까지 잡혀 학생 수 부풀려 표시되던 display 버그 해결.
+
+**학생 랭킹 작동** (commit 85776ed): scores Rules 가 `isOwner || isAdmin` 만 허용해 학생이 같은 그룹 점수 조회 불가. 처음부터 빈 랭킹이던 알려진 버그 해결 — `isSignedIn() && resource.data.academyId == myAcademyId()` 추가. 같은 학원 안 모두 read OK (클라이언트 group 필터로 같은 반만 표시).
+
+**랭킹 dead code 정리** (commit 67f17e0): Phase 6E 에서 녹음숙제 탭 UI 제거 시 남았던 `switchRankTab`/`rankHwList` 잔재 ~10줄 제거.
+
+**Page 자연 정렬** (commit 3af7698): AI OCR / AI Generator 의 Books·Chapters·Pages 이름순 정렬에 `localeCompare(... { numeric: true })` 적용 → "Page 1, 2, 3 ... 9, 10, 11" 자연순.
+
+**AI 프롬프트 갱신**:
+- vocab (commit 543e402): TYPE A (단어장) / TYPE B (본문) 입력 자동 감지 분기 (1-1~1-9 vocabulary list mode rules)
+- subjective (commit aade93a): 프롬프트 완화 — 결합·시제 조정 허용. 검증 함수도 `_findHostPage` 폐기 → 단어 매칭 30% (false positive 회피)
+- 난이도(학년) 모든 유형에 적용 (commit 8fd4d0f) — 이전엔 vocab/unscramble 만 prompt 에 포함, 이제 mcq/fill_blank/subjective 도 포함 (recording 은 noAi 라 제외)
+
+**minVoiceActivity 0.7 → 0.4** (commit 93ef43a): 자연 발화 비율이 60~75% 인데 임계값 70% 가 빡빡해서 정상 녹음도 거부되던 문제. 4학원 일괄 갱신 + 신규 학원 default 도 0.4 로 변경.
+
+**OS 알림 끄기 매뉴얼** (commit 3a05cf1): 학생/학부모용 마크다운 1장. iPhone (Safari/Chrome/PWA) + Android (Chrome/PWA) 케이스별 단계 + FAQ.
+
+### 4) 메모리 정리
+
+**신규 추가**:
+- `feedback_answer_before_work.md` — 질문엔 답변 먼저, 작업 컨펌 후 진행 (사용자 명시 요청)
+- `project_dashboard_calendar.md` — 학원장 대시보드 달력 통합 (생일·결제·시험)
+- `project_v1_polish_cycle.md` — 출시 직전 디자인 토큰화·Lucide 아이콘
+- `project_global_config_refactor.md` — AI 프롬프트 super_admin 편집 + 학원별 override
+- `project_academy_settings_page.md` — 화이트라벨 (로고·홍보문구) + 학원장 정보 수정
+- `feedback_storage_choice.md` — 1인 1PC 타겟이라 사용자 선호는 localStorage
+
+**삭제**:
+- `project_recording_settings_polish.md` — 시험 배정 모달 통합으로 해소됨
+- `project_os_notif_disable_guide.md` — 매뉴얼 작성 완료
+- `project_ranking_visibility.md` — Rules 완화로 해결됨
+
+### 5) 작업 규칙 추가
+
+- **JS `0 || fallback` 함정 금지** — 0 이 falsy 라 `parseInt(v) || 50` 쓰면 0 이 50 으로 둔갑. `isFinite(parseInt(v)) ? parseInt(v) : 50` 패턴 사용.
+- **데이터 보관 위치 결정 기준** — 학원 공유 / super_admin 가시성 / 학원 백업 포함 셋 다 X 면 localStorage. 1인 1PC 타겟이라 대부분 localStorage 가 정답.
+- **답변 먼저, 작업 컨펌 받고 진행** — 질문에는 답변 + 옵션 제시 → 사용자 동의 → 작업. 동시 진행 X.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-04-30)
+- `public/admin/js/app.js`: ~8800줄 (학원 설정 페이지 추가 후 제거 / 녹음 옵션 통합 +60)
+- `public/js/app.js`: ~4180줄 (FCM 복구 +190 / pre-check +200 / _rv2 재설계)
+- `api/check-recording.js`: 통합 프롬프트 (-50)
+- `api/claimFcmToken.js`: 신규 ~80줄
+- `docs/notif-disable-guide.md`: 신규 OS 매뉴얼
+- SW 캐시: `kunsori-v206`
+
+## 진행률 (2026-04-30)
+- 멀티테넌시 인프라: **~95%** (Phase 4 완료, Phase 3 완료, FCM 격리·claim·인지모달 추가)
+- 녹음숙제 시스템: **~95%** (5 옵션 시험 배정 통합, N회 무결성, 단일 AI 평가)
+- 알림 시스템: **~95%** (멀티 디바이스, 합산 모달, 뱃지 정합)
+- 학생 랭킹: **~100%** (작동 시작)
+- super_admin 앱: **~85%** (변동 없음)
+- 인쇄 시스템: **~95%** (변동 없음)
+- Phase 5 출시 준비: **0%**
+
+## 다음 세션 후보 (2026-04-30 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제
+2. **글로벌 설정 Firestore 이전** ([project_global_config_refactor.md](memory/project_global_config_refactor.md))
+3. **학원장 대시보드 달력** ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
+4. **학원 설정 페이지 (화이트라벨)** ([project_academy_settings_page.md](memory/project_academy_settings_page.md))
+5. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
