@@ -1523,18 +1523,32 @@ function _adminRecBuildDetail(recordings){
   return recordings.map((r,i)=>{
     const score=typeof r.score==='number'?r.score:null;
     const pass=score!=null?score>=80:null;
+    const isLast = i === recordings.length - 1;
     const bg=pass===true?'#F0FDF4':pass===false?'#FEF2F2':'#f8f9fa';
     const border=pass===true?'#BBF7D0':pass===false?'#FECACA':'#e5e7eb';
+    // 필드명: audioUrl (신규) 우선, url (레거시) 폴백
+    const audio = r.audioUrl || r.url || '';
+    const fb = r.feedback;  // 마지막 회차에만 있음
     return `
       <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':'Q'+(i+1)}</span>
           ${score!=null?`<span style="font-size:12px;color:${pass?'#059669':'#dc2626'};font-weight:700;">${score}점</span>`:''}
+          ${r.duration?`<span style="font-size:10px;color:var(--gray);">${r.duration}초</span>`:''}
         </div>
-        ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:4px;">${esc(r.sentence)}</div>`:''}
-        ${r.url?`<audio src="${esc(r.url)}" controls style="width:100%;height:30px;"></audio>`:''}
-        ${Array.isArray(r.missedWords)&&r.missedWords.length?`<div style="font-size:11px;color:#dc2626;margin-top:4px;">놓친 단어: ${esc(r.missedWords.join(', '))}</div>`:''}
+        ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
+        ${audio?`<audio src="${esc(audio)}" controls preload="none" style="width:100%;height:30px;"></audio>`:''}
+        ${Array.isArray(r.missedWords)&&r.missedWords.length?`<div style="font-size:11px;color:#dc2626;margin-top:6px;">놓친 단어: ${esc(r.missedWords.join(', '))}</div>`:''}
         ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:4px;">${esc(r.note)}</div>`:''}
+        ${fb ? `
+          <details style="margin-top:8px;">
+            <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (3회차 통과)</summary>
+            <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:6px;font-size:11px;line-height:1.6;">
+              ${Array.isArray(fb.missedWords)&&fb.missedWords.length?`<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>`:''}
+              ${Array.isArray(fb.weakPronunciation)&&fb.weakPronunciation.length?`<div style="margin-top:4px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`${esc(p.word||'')} (${esc(p.issue||'')})`).join(' · ')}</div>`:''}
+              ${Array.isArray(fb.tips)&&fb.tips.length?`<div style="margin-top:4px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>`:''}
+            </div>
+          </details>` : ''}
       </div>`;
   }).join('');
 }
@@ -7617,7 +7631,7 @@ window.tpOpenPublishModal = async () => {
           </div>
         </div>
 
-        ${cfg.testMode === 'recording-ai' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
+        ${cfg.testMode === 'recording' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
               <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 평가 옵션 (반별 조정 가능)</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -7773,7 +7787,7 @@ window.tpPublish = async () => {
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
   // Phase 5.5: recording-ai v2 의 경우 배정 모달에서 임계값·평가 시간 override
-  if (cfg.testMode === 'recording-ai' && questions.some(q => q.schemaV === 2)) {
+  if (cfg.testMode === 'recording' && questions.some(q => q.schemaV === 2)) {
     const threshold = parseInt(document.getElementById('tpRecThreshold')?.value);
     const evalSec = parseInt(document.getElementById('tpRecEvalSec')?.value);
     if (!isNaN(threshold) && threshold >= 50 && threshold <= 95) {
@@ -8667,7 +8681,7 @@ window.tpToggleTestProgress = async (testId) => {
             if (c) {
               const cfgC = _TEST_TYPE_CONFIG[_activeTestType];
               const recs = c.recordings || [];
-              const isRecV2 = cfgC?.testMode === 'recording-ai' && recs.length >= 2 && recs[0]?.audioUrl;
+              const isRecV2 = cfgC?.testMode === 'recording' && recs.length >= 2 && recs[0]?.audioUrl;
               if (isRecV2) {
                 const last = recs[recs.length - 1];
                 const fb = last?.feedback;

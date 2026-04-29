@@ -2429,10 +2429,10 @@ async function _rv2Submit() {
 
     const checkResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
       try {
-        // Gemini 전송용으로 앞부분만 잘라 전송 (토큰 비용 82% 절감)
-        const trimmed = await _trimAudioForGemini(r.blob, evalSec + 5);
-        const base64 = await _rv2BlobToBase64(trimmed);
-        const sendMime = trimmed.type || r.mime;
+        // 트림 제거 — 원본 blob 직접 전송 (WAV 변환 시 10배 커져 Vercel 4.5MB 한도 초과 발생).
+        // 길이는 프롬프트의 evaluationSeconds 지시로 Gemini 가 앞 N초만 평가.
+        const base64 = await _rv2BlobToBase64(r.blob);
+        const sendMime = r.mime;
         console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length} mime=${sendMime}`);
         const idToken = currentUser ? await currentUser.getIdToken() : '';
         const res = await fetch('/api/check-recording', {
@@ -2472,10 +2472,10 @@ async function _rv2Submit() {
     if (passed && !lastResult.error) {
       _rv2ShowSubmitting('💬 상세 피드백 생성 중...', '마지막 녹음이 임계점을 통과했어요!');
       try {
-        const lastBlob = _rv2.savedRounds[_RV2_ROUNDS - 1].blob;
-        const trimmed = await _trimAudioForGemini(lastBlob, evalSec + 5);
-        const base64 = await _rv2BlobToBase64(trimmed);
-        const sendMime = trimmed.type || _rv2.savedRounds[_RV2_ROUNDS - 1].mime;
+        const lastRound = _rv2.savedRounds[_RV2_ROUNDS - 1];
+        // 트림 제거 — 원본 그대로 (Vercel 4.5MB 한도 안전)
+        const base64 = await _rv2BlobToBase64(lastRound.blob);
+        const sendMime = lastRound.mime;
         const idToken2 = currentUser ? await currentUser.getIdToken() : '';
         const fbRes = await fetch('/api/check-recording', {
           method: 'POST',

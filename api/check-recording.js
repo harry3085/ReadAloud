@@ -46,7 +46,8 @@ ORIGINAL TEXT:
 ${originalText}
 """
 
-Evaluate ONLY the first ${evaluationSeconds} seconds of the audio.
+Evaluate the ENTIRE recording against the ORIGINAL TEXT above.
+Compare the student's audio to the full text — measure how much of the text was read clearly and in order.
 
 Return strictly JSON (no markdown):
 {
@@ -56,22 +57,23 @@ Return strictly JSON (no markdown):
 }
 
 Scoring guide:
-- 90-100: Read almost every word clearly, in correct order
-- 75-89: Most words clear, minor omissions
-- 60-74: Noticeable omissions or rushed portions
-- 40-59: Many words missed or unclear
-- 0-39: Silent, noise, or entirely different content`;
+- 90-100: Read almost every word clearly, in correct order, throughout the recording
+- 75-89: Most words clear, minor omissions or unclear sections
+- 60-74: Noticeable omissions, mispronunciation, or rushed portions
+- 40-59: Many words missed or unclear; partial reading
+- 0-39: Silent, noise only, or entirely different content`;
 }
 
 function buildFeedbackPrompt(originalText, evaluationSeconds) {
-  return `You are a Korean English teacher.
+  return `You are a Korean English teacher reviewing a student's reading recording.
 
 ORIGINAL TEXT:
 """
 ${originalText}
 """
 
-This is the student's 3rd and final attempt, which passed the threshold. Give specific improvements for the first ${evaluationSeconds} seconds.
+This is the student's 3rd and final attempt, which passed the threshold.
+Analyze the ENTIRE recording against the full text above and give specific improvements.
 
 Return strictly JSON (no markdown):
 {
