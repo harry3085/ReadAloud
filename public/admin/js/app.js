@@ -194,57 +194,6 @@ window.goPage = async(id) => {
   else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
   else if(id==='test-subj')       await _renderTestAssignDetail('subj');
   else if(id==='test-rec-ai')     await _renderTestAssignDetail('rec-ai');
-  else if(id==='academy-settings') await loadAcademySettings();
-};
-
-// ── 학원 설정 (녹음숙제 무결성) ─────────────────────────────
-window.loadAcademySettings = async () => {
-  const status = document.getElementById('asStatus');
-  if (status) status.textContent = '로딩 중...';
-  try {
-    const aRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
-    const aSnap = await getDoc(aRef);
-    const integ = aSnap.exists() ? (aSnap.data()?.settings?.recordingIntegrity || {}) : {};
-    document.getElementById('asMinDuration').value = integ.minDurationSec ?? 60;
-    document.getElementById('asMaxDuration').value = integ.maxDurationSec ?? 600;
-    document.getElementById('asEvalSec').value = String(integ.evaluationSeconds ?? 0);
-    document.getElementById('asMinVA').value = Math.round((integ.minVoiceActivity ?? 0.4) * 100);
-    if (status) status.textContent = '✓ 로드 완료';
-    setTimeout(() => { if (status?.textContent === '✓ 로드 완료') status.textContent = ''; }, 2000);
-  } catch (e) {
-    console.error('loadAcademySettings:', e);
-    if (status) status.innerHTML = `<span style="color:#dc2626;">불러오기 실패: ${esc(e.message)}</span>`;
-  }
-};
-
-window.saveAcademySettings = async () => {
-  const status = document.getElementById('asStatus');
-  try {
-    const minDur = parseInt(document.getElementById('asMinDuration').value);
-    const maxDur = parseInt(document.getElementById('asMaxDuration').value);
-    const evalSec = parseInt(document.getElementById('asEvalSec').value);
-    const minVAPct = parseInt(document.getElementById('asMinVA').value);
-
-    if (!isFinite(minDur) || minDur < 10 || minDur > 300) { showAlert('입력 확인', '최소 녹음시간은 10~300초'); return; }
-    if (!isFinite(maxDur) || maxDur < 60 || maxDur > 1800) { showAlert('입력 확인', '최대 녹음시간은 60~1800초'); return; }
-    if (minDur >= maxDur) { showAlert('입력 확인', '최소 녹음시간이 최대보다 작아야 합니다'); return; }
-    if (![0, 60, 90, 120, 180].includes(evalSec)) { showAlert('입력 확인', '평가구간 값이 유효하지 않습니다'); return; }
-    if (!isFinite(minVAPct) || minVAPct < 20 || minVAPct > 80) { showAlert('입력 확인', '성실도 임계값은 20~80%'); return; }
-
-    if (status) status.textContent = '저장 중...';
-    const aRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
-    await updateDoc(aRef, {
-      'settings.recordingIntegrity.minDurationSec': minDur,
-      'settings.recordingIntegrity.maxDurationSec': maxDur,
-      'settings.recordingIntegrity.evaluationSeconds': evalSec,
-      'settings.recordingIntegrity.minVoiceActivity': minVAPct / 100,
-    });
-    if (status) status.innerHTML = `<span style="color:#059669;">✓ 저장 완료 — 학생들 다음 로그인부터 적용</span>`;
-    showToast('녹음숙제 설정 저장됨');
-  } catch (e) {
-    console.error('saveAcademySettings:', e);
-    if (status) status.innerHTML = `<span style="color:#dc2626;">저장 실패: ${esc(e.message)}</span>`;
-  }
 };
 
 window.toggleNav = (group) => {
@@ -7681,28 +7630,51 @@ window.tpOpenPublishModal = async () => {
         </div>
 
         ${cfg.testMode === 'recording' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
-          ? `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
-              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 평가 옵션 (시험별 조정 가능)</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          ? (() => {
+              const q0 = selectedSets[0]?.questions?.[0] || {};
+              const curThPct = Math.round((q0.accuracyThreshold ?? 0.4) * (q0.accuracyThreshold > 1 ? 1 : 100));
+              return `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
+              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 옵션 (시험별 조정)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">녹음 횟수</label>
                   <select id="tpRecCount" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                    ${[1,2,3,4].map(n => `<option value="${n}"${n === (selectedSets[0]?.questions?.[0]?.recordingCount || 3) ? ' selected' : ''}>${n}회</option>`).join('')}
+                    ${[1,2,3,4].map(n => `<option value="${n}"${n === (q0.recordingCount || 3) ? ' selected' : ''}>${n}회</option>`).join('')}
                   </select>
-                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">학생이 반복 녹음할 횟수 (마지막만 AI 평가)</div>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">최소 시간(초)</label>
+                  <input type="number" id="tpRecMinDur" min="10" max="300" step="10"
+                    value="${q0.minDurationSec ?? 60}"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">최대 시간(초)</label>
+                  <input type="number" id="tpRecMaxDur" min="60" max="1800" step="60"
+                    value="${q0.maxDurationSec ?? 600}"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">평가구간</label>
+                  <select id="tpRecEvalSec" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                    ${[0,60,90,120,180].map(n => `<option value="${n}"${n === (q0.evaluationSeconds ?? 0) ? ' selected' : ''}>${n === 0 ? '전체 녹음' : '앞 ' + n + '초'}</option>`).join('')}
+                  </select>
                 </div>
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">성실도 임계값 (%)</label>
                   <input type="number" id="tpRecThreshold" min="20" max="80" step="5"
-                    value="${Math.round((selectedSets[0]?.questions?.[0]?.accuracyThreshold || 0.4) * (selectedSets[0]?.questions?.[0]?.accuracyThreshold > 1 ? 1 : 100))}"
+                    value="${curThPct}"
                     style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">로컬 음성 활동 (VAD) 통과 기준 (낮을수록 관대)</div>
                 </div>
               </div>
-              <div style="font-size:10px;color:#8a6d1c;margin-top:6px;line-height:1.5;">
-                ※ 통과점수(상단)는 AI 가 마지막 녹음을 평가한 점수 기준 — 미달 시 학생이 마지막 라운드만 다시 녹음 가능
+              <div style="font-size:10px;color:#8a6d1c;margin-top:8px;line-height:1.5;">
+                ※ 통과점수(상단)는 AI 가 마지막 녹음을 평가한 점수 기준 — 미달 시 학생이 마지막 라운드만 다시 녹음 가능<br>
+                ※ 평가구간 "전체" 가 가장 정확하지만 토큰 비용 높음 (5분 녹음 vs 60초)
               </div>
-            </div>`
+            </div>`;
+            })()
           : ''}
 
         ${cfg.testMode === 'vocab'
@@ -7838,12 +7810,25 @@ window.tpPublish = async () => {
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
-  // 녹음숙제: 시험 배정 모달에서 녹음횟수·성실도 임계값 override (시험별·학년별 조정)
+  // 녹음숙제: 시험 배정 모달에서 5개 옵션 override (시험별·학년별 조정)
   if (cfg.testMode === 'recording' && questions.some(q => q.schemaV === 2)) {
     const recCount = parseInt(document.getElementById('tpRecCount')?.value);
+    const minDur = parseInt(document.getElementById('tpRecMinDur')?.value);
+    const maxDur = parseInt(document.getElementById('tpRecMaxDur')?.value);
+    const evalSec = parseInt(document.getElementById('tpRecEvalSec')?.value);
     const thresholdPct = parseInt(document.getElementById('tpRecThreshold')?.value);
+
     if (!isNaN(recCount) && recCount >= 1 && recCount <= 4) {
       questions.forEach(q => { if (q.schemaV === 2) q.recordingCount = recCount; });
+    }
+    if (isFinite(minDur) && minDur >= 10 && minDur <= 300) {
+      questions.forEach(q => { if (q.schemaV === 2) q.minDurationSec = minDur; });
+    }
+    if (isFinite(maxDur) && maxDur >= 60 && maxDur <= 1800) {
+      questions.forEach(q => { if (q.schemaV === 2) q.maxDurationSec = maxDur; });
+    }
+    if (isFinite(evalSec) && [0, 60, 90, 120, 180].includes(evalSec)) {
+      questions.forEach(q => { if (q.schemaV === 2) q.evaluationSeconds = evalSec; });
     }
     if (!isNaN(thresholdPct) && thresholdPct >= 20 && thresholdPct <= 80) {
       // 임계값을 0~1 비율로 저장 (학생앱 _rv2PreCheckRecording 와 호환)

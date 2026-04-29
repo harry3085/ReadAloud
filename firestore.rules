@@ -207,14 +207,7 @@ service cloud.firestore {
     // write: super_admin 전용
     match /academies/{academyId} {
       allow read: if isSuperAdmin() || (isSignedIn() && academyId == myAcademyId());
-      allow create, delete: if isSuperAdmin();
-      // 학원 admin 은 자기 학원의 settings 필드만 update 가능 (학원 설정 페이지)
-      // super_admin 은 전체 update 가능
-      allow update: if isSuperAdmin() || (
-        isAdmin()
-        && academyId == myAcademyId()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settings'])
-      );
+      allow write: if isSuperAdmin();
     }
 
     // username → (uid, email) 매핑 (로그인 전 조회 필수)

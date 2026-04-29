@@ -95,8 +95,9 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
 
-  // 녹음 무결성 설정 로드 (없으면 보수적 폴백 사용)
-  // academies/{id}.settings.recordingIntegrity 형식
+  // 녹음 무결성 폴백 — 시험 단위 (q.minDurationSec 등) 우선, 없을 때만 사용.
+  // 시험 배정 시 학원장이 모달에서 모든 값 정하므로 보통 q 에 있음.
+  // 옛 시험 (학원 setting 만 갖는 케이스) 호환을 위해 academies doc 도 한 번 시도.
   try {
     const adoc = await getDoc(doc(db, 'academies', academyId));
     const integ = adoc.exists() ? (adoc.data()?.settings?.recordingIntegrity || {}) : {};
@@ -104,10 +105,9 @@ async function _loadMyAcademyContext(user, userDocData) {
       minVoiceActivity: typeof integ.minVoiceActivity === 'number' ? integ.minVoiceActivity : 0.4,
       minDurationSec:   typeof integ.minDurationSec   === 'number' ? integ.minDurationSec   : 60,
       maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,
-      evaluationSeconds: typeof integ.evaluationSeconds === 'number' ? integ.evaluationSeconds : 0,  // 0 = 전체 평가
     };
   } catch (_) {
-    window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600, evaluationSeconds: 0 };
+    window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 };
   }
 }
 
@@ -2222,11 +2222,15 @@ async function _rv2AfterStop(mime) {
   const duration = Math.floor((Date.now() - _rv2.timerStart) / 1000);
 
   // Pre-check (AI 호출 X) — 길이·VAD·hash·일관성·대역·자기상관
-  // 시험 단위 임계값 (q.accuracyThreshold) 우선, 없으면 학원 기본값
-  const qThreshold = (typeof _rv2.question?.accuracyThreshold === 'number')
-    ? (_rv2.question.accuracyThreshold > 1 ? _rv2.question.accuracyThreshold / 100 : _rv2.question.accuracyThreshold)
+  // 시험 단위 q 의 필드 (minDurationSec / maxDurationSec / accuracyThreshold) 우선
+  const q = _rv2.question || {};
+  const qThreshold = (typeof q.accuracyThreshold === 'number')
+    ? (q.accuracyThreshold > 1 ? q.accuracyThreshold / 100 : q.accuracyThreshold)
     : null;
-  const check = await _rv2PreCheckRecording(blob, duration, _rv2.savedRounds, qThreshold);
+  const check = await _rv2PreCheckRecording(blob, duration, _rv2.savedRounds, qThreshold, {
+    minDurationSec: q.minDurationSec,
+    maxDurationSec: q.maxDurationSec,
+  });
   if (!check.ok) {
     // persistent 알림 — 새 녹음 시작 (rv2StartRecord) 까지 화면에 유지
     _rv2.alertMessage = check.reason;
@@ -2260,19 +2264,21 @@ async function _rv2BlobHash(blob) {
 //     C. 음성 대역 에너지 (300~3400Hz) — 음악·소음 차단
 //     D. 자기상관 (간이 spectral entropy) — 단조로운 음 ("아아아") 차단
 //   디코드 실패·예외 시 bypass (도구 실패로 학생 막지 않음)
-async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThreshold) {
+async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThreshold, qOverrides) {
   const cfg = window.MY_ACADEMY_RECORDING_CFG || { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 };
-  // 시험 배정 시 학원장이 정한 임계값 (currentThreshold) 우선, 없으면 학원 기본값
+  // 시험 단위 q 의 필드 우선 (시험 배정 시 학원장이 정한 값), 없으면 학원 기본값 폴백
+  const minDur = (qOverrides && typeof qOverrides.minDurationSec === 'number') ? qOverrides.minDurationSec : cfg.minDurationSec;
+  const maxDur = (qOverrides && typeof qOverrides.maxDurationSec === 'number') ? qOverrides.maxDurationSec : cfg.maxDurationSec;
   const minVA = (typeof currentThreshold === 'number' && currentThreshold > 0)
     ? currentThreshold
     : cfg.minVoiceActivity;
 
   // 1. 길이 검사
-  if (duration < cfg.minDurationSec) {
-    return { ok: false, reason: `조금 더 길게 읽어볼까요? 최소 ${cfg.minDurationSec}초는 필요해요. (현재 ${duration}초)` };
+  if (duration < minDur) {
+    return { ok: false, reason: `조금 더 길게 읽어볼까요? 최소 ${minDur}초는 필요해요. (현재 ${duration}초)` };
   }
-  if (duration > cfg.maxDurationSec + 5) {
-    return { ok: false, reason: `조금 짧게 줄여볼까요? 최대 ${Math.round(cfg.maxDurationSec / 60)}분까지 가능해요.` };
+  if (duration > maxDur + 5) {
+    return { ok: false, reason: `조금 짧게 줄여볼까요? 최대 ${Math.round(maxDur / 60)}분까지 가능해요.` };
   }
 
   // 2. Hash 비교 (A) — 이전 라운드와 동일?
@@ -2577,7 +2583,8 @@ async function _rv2Submit() {
     const sendMime = lastRound.mime;
     console.log(`[rv2Submit] eval base64 len=${base64.length} mime=${sendMime}`);
     const idToken = currentUser ? await currentUser.getIdToken() : '';
-    const evalSec = window.MY_ACADEMY_RECORDING_CFG?.evaluationSeconds ?? 0;
+    // 평가구간: q.evaluationSeconds 우선 (시험별), 없으면 0 (전체)
+    const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
     const res = await fetch('/api/check-recording', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2586,7 +2593,7 @@ async function _rv2Submit() {
         originalText: q.fullText,
         audioBase64: base64,
         mimeType: sendMime,
-        evaluationSeconds: evalSec,  // 0=전체, N=앞 N초만 평가 (학원 설정)
+        evaluationSeconds: evalSec,
       }),
     });
     _logApiCall('check-recording');

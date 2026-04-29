@@ -141,15 +141,6 @@
       결제 관리
     </div>
   </div>
-
-  <!-- 학원 설정 -->
-  <div class="nav-section">
-    <div class="nav-label">학원 설정</div>
-    <div class="nav-item" onclick="goPage('academy-settings')" id="nav-academy-settings">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      녹음숙제 설정
-    </div>
-  </div>
 </nav>
 
 <!-- 메인 -->
@@ -635,61 +626,6 @@
           <div class="tbl-page" id="paymentPagination"></div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- 학원 설정 — 녹음숙제 무결성 옵션 -->
-  <div class="page" id="page-academy-settings">
-    <div class="page-header">
-      <div>
-        <div class="page-title">⚙️ 녹음숙제 설정</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">학원 전체에 적용되는 녹음 무결성 기준값. 시험 배정 시 시험별로 override 가능.</div>
-      </div>
-    </div>
-    <div class="card" style="max-width:680px;">
-      <div style="padding:6px 4px 14px;">
-        <div style="font-size:13px;color:var(--gray);line-height:1.7;">
-          학생이 녹음 종료 시 클라이언트(폰)에서 즉시 검사하는 무결성 기준값들. AI 호출 전 단계라 비용 0.<br>
-          여기서 정한 값을 학원 default 로 사용하고, 시험 배정 모달에서 시험별로 override 가능.
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px;">
-        <div>
-          <label style="font-size:12px;font-weight:700;color:var(--text);">최소 녹음시간 (초)</label>
-          <input type="number" id="asMinDuration" min="10" max="300" step="10"
-            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:5px;">
-          <div style="font-size:11px;color:var(--gray);margin-top:3px;line-height:1.5;">이 시간보다 짧으면 reject (기본 60초)</div>
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:700;color:var(--text);">최대 녹음시간 (초)</label>
-          <input type="number" id="asMaxDuration" min="60" max="1800" step="60"
-            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:5px;">
-          <div style="font-size:11px;color:var(--gray);margin-top:3px;line-height:1.5;">이 시간 도달 시 자동 정지 (기본 600초 = 10분)</div>
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:700;color:var(--text);">평가구간</label>
-          <select id="asEvalSec"
-            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:5px;background:white;">
-            <option value="0">전체 녹음</option>
-            <option value="60">앞 60초만</option>
-            <option value="90">앞 90초만</option>
-            <option value="120">앞 120초만</option>
-            <option value="180">앞 180초만</option>
-          </select>
-          <div style="font-size:11px;color:var(--gray);margin-top:3px;line-height:1.5;">AI 가 분석할 구간. "전체" 가 정확하지만 토큰 비용 ↑</div>
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:700;color:var(--text);">성실도 임계값 (%)</label>
-          <input type="number" id="asMinVA" min="20" max="80" step="5"
-            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:5px;">
-          <div style="font-size:11px;color:var(--gray);margin-top:3px;line-height:1.5;">로컬 음성 활동(VAD) 기준. 낮을수록 관대 (기본 40%)</div>
-        </div>
-      </div>
-      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="btn btn-secondary" onclick="loadAcademySettings()">↻ 다시 로드</button>
-        <button class="btn btn-primary" onclick="saveAcademySettings()">💾 저장</button>
-      </div>
-      <div id="asStatus" style="font-size:11px;color:var(--gray);margin-top:8px;text-align:right;"></div>
     </div>
   </div>
 
