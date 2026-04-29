@@ -73,10 +73,13 @@ service cloud.firestore {
     }
 
     // ── 점수 ────────────────────────────────────────────────
-    // 학생: 자기 점수만 (uid 기반)
-    // 관리자: 자기 학원 점수만 (academyId 기반)
+    // 학생: 같은 학원 모든 점수 read 가능 (랭킹 화면 — 클라이언트가 group 필터로 같은 반만 표시)
+    // 관리자: 자기 학원 점수만 read/update/delete
     match /scores/{scoreId} {
-      allow read: if isOwner(resource.data.uid) || isAdminOfMyAcademy();
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || resource.data.academyId == myAcademyId()
+      );
       allow create: if isSignedIn()
                     && request.resource.data.uid == request.auth.uid
                     && isCreatingForMyAcademy();
