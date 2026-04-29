@@ -672,22 +672,26 @@ function buildUserPrompt(pages, count, type, opts) {
     mcq: `Please generate ${count} 4-choice multiple-choice questions.
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
-- Vary difficulty levels`,
+- Vary difficulty levels (per-question easy/medium/hard tag)
+- Target student grade level: ${opts?.difficulty || '중1'} — calibrate vocabulary, sentence complexity, and question depth to suit this Korean grade.`,
     fill_blank: `Please generate ${count} fill-in-the-blank questions.
 - Each question should mask approximately ${blanksPerSentence} word(s) per sentence (blanksPerSentence=${blanksPerSentence}).
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
-- Vary difficulty levels`,
+- Vary difficulty levels (per-question easy/medium/hard tag)
+- Target student grade level: ${opts?.difficulty || '중1'} — pick blanks that test grammar/vocabulary appropriate for this Korean grade.`,
     subjective: `Please generate ${count} sentence-translation questions (English → Korean).
 - Pick ONE meaningful sentence per question from the given passages.
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
-- Vary difficulty levels.`,
+- Vary difficulty levels (per-question easy/medium/hard tag).
+- Target student grade level: ${opts?.difficulty || '중1'} — sentence vocabulary, length, and grammar should suit this Korean grade.`,
     recording: `Please generate ${count} read-aloud (recording) sentence questions.
 - Pick sentences directly from the given passages (do NOT modify them).
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
-- Prefer 6-20 word sentences with varied pronunciation practice value.`,
+- Prefer 6-20 word sentences with varied pronunciation practice value.
+- Target student grade level: ${opts?.difficulty || '중1'} — prefer sentences whose phonetic difficulty matches this Korean grade.`,
     vocab: `Please generate ${count} vocabulary questions.
 - Pick important content words from the passages.
 - Each word appears only ONCE in the set.

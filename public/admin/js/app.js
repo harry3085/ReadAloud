@@ -4796,7 +4796,7 @@ async function _qgCallMcq(opts) {
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', difficulty: opts.difficulty, customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -4849,6 +4849,7 @@ async function _qgCallFillBlank(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'fill_blank',
+        difficulty: opts.difficulty,
         blanksPerSentence: opts.blanksPerSentence,
         customSystemPrompt: _qgGetCustomPrompt('fill_blank') || undefined,
       }),
@@ -5013,7 +5014,7 @@ async function _qgCallSubjective(opts) {
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', difficulty: opts.difficulty, customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -5058,6 +5059,7 @@ async function _qgCallRecording(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'recording',
+        difficulty: opts.difficulty,
         customSystemPrompt: _qgGetCustomPrompt('recording') || undefined,
       }),
     });
