@@ -101,12 +101,13 @@ async function _loadMyAcademyContext(user, userDocData) {
     const adoc = await getDoc(doc(db, 'academies', academyId));
     const integ = adoc.exists() ? (adoc.data()?.settings?.recordingIntegrity || {}) : {};
     window.MY_ACADEMY_RECORDING_CFG = {
-      minVoiceActivity: typeof integ.minVoiceActivity === 'number' ? integ.minVoiceActivity : 0.4,  // 보수적 (40% 이상이면 통과)
-      minDurationSec:   typeof integ.minDurationSec   === 'number' ? integ.minDurationSec   : 5,    // 보수적 (5초 이상)
-      maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,  // 10분 안전장치
+      minVoiceActivity: typeof integ.minVoiceActivity === 'number' ? integ.minVoiceActivity : 0.4,
+      minDurationSec:   typeof integ.minDurationSec   === 'number' ? integ.minDurationSec   : 60,
+      maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,
+      evaluationSeconds: typeof integ.evaluationSeconds === 'number' ? integ.evaluationSeconds : 0,  // 0 = 전체 평가
     };
   } catch (_) {
-    window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 5, maxDurationSec: 600 };
+    window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600, evaluationSeconds: 0 };
   }
 }
 
@@ -2576,6 +2577,7 @@ async function _rv2Submit() {
     const sendMime = lastRound.mime;
     console.log(`[rv2Submit] eval base64 len=${base64.length} mime=${sendMime}`);
     const idToken = currentUser ? await currentUser.getIdToken() : '';
+    const evalSec = window.MY_ACADEMY_RECORDING_CFG?.evaluationSeconds ?? 0;
     const res = await fetch('/api/check-recording', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2584,6 +2586,7 @@ async function _rv2Submit() {
         originalText: q.fullText,
         audioBase64: base64,
         mimeType: sendMime,
+        evaluationSeconds: evalSec,  // 0=전체, N=앞 N초만 평가 (학원 설정)
       }),
     });
     _logApiCall('check-recording');

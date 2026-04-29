@@ -194,6 +194,57 @@ window.goPage = async(id) => {
   else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
   else if(id==='test-subj')       await _renderTestAssignDetail('subj');
   else if(id==='test-rec-ai')     await _renderTestAssignDetail('rec-ai');
+  else if(id==='academy-settings') await loadAcademySettings();
+};
+
+// ── 학원 설정 (녹음숙제 무결성) ─────────────────────────────
+window.loadAcademySettings = async () => {
+  const status = document.getElementById('asStatus');
+  if (status) status.textContent = '로딩 중...';
+  try {
+    const aRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
+    const aSnap = await getDoc(aRef);
+    const integ = aSnap.exists() ? (aSnap.data()?.settings?.recordingIntegrity || {}) : {};
+    document.getElementById('asMinDuration').value = integ.minDurationSec ?? 60;
+    document.getElementById('asMaxDuration').value = integ.maxDurationSec ?? 600;
+    document.getElementById('asEvalSec').value = String(integ.evaluationSeconds ?? 0);
+    document.getElementById('asMinVA').value = Math.round((integ.minVoiceActivity ?? 0.4) * 100);
+    if (status) status.textContent = '✓ 로드 완료';
+    setTimeout(() => { if (status?.textContent === '✓ 로드 완료') status.textContent = ''; }, 2000);
+  } catch (e) {
+    console.error('loadAcademySettings:', e);
+    if (status) status.innerHTML = `<span style="color:#dc2626;">불러오기 실패: ${esc(e.message)}</span>`;
+  }
+};
+
+window.saveAcademySettings = async () => {
+  const status = document.getElementById('asStatus');
+  try {
+    const minDur = parseInt(document.getElementById('asMinDuration').value);
+    const maxDur = parseInt(document.getElementById('asMaxDuration').value);
+    const evalSec = parseInt(document.getElementById('asEvalSec').value);
+    const minVAPct = parseInt(document.getElementById('asMinVA').value);
+
+    if (!isFinite(minDur) || minDur < 10 || minDur > 300) { showAlert('입력 확인', '최소 녹음시간은 10~300초'); return; }
+    if (!isFinite(maxDur) || maxDur < 60 || maxDur > 1800) { showAlert('입력 확인', '최대 녹음시간은 60~1800초'); return; }
+    if (minDur >= maxDur) { showAlert('입력 확인', '최소 녹음시간이 최대보다 작아야 합니다'); return; }
+    if (![0, 60, 90, 120, 180].includes(evalSec)) { showAlert('입력 확인', '평가구간 값이 유효하지 않습니다'); return; }
+    if (!isFinite(minVAPct) || minVAPct < 20 || minVAPct > 80) { showAlert('입력 확인', '성실도 임계값은 20~80%'); return; }
+
+    if (status) status.textContent = '저장 중...';
+    const aRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
+    await updateDoc(aRef, {
+      'settings.recordingIntegrity.minDurationSec': minDur,
+      'settings.recordingIntegrity.maxDurationSec': maxDur,
+      'settings.recordingIntegrity.evaluationSeconds': evalSec,
+      'settings.recordingIntegrity.minVoiceActivity': minVAPct / 100,
+    });
+    if (status) status.innerHTML = `<span style="color:#059669;">✓ 저장 완료 — 학생들 다음 로그인부터 적용</span>`;
+    showToast('녹음숙제 설정 저장됨');
+  } catch (e) {
+    console.error('saveAcademySettings:', e);
+    if (status) status.innerHTML = `<span style="color:#dc2626;">저장 실패: ${esc(e.message)}</span>`;
+  }
 };
 
 window.toggleNav = (group) => {
@@ -4170,12 +4221,9 @@ const QG_TYPE_OPTIONS = {
     icon: '🎤',
     enabled: true,
     phaseLabel: null,
-    noAi: true,  // Phase 5.5: AI 호출 없이 로컬 생성
-    noteHint: '선택한 Page 의 전체 문장을 학생이 3회 반복 녹음합니다. AI 가 정확도를 평가하고, 마지막(3회차) 녹음이 임계점을 넘으면 상세 피드백을 제공합니다.',
-    options: [
-      { key:'accuracyThreshold', label:'정확도 임계값 (점)', type:'number', default:70, min:50, max:95 },
-      { key:'evaluationSeconds', label:'평가 구간 (초)',     type:'number', default:60, min:30, max:180 },
-    ],
+    noAi: true,  // AI 호출 없이 로컬 생성 (페이지 본문이 그대로 fullText)
+    noteHint: '선택한 Page 의 전체 문장을 학생이 N회 반복 녹음합니다. 무결성 통과 후 마지막 녹음을 AI 가 평가·피드백해요. (녹음 횟수·임계값은 시험 배정 시 / 무결성 기준은 학원 설정에서 조정)',
+    options: [],  // 옵션 없음 — 학원 설정 (학원 단위) + 시험 배정 시 (시험별) 두 단계에서 결정
   },
 };
 
@@ -5412,8 +5460,9 @@ function _qgBuildRecordingSet(opts) {
     fullText,
     instructionKo,
     questionKo: instructionKo,
-    accuracyThreshold: parseInt(opts.accuracyThreshold) || 70,
-    evaluationSeconds: parseInt(opts.evaluationSeconds) || 60,
+    // accuracyThreshold·evaluationSeconds 는 더이상 문제 자체에 박지 않음.
+    // 학원 default (academies.settings.recordingIntegrity) + 시험 배정 시 override 로 결정.
+    // recordingCount 도 시험 배정 시 결정 (default 3).
     sourcePageId: firstPage.id,
     sourcePageTitle: firstPage.title || '',
     difficulty: 'medium',

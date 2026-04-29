@@ -40,7 +40,11 @@ function isRetryable(status, data) {
 
 // 통합 프롬프트 — 1회 호출로 점수 + 피드백 둘 다 반환.
 // 점수 미달이라도 피드백은 항상 포함 (학습 효과 우선, 비용 차이 미미).
-function buildEvalPrompt(originalText) {
+// evaluationSeconds: 0/null = 전체 평가, 양수 = 앞 N초만 평가 (학원 설정)
+function buildEvalPrompt(originalText, evaluationSeconds) {
+  const evalScope = (evaluationSeconds && evaluationSeconds > 0)
+    ? `Evaluate ONLY the first ${evaluationSeconds} seconds of the recording.`
+    : `Evaluate the ENTIRE recording.`;
   return `You are a Korean English teacher evaluating a student's reading recording.
 
 ORIGINAL TEXT:
@@ -48,8 +52,8 @@ ORIGINAL TEXT:
 ${originalText}
 """
 
-Evaluate the ENTIRE recording against the ORIGINAL TEXT above.
-Compare the student's audio to the full text — measure how much was read clearly and in order.
+${evalScope}
+Compare the student's audio to the ORIGINAL TEXT above — measure how much was read clearly and in order.
 Then ALWAYS provide detailed feedback (regardless of score) so the student can improve.
 
 Return strictly JSON (no markdown):
@@ -111,7 +115,6 @@ module.exports = async (req, res) => {
       // codec 파라미터 제거 (audio/ogg;codecs=opus → audio/ogg)
       return lower.split(';')[0].trim() || 'audio/ogg';
     })();
-    const evaluationSeconds = Math.max(10, Math.min(parseInt(body.evaluationSeconds) || 60, 300));
 
     if (!originalText || originalText.length < 5) {
       res.status(400).json({ success: false, error: 'originalText required' });
@@ -127,7 +130,9 @@ module.exports = async (req, res) => {
     }
 
     // 통합 프롬프트 — score + feedback 둘 다 1회 호출로 (mode 무관, 항상 동일)
-    const prompt = buildEvalPrompt(originalText);
+    // evaluationSeconds: 0 또는 미지정 = 전체 평가, 양수 = 앞 N초만 평가 (학원 설정)
+    const reqEvalSec = parseInt(body.evaluationSeconds);
+    const prompt = buildEvalPrompt(originalText, isFinite(reqEvalSec) && reqEvalSec > 0 ? reqEvalSec : 0);
 
     // responseSchema — 통합 응답 구조
     const responseSchema = {
