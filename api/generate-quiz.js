@@ -85,24 +85,52 @@ RULES:
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
   subjective: `You are an English-to-Korean translation exercise generator for Korean middle/high school students.
-
-Your task is to pick meaningful sentences from given English passages and create "translate this sentence" questions for a printed test paper (no auto-grading — students write by hand).
+Your task is to create "translate this sentence" questions from given English passages for a printed test paper (no auto-grading — students write by hand).
 
 RULES:
-1. Pick ONE sentence per question. Avoid trivial sentences (e.g., "Hello."). Prefer sentences with substantive content.
 
-2. Copy the original sentence from the passage VERBATIM. Every word, every form, every spelling must match the passage text exactly. Do NOT rephrase, shorten, combine, translate-back, or fabricate sentences. If a sentence does not appear in the passage as written, DO NOT use it.
-   CRITICAL: If you cannot find enough suitable verbatim sentences to meet the requested count, RETURN FEWER questions. NEVER invent or modify a sentence to reach the count.
+1. Pick or construct ONE meaningful sentence per question. Avoid trivial sentences (e.g., "Hello.").
+   Prefer sentences with substantive content that test grammar, vocabulary, or comprehension.
 
-3. For each picked sentence, provide a natural Korean translation that a teacher would accept as a model answer (sampleAnswerKo). It should be fluent Korean, not literal word-by-word.
+2. SOURCE FAITHFULNESS (relaxed):
+   The sentences should be GROUNDED in the passage but may be lightly adapted when needed.
 
-4. questionKo field: Use simple instruction like "위 문장을 우리말로 해석하시오." (can vary slightly).
+   PREFERRED — in this priority order:
+   (a) Use a sentence from the passage VERBATIM (best for accuracy and fairness)
+   (b) Combine or adapt material from the passage while keeping the original vocabulary,
+       key phrases, and grammatical patterns intact
+   (c) Construct a new sentence that uses the passage's vocabulary and themes naturally
 
-5. Difficulty:
-   - Include a mix of easy / medium / hard when possible, based on available content.
-   - Exact distribution is NOT required — prioritize verbatim sentences over hitting a target ratio.
+   ALLOWED:
+   - Light rephrasing for clarity (e.g., breaking a long sentence into a clearer one)
+   - Combining ideas from adjacent sentences
+   - Adjusting tense or pronouns to make a self-contained sentence
+   - Using key vocabulary from the passage in a slightly different context
 
-6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+   NOT ALLOWED:
+   - Introducing vocabulary, names, or concepts that don't appear in the passage
+   - Contradicting facts from the passage
+   - Creating sentences that have no connection to the passage content
+
+3. SENTENCE LENGTH (recommended, not strict):
+   Aim for sentences of roughly 15-20 words. This range works best for translation practice.
+   Slight deviations are fine if the sentence is otherwise good. Avoid extreme cases
+   (under 5 words or over 30 words).
+
+4. For each sentence, provide a natural Korean translation that a teacher would accept
+   as a model answer (sampleAnswerKo). It should be fluent Korean, not literal word-by-word.
+
+5. questionKo field: Use a simple instruction like "위 문장을 우리말로 해석하시오."
+   (slight variations are fine, e.g., "아래 문장을 한국어로 옮기시오.").
+
+6. Difficulty:
+   Include a mix of easy / medium / hard when possible.
+   Exact distribution is NOT required.
+
+7. If you genuinely cannot construct enough quality sentences from the passage's content,
+   it is OK to return fewer than requested. Quality over quantity.
+
+8. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
   "questions": [
     {
@@ -896,8 +924,14 @@ function validateFillBlank(questions, pages) {
 function validateSubjective(questions, pages) {
   if (!Array.isArray(questions)) return [];
 
-  const validPageIds = new Set(pages.map(p => p.id));
-  const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+  const pageById = new Map(pages.map(p => [p.id, p]));
+
+  // 페이지별 단어 Set 캐시 (소문자, 영문 단어만)
+  const pageWordSets = new Map();
+  for (const p of pages) {
+    const words = String(p.text || '').toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length >= 2);
+    pageWordSets.set(p.id, new Set(words));
+  }
 
   return questions
     .map(q => {
@@ -906,16 +940,22 @@ function validateSubjective(questions, pages) {
       const sentence = String(q.sentence || '').trim();
       if (!sentence || sentence.length < 8 || sentence.length > 500) return null;
 
-      // 본문 원문 검증: 문장이 어느 passage 에도 없으면 폐기
-      const hostPage = _findHostPage(sentence, pages);
-      if (!hostPage) return null;
+      // 출처 페이지 결정: AI 가 알려준 sourcePageId 우선, 유효하지 않으면 첫 페이지 폴백
+      let page = pageById.get(q.sourcePageId);
+      if (!page) page = pages[0];
+      if (!page) return null;
+
+      // 가벼운 단어 매칭 30% — 본문과 전혀 무관한 fabricated 문장 차단
+      const sentenceWords = sentence.toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length >= 2);
+      if (sentenceWords.length > 0) {
+        const pageWords = pageWordSets.get(page.id) || new Set();
+        const matched = sentenceWords.filter(w => pageWords.has(w)).length;
+        const ratio = matched / sentenceWords.length;
+        if (ratio < 0.3) return null;
+      }
 
       const sampleAnswerKo = String(q.sampleAnswerKo || '').trim().slice(0, 500);
       const questionKo = String(q.questionKo || '위 문장을 우리말로 해석하시오.').trim();
-
-      // sourcePageId 는 실제 매칭 페이지로 교정
-      const sourcePageId = hostPage.id;
-      const sourcePageTitle = pageTitleMap.get(sourcePageId) || hostPage.title || '';
 
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty
@@ -927,8 +967,8 @@ function validateSubjective(questions, pages) {
         questionKo,
         sampleAnswerKo,
         explanation: String(q.explanation || '').trim().slice(0, 500),
-        sourcePageId,
-        sourcePageTitle,
+        sourcePageId: page.id,
+        sourcePageTitle: page.title || '',
         difficulty,
       };
     })
