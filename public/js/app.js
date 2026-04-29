@@ -3989,3 +3989,188 @@ function _vqBindSpellInput(){
 }
 // 최초 1회 바인딩 (페이지 최초 로드 시)
 _vqBindSpellInput();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FCM 토큰 등록 + 알림 (Phase 6F 정리 시 누락되어 복구 — 2026-04-29)
+// 호출처: 로그인 성공(line ~173, ~2980), HTML notifModal/notifPanel(index.html)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VAPID_KEY = 'BGbPEBiwM8RHNH08eDa7xpX-bQB4T_GKoo9_cFYUttHRq8sAdn4157bMKNznq4lw_k1r0Xq6517LBKSyYaEgmG8';
+
+// 실제 FCM 토큰 발급 및 저장
+async function doRegisterToken() {
+  if(!messaging || !currentUser) return false;
+  try {
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    if(token) {
+      await updateDoc(doc(db,'users',currentUser.uid), { fcmToken: token });
+      console.log('FCM 토큰 등록 완료');
+      return true;
+    }
+  } catch(e) {
+    console.log('FCM 토큰 등록 실패:', e.message);
+  }
+  return false;
+}
+
+window.requestNotifPermission = async() => {
+  document.getElementById('notifModal').classList.add('hidden');
+  const permission = await Notification.requestPermission();
+  if(permission === 'granted') {
+    const ok = await doRegisterToken();
+    if(ok) showToast('✅ 알림이 설정됐어요! 🎉');
+  }
+};
+
+window.dismissNotifModal = () => {
+  document.getElementById('notifModal').classList.add('hidden');
+};
+
+// 로그인 후 알림 설정 시작
+async function registerFCMToken() {
+  if(!messaging || !currentUser) return;
+  if(userProfile?.role === 'admin') return;
+
+  if(Notification.permission === 'granted') {
+    await doRegisterToken();
+    return;
+  }
+  if(Notification.permission === 'denied') return;
+
+  setTimeout(() => {
+    if(!currentUser || userProfile?.role === 'admin') return;
+    document.getElementById('notifModal').classList.remove('hidden');
+  }, 3000);
+}
+
+// 포그라운드 알림 수신
+function setupForegroundMessage() {
+  if(!messaging) return;
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    showNotifModal(title||'알림', body||'');
+  });
+}
+
+// 알림 팝업 모달 (포그라운드 수신 + 미확인 표시)
+function showNotifModal(title, body, docId){
+  const overlay = document.getElementById('notifModalOverlay');
+  const titleEl = document.getElementById('notifModalTitle');
+  const bodyEl  = document.getElementById('notifModalBody');
+  const btn     = document.getElementById('notifModalBtn');
+  if(!overlay) return;
+  if(titleEl) titleEl.textContent = title;
+  if(bodyEl)  bodyEl.textContent  = body;
+  overlay.style.display='flex';
+  if(btn){
+    btn.onclick = async() => {
+      overlay.style.display='none';
+      if(docId && currentUser){
+        try{ await updateDoc(doc(db,'userNotifications',docId),{read:true}); }catch(e){console.warn(e);}
+      }
+      await updateNotifBadge();
+      checkUnreadNotifs();
+    };
+  }
+}
+
+// 앱 진입 시 미확인 알림 순차 표시
+async function checkUnreadNotifs(){
+  if(!currentUser) return;
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
+      where('read','==',false)
+    ));
+    await updateNotifBadge(snap.size);
+    if(snap.empty) return;
+    const sorted = snap.docs.sort((a,b)=>(a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0));
+    const first = sorted[0];
+    const d = first.data();
+    showNotifModal(d.title||'알림', d.body||'', first.id);
+  }catch(e){ console.log('알림 확인 실패',e); }
+}
+
+// 헤더 종 뱃지 업데이트
+async function updateNotifBadge(count){
+  const badge = document.getElementById('notifBadge');
+  if(!badge) return;
+  if(count===undefined && currentUser){
+    try{
+      const snap = await getDocs(query(
+        collection(db,'userNotifications'),
+        where('uid','==',currentUser.uid),
+        where('read','==',false)
+      ));
+      count = snap.size;
+    }catch(e){ count=0; }
+  }
+  if(count>0){
+    badge.textContent = count>9?'9+':count;
+    badge.style.display='flex';
+  } else {
+    badge.style.display='none';
+  }
+}
+
+// 알림 패널 (헤더 🔔 클릭)
+window.openNotifPanel = async() => {
+  const panel = document.getElementById('notifPanel');
+  const list  = document.getElementById('notifPanelList');
+  if(!panel||!list) return;
+  panel.style.display='block';
+  list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>';
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid)
+    ));
+    const notifs = snap.docs
+      .map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+    if(!notifs.length){
+      list.innerHTML='<div style="padding:32px 16px;text-align:center;color:#bbb;font-size:13px;">📭 알림이 없어요</div>';
+      return;
+    }
+    list.innerHTML = notifs.map(n=>`
+      <div onclick="readNotif('${n.id}')" style="padding:14px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;background:${n.read?'white':'#f0fafa'};">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="font-size:20px;flex-shrink:0;">${n.read?'🔔':'🔴'}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
+            <div style="font-size:12px;color:#777;line-height:1.5;">${esc(n.body||'')}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  }catch(e){ list.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패</div>'; }
+};
+
+window.readNotif = async(docId) => {
+  try{
+    await updateDoc(doc(db,'userNotifications',docId),{read:true});
+    await openNotifPanel();
+    await updateNotifBadge();
+  }catch(e){console.warn(e);}
+};
+
+window.closeNotifPanel = () => {
+  const panel = document.getElementById('notifPanel');
+  if(panel) panel.style.display='none';
+};
+
+window.markAllNotifsRead = async() => {
+  if(!currentUser) return;
+  try{
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('uid','==',currentUser.uid),
+      where('read','==',false)
+    ));
+    await Promise.all(snap.docs.map(d=>updateDoc(d.ref,{read:true})));
+    await openNotifPanel();
+    await updateNotifBadge(0);
+    showToast('모두 읽음 처리됐어요!');
+  }catch(e){console.warn(e);}
+};
