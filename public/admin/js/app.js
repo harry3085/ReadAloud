@@ -8621,8 +8621,14 @@ window.tpToggleTestProgress = async (testId) => {
         studentList.push({uid:tg.id, name:tg.name, group:''});
       } else {
         try {
-          const gs = await getDocs(query(collection(db,'users'), where('group','==',tg.id)));
-          gs.docs.filter(d => d.data().role==='student').forEach(d =>
+          // academyId 필터 필수 — 같은 그룹 이름이 다른 학원에 있어도 자기 학원만
+          const gs = await getDocs(query(
+            collection(db,'users'),
+            where('academyId','==',window.MY_ACADEMY_ID),
+            where('group','==',tg.id),
+            where('role','==','student')
+          ));
+          gs.docs.forEach(d =>
             studentList.push({uid:d.id, name:d.data().name, group:d.data().group||''})
           );
         } catch(e) {}
