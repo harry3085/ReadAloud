@@ -2745,69 +2745,61 @@ function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrl
 
 
 // ── 랭킹 ─────────────────────────────────────────────────
+// Phase 6E (2026-04-21) 에서 녹음숙제 탭 제거 → 점수 랭킹 단일 화면.
+// switchRankTab / rankHwList 잔재 코드는 2026-04-29 정리 완료.
 window.goRanking=async()=>{
   document.getElementById('rankingGroupTitle').textContent='🏫 '+(userProfile?.group||'그룹');
-  await renderRanking('score');show('ranking');
+  await renderRanking();show('ranking');
 };
-window.switchRankTab=async (tab)=>{
-  document.querySelectorAll('.ranking-tab').forEach((t,i)=>t.classList.toggle('active',(tab==='score'&&i===0)||(tab==='hw'&&i===1)));
-  document.getElementById('rankScoreList').style.display=tab==='score'?'':'none';
-  document.getElementById('rankHwList').style.display=tab==='hw'?'':'none';
-  await renderRanking(tab);
-};
-async function renderRanking(tab){
+async function renderRanking(){
   const group=userProfile?.group,meUid=currentUser?.uid;
-  const colors=['#E8714A','#EF9F27','#D4537E','#F4936A','#f5a623','#e05050'];
   const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
-  if(tab==='score'){
-    const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
-    const scoresMap={};
-    scoresSnap.docs.forEach(d=>{
-      const s=d.data();
-      if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
-      // 모든 mode 점수 반영 (spelling/meaning/mixed/word/unscramble)
-      if(s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
-      scoresMap[s.uid].count++;
-      scoresMap[s.uid].total += (s.score||0);
-    });
-    const sorted=[...students].sort((a,b)=>(scoresMap[b.uid]?.best||0)-(scoresMap[a.uid]?.best||0));
-    const maxScore=Math.max(...sorted.map(u=>scoresMap[u.uid]?.best||0), 1);
-    const nc=['gold','silver','bronze'];
-    // 포디움 업데이트 (top3)
-    const podiumEl=document.getElementById('rankPodium');
-    if(podiumEl && sorted.length>0){
-      const podOrder=[1,0,2]; // 2등,1등,3등 순서로 배치
-      const heights=['36px','52px','24px'];
-      const sizes=['38px','44px','38px'];
-      podiumEl.innerHTML=podOrder.map((idx,pos)=>{
-        const u=sorted[idx]; if(!u) return '';
-        const s=scoresMap[u?.uid]||{best:0};
-        const isFirst=idx===0;
-        return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
-          ${isFirst?'<div style="font-size:13px;">👑</div>':'<div style="height:18px;"></div>'}
-          <div style="width:${sizes[pos]};height:${sizes[pos]};border-radius:50%;background:rgba(255,255,255,${isFirst?'0.35':'0.22'});display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;">${esc(u.name[0])}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,0.9);font-weight:600;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(u.name)}</div>
-          <div style="background:rgba(255,255,255,${isFirst?'0.3':'0.18'});border-radius:8px 8px 0 0;width:56px;height:${heights[pos]};display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:10px;font-weight:800;color:white;">${idx+1}위</span>
-          </div>
-        </div>`;
-      }).join('');
-    }
-    document.getElementById('rankScoreList').innerHTML=sorted.map((u,i)=>{
-      const s=scoresMap[u.uid]||{best:0,count:0,total:0};
-      const avg = s.count>0 ? Math.round(s.total/s.count) : 0;
-      const isMe=u.uid===meUid;
-      return `<div class="rank-item${isMe?' me':''}">
-        <div class="rank-num ${nc[i]||''}">${i+1}</div>
-        <div class="rank-info">
-          <div class="rank-name">${esc(u.name)}${isMe?'<span>(나)</span>':''}</div>
-          <div style="font-size:11px;color:#aaa;margin-top:1px;">${s.count}회 응시</div>
+
+  const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
+  const scoresMap={};
+  scoresSnap.docs.forEach(d=>{
+    const s=d.data();
+    if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
+    if(s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
+    scoresMap[s.uid].count++;
+    scoresMap[s.uid].total += (s.score||0);
+  });
+  const sorted=[...students].sort((a,b)=>(scoresMap[b.uid]?.best||0)-(scoresMap[a.uid]?.best||0));
+  const nc=['gold','silver','bronze'];
+
+  // 포디움 (top3)
+  const podiumEl=document.getElementById('rankPodium');
+  if(podiumEl && sorted.length>0){
+    const podOrder=[1,0,2]; // 2등,1등,3등 순서로 배치
+    const heights=['36px','52px','24px'];
+    const sizes=['38px','44px','38px'];
+    podiumEl.innerHTML=podOrder.map((idx,pos)=>{
+      const u=sorted[idx]; if(!u) return '';
+      const isFirst=idx===0;
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+        ${isFirst?'<div style="font-size:13px;">👑</div>':'<div style="height:18px;"></div>'}
+        <div style="width:${sizes[pos]};height:${sizes[pos]};border-radius:50%;background:rgba(255,255,255,${isFirst?'0.35':'0.22'});display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;">${esc(u.name[0])}</div>
+        <div style="font-size:9px;color:rgba(255,255,255,0.9);font-weight:600;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(u.name)}</div>
+        <div style="background:rgba(255,255,255,${isFirst?'0.3':'0.18'});border-radius:8px 8px 0 0;width:56px;height:${heights[pos]};display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:10px;font-weight:800;color:white;">${idx+1}위</span>
         </div>
-        <div class="rank-score">${s.best}<span style="font-size:11px;color:#aaa;font-weight:400;">점</span></div>
       </div>`;
-    }).join('')||'<div class="empty-msg">아직 점수가 없습니다</div>';
+    }).join('');
   }
+
+  document.getElementById('rankScoreList').innerHTML=sorted.map((u,i)=>{
+    const s=scoresMap[u.uid]||{best:0,count:0,total:0};
+    const isMe=u.uid===meUid;
+    return `<div class="rank-item${isMe?' me':''}">
+      <div class="rank-num ${nc[i]||''}">${i+1}</div>
+      <div class="rank-info">
+        <div class="rank-name">${esc(u.name)}${isMe?'<span>(나)</span>':''}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:1px;">${s.count}회 응시</div>
+      </div>
+      <div class="rank-score">${s.best}<span style="font-size:11px;color:#aaa;font-weight:400;">점</span></div>
+    </div>`;
+  }).join('')||'<div class="empty-msg">아직 점수가 없습니다</div>';
 }
 
 window.goComingSoon=type=>{
