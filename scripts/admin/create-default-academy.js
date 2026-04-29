@@ -34,8 +34,8 @@ async function main() {
     grandfatheredPrice: null,
     settings: {
       recordingIntegrity: {
-        minVoiceActivity: 0.7,
-        minDurationSec: 30,
+        minVoiceActivity: 0.4,
+        minDurationSec: 10,
         maxDurationSec: 600,
       },
     },

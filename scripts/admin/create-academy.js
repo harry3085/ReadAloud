@@ -137,7 +137,7 @@ async function main() {
       grandfatheredPrice,
       subscribedAt: FieldValue.serverTimestamp(),
       planExpiresAt: null,
-      settings: { recordingIntegrity: { minVoiceActivity: 0.7, minDurationSec: 30, maxDurationSec: 600 } },
+      settings: { recordingIntegrity: { minVoiceActivity: 0.4, minDurationSec: 10, maxDurationSec: 600 } },
       usage: {
         activeStudentsCount: 0,
         aiCallsThisMonth: 0,
