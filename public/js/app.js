@@ -94,6 +94,20 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
+
+  // 녹음 무결성 설정 로드 (없으면 보수적 폴백 사용)
+  // academies/{id}.settings.recordingIntegrity 형식
+  try {
+    const adoc = await getDoc(doc(db, 'academies', academyId));
+    const integ = adoc.exists() ? (adoc.data()?.settings?.recordingIntegrity || {}) : {};
+    window.MY_ACADEMY_RECORDING_CFG = {
+      minVoiceActivity: typeof integ.minVoiceActivity === 'number' ? integ.minVoiceActivity : 0.4,  // 보수적 (40% 이상이면 통과)
+      minDurationSec:   typeof integ.minDurationSec   === 'number' ? integ.minDurationSec   : 5,    // 보수적 (5초 이상)
+      maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,  // 10분 안전장치
+    };
+  } catch (_) {
+    window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 5, maxDurationSec: 600 };
+  }
 }
 
 async function _lookupUserByUsername(usernameRaw) {
@@ -2159,6 +2173,12 @@ window.rv2StartRecord = async () => {
       const sec = Math.floor((Date.now() - _rv2.timerStart) / 1000);
       const el = document.getElementById('rv2Timer');
       if (el) el.textContent = _rv2FormatDuration(sec);
+      // 안전장치: maxDurationSec (기본 10분) 도달 시 자동 정지
+      const maxSec = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
+      if (sec >= maxSec) {
+        showToast(`최대 녹음 시간 (${Math.round(maxSec/60)}분) 도달 — 자동 종료됐어요`);
+        rv2StopRecord();
+      }
     }, 250);
   } catch(e) {
     console.error(e);
@@ -2174,13 +2194,77 @@ window.rv2StopRecord = () => {
   if (_rv2.timerInterval) { clearInterval(_rv2.timerInterval); _rv2.timerInterval = null; }
 };
 
-function _rv2AfterStop(mime) {
+async function _rv2AfterStop(mime) {
   const blob = new Blob(_rv2.chunks, { type: mime });
-  const url = URL.createObjectURL(blob);
   const duration = Math.floor((Date.now() - _rv2.timerStart) / 1000);
+
+  // Pre-check (AI 호출 X) — 길이·음성 활동 비율 검사
+  // 통과 못 하면 currentTake 비워서 사용자가 다시 녹음하도록 유도
+  const check = await _rv2PreCheckRecording(blob, duration);
+  if (!check.ok) {
+    showToast('⚠️ ' + check.reason);
+    if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
+    _rv2.currentTake = null;
+    _rv2Render();
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
   if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
-  _rv2.currentTake = { blob, url, mime, duration };
+  _rv2.currentTake = { blob, url, mime, duration, voiceActivity: check.voiceActivity };
   _rv2Render();
+}
+
+// 녹음 무결성 사전 검사 (AI 호출 없음, 100% 클라이언트)
+//   - 길이: minDurationSec ~ maxDurationSec 범위
+//   - VAD: Web Audio API 로 RMS 분석, 임계값 이상 윈도우 비율이 minVoiceActivity 이상
+//   - 디코드 실패·예외 시 bypass (도구 실패로 학생 막지 않음)
+async function _rv2PreCheckRecording(blob, duration) {
+  const cfg = window.MY_ACADEMY_RECORDING_CFG || { minVoiceActivity: 0.4, minDurationSec: 5, maxDurationSec: 600 };
+
+  // 1. 길이 검사
+  if (duration < cfg.minDurationSec) {
+    return { ok: false, reason: `너무 짧아요 (${duration}초). 최소 ${cfg.minDurationSec}초 이상 녹음해주세요.` };
+  }
+  if (duration > cfg.maxDurationSec + 5) {  // +5 초 버퍼 (timer 와 실제 종료 사이 오차)
+    return { ok: false, reason: `너무 길어요 (${duration}초). 최대 ${Math.round(cfg.maxDurationSec/60)}분.` };
+  }
+
+  // 2. Voice Activity Detection
+  let ratio = null;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return { ok: true, _bypassed: 'no-audio-ctx' };
+    const ctx = new Ctx();
+    const arr = await blob.arrayBuffer();
+    const buf = await ctx.decodeAudioData(arr);
+    const ch = buf.getChannelData(0);
+    const sr = buf.sampleRate;
+    const winSize = Math.floor(sr * 0.05);  // 50ms 윈도우
+    const RMS_THRESHOLD = 0.012;             // 보수적 (실제 음성 거의 다 잡힘)
+
+    let voiceWindows = 0, totalWindows = 0;
+    for (let i = 0; i + winSize <= ch.length; i += winSize) {
+      let sum = 0;
+      for (let j = 0; j < winSize; j++) sum += ch[i + j] * ch[i + j];
+      const rms = Math.sqrt(sum / winSize);
+      if (rms > RMS_THRESHOLD) voiceWindows++;
+      totalWindows++;
+    }
+    await ctx.close();
+    ratio = totalWindows > 0 ? voiceWindows / totalWindows : 0;
+  } catch (e) {
+    console.warn('[VAD] 분석 실패 — bypass:', e.message);
+    return { ok: true, _bypassed: 'analysis-error' };
+  }
+
+  if (ratio < cfg.minVoiceActivity) {
+    return {
+      ok: false,
+      reason: `음성이 적어요 (${(ratio*100).toFixed(0)}%). 더 또렷하게·꾸준히 읽어주세요.`,
+    };
+  }
+  return { ok: true, voiceActivity: ratio };
 }
 
 window.rv2Retake = () => {
