@@ -1233,9 +1233,20 @@ window.reuseMsg = async(id) => {
   showToast('내용을 불러왔어요. 수정 후 발송하세요!');
 };
 window.delMsg = async(id) => {
-  if(!(await showConfirm('삭제할까요?')))return;
-  await deleteDoc(doc(db,'pushNotifications',id));
-  showToast('삭제됐어요.'); await loadMessages();
+  // 발송 이력 삭제 + 학생 측 userNotifications 도 cascade 삭제 (학생 앱에서 사라짐)
+  if(!(await showConfirm('삭제할까요?', '학생 알림함에서도 함께 사라집니다.'))) return;
+  try {
+    // pushId 매칭으로 학생별 알림 doc 일괄 삭제
+    const userNotifSnap = await getDocs(query(collection(db,'userNotifications'),where('pushId','==',id)));
+    await Promise.all(userNotifSnap.docs.map(d => deleteDoc(d.ref)));
+    // 발송 이력 본체 삭제
+    await deleteDoc(doc(db,'pushNotifications',id));
+    showToast(`삭제 완료 (학생 알림 ${userNotifSnap.size}건 포함)`);
+    await loadMessages();
+  } catch(e) {
+    console.warn(e);
+    showToast('삭제 실패: ' + e.message);
+  }
 };
 
 // ── 성적 관리 ────────────────────────────────────────
