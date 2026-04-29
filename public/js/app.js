@@ -2976,6 +2976,11 @@ onAuthStateChanged(auth, async (user)=>{
           if(greetEl) greetEl.textContent = (userProfile.name||'학생')+' 님';
           await loadHomeData();
           _originalShow('home');
+          // 미확인 알림 팝업 + 뱃지 (약간 딜레이) — 수동 로그인과 동일 패턴
+          setTimeout(async()=>{
+            await updateNotifBadge();
+            checkUnreadNotifs();
+          }, 1500);
           // FCM 토큰 등록
           setTimeout(registerFCMToken, 2000);
           setupForegroundMessage();
@@ -4045,13 +4050,25 @@ async function registerFCMToken() {
 
 // 포그라운드 알림 수신 — onMessage 리스너 1회만 등록 (중복 시 모달 N번 뜸)
 let _fcmListenerBound = false;
+let _fcmVisibilityBound = false;
 function setupForegroundMessage() {
   if(!messaging || _fcmListenerBound) return;
   _fcmListenerBound = true;
   onMessage(messaging, (payload) => {
     const { title, body } = payload.notification || {};
     showNotifModal(title||'알림', body||'');
+    // 새 푸시 도착 → 뱃지 즉시 갱신 (확인 버튼 누르기 전이라도 미확인 카운트 반영)
+    updateNotifBadge();
   });
+  // 앱이 백그라운드 → 포그라운드 복귀 시 뱃지 갱신 (그동안 도착한 푸시·다른 기기 변화 반영)
+  if (!_fcmVisibilityBound) {
+    _fcmVisibilityBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && currentUser) {
+        updateNotifBadge();
+      }
+    });
+  }
 }
 
 // 알림 팝업 모달 (포그라운드 수신 + 미확인 표시)
