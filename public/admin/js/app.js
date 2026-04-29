@@ -7633,22 +7633,25 @@ window.tpOpenPublishModal = async () => {
 
         ${cfg.testMode === 'recording' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
-              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 평가 옵션 (반별 조정 가능)</div>
+              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 평가 옵션 (시험별 조정 가능)</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                 <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">정확도 임계값</label>
-                  <input type="number" id="tpRecThreshold" min="50" max="95"
-                    value="${selectedSets[0]?.questions?.[0]?.accuracyThreshold || 70}"
-                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">3회차가 이 점수 이상일 때만 피드백</div>
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">녹음 횟수</label>
+                  <select id="tpRecCount" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                    ${[1,2,3,4].map(n => `<option value="${n}"${n === (selectedSets[0]?.questions?.[0]?.recordingCount || 3) ? ' selected' : ''}>${n}회</option>`).join('')}
+                  </select>
+                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">학생이 반복 녹음할 횟수 (마지막만 AI 평가)</div>
                 </div>
                 <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">평가 구간 (초)</label>
-                  <input type="number" id="tpRecEvalSec" min="30" max="180"
-                    value="${selectedSets[0]?.questions?.[0]?.evaluationSeconds || 60}"
+                  <label style="font-size:11px;font-weight:600;color:var(--gray);">성실도 임계값 (%)</label>
+                  <input type="number" id="tpRecThreshold" min="20" max="80" step="5"
+                    value="${Math.round((selectedSets[0]?.questions?.[0]?.accuracyThreshold || 0.4) * (selectedSets[0]?.questions?.[0]?.accuracyThreshold > 1 ? 1 : 100))}"
                     style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">녹음 중 N초만 AI 가 평가</div>
+                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">로컬 음성 활동 (VAD) 통과 기준 (낮을수록 관대)</div>
                 </div>
+              </div>
+              <div style="font-size:10px;color:#8a6d1c;margin-top:6px;line-height:1.5;">
+                ※ 통과점수(상단)는 AI 가 마지막 녹음을 평가한 점수 기준 — 미달 시 학생이 마지막 라운드만 다시 녹음 가능
               </div>
             </div>`
           : ''}
@@ -7786,15 +7789,16 @@ window.tpPublish = async () => {
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
-  // Phase 5.5: recording-ai v2 의 경우 배정 모달에서 임계값·평가 시간 override
+  // 녹음숙제: 시험 배정 모달에서 녹음횟수·성실도 임계값 override (시험별·학년별 조정)
   if (cfg.testMode === 'recording' && questions.some(q => q.schemaV === 2)) {
-    const threshold = parseInt(document.getElementById('tpRecThreshold')?.value);
-    const evalSec = parseInt(document.getElementById('tpRecEvalSec')?.value);
-    if (!isNaN(threshold) && threshold >= 50 && threshold <= 95) {
-      questions.forEach(q => { if (q.schemaV === 2) q.accuracyThreshold = threshold; });
+    const recCount = parseInt(document.getElementById('tpRecCount')?.value);
+    const thresholdPct = parseInt(document.getElementById('tpRecThreshold')?.value);
+    if (!isNaN(recCount) && recCount >= 1 && recCount <= 4) {
+      questions.forEach(q => { if (q.schemaV === 2) q.recordingCount = recCount; });
     }
-    if (!isNaN(evalSec) && evalSec >= 30 && evalSec <= 180) {
-      questions.forEach(q => { if (q.schemaV === 2) q.evaluationSeconds = evalSec; });
+    if (!isNaN(thresholdPct) && thresholdPct >= 20 && thresholdPct <= 80) {
+      // 임계값을 0~1 비율로 저장 (학생앱 _rv2PreCheckRecording 와 호환)
+      questions.forEach(q => { if (q.schemaV === 2) q.accuracyThreshold = thresholdPct / 100; });
     }
   }
 
@@ -8681,28 +8685,22 @@ window.tpToggleTestProgress = async (testId) => {
             if (c) {
               const cfgC = _TEST_TYPE_CONFIG[_activeTestType];
               const recs = c.recordings || [];
-              const isRecV2 = cfgC?.testMode === 'recording' && recs.length >= 2 && recs[0]?.audioUrl;
-              if (isRecV2) {
+              const isRec = cfgC?.testMode === 'recording' && recs.length >= 1 && recs[0]?.audioUrl;
+              if (isRec) {
+                // 마지막 녹음만 저장됨 (신규 흐름) — 학생 통과 시도만
                 const last = recs[recs.length - 1];
                 const fb = last?.feedback;
+                const passScore = c.passScore || 80;
+                const isPassed = last.score >= passScore;
                 return `
                   <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                       <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
-                      <div style="display:flex;gap:6px;align-items:center;">
-                        <span style="font-size:10px;color:var(--gray);">평균 ${_tpAvgScore(recs)}점</span>
-                        <span style="color:${last.score >= 70 ? '#059669' : '#CA8A04'};font-weight:700;">최종 ${last.score}점</span>
-                      </div>
+                      <span style="color:${isPassed ? '#059669' : '#CA8A04'};font-weight:700;">${last.score}점</span>
                     </div>
-                    ${recs.map((r, i) => `
-                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                        <span style="width:20px;height:20px;border-radius:50%;background:${i === recs.length-1 ? '#8B5CF6' : '#E5E7EB'};color:${i === recs.length-1 ? 'white' : '#6B7280'};display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${i+1}</span>
-                        <audio src="${esc(r.audioUrl)}" controls preload="none" style="flex:1;height:28px;"></audio>
-                        <span style="font-size:11px;color:${r.score >= 70 ? '#059669' : '#CA8A04'};font-weight:700;min-width:40px;text-align:right;">${r.score}점</span>
-                      </div>
-                    `).join('')}
-                    <div style="font-size:10px;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
-                      ${esc(c.date || '')} · 3회 반복 녹음
+                    <audio src="${esc(last.audioUrl)}" controls preload="none" style="width:100%;height:32px;margin-bottom:6px;"></audio>
+                    <div style="font-size:10px;color:var(--gray);padding-top:4px;border-top:1px solid #f3f4f6;">
+                      ${esc(c.date || '')}${last.duration ? ' · ' + last.duration + '초' : ''} · 마지막 녹음 (총 ${recs.length}회 중)
                     </div>
                     ${fb ? `
                       <details style="margin-top:8px;">

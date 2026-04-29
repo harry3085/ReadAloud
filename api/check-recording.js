@@ -38,8 +38,10 @@ function isRetryable(status, data) {
   return false;
 }
 
-function buildCheckPrompt(originalText, evaluationSeconds) {
-  return `You are evaluating a student's English reading recording.
+// 통합 프롬프트 — 1회 호출로 점수 + 피드백 둘 다 반환.
+// 점수 미달이라도 피드백은 항상 포함 (학습 효과 우선, 비용 차이 미미).
+function buildEvalPrompt(originalText) {
+  return `You are a Korean English teacher evaluating a student's reading recording.
 
 ORIGINAL TEXT:
 """
@@ -47,44 +49,31 @@ ${originalText}
 """
 
 Evaluate the ENTIRE recording against the ORIGINAL TEXT above.
-Compare the student's audio to the full text — measure how much of the text was read clearly and in order.
+Compare the student's audio to the full text — measure how much was read clearly and in order.
+Then ALWAYS provide detailed feedback (regardless of score) so the student can improve.
 
 Return strictly JSON (no markdown):
 {
   "score": <integer 0-100>,
   "missedWords": [<up to 5 important words omitted>],
-  "note": "<one-line Korean comment>"
+  "note": "<one-line Korean comment>",
+  "feedback": {
+    "missedWords": [<up to 3 omitted words, can overlap with above>],
+    "weakPronunciation": [
+      { "word": "<english word>", "issue": "<one-line Korean issue>" }
+    ],
+    "tips": [<up to 3 actionable Korean tips>]
+  }
 }
 
-Scoring guide:
-- 90-100: Read almost every word clearly, in correct order, throughout the recording
+Scoring guide (entire recording vs full text):
+- 90-100: Read almost every word clearly, in correct order
 - 75-89: Most words clear, minor omissions or unclear sections
 - 60-74: Noticeable omissions, mispronunciation, or rushed portions
 - 40-59: Many words missed or unclear; partial reading
-- 0-39: Silent, noise only, or entirely different content`;
-}
+- 0-39: Silent, noise only, or entirely different content
 
-function buildFeedbackPrompt(originalText, evaluationSeconds) {
-  return `You are a Korean English teacher reviewing a student's reading recording.
-
-ORIGINAL TEXT:
-"""
-${originalText}
-"""
-
-This is the student's 3rd and final attempt, which passed the threshold.
-Analyze the ENTIRE recording against the full text above and give specific improvements.
-
-Return strictly JSON (no markdown):
-{
-  "missedWords": [<up to 3 omitted words>],
-  "weakPronunciation": [
-    { "word": "<english word>", "issue": "<one-line Korean issue>" }
-  ],
-  "tips": [<up to 3 actionable Korean tips>]
-}
-
-Korean: natural, encouraging, appropriate for middle/high school students.`;
+Feedback Korean: natural, encouraging, appropriate for middle/high school students.`;
 }
 
 const { verifyAndCheckQuota: _verifyQuota, incrementUsage: _incUsage } = require('./_lib/quota');
@@ -137,13 +126,17 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const prompt = mode === 'feedback'
-      ? buildFeedbackPrompt(originalText, evaluationSeconds)
-      : buildCheckPrompt(originalText, evaluationSeconds);
+    // 통합 프롬프트 — score + feedback 둘 다 1회 호출로 (mode 무관, 항상 동일)
+    const prompt = buildEvalPrompt(originalText);
 
-    // responseSchema 로 구조화 출력 강제 → JSON 파싱 실패 원천 차단
-    const responseSchema = mode === 'feedback'
-      ? {
+    // responseSchema — 통합 응답 구조
+    const responseSchema = {
+      type: 'object',
+      properties: {
+        score: { type: 'integer' },
+        missedWords: { type: 'array', items: { type: 'string' } },
+        note: { type: 'string' },
+        feedback: {
           type: 'object',
           properties: {
             missedWords: { type: 'array', items: { type: 'string' } },
@@ -161,16 +154,10 @@ module.exports = async (req, res) => {
             tips: { type: 'array', items: { type: 'string' } },
           },
           required: ['missedWords', 'weakPronunciation', 'tips'],
-        }
-      : {
-          type: 'object',
-          properties: {
-            score: { type: 'integer' },
-            missedWords: { type: 'array', items: { type: 'string' } },
-            note: { type: 'string' },
-          },
-          required: ['score', 'missedWords', 'note'],
-        };
+        },
+      },
+      required: ['score', 'missedWords', 'note', 'feedback'],
+    };
 
     const reqBody = {
       contents: [{
@@ -183,7 +170,7 @@ module.exports = async (req, res) => {
       generationConfig: {
         temperature: 0.1,  // 더 결정적
         topP: 0.9,
-        maxOutputTokens: mode === 'feedback' ? 800 : 400,
+        maxOutputTokens: 1000,  // 통합 응답 — 점수 + 피드백
         responseMimeType: 'application/json',
         responseSchema,
       },
@@ -272,23 +259,30 @@ module.exports = async (req, res) => {
     }
 
     await _incUsage(q);
-    if (mode === 'check') {
-      const score = Math.max(0, Math.min(100, parseInt(parsed.score) || 0));
-      const missedWords = Array.isArray(parsed.missedWords)
-        ? parsed.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 5) : [];
-      const note = String(parsed.note || '').trim().slice(0, 200);
-      res.status(200).json({ success: true, mode: 'check', score, missedWords, note, elapsedMs });
-    } else {
-      const missedWords = Array.isArray(parsed.missedWords)
-        ? parsed.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 3) : [];
-      const weakPronunciation = Array.isArray(parsed.weakPronunciation)
-        ? parsed.weakPronunciation
-            .map(item => ({ word: String(item?.word || '').trim(), issue: String(item?.issue || '').trim().slice(0, 150) }))
-            .filter(w => w.word && w.issue).slice(0, 3) : [];
-      const tips = Array.isArray(parsed.tips)
-        ? parsed.tips.map(t => String(t || '').trim().slice(0, 200)).filter(Boolean).slice(0, 3) : [];
-      res.status(200).json({ success: true, mode: 'feedback', missedWords, weakPronunciation, tips, elapsedMs });
-    }
+    // 통합 응답 — score + missedWords + note + feedback 한 번에
+    const score = Math.max(0, Math.min(100, parseInt(parsed.score) || 0));
+    const missedWords = Array.isArray(parsed.missedWords)
+      ? parsed.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 5) : [];
+    const note = String(parsed.note || '').trim().slice(0, 200);
+
+    const fb = parsed.feedback || {};
+    const fbMissed = Array.isArray(fb.missedWords)
+      ? fb.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 3) : [];
+    const fbWeak = Array.isArray(fb.weakPronunciation)
+      ? fb.weakPronunciation
+          .map(item => ({ word: String(item?.word || '').trim(), issue: String(item?.issue || '').trim().slice(0, 150) }))
+          .filter(w => w.word && w.issue).slice(0, 3) : [];
+    const fbTips = Array.isArray(fb.tips)
+      ? fb.tips.map(t => String(t || '').trim().slice(0, 200)).filter(Boolean).slice(0, 3) : [];
+
+    res.status(200).json({
+      success: true,
+      score,
+      missedWords,
+      note,
+      feedback: { missedWords: fbMissed, weakPronunciation: fbWeak, tips: fbTips },
+      elapsedMs,
+    });
   } catch (e) {
     console.error('/api/check-recording error:', e);
     res.status(500).json({ success: false, error: e.message || 'Internal error' });

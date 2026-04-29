@@ -143,7 +143,7 @@ module.exports = async (req, res) => {
         subscribedAt: FieldValue.serverTimestamp(),
         planExpiresAt: null,
         settings: {
-          recordingIntegrity: { minVoiceActivity: 0.4, minDurationSec: 10, maxDurationSec: 600 },
+          recordingIntegrity: { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 },
         },
         usage: {
           activeStudentsCount: 0,

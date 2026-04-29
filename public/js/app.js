@@ -1984,15 +1984,16 @@ window.quitRecAi = async () => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 녹음숙제 v2 — Page 단위 3회 반복 + 배치 제출 + 조건부 피드백 (Phase 5.5)
-// 상태 머신: IDLE → RECORDING → TAKE_READY → [Retake|Save] → 다음 회차 or SUBMITTING → RESULT
+// 녹음숙제 v2 — N회 반복 + 무결성 클라 검증 + 마지막 라운드만 AI 평가 (Phase 5.5+)
+// 흐름: IDLE → RECORDING → PRE-CHECK → [PASS: SAVED | FAIL: ALERT 유지] → 다음 회차
+//        N회 다 SAVED → SUBMITTING (마지막 라운드만 업로드+AI) → RESULT
+//        AI 점수 < 통과점수 → 마지막 라운드만 다시 녹음 가능
 // ═══════════════════════════════════════════════════════════════════════════
-
-const _RV2_ROUNDS = 3;
 
 let _rv2 = {
   test: null,
   question: null,
+  totalRounds: 3,         // q.recordingCount 동적 (1~4)
   currentRound: 0,
   savedRounds: [],
   currentTake: null,
@@ -2002,13 +2003,17 @@ let _rv2 = {
   isRecording: false,
   timerInterval: null,
   timerStart: 0,
+  alertMessage: null,     // persistent 알림 — pre-check fail 시 세팅, 새 녹음 시작 시 클리어
+  retryMode: false,       // AI 점수 미달 후 마지막 라운드 재시도 모드
 };
 let _rv2ResultAudioUrls = [];
 
 function _raStartV2(test, question) {
+  const totalRounds = Math.max(1, Math.min(parseInt(question?.recordingCount) || 3, 4));
   _rv2 = {
     test,
     question,
+    totalRounds,
     currentRound: 0,
     savedRounds: [],
     currentTake: null,
@@ -2018,6 +2023,8 @@ function _raStartV2(test, question) {
     isRecording: false,
     timerInterval: null,
     timerStart: 0,
+    alertMessage: null,
+    retryMode: false,
   };
   show('recAiQuiz');
   _acquireWakeLock();
@@ -2031,12 +2038,23 @@ function _rv2FormatDuration(seconds) {
   return `${mm}:${ss}`;
 }
 
-// 기존 녹음숙제(recHwDetail) 스타일로 재구성: 코랄 헤더 + 단계바 + 3개 세로 카드
+// 코랄 헤더 + 단계바 + N회차 카드 + persistent 알림
 function _rv2Render() {
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
   const q = _rv2.question;
   const cur = _rv2.currentRound;
+  const N = _rv2.totalRounds;
+
+  // persistent 알림 (pre-check fail 메시지) — 새 녹음 시작 시 클리어
+  const alertHtml = _rv2.alertMessage
+    ? `<div id="rv2Alert" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+         <div style="display:flex;gap:8px;align-items:flex-start;">
+           <div style="font-size:18px;line-height:1;">⚠️</div>
+           <div style="flex:1;font-size:13px;color:#b91c1c;line-height:1.5;font-weight:600;">${esc(_rv2.alertMessage)}</div>
+         </div>
+       </div>`
+    : '';
 
   screen.innerHTML = `
     <!-- 코랄 히어로 헤더 + 숙제 내용 -->
@@ -2055,13 +2073,15 @@ function _rv2Render() {
     <div style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:-14px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
       <div class="scroll-content" style="padding:16px 16px 24px;">
 
-        <!-- 3단계 진행 표시 -->
+        ${alertHtml}
+
+        <!-- N단계 진행 표시 -->
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">
           ${_rv2RenderStepBar()}
         </div>
 
-        <!-- 3개 회차 카드 -->
-        ${[0,1,2].map(i => _rv2RenderRoundCard(i, cur)).join('')}
+        <!-- N개 회차 카드 -->
+        ${Array.from({length: N}, (_, i) => _rv2RenderRoundCard(i, cur)).join('')}
 
       </div>
     </div>
@@ -2069,6 +2089,7 @@ function _rv2Render() {
 }
 
 function _rv2RenderStepBar() {
+  const N = _rv2.totalRounds;
   const circleStyle = (i) => {
     if (_rv2.savedRounds[i] != null) return 'background:#059669;color:white;';
     if (i === _rv2.currentRound) return 'background:#E8714A;color:white;';
@@ -2076,13 +2097,12 @@ function _rv2RenderStepBar() {
   };
   const content = (i) => _rv2.savedRounds[i] != null ? '✓' : (i+1);
   const lineFill = (i) => _rv2.savedRounds[i] != null ? 100 : 0;
-  return `
-    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(0)}">${content(0)}</div>
-    <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(0)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>
-    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(1)}">${content(1)}</div>
-    <div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(1)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>
-    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(2)}">${content(2)}</div>
-  `;
+  let html = '';
+  for (let i = 0; i < N; i++) {
+    if (i > 0) html += `<div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(i-1)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>`;
+    html += `<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(i)}">${content(i)}</div>`;
+  }
+  return html;
 }
 
 function _rv2RenderRoundCard(i, cur) {
@@ -2091,7 +2111,7 @@ function _rv2RenderRoundCard(i, cur) {
   const isFuture = (i > cur);
   const isRecording = isCurrent && _rv2.isRecording;
   const hasTake = isCurrent && !!_rv2.currentTake;
-  const isLast = (i === 2);
+  const isLast = (i === _rv2.totalRounds - 1);
 
   // 상태 뱃지
   let statusBadge;
@@ -2156,6 +2176,8 @@ function _rv2RenderRoundCard(i, cur) {
 
 window.rv2StartRecord = async () => {
   try {
+    // 새 녹음 시작 시 persistent 알림 클리어 (학생이 행동했으니 이전 알림 의미 없음)
+    _rv2.alertMessage = null;
     _rv2.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus'
@@ -2198,11 +2220,15 @@ async function _rv2AfterStop(mime) {
   const blob = new Blob(_rv2.chunks, { type: mime });
   const duration = Math.floor((Date.now() - _rv2.timerStart) / 1000);
 
-  // Pre-check (AI 호출 X) — 길이·음성 활동 비율 검사
-  // 통과 못 하면 currentTake 비워서 사용자가 다시 녹음하도록 유도
-  const check = await _rv2PreCheckRecording(blob, duration);
+  // Pre-check (AI 호출 X) — 길이·VAD·hash·일관성·대역·자기상관
+  // 시험 단위 임계값 (q.accuracyThreshold) 우선, 없으면 학원 기본값
+  const qThreshold = (typeof _rv2.question?.accuracyThreshold === 'number')
+    ? (_rv2.question.accuracyThreshold > 1 ? _rv2.question.accuracyThreshold / 100 : _rv2.question.accuracyThreshold)
+    : null;
+  const check = await _rv2PreCheckRecording(blob, duration, _rv2.savedRounds, qThreshold);
   if (!check.ok) {
-    showToast('⚠️ ' + check.reason);
+    // persistent 알림 — 새 녹음 시작 (rv2StartRecord) 까지 화면에 유지
+    _rv2.alertMessage = check.reason;
     if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
     _rv2.currentTake = null;
     _rv2Render();
@@ -2211,38 +2237,81 @@ async function _rv2AfterStop(mime) {
 
   const url = URL.createObjectURL(blob);
   if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
-  _rv2.currentTake = { blob, url, mime, duration, voiceActivity: check.voiceActivity };
+  _rv2.currentTake = { blob, url, mime, duration, hash: check.hash, voiceActivity: check.voiceActivity };
+  _rv2.alertMessage = null;  // 통과했으니 알림 제거
   _rv2Render();
 }
 
+// 녹음 blob → SHA-256 hex (Web Crypto). 실패 시 빈 문자열.
+async function _rv2BlobHash(blob) {
+  try {
+    const buf = await blob.arrayBuffer();
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (_) { return ''; }
+}
+
 // 녹음 무결성 사전 검사 (AI 호출 없음, 100% 클라이언트)
-//   - 길이: minDurationSec ~ maxDurationSec 범위
-//   - VAD: Web Audio API 로 RMS 분석, 임계값 이상 윈도우 비율이 minVoiceActivity 이상
-//   - 디코드 실패·예외 시 bypass (도구 실패로 학생 막지 않음)
-async function _rv2PreCheckRecording(blob, duration) {
-  const cfg = window.MY_ACADEMY_RECORDING_CFG || { minVoiceActivity: 0.4, minDurationSec: 5, maxDurationSec: 600 };
+//   기본: 길이 / VAD (음성 활동 비율)
+//   추가:
+//     A. Hash 비교 — 이전 라운드와 동일한 녹음 (재제출) 차단
+//     B. 다라운드 길이 일관성 — 평균 ± 30% 이상 벗어나면 reject
+//     C. 음성 대역 에너지 (300~3400Hz) — 음악·소음 차단
+//     D. 자기상관 (간이 spectral entropy) — 단조로운 음 ("아아아") 차단
+//   디코드 실패·예외 시 bypass (도구 실패로 학생 막지 않음)
+async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThreshold) {
+  const cfg = window.MY_ACADEMY_RECORDING_CFG || { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 };
+  // 시험 배정 시 학원장이 정한 임계값 (currentThreshold) 우선, 없으면 학원 기본값
+  const minVA = (typeof currentThreshold === 'number' && currentThreshold > 0)
+    ? currentThreshold
+    : cfg.minVoiceActivity;
 
   // 1. 길이 검사
   if (duration < cfg.minDurationSec) {
-    return { ok: false, reason: `너무 짧아요 (${duration}초). 최소 ${cfg.minDurationSec}초 이상 녹음해주세요.` };
+    return { ok: false, reason: `조금 더 길게 읽어볼까요? 최소 ${cfg.minDurationSec}초는 필요해요. (현재 ${duration}초)` };
   }
-  if (duration > cfg.maxDurationSec + 5) {  // +5 초 버퍼 (timer 와 실제 종료 사이 오차)
-    return { ok: false, reason: `너무 길어요 (${duration}초). 최대 ${Math.round(cfg.maxDurationSec/60)}분.` };
+  if (duration > cfg.maxDurationSec + 5) {
+    return { ok: false, reason: `조금 짧게 줄여볼까요? 최대 ${Math.round(cfg.maxDurationSec / 60)}분까지 가능해요.` };
   }
 
-  // 2. Voice Activity Detection
-  let ratio = null;
+  // 2. Hash 비교 (A) — 이전 라운드와 동일?
+  const hash = await _rv2BlobHash(blob);
+  if (hash && Array.isArray(savedRounds)) {
+    const dup = savedRounds.find(r => r.hash && r.hash === hash);
+    if (dup) {
+      return { ok: false, reason: '직전 회차와 거의 같은 녹음 같아요. 새로 읽어볼까요?' };
+    }
+  }
+
+  // 3. 다라운드 길이 일관성 (B)
+  if (Array.isArray(savedRounds) && savedRounds.length > 0) {
+    const prev = savedRounds.map(r => r.duration).filter(d => d > 0);
+    if (prev.length > 0) {
+      const avg = prev.reduce((a, b) => a + b, 0) / prev.length;
+      const ratio = Math.abs(duration - avg) / avg;
+      if (ratio > 0.30) {
+        return {
+          ok: false,
+          reason: `이전 회차와 시간 차이가 크네요 (평균 ${Math.round(avg)}초, 이번 ${duration}초). 비슷한 호흡으로 다시 해볼까요?`,
+        };
+      }
+    }
+  }
+
+  // 4. 오디오 분석 (VAD + 음성 대역 + 자기상관)
+  let vadRatio = null, voiceBandRatio = null, monotony = null;
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return { ok: true, _bypassed: 'no-audio-ctx' };
+    if (!Ctx) return { ok: true, hash, _bypassed: 'no-audio-ctx' };
     const ctx = new Ctx();
     const arr = await blob.arrayBuffer();
     const buf = await ctx.decodeAudioData(arr);
     const ch = buf.getChannelData(0);
     const sr = buf.sampleRate;
-    const winSize = Math.floor(sr * 0.05);  // 50ms 윈도우
-    const RMS_THRESHOLD = 0.012;             // 보수적 (실제 음성 거의 다 잡힘)
+    const winSize = Math.floor(sr * 0.05);
+    const RMS_THRESHOLD = 0.012;
 
+    // VAD
     let voiceWindows = 0, totalWindows = 0;
     for (let i = 0; i + winSize <= ch.length; i += winSize) {
       let sum = 0;
@@ -2251,20 +2320,96 @@ async function _rv2PreCheckRecording(blob, duration) {
       if (rms > RMS_THRESHOLD) voiceWindows++;
       totalWindows++;
     }
+    vadRatio = totalWindows > 0 ? voiceWindows / totalWindows : 0;
+
+    // 음성 대역 에너지 비율 (C) + 단조로움 추정 (D)
+    // 5초 간격으로 1024 샘플 윈도우 추출 → DFT 로 주파수 binning → 평균
+    // 분석 부하 줄이기 위해 표본 윈도우 N개만
+    const FFT_SIZE = 1024;
+    const sampleStep = Math.max(FFT_SIZE, Math.floor(sr * 5));  // 5초마다
+    const VOICE_LOW = 300, VOICE_HIGH = 3400;
+    const voiceLowBin = Math.floor(VOICE_LOW * FFT_SIZE / sr);
+    const voiceHighBin = Math.ceil(VOICE_HIGH * FFT_SIZE / sr);
+
+    let totalVoiceEnergy = 0, totalEnergy = 0, entropySum = 0, entropyCount = 0;
+
+    for (let s = 0; s + FFT_SIZE < ch.length; s += sampleStep) {
+      // 단순 magnitude DFT (FFT 대용 — 윈도우 1024 샘플이라 부하 작음)
+      // 단, 풀 DFT 는 O(N^2) — 1024² = 1M 연산. 수십 표본이면 합리적.
+      // 더 빠른 alternative: AnalyserNode (real-time only) 또는 webfft 라이브러리
+      // 여기선 적당히 다운샘플 (256 샘플) + DFT
+      const DOWN = 256;
+      const stride = Math.floor(FFT_SIZE / DOWN);
+      const samples = new Float32Array(DOWN);
+      for (let i = 0; i < DOWN; i++) samples[i] = ch[s + i * stride] || 0;
+      const lowBin = Math.floor(VOICE_LOW * DOWN / (sr / stride));
+      const highBin = Math.ceil(VOICE_HIGH * DOWN / (sr / stride));
+
+      // magnitude
+      const mag = new Float32Array(DOWN / 2);
+      let sumE = 0;
+      for (let k = 0; k < DOWN / 2; k++) {
+        let re = 0, im = 0;
+        for (let n = 0; n < DOWN; n++) {
+          const phase = -2 * Math.PI * k * n / DOWN;
+          re += samples[n] * Math.cos(phase);
+          im += samples[n] * Math.sin(phase);
+        }
+        const m = Math.sqrt(re * re + im * im);
+        mag[k] = m;
+        sumE += m;
+      }
+      let voiceE = 0;
+      for (let k = lowBin; k <= highBin && k < mag.length; k++) voiceE += mag[k];
+      totalVoiceEnergy += voiceE;
+      totalEnergy += sumE;
+
+      // entropy — 정규화된 magnitude 분포의 Shannon entropy
+      if (sumE > 1e-6) {
+        let h = 0;
+        for (let k = 0; k < mag.length; k++) {
+          const p = mag[k] / sumE;
+          if (p > 1e-9) h -= p * Math.log2(p);
+        }
+        const maxH = Math.log2(mag.length);
+        entropySum += h / maxH;  // 0~1 정규화
+        entropyCount++;
+      }
+    }
+
+    voiceBandRatio = totalEnergy > 0 ? totalVoiceEnergy / totalEnergy : 0;
+    monotony = entropyCount > 0 ? 1 - (entropySum / entropyCount) : 0;  // 1=완전 단조, 0=다양
     await ctx.close();
-    ratio = totalWindows > 0 ? voiceWindows / totalWindows : 0;
   } catch (e) {
     console.warn('[VAD] 분석 실패 — bypass:', e.message);
-    return { ok: true, _bypassed: 'analysis-error' };
+    return { ok: true, hash, _bypassed: 'analysis-error' };
   }
 
-  if (ratio < cfg.minVoiceActivity) {
+  // VAD
+  if (vadRatio < minVA) {
     return {
       ok: false,
-      reason: `음성이 적어요 (${(ratio*100).toFixed(0)}%). 더 또렷하게·꾸준히 읽어주세요.`,
+      reason: `음성이 적게 들려요 (${(vadRatio * 100).toFixed(0)}%). 더 또렷이·꾸준히 읽어볼까요?`,
     };
   }
-  return { ok: true, voiceActivity: ratio };
+
+  // 음성 대역 에너지 (C)
+  if (voiceBandRatio !== null && voiceBandRatio < 0.40) {
+    return {
+      ok: false,
+      reason: `말소리 외 다른 소리가 섞여 있어요. 조용한 곳에서 또렷이 읽어볼까요?`,
+    };
+  }
+
+  // 단조로움 (D)
+  if (monotony !== null && monotony > 0.55) {
+    return {
+      ok: false,
+      reason: `같은 소리가 반복되는 것 같아요. 본문을 차근차근 읽어볼까요?`,
+    };
+  }
+
+  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony };
 }
 
 window.rv2Retake = () => {
@@ -2277,7 +2422,7 @@ window.rv2SaveRound = async () => {
   if (!_rv2.currentTake) return;
   _rv2.savedRounds.push(_rv2.currentTake);
   _rv2.currentTake = null;
-  if (_rv2.currentRound === _RV2_ROUNDS - 1) {
+  if (_rv2.currentRound === _rv2.totalRounds - 1) {
     await _rv2Submit();
     return;
   }
@@ -2394,169 +2539,145 @@ function _rv2ShowSubmitting(title, subtitle) {
 }
 
 async function _rv2Submit() {
-  if (_rv2.savedRounds.length !== _RV2_ROUNDS) {
-    showToast('3회 녹음이 모두 필요합니다');
+  if (_rv2.savedRounds.length !== _rv2.totalRounds) {
+    showToast(`${_rv2.totalRounds}회 녹음이 모두 필요합니다`);
     return;
   }
   if (_rv2._submitted || _rv2._submitting) return;
   _rv2._submitting = true;
   const t = _rv2.test;
   const q = _rv2.question;
-  const threshold = q.accuracyThreshold || 70;
-  const evalSec = q.evaluationSeconds || 60;
+  // 통과점수: 시험의 passScore (학원장이 시험 배정 시 설정)
+  const passScore = t.passScore || q.accuracyThreshold || 80;
   if (!currentUser) { _rv2._submitting = false; showToast('로그인이 필요해요'); return; }
 
-  _rv2ShowSubmitting('🎤 녹음 업로드 중...', '3개 파일 Storage 에 저장');
+  _rv2ShowSubmitting('🎤 마지막 녹음 업로드 중...', '1개 파일 Storage 에 저장');
 
   let stage = 'upload';
   try {
-    console.log('[rv2Submit] START', { testId: t.id, rounds: _rv2.savedRounds.length });
+    console.log('[rv2Submit] START', { testId: t.id, totalRounds: _rv2.totalRounds });
     const storage = getStorage();
-    const uploadResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
-      const ext = r.mime.includes('mp4') ? 'm4a' : 'webm';
-      const path = `recordings/genTests/${t.id}/${currentUser.uid}/r${i+1}_${Date.now()}.${ext}`;
-      const fileRef = ref(storage, path);
-      console.log(`[rv2Submit] upload ${i+1} → ${path} (${r.blob.size} bytes)`);
-      await uploadBytes(fileRef, r.blob);
-      const url = await getDownloadURL(fileRef);
-      console.log(`[rv2Submit] uploaded ${i+1} ✓`);
-      return { round: i + 1, audioUrl: url, duration: r.duration };
-    }));
+    // 마지막 라운드만 업로드·평가 (이전 라운드는 무결성 통과만 확인 — 메모리 보관)
+    const lastIdx = _rv2.totalRounds - 1;
+    const lastRound = _rv2.savedRounds[lastIdx];
+    const ext = lastRound.mime.includes('mp4') ? 'm4a' : 'webm';
+    const path = `recordings/genTests/${t.id}/${currentUser.uid}/last_${Date.now()}.${ext}`;
+    const fileRef = ref(storage, path);
+    console.log(`[rv2Submit] upload last → ${path} (${lastRound.blob.size} bytes)`);
+    await uploadBytes(fileRef, lastRound.blob);
+    const audioUrl = await getDownloadURL(fileRef);
     console.log('[rv2Submit] upload done');
 
-    _rv2ShowSubmitting('🤖 AI 평가 중...', '3개 녹음을 동시에 평가해요 (10~15초)');
-    stage = 'check';
+    _rv2ShowSubmitting('🤖 AI 평가 중...', '전체 녹음 분석 + 피드백 생성 (10~20초)');
+    stage = 'eval';
 
-    const checkResults = await Promise.all(_rv2.savedRounds.map(async (r, i) => {
-      try {
-        // 트림 제거 — 원본 blob 직접 전송 (WAV 변환 시 10배 커져 Vercel 4.5MB 한도 초과 발생).
-        // 길이는 프롬프트의 evaluationSeconds 지시로 Gemini 가 앞 N초만 평가.
-        const base64 = await _rv2BlobToBase64(r.blob);
-        const sendMime = r.mime;
-        console.log(`[rv2Submit] check ${i+1} base64 len=${base64.length} mime=${sendMime}`);
-        const idToken = currentUser ? await currentUser.getIdToken() : '';
-        const res = await fetch('/api/check-recording', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            idToken,
-            mode: 'check',
-            originalText: q.fullText,
-            audioBase64: base64,
-            mimeType: sendMime,
-            evaluationSeconds: evalSec,
-          }),
-        });
-        _logApiCall('check-recording');
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          console.warn(`[rv2Submit] check ${i+1} failed`, res.status, data);
-          return { round: i + 1, score: 0, missedWords: [], note: `평가 실패: ${data?.error || res.status}`, error: true };
-        }
-        // 서버가 200 을 주지만 score=0 + note 가 있는 케이스 (JSON 파싱 실패, 오디오 인식 실패 등)
-        const isError = data.score === 0 && /해석하지 못|오디오 인식|평가 실패|Failed/i.test(data.note || '');
-        console.log(`[rv2Submit] check ${i+1} score=${data.score}${isError?' (err)':''}`);
-        return { round: i + 1, score: data.score, missedWords: data.missedWords || [], note: data.note || '', error: isError };
-      } catch(e) {
-        console.error(`[rv2Submit] check ${i+1} exception`, e);
-        return { round: i + 1, score: 0, missedWords: [], note: '네트워크 에러: '+(e.message||''), error: true };
-      }
-    }));
-    console.log('[rv2Submit] check done', checkResults.map(r => r.score));
-
-    const lastResult = checkResults[_RV2_ROUNDS - 1];
-    const lastScore = lastResult.score;
-    const passed = lastScore >= threshold;
-
-    let feedback = null;
-    if (passed && !lastResult.error) {
-      _rv2ShowSubmitting('💬 상세 피드백 생성 중...', '마지막 녹음이 임계점을 통과했어요!');
-      try {
-        const lastRound = _rv2.savedRounds[_RV2_ROUNDS - 1];
-        // 트림 제거 — 원본 그대로 (Vercel 4.5MB 한도 안전)
-        const base64 = await _rv2BlobToBase64(lastRound.blob);
-        const sendMime = lastRound.mime;
-        const idToken2 = currentUser ? await currentUser.getIdToken() : '';
-        const fbRes = await fetch('/api/check-recording', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            idToken: idToken2,
-            mode: 'feedback',
-            originalText: q.fullText,
-            audioBase64: base64,
-            mimeType: sendMime,
-            evaluationSeconds: evalSec,
-          }),
-        });
-        _logApiCall('check-recording');
-        const fbData = await fbRes.json();
-        if (fbRes.ok && fbData.success) {
-          feedback = {
-            missedWords: fbData.missedWords || [],
-            weakPronunciation: fbData.weakPronunciation || [],
-            tips: fbData.tips || [],
-          };
-        }
-      } catch(e) { console.warn('feedback failed', e); }
+    // 통합 호출 — score + feedback 한 번에
+    const base64 = await _rv2BlobToBase64(lastRound.blob);
+    const sendMime = lastRound.mime;
+    console.log(`[rv2Submit] eval base64 len=${base64.length} mime=${sendMime}`);
+    const idToken = currentUser ? await currentUser.getIdToken() : '';
+    const res = await fetch('/api/check-recording', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        originalText: q.fullText,
+        audioBase64: base64,
+        mimeType: sendMime,
+      }),
+    });
+    _logApiCall('check-recording');
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(`평가 실패: ${data?.error || res.status}`);
     }
+    const score = data.score || 0;
+    const missedWords = data.missedWords || [];
+    const note = data.note || '';
+    const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [] };
+    console.log(`[rv2Submit] eval done: score=${score}`);
 
-    _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
-    stage = 'firestore';
+    const passed = score >= passScore;
     const today = new Date().toISOString().slice(0,10);
 
-    const recordingsDetail = uploadResults.map((u, i) => ({
-      ...u,
-      score: checkResults[i].score,
-      missedWords: checkResults[i].missedWords,
-      note: checkResults[i].note,
-      ...(i === _RV2_ROUNDS - 1 && feedback ? { feedback } : {}),
-    }));
+    if (passed) {
+      // 통과 → scores + userCompleted 저장
+      _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
+      stage = 'firestore';
 
-    await addDoc(collection(db,'scores'), {
-      academyId: window.MY_ACADEMY_ID || 'default',
-      uid: currentUser.uid,
-      userId: currentUser.uid,
-      userName: userProfile?.name || '',
-      name: userProfile?.name || '',
-      group: userProfile?.group || '',
-      testId: t.id,
-      testName: t.name || '',
-      unitId: t.id,
-      unitName: t.name || '',
-      bookName: t.bookName || '',
-      mode: 'recording',
-      score: lastScore,
-      correct: passed ? 1 : 0,
-      wrong: passed ? 0 : 1,
-      total: 1,
-      passed,
-      passScore: threshold,
-      recordings: recordingsDetail,
-      date: today,
-      createdAt: serverTimestamp(),
-    });
+      const recordingsDetail = [{
+        round: lastIdx + 1,
+        audioUrl,
+        duration: lastRound.duration,
+        score,
+        missedWords,
+        note,
+        feedback,
+      }];
 
-    try {
-      await setDoc(
-        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-        {
-          uid: currentUser.uid,
-          userName: userProfile?.name || '',
-          score: lastScore,
-          date: today,
-          recordings: recordingsDetail,
-          completedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+      await addDoc(collection(db,'scores'), {
+        academyId: window.MY_ACADEMY_ID || 'default',
+        uid: currentUser.uid,
+        userId: currentUser.uid,
+        userName: userProfile?.name || '',
+        name: userProfile?.name || '',
+        group: userProfile?.group || '',
+        testId: t.id,
+        testName: t.name || '',
+        unitId: t.id,
+        unitName: t.name || '',
+        bookName: t.bookName || '',
+        mode: 'recording',
+        score,
+        correct: 1,
+        wrong: 0,
+        total: 1,
+        passed: true,
+        passScore,
+        recordings: recordingsDetail,
+        date: today,
+        createdAt: serverTimestamp(),
+      });
 
-    _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
-    const allAudioUrls = uploadResults.map(u => u.audioUrl);
-    console.log('[rv2Submit] DONE');
-    _rv2._submitted = true;
-    _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
+      try {
+        await setDoc(
+          doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+          {
+            uid: currentUser.uid,
+            userName: userProfile?.name || '',
+            score,
+            date: today,
+            recordings: recordingsDetail,
+            completedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+
+      _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
+      console.log('[rv2Submit] DONE (passed)');
+      _rv2._submitted = true;
+      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: true, passScore });
+    } else {
+      // 미통과 → 저장 안 하고 재시도 화면 (마지막 라운드만 다시 녹음 가능)
+      // userCompleted 의 latestFailedScore 만 업데이트 (audio 저장 X)
+      try {
+        await setDoc(
+          doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+          {
+            uid: currentUser.uid,
+            userName: userProfile?.name || '',
+            latestFailedScore: score,
+            latestFailedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch(e) { console.warn('failed score 기록 실패', e); }
+
+      console.log('[rv2Submit] DONE (failed) — retry available');
+      _rv2._submitting = false;
+      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: false, passScore });
+    }
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
     _rv2._submitting = false;  // 재시도 가능하도록
@@ -2637,19 +2758,18 @@ window.viewRecAiResult = async (testId) => {
   }
 };
 
-function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls) {
+// 결과 화면 — 단일 녹음 + 피드백 항상 표시 + 미통과 시 재시도 버튼
+function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed, passScore }) {
   _releaseWakeLock();
-  _rv2ResultAudioUrls = allAudioUrls || [];
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
 
-  const lastScore = checkResults[_RV2_ROUNDS - 1].score;
-  const avg = Math.round(checkResults.reduce((s, r) => s + (r.score || 0), 0) / checkResults.length);
   const emoji = passed ? '🎉' : '💪';
-  const headline = passed ? '훌륭해요!' : '아깝네요!';
+  const headline = passed ? '통과했어요!' : '조금 더 노력해볼까요?';
   const subline = passed
-    ? 'AI 피드백을 확인해보세요'
-    : `마지막 녹음이 임계점(${threshold}점)에 미달해 상세 피드백은 제공되지 않아요`;
+    ? '피드백을 확인하고 마무리하세요'
+    : `통과점수 ${passScore}점 미달. 피드백 보고 마지막 녹음만 다시 도전!`;
+  const scoreColor = passed ? '#059669' : '#CA8A04';
 
   screen.innerHTML = `
     <div style="flex:1;overflow-y:auto;padding:20px 16px;">
@@ -2657,70 +2777,36 @@ function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrl
       <div style="background:white;border-radius:16px;padding:24px 20px;box-shadow:0 2px 12px rgba(0,0,0,0.08);text-align:center;margin-bottom:14px;">
         <div style="font-size:56px;margin-bottom:6px;">${emoji}</div>
         <div style="font-size:20px;font-weight:800;color:var(--text);">${headline}</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.5;">${esc(subline)}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:6px;line-height:1.5;">${esc(subline)}</div>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;">
           <div>
-            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">최종 (3회차)</div>
-            <div style="font-size:28px;font-weight:800;color:${passed ? '#059669' : '#CA8A04'};line-height:1;">${lastScore}</div>
+            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">평가 점수</div>
+            <div style="font-size:32px;font-weight:800;color:${scoreColor};line-height:1;">${score}<span style="font-size:14px;color:var(--gray);font-weight:600;">점</span></div>
           </div>
           <div>
-            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">3회 평균</div>
-            <div style="font-size:28px;font-weight:800;color:var(--text);line-height:1;">${avg}</div>
+            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">통과점수</div>
+            <div style="font-size:32px;font-weight:800;color:var(--text);line-height:1;">${passScore}<span style="font-size:14px;color:var(--gray);font-weight:600;">점</span></div>
           </div>
         </div>
+        ${note ? `<div style="margin-top:12px;padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--text);line-height:1.5;">${esc(note)}</div>` : ''}
       </div>
 
       <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">📊 회차별 점수</div>
-        ${checkResults.map((r, i) => {
-          const isLast = i === _RV2_ROUNDS - 1;
-          const pass = r.score >= threshold;
-          return `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;${i < _RV2_ROUNDS - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span style="width:22px;height:22px;border-radius:50%;background:${pass ? '#d1fae5' : '#fef3c7'};color:${pass ? '#059669' : '#CA8A04'};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${r.round}</span>
-                <span style="font-size:13px;${isLast ? 'font-weight:700;color:var(--text);' : 'color:var(--gray);'}">${isLast ? '마지막 녹음 (피드백 대상)' : r.round + '회차'}</span>
-              </div>
-              <span style="font-size:15px;font-weight:700;color:${pass ? '#059669' : '#CA8A04'};">${r.score}점</span>
-            </div>
-            ${r.error ? `
-              <div style="padding:6px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;font-size:11px;color:#DC2626;margin-top:2px;margin-bottom:6px;word-break:break-word;">
-                ⚠️ ${esc(r.note || '평가 실패')}
-              </div>` : (r.missedWords?.length > 0 && isLast ? `
-              <div style="padding:6px 12px;background:#fef2f2;border-radius:4px;font-size:11px;color:#DC2626;margin-top:4px;">
-                놓친 단어: ${r.missedWords.map(w => `<strong>${esc(w)}</strong>`).join(', ')}
-              </div>` : '')}
-          `;
-        }).join('')}
+        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 마지막 녹음 다시 듣기</div>
+        <audio src="${esc(audioUrl)}" controls preload="none" style="width:100%;height:36px;"></audio>
       </div>
 
-      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:10px;">🎧 내 녹음 다시 듣기</div>
-        ${checkResults.map((r, i) => {
-          const isLast = i === _RV2_ROUNDS - 1;
-          const audioUrl = _rv2ResultAudioUrls[i] || '';
-          return `
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${i < _RV2_ROUNDS - 1 ? '8px' : '0'};">
-              <span style="width:22px;height:22px;border-radius:50%;background:${isLast ? '#8B5CF6' : '#E5E7EB'};color:${isLast ? 'white' : '#6B7280'};display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${r.round}</span>
-              <audio src="${esc(audioUrl)}" controls preload="none" style="flex:1;height:32px;"></audio>
-              <span style="font-size:11px;color:var(--gray);min-width:36px;text-align:right;">${r.score}점</span>
-            </div>
-          `;
-        }).join('')}
-        <div style="font-size:10px;color:var(--gray);margin-top:8px;text-align:center;">3회차(보라)가 피드백 대상 녹음이에요</div>
-      </div>
-
-      ${passed && feedback ? `
+      ${(missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
         <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백 (3회차 기준)</div>
-          ${feedback.missedWords?.length ? `
+          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백</div>
+          ${(feedback?.missedWords?.length || missedWords?.length) ? `
             <div style="margin-bottom:12px;">
               <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어</div>
               <div style="font-size:12px;">
-                ${feedback.missedWords.map(w => `<span style="background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;">${esc(w)}</span>`).join('')}
+                ${(feedback?.missedWords?.length ? feedback.missedWords : missedWords).map(w => `<span style="background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;">${esc(w)}</span>`).join('')}
               </div>
             </div>` : ''}
-          ${feedback.weakPronunciation?.length ? `
+          ${feedback?.weakPronunciation?.length ? `
             <div style="margin-bottom:12px;">
               <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">🔊 발음 개선</div>
               ${feedback.weakPronunciation.map(p => `
@@ -2728,7 +2814,7 @@ function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrl
                   <strong>${esc(p.word)}</strong> → ${esc(p.issue)}
                 </div>`).join('')}
             </div>` : ''}
-          ${feedback.tips?.length ? `
+          ${feedback?.tips?.length ? `
             <div>
               <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">💡 개선 팁</div>
               ${feedback.tips.map(t => `<div style="font-size:12px;color:var(--text);padding:5px 0;line-height:1.5;">• ${esc(t)}</div>`).join('')}
@@ -2737,11 +2823,29 @@ function _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrl
       ` : ''}
 
       <div style="display:flex;gap:10px;margin-top:16px;">
-        <button onclick="goHome()" style="flex:1;padding:14px;background:#8B5CF6;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">홈으로</button>
+        ${!passed ? `<button onclick="rv2RetryLastRound()" style="flex:1;padding:14px;background:#E8714A;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🎙 마지막 녹음 다시</button>` : ''}
+        <button onclick="goHome()" style="flex:1;padding:14px;background:${passed ? '#8B5CF6' : '#f5f5f5'};border:none;border-radius:12px;font-size:14px;font-weight:700;color:${passed ? 'white' : 'var(--text)'};cursor:pointer;">홈으로</button>
       </div>
     </div>
   `;
 }
+
+// 미통과 시 마지막 라운드만 다시 녹음
+//   - savedRounds 의 마지막 (옛) 녹음 제거 → 마지막 카드가 다시 "녹음 가능" 상태
+//   - 정상 흐름으로 녹음 → pre-check → push → 다시 _rv2Submit 호출됨
+window.rv2RetryLastRound = () => {
+  const lastIdx = _rv2.totalRounds - 1;
+  const old = _rv2.savedRounds[lastIdx];
+  if (old?.url) URL.revokeObjectURL(old.url);
+  _rv2.savedRounds.length = lastIdx;  // 마지막 라운드만 비우기
+  _rv2.alertMessage = null;
+  _rv2.currentTake = null;
+  _rv2.currentRound = lastIdx;
+  _rv2.retryMode = false;
+  _rv2._submitting = false;
+  _rv2._submitted = false;
+  _rv2Render();
+};
 
 
 // ── 랭킹 ─────────────────────────────────────────────────

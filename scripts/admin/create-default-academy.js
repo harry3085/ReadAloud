@@ -35,7 +35,7 @@ async function main() {
     settings: {
       recordingIntegrity: {
         minVoiceActivity: 0.4,
-        minDurationSec: 10,
+        minDurationSec: 60,
         maxDurationSec: 600,
       },
     },
