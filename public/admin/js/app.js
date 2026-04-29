@@ -2675,8 +2675,9 @@ function _genApplySortSearch(kind, arr, nameKey = 'name') {
   }
   // 정렬
   if (_genSort[kind] === 'name') {
+    // numeric:true → "Page 2" < "Page 10" 자연 정렬
     result = [...result].sort((a,b) =>
-      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko'));
+      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko', { numeric: true }));
   } else {
     result = _genRecentSort(result);
   }
@@ -4412,8 +4413,9 @@ function _qgApplySortSearch(kind, arr, nameKey = 'name') {
     result = result.filter(x => String(x[nameKey] || x.title || '').toLowerCase().includes(term));
   }
   if (_qgSort[kind] === 'name') {
+    // numeric:true → "Page 2" < "Page 10" 자연 정렬
     result = [...result].sort((a,b) =>
-      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko'));
+      String(a[nameKey] || a.title || '').localeCompare(String(b[nameKey] || b.title || ''), 'ko', { numeric: true }));
   } else {
     result = _genRecentSort(result);
   }
