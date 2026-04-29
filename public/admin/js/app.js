@@ -1142,8 +1142,30 @@ async function loadMessages(){
   const el=document.getElementById('savedMsgList');
   try{
     const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송된 알림이 없습니다</div>';return;}
-    el.innerHTML=snap.docs.map(d=>{
+    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">메시지가 없습니다</div>';return;}
+
+    const drafts=[], sent=[];
+    snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
+
+    const renderDraft=d=>{
+      const n=d.data();
+      const isStudent=n.target?.startsWith('uid:');
+      const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
+      return `<div style="border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;"
+        onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
+        onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
+          </div>
+          <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
+        </div>
+      </div>`;
+    };
+
+    const renderSent=d=>{
       const n=d.data();
       const isStudent=n.target?.startsWith('uid:');
       const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
@@ -1157,14 +1179,31 @@ async function loadMessages(){
             <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
           </div>
           <div style="display:flex;gap:2px;flex-shrink:0;">
-            <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움 (대상은 다시 선택)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
+            <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
             <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
           </div>
         </div>
       </div>`;
-    }).join('');
+    };
+
+    const sectionHeader=(label, count)=>`<div style="font-size:11px;font-weight:700;color:var(--gray);margin:6px 2px 6px;letter-spacing:.5px;">${label} (${count})</div>`;
+
+    let html='';
+    if(drafts.length) html += sectionHeader('💾 저장된 초안', drafts.length) + drafts.map(renderDraft).join('');
+    if(sent.length)   html += sectionHeader('📤 발송 이력', sent.length) + sent.map(renderSent).join('');
+    el.innerHTML = html;
   }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
 }
+
+// 초안 삭제 — userNotifications cascade 불필요 (안 보냈으니 자녀 doc 없음)
+window.delDraftMsg = async(id) => {
+  if(!(await showConfirm('초안 삭제할까요?'))) return;
+  try{
+    await deleteDoc(doc(db,'pushNotifications',id));
+    showToast('삭제됐어요.');
+    await loadMessages();
+  }catch(e){ showToast('삭제 실패: '+e.message); }
+};
 
 window.showMsgReadStatus = async(pushId, title) => {
   const titleEl = document.getElementById('msgReadTitle');
