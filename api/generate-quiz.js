@@ -690,8 +690,7 @@ function buildUserPrompt(pages, count, type, opts) {
 - Pick sentences directly from the given passages (do NOT modify them).
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
-- Prefer 6-20 word sentences with varied pronunciation practice value.
-- Target student grade level: ${opts?.difficulty || '중1'} — prefer sentences whose phonetic difficulty matches this Korean grade.`,
+- Prefer 6-20 word sentences with varied pronunciation practice value.`,
     vocab: `Please generate ${count} vocabulary questions.
 - Pick important content words from the passages.
 - Each word appears only ONCE in the set.

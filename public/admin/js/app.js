@@ -5059,7 +5059,6 @@ async function _qgCallRecording(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'recording',
-        difficulty: opts.difficulty,
         customSystemPrompt: _qgGetCustomPrompt('recording') || undefined,
       }),
     });
