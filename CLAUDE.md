@@ -879,5 +879,9 @@ admin/app.js 제거된 함수들 (216줄 ↓):
 1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제 연동 (Toss / Stripe)
 2. **글로벌 설정 Firestore 이전** (`project_global_config_refactor.md`) — appConfig/* + super_admin UI. 인쇄 옵션은 제외 (localStorage 유지)
 3. **학원장 대시보드 달력** (`project_dashboard_calendar.md`) — 큰 달력 + 학생 생일·결제·시험 이벤트
-4. **레거시 정리 Phase 6F** — `firestore.rules` 의 `books`/`folders`/`units` 규칙 제거
+4. **학원 설정 페이지 (화이트라벨)** (`project_academy_settings_page.md`) — 로고/홍보문구 + 학원장 정보 수정. 출시 후 또는 polish 와 묶음
 5. **v1.0 Polish 사이클** (`project_v1_polish_cycle.md`) — 출시 직전. Lucide 아이콘 통일·디자인 토큰화·컴포넌트 통합·로직 수렴
+
+**완료 (이 세션 기준)**:
+- ✅ 레거시 Phase 6F 정리 — `books`/`folders`/`units` 규칙·코드 모두 제거됨 (commit 6102675 외)
+- ✅ OS 알림 끄기 매뉴얼 — `docs/notif-disable-guide.md` 작성
