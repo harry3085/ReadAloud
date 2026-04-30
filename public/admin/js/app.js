@@ -3448,6 +3448,18 @@ async function _getEffectiveCleanupDefaults() {
   return _CLEANUP_DEFAULT_PRESETS;
 }
 
+// 글로벌 default 를 이름으로 검색할 수 있는 Map 형태로 캐시.
+// 매니저 모달 열 때 강제 새로고침해서 super_admin 갱신을 즉시 반영.
+let _cleanupGlobalDefaultsByName = null;
+async function _cleanupGetGlobalDefaultsByName(forceRefresh = false) {
+  if (forceRefresh || !_cleanupGlobalDefaultsByName) {
+    const arr = await _getEffectiveCleanupDefaults();
+    _cleanupGlobalDefaultsByName = {};
+    arr.forEach(p => { if (p?.name) _cleanupGlobalDefaultsByName[p.name] = p; });
+  }
+  return _cleanupGlobalDefaultsByName;
+}
+
 async function _cleanupSeedDefaults() {
   const uid = auth.currentUser?.uid || '';
   const defaults = await _getEffectiveCleanupDefaults();
@@ -3879,34 +3891,58 @@ function _cleanupPickPresetModal() {
 }
 
 // ─── 프리셋 관리 모달 (CRUD) ───
-window.cleanupOpenPresetManager = () => {
-  _cleanupRenderPresetManager();
+window.cleanupOpenPresetManager = async () => {
+  await _cleanupRenderPresetManager();
 };
 
-function _cleanupRenderPresetManager() {
+async function _cleanupRenderPresetManager() {
+  // super_admin 갱신을 즉시 반영하기 위해 매니저 열 때마다 글로벌 default fresh fetch
+  const globals = await _cleanupGetGlobalDefaultsByName(true);
+
   const rows = _cleanupPresets.length === 0
-    ? '<tr><td colspan="4" style="padding:30px;text-align:center;color:#bbb;font-size:12px;">프리셋이 없습니다. 아래 "기본값 복원" 또는 "+ 새 프리셋"을 사용하세요.</td></tr>'
-    : _cleanupPresets.map(p => `
-      <tr style="border-bottom:1px solid var(--border);">
-        <td class="td-main" style="padding:8px 10px;">${esc(p.name)}${p.isDefault?' <span style="font-size:10px;color:var(--gray);">(기본)</span>':''}</td>
-        <td class="td-sub" style="padding:8px 10px;">${esc(p.description||'')}</td>
-        <td class="td-center" style="padding:8px 10px;">${p.order||0}</td>
-        <td style="padding:6px 10px;white-space:nowrap;">
-          <button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">✏️ 편집</button>
-          <button class="action-btn" onclick="cleanupDuplicatePreset('${esc(p.id)}')">⎘ 복제</button>
-          <button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑 삭제</button>
-        </td>
-      </tr>`).join('');
+    ? '<tr><td colspan="4" style="padding:30px;text-align:center;color:#bbb;font-size:12px;">프리셋이 없습니다. 아래 "+ 새 프리셋" 또는 "+ 누락된 기본값 추가"를 사용하세요.</td></tr>'
+    : _cleanupPresets.map(p => {
+        const g = globals[p.name];
+        const isDefaultNamed = !!g;
+        const isDirty = isDefaultNamed && (
+          (g.prompt || '') !== (p.prompt || '') ||
+          (g.description || '') !== (p.description || '')
+        );
+        const nameSuffix = isDefaultNamed
+          ? ` <span style="font-size:10px;color:var(--gray);">(기본)</span>${isDirty?' <span style="color:#c47;font-weight:700;" title="기본값과 다름">●</span>':''}`
+          : '';
+        const actions = [
+          `<button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">✏️ 편집</button>`,
+          isDefaultNamed
+            ? `<button class="action-btn" onclick="cleanupResetPreset('${esc(p.id)}')" ${isDirty?'':'disabled style="opacity:.4;"'}>↺ 기본값</button>`
+            : '',
+          `<button class="action-btn" onclick="cleanupDuplicatePreset('${esc(p.id)}')">⎘ 복제</button>`,
+          isDefaultNamed
+            ? '' // 기본 프리셋은 삭제 불가 (이름 매칭 기준)
+            : `<button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑 삭제</button>`,
+        ].filter(Boolean).join(' ');
+        return `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="td-main" style="padding:8px 10px;">${esc(p.name)}${nameSuffix}</td>
+            <td class="td-sub" style="padding:8px 10px;">${esc(p.description||'')}</td>
+            <td class="td-center" style="padding:8px 10px;">${p.order||0}</td>
+            <td style="padding:6px 10px;white-space:nowrap;">${actions}</td>
+          </tr>`;
+      }).join('');
+
+  // 누락된 기본값 개수 — 상단 버튼 활성/비활성 표시
+  const existingNames = new Set(_cleanupPresets.map(p => p.name));
+  const missingCount = Object.keys(globals).filter(n => !existingNames.has(n)).length;
 
   const html = `
   <div style="width:min(860px,95vw);max-height:88vh;display:flex;flex-direction:column;">
     <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
       <div style="min-width:0;flex:1;">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">⚙ AI 정리 프리셋 관리</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_cleanupPresets.length}개 프리셋</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_cleanupPresets.length}개 프리셋 · 기본 ${Object.keys(globals).length}종</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button class="btn btn-secondary" onclick="cleanupRestoreDefaults()">↻ 기본값 복원</button>
+        <button class="btn btn-secondary" onclick="cleanupRestoreDefaults()" ${missingCount===0?'disabled style="opacity:.5;"':''}>+ 누락된 기본값 추가${missingCount>0?` (${missingCount})`:''}</button>
         <button class="btn btn-primary" onclick="cleanupEditPreset('')">+ 새 프리셋</button>
       </div>
     </div>
@@ -3994,7 +4030,7 @@ window.cleanupSavePreset = async (id) => {
     }
     showToast(id ? '수정 완료' : '추가 완료');
     await _cleanupLoadPresets();
-    _cleanupRenderPresetManager();
+    await _cleanupRenderPresetManager();
   } catch (e) {
     showToast('저장 실패: ' + e.message);
   }
@@ -4017,7 +4053,7 @@ window.cleanupDuplicatePreset = async (id) => {
     });
     showToast('복제 완료');
     await _cleanupLoadPresets();
-    _cleanupRenderPresetManager();
+    await _cleanupRenderPresetManager();
   } catch (e) {
     showToast('복제 실패: ' + e.message);
   }
@@ -4026,6 +4062,11 @@ window.cleanupDuplicatePreset = async (id) => {
 window.cleanupDeletePreset = async (id) => {
   const p = _cleanupPresets.find(x => x.id === id);
   if (!p) return;
+  const globals = await _cleanupGetGlobalDefaultsByName();
+  if (globals[p.name]) {
+    showAlert('삭제 불가', '기본 프리셋은 삭제할 수 없습니다. 편집해서 사용하시거나 [↺ 기본값] 으로 글로벌 default 와 동기화하세요.');
+    return;
+  }
   const ok = await showConfirm(`"${p.name}" 프리셋을 삭제하시겠습니까?`, '삭제된 프리셋은 복구할 수 없습니다.');
   if (!ok) return;
   try {
@@ -4034,9 +4075,42 @@ window.cleanupDeletePreset = async (id) => {
     // 활성 프리셋이 삭제되면 에디터 선택 해제
     if (_cleanupActivePresetId === id) _cleanupActivePresetId = '';
     await _cleanupLoadPresets();
-    _cleanupRenderPresetManager();
+    await _cleanupRenderPresetManager();
   } catch (e) {
     showToast('삭제 실패: ' + e.message);
+  }
+};
+
+// 단일 프리셋을 글로벌 default 와 동기화 — prompt/description 만 덮어씀
+// (order/isDefault 등 메타는 유지)
+window.cleanupResetPreset = async (id) => {
+  const p = _cleanupPresets.find(x => x.id === id);
+  if (!p) return;
+  const globals = await _cleanupGetGlobalDefaultsByName(true);
+  const def = globals[p.name];
+  if (!def) {
+    showAlert('입력 확인', '글로벌 default 에 같은 이름의 기본 프리셋이 없습니다.');
+    return;
+  }
+  const samePrompt = (def.prompt || '') === (p.prompt || '');
+  const sameDesc = (def.description || '') === (p.description || '');
+  if (samePrompt && sameDesc) {
+    showAlert('입력 확인', '이미 기본값과 동일합니다.');
+    return;
+  }
+  const ok = await showConfirm('기본값으로 복원?', `"${p.name}" 의 prompt 와 설명이 글로벌 default 로 덮어써집니다.\n학원 커스텀이 사라집니다.`);
+  if (!ok) return;
+  try {
+    await updateDoc(doc(db, 'genCleanupPresets', id), {
+      prompt: def.prompt || '',
+      description: def.description || '',
+      updatedAt: serverTimestamp(),
+    });
+    showToast(`✓ ${p.name} 기본값 복원됨`);
+    await _cleanupLoadPresets();
+    await _cleanupRenderPresetManager();
+  } catch (e) {
+    showToast('복원 실패: ' + e.message);
   }
 };
 
@@ -4062,7 +4136,7 @@ window.cleanupRestoreDefaults = async () => {
     ));
     showToast(`${missing.length}개 복원됨`);
     await _cleanupLoadPresets();
-    _cleanupRenderPresetManager();
+    await _cleanupRenderPresetManager();
   } catch (e) {
     showToast('복원 실패: ' + e.message);
   }
