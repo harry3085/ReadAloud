@@ -9,12 +9,15 @@
 
 const { getDb } = require('../lib/firebase-admin');
 
+// KST(UTC+9) 기준 표시
 function fmtDate(t) {
   if (!t) return '-';
-  if (typeof t.toDate === 'function') return t.toDate().toISOString().slice(0, 10);
-  if (t._seconds !== undefined) return new Date(t._seconds * 1000).toISOString().slice(0, 10);
-  if (typeof t === 'string') return t.slice(0, 10);
-  return String(t);
+  let d;
+  if (typeof t.toDate === 'function') d = t.toDate();
+  else if (t._seconds !== undefined) d = new Date(t._seconds * 1000);
+  else if (typeof t === 'string') return t.slice(0, 10);
+  else return String(t);
+  return new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 10);
 }
 
 function dDay(t) {
@@ -89,7 +92,8 @@ async function main() {
   console.log(`  status=approved: ${counts.approved}`);
   console.log(`  status=rejected: ${counts.rejected}`);
   console.log(`  status=refunded: ${counts.refunded}`);
-  console.log(`  💰 이번 달(${monthStart.toISOString().slice(0,7)}) approved 매출 합계: ${monthlyRevenue.toLocaleString('ko-KR')}원`);
+  const ymKST = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  console.log(`  💰 이번 달(${ymKST}) approved 매출 합계: ${monthlyRevenue.toLocaleString('ko-KR')}원`);
   console.log();
 
   // 3) approved 항목 시간순 확인 (매출 카드 갱신 패턴 디버그용)

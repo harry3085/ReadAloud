@@ -353,7 +353,7 @@ async function loadDashStats(){
     const paySnap = await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),where('status','==','unpaid')));
     document.getElementById('statUnpaid').textContent = paySnap.size;
 
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
     const testSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
     document.getElementById('statTests').textContent = testSnap.size;
   } catch(e){ console.log(e); }
@@ -663,11 +663,11 @@ window.bulkAction = async(action) => {
   if (!checked.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(action==='pause'){
     if(!await showConfirm(`선택한 ${checked.length}명을 휴원처리 할까요?`))return;
-    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:new Date().toISOString().slice(0,10)});
+    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:_ymdKST()});
     showToast('휴원처리 완료!'); await loadStudents('active');
   } else if(action==='out'){
     if(!await showConfirm(`선택한 ${checked.length}명을 퇴원처리 할까요?`))return;
-    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
+    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
     showToast('퇴원처리 완료!'); await loadStudents('active');
   } else if(action==='assign'){
     const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
@@ -696,7 +696,7 @@ window.doAssignClass = async(ids) => {
 };
 window.restoreStudent = async(id) => {
   if(!await showConfirm('재원처리 할까요?'))return;
-  await updateDoc(doc(db,'users',id),{status:'active',statusDate:new Date().toISOString().slice(0,10)});
+  await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
   showToast('재원처리 완료!');
   if(currentPage==='student-pause') await loadStudents('pause');
   else await loadStudents('out');
@@ -815,7 +815,7 @@ window.saveNotice = async() => {
   const content=document.getElementById('noticeContent').value.trim();
   const target=document.getElementById('noticeTarget').value;
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await addDoc(collection(db,'notices'),{title,content,target,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  await addDoc(collection(db,'notices'),{title,content,target,date:_ymdKST(),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   closeModal(); showToast('공지가 등록됐어요!'); await loadNotices();
 };
 window.deleteNotice = async(id) => {
@@ -998,7 +998,7 @@ window.uploadHwFileAdmin = async() => {
       );
     });
     const url = await getDownloadURL(storageRef);
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
 
     await addDoc(collection(db,'hwFiles'),{
       name, url, group,
@@ -1144,7 +1144,7 @@ window.saveMessage = async() => {
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:new Date().toISOString().slice(0,10),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:_ymdKST(),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   showToast('💾 저장됐어요!'); await loadMessages();
 };
 async function loadMessages(){
@@ -1302,10 +1302,10 @@ window.delMsg = async(id) => {
 
 // ── 성적 관리 ────────────────────────────────────────
 async function initScoreReport(){
-  const today=new Date();
-  const from=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
-  document.getElementById('scoreFrom').value=from;
-  document.getElementById('scoreTo').value=today.toISOString().slice(0,10);
+  const todayStr = _ymdKST();
+  const from = todayStr.slice(0,7) + '-01';
+  document.getElementById('scoreFrom').value = from;
+  document.getElementById('scoreTo').value = todayStr;
 
   // 반 목록 채우기 (users에서 실제 그룹값 추출)
   const sel = document.getElementById('scoreClassFilter');
@@ -1891,14 +1891,14 @@ window.restoreSelectedStudent = async(status) => {
   const ids = getCheckedIds(tbodyId);
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 재원처리 할까요?`))return;
-  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:new Date().toISOString().slice(0,10)});
+  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
   showToast('재원처리 완료!'); await loadStudents(status);
 };
 window.outSelectedStudent = async() => {
   const ids = getCheckedIds('pauseTableBody');
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
-  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:new Date().toISOString().slice(0,10)});
+  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
   showToast('퇴원처리 완료!'); await loadStudents('pause');
 };
 // (구버전 deleteSelectedOutStudent 제거 — 위쪽 line 1702 의 Auth+Firestore+lookup 통합 삭제 사용)
@@ -2349,7 +2349,7 @@ window.exportStudentExcel = async(status='active') => {
     // 컬럼 너비 설정
     ws['!cols'] = headers.map(()=>({wch:14}));
     XLSX.utils.book_append_sheet(wb, ws, statusLabel[status]);
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
     XLSX.writeFile(wb, `큰소리영어_${statusLabel[status]}_${today}.xlsx`);
     showToast(`✅ ${statusLabel[status]} ${students.length}명 엑셀 다운로드 완료!`);
   }catch(e){ showToast('내보내기 실패: '+e.message); }
@@ -6909,7 +6909,7 @@ function _mcqRender() {
             style="width:100%;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
 
           <label style="font-size:12px;font-weight:600;color:var(--text);">출제일</label>
-          <input type="date" id="mcqDate" value="${new Date().toISOString().slice(0,10)}"
+          <input type="date" id="mcqDate" value="${_ymdKST()}"
             style="width:100%;padding:8px 10px;margin:4px 0 0;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         </div>
 
@@ -7045,7 +7045,7 @@ window.mcqPublish = async () => {
   try {
     const name = document.getElementById('mcqName')?.value.trim();
     const passScore = parseInt(document.getElementById('mcqPassScore')?.value) || 80;
-    const date = document.getElementById('mcqDate')?.value || new Date().toISOString().slice(0,10);
+    const date = document.getElementById('mcqDate')?.value || _ymdKST();
 
     if (_mcqSelectedSets.size === 0) {
       console.warn('[mcqPublish] 중단: 선택된 세트 없음');
@@ -7722,7 +7722,7 @@ window.tpOpenPublishModal = async () => {
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
-              <input type="date" id="tpDate" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+              <input type="date" id="tpDate" value="${_ymdKST()}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
             </div>
           </div>
         </div>
@@ -7897,7 +7897,7 @@ window.tpPublish = async () => {
 
   const name = document.getElementById('tpName')?.value.trim();
   const passScore = parseInt(document.getElementById('tpPassScore')?.value) || 80;
-  const date = document.getElementById('tpDate')?.value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById('tpDate')?.value || _ymdKST();
   const targets = window._tpModalTargets || [];
 
   if (!name) { showAlert('입력 확인', '시험명을 입력하세요'); document.getElementById('tpName')?.focus(); return; }
@@ -8067,7 +8067,7 @@ window.tpOpenPrintModal = () => {
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
-            <input type="date" id="tpPrintDate" value="${new Date().toISOString().slice(0,10)}"
+            <input type="date" id="tpPrintDate" value="${_ymdKST()}"
               onchange="tpPrintRefreshPreview()"
               style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
           </div>

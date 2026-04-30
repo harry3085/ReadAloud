@@ -163,7 +163,7 @@ module.exports = async (req, res) => {
           activeStudentsCount: 0,
           aiCallsThisMonth: 0,
           recordingCallsThisMonth: 0,
-          lastResetAt: new Date().toISOString().slice(0, 7),
+          lastResetAt: new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
         },
         // SuperAdmin Phase A (T1) 신규 필드
         acquisitionChannel,

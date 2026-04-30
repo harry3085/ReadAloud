@@ -94,7 +94,7 @@ module.exports = async (req, res) => {
     await pushRef.set({
       title, body, target,
       sent: true,
-      date: new Date().toISOString().slice(0,10),
+      date: new Date(Date.now() + 9*3600*1000).toISOString().slice(0,10),
       createdAt: FieldValue.serverTimestamp(),
       academyId: callerAcademyId,
     });

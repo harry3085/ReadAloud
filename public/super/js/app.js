@@ -113,12 +113,12 @@ function _toDateOrNull(t) {
 }
 function _fmtDate(t) {
   const d = _toDateOrNull(t);
-  return d ? d.toISOString().slice(0, 10) : '-';
+  return d ? new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 10) : '-';
 }
 function _fmtDateTime(t) {
   const d = _toDateOrNull(t);
   if (!d) return '-';
-  return d.toISOString().slice(0, 16).replace('T', ' ');
+  return new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 16).replace('T', ' ');
 }
 function _expiryClass(t) {
   const d = _toDateOrNull(t);
@@ -241,7 +241,7 @@ window.runUserSearch = async () => {
       else if (t._seconds !== undefined) d = new Date(t._seconds * 1000);
       else if (typeof t === 'string') d = new Date(t);
       else return '-';
-      return isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 10);
+      return isNaN(d.getTime()) ? '-' : new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 10);
     };
     tbody.innerHTML = filtered.slice(0, 200).map(u => {
       const acaName = u.academyName || '-';
@@ -893,7 +893,7 @@ function _renderAcmBasic(a, adminUser) {
   ).join('');
   const expiresVal = (() => {
     const d = _toDateOrNull(a.planExpiresAt);
-    return d ? d.toISOString().slice(0, 10) : '';
+    return d ? _ymdKST(d) : '';
   })();
   const gp = a.grandfatheredPrice && typeof a.grandfatheredPrice === 'object' ? a.grandfatheredPrice : {};
 
@@ -1230,7 +1230,7 @@ window.saveAcademy = async (academyId) => {
 
   const newExpiresStr = document.getElementById('acExpires')?.value || '';
   const oldExpires = _toDateOrNull(a.planExpiresAt);
-  const oldExpStr = oldExpires ? oldExpires.toISOString().slice(0, 10) : '';
+  const oldExpStr = oldExpires ? _ymdKST(oldExpires) : '';
   if (newExpiresStr !== oldExpStr) {
     acFields.planExpiresAt = newExpiresStr ? new Date(newExpiresStr + 'T00:00:00Z') : null;
   }
@@ -1873,7 +1873,7 @@ window.openSubscriptionCreateModal = (presetAcademyId) => {
   ).join('');
   const planOpts = PLAN_OPTIONS.map(p => `<option value="${p}">${p}</option>`).join('');
   const tierOpts = STUDENT_TIERS.map(t => `<option value="${t}">${t}명</option>`).join('');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _ymdKST();
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
   box.innerHTML = `
@@ -1996,7 +1996,7 @@ window._subRecalcEnd = () => {
   if (!startStr || !endEl) return;
   const start = new Date(startStr + 'T00:00:00Z');
   const end = _calcPeriodEnd(start, cycle);
-  endEl.value = end.toISOString().slice(0, 10);
+  endEl.value = _ymdKST(end);
 };
 
 window.submitSubscription = async () => {
@@ -2199,7 +2199,7 @@ window.exportBillingCsv = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `subscriptions-${_ymdKST()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

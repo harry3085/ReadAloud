@@ -14,15 +14,17 @@
 
 const { getDb } = require('../lib/firebase-admin');
 
-function ymNow() { return new Date().toISOString().slice(0, 7); }
-function isoDay(d) { return d.toISOString().slice(0, 10); }
+// KST(UTC+9) 기준 — apiUsage doc ID 와 동일
+function ymNow() { return new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7); }
+function isoDay(d) { return new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 10); }
 
 async function _sumApiUsageThisMonth(db, academyId) {
   const ym = ymNow();
-  const today = new Date();
+  const todayKST = new Date(Date.now() + 9*3600*1000);
+  const lastDay = todayKST.getUTCDate(); // KST 일자 (ms+9h 후 UTC 일자가 곧 KST 일자)
   // 이번 달 1일부터 오늘까지 매일 doc 시도
   let ai = 0, rec = 0;
-  for (let d = 1; d <= today.getDate(); d++) {
+  for (let d = 1; d <= lastDay; d++) {
     const day = `${ym}-${String(d).padStart(2, '0')}`;
     const snap = await db.doc(`apiUsage/${academyId}_${day}`).get();
     if (!snap.exists) continue;

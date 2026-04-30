@@ -389,7 +389,7 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
   const existingDoc = await getDoc(compRef);
   const existing = existingDoc.exists() ? existingDoc.data() : null;
   const prevBest = existing?.score ?? 0;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymdKST();
 
   const data = {
     uid: currentUser.uid,
@@ -781,7 +781,7 @@ async function _mcqSubmit(){
   const score = total ? Math.round((correct / total) * 100) : 0;
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymdKST();
 
   try{
     await addDoc(collection(db,'scores'), {
@@ -1408,7 +1408,7 @@ async function _fbSubmit(){
 
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymdKST();
 
   try{
     await addDoc(collection(db,'scores'), {
@@ -1908,7 +1908,7 @@ async function _raSubmit(){
       if(prog) prog.textContent = `${i+1} / ${s.questions.length}`;
     }
 
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
 
     await addDoc(collection(db,'scores'), {
       academyId: window.MY_ACADEMY_ID || 'default',
@@ -2611,7 +2611,7 @@ async function _rv2Submit() {
     console.log(`[rv2Submit] eval done: score=${score}`);
 
     const passed = score >= passScore;
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
 
     if (passed) {
       // 통과 → scores + userCompleted 저장
@@ -3602,7 +3602,7 @@ async function _vqSubmit() {
   const score = total ? Math.round((correct / total) * 100) : 0;
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymdKST();
 
   try {
     await addDoc(collection(db,'scores'), {
@@ -4021,7 +4021,7 @@ async function _uqSubmit() {
   const score = total ? Math.round((correct / total) * 100) : 0;
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymdKST();
 
   try {
     await addDoc(collection(db,'scores'), {
