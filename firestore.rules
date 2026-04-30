@@ -231,5 +231,14 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSuperAdmin();
     }
+
+    // 슈퍼 어드민 작업 감사 로그 (T2)
+    // read / create: super_admin 전용
+    // update / delete: 누구도 불가 — 불변 감사 로그
+    match /adminLogs/{logId} {
+      allow read: if isSuperAdmin();
+      allow create: if isSuperAdmin();
+      allow update, delete: if false;
+    }
   }
 }

@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -31,6 +31,25 @@ function showToast(msg) {
   t.textContent = msg;
   t.style.opacity = '1';
   setTimeout(() => t.style.opacity = '0', 2500);
+}
+
+// ── 작업 로그 기록 (T2) ──────────────────────────────
+// 슈퍼 어드민의 모든 쓰기 작업을 adminLogs 에 기록. 실패해도 메인 작업은 계속.
+// details 에는 비밀번호 등 민감 값을 절대 넣지 않는다 — changedFields 키 목록만.
+async function logAdminAction(action, targetType, targetId, details) {
+  try {
+    await addDoc(collection(db, 'adminLogs'), {
+      at: serverTimestamp(),
+      actor: auth.currentUser?.uid || 'unknown',
+      actorEmail: auth.currentUser?.email || 'unknown',
+      action: String(action),
+      targetType: String(targetType),
+      targetId: String(targetId || ''),
+      details: details || {},
+    });
+  } catch (e) {
+    console.error('[adminLog]', action, e);
+  }
 }
 
 window.doLogout = async () => {
@@ -225,6 +244,7 @@ window.saveUserEdit = async () => {
     });
     const j = await r.json();
     if (!j.success) { showToast('저장 실패: ' + j.error); return; }
+    await logAdminAction('update_user', 'user', uid, { changedFields: Object.keys(fields) });
     closeModal();
     _allUsersCache = null; // 캐시 무효화
     showToast('✅ 저장됨');
@@ -470,8 +490,9 @@ window.executeAcademyDelete = async (academyId, subdomain) => {
       if (inp) inp.disabled = false;
       return;
     }
-    closeModal();
     const totalDeleted = Object.values(j.deleted).filter(v => typeof v === 'number').reduce((s,v) => s + v, 0);
+    await logAdminAction('delete_academy', 'academy', academyId, { subdomain, totalDeleted, deletedBreakdown: j.deleted });
+    closeModal();
     showToast(`✅ 학원 영구 삭제 완료 (${totalDeleted} docs)`);
     // 캐시 무효화 + 새로고침
     _academiesCache = [];
@@ -630,6 +651,7 @@ window.submitNewAcademy = async () => {
     });
     const j = await r.json();
     if (!j.success) { showToast('등록 실패: ' + (j.error || j.detail || '')); return; }
+    await logAdminAction('create_academy', 'academy', subdomain, { name, planId, studentLimit, adminEmail });
     closeModal();
     showToast(`✅ ${name} 등록 완료 (username: ${j.adminUsername})`);
     await loadAcademies();
@@ -790,6 +812,7 @@ window.saveAcademy = async (academyId) => {
       });
       const j = await r.json();
       if (!j.success) { showToast('학원 변경 실패: ' + j.error); return; }
+      await logAdminAction('update_academy', 'academy', academyId, { changedFields: Object.keys(acFields) });
     }
     if (adminChanged && adminUid) {
       const r = await fetch('/api/superAdmin', {
@@ -798,6 +821,7 @@ window.saveAcademy = async (academyId) => {
       });
       const j = await r.json();
       if (!j.success) { showToast('학원장 변경 실패: ' + j.error); return; }
+      await logAdminAction('update_academy_admin', 'user', adminUid, { academyId, changedFields: Object.keys(adminFields) });
     }
     closeModal();
     showToast('✅ 저장됨');
@@ -986,6 +1010,7 @@ window.savePromptsConfig = async () => {
   try {
     if (status) status.textContent = '저장 중...';
     await setDoc(doc(db, 'appConfig', 'aiPrompts'), payload, { merge: true });
+    await logAdminAction('update_prompts_config', 'system', 'appConfig/aiPrompts', { types: Object.keys(payload).filter(k => !k.startsWith('_')) });
     _promptsDirty = false;
     document.getElementById('promptsSaveBtn').style.display = 'none';
     if (status) status.innerHTML = `<span style="color:#059669;">✓ 저장 완료 — 모든 학원에 즉시 반영</span>`;
@@ -1103,7 +1128,8 @@ window.savePresetModal = async (idx) => {
   if (!prompt || prompt.length < 10) { showToast('프롬프트는 최소 10자'); return; }
 
   const preset = { name, description, prompt, order, isDefault };
-  if (idx === -1) _presetsCache.push(preset);
+  const isAdd = idx === -1;
+  if (isAdd) _presetsCache.push(preset);
   else _presetsCache[idx] = preset;
 
   try {
@@ -1112,9 +1138,10 @@ window.savePresetModal = async (idx) => {
       _updatedAt: serverTimestamp(),
       _updatedBy: _currentUser?.uid || '',
     }, { merge: false });
+    await logAdminAction('update_presets_config', 'system', 'appConfig/cleanupPresets', { action: isAdd ? 'add' : 'edit', name, totalPresets: _presetsCache.length });
     closeModal();
     _renderPresetsList();
-    showToast(idx === -1 ? '추가됨' : '저장됨');
+    showToast(isAdd ? '추가됨' : '저장됨');
     document.getElementById('presetsStatus').textContent = `✓ ${_presetsCache.length}개 프리셋`;
   } catch (e) {
     console.error(e);
@@ -1125,6 +1152,7 @@ window.savePresetModal = async (idx) => {
 window.deletePresetConfig = async (i) => {
   const p = _presetsCache[i];
   if (!confirm(`"${p.name}" 프리셋을 삭제할까요?\n(이미 시드된 학원의 프리셋은 삭제 안 됨 — 글로벌 default 만 사라짐)`)) return;
+  const removedName = p?.name || '';
   _presetsCache.splice(i, 1);
   try {
     await setDoc(doc(db, 'appConfig', 'cleanupPresets'), {
@@ -1132,6 +1160,7 @@ window.deletePresetConfig = async (i) => {
       _updatedAt: serverTimestamp(),
       _updatedBy: _currentUser?.uid || '',
     }, { merge: false });
+    await logAdminAction('delete_preset_config', 'system', 'appConfig/cleanupPresets', { name: removedName, totalPresets: _presetsCache.length });
     _renderPresetsList();
     showToast('삭제됨');
     document.getElementById('presetsStatus').textContent = `✓ ${_presetsCache.length}개 프리셋`;
