@@ -31,7 +31,7 @@ async function main() {
     planId: 'pro',                // 기존 사용자는 모든 기능 유지
     billingStatus: 'active',
     studentLimit: 100,
-    grandfatheredPrice: null,
+    grandfatheredPrice: { enabled: false, monthlyPrice: 0, yearlyPrice: 0, grantedAt: null, note: '' },
     settings: {
       recordingIntegrity: {
         minVoiceActivity: 0.4,
@@ -54,6 +54,12 @@ async function main() {
       storageBytes: 0,
       lastResetAt: new Date().toISOString().slice(0, 7),
     },
+    // SuperAdmin Phase A (T1) 신규 필드
+    acquisitionChannel: '',
+    internalMemo: '',
+    featureFlags: { aiGrowthReport: false, recordingAiFeedback: false },
+    contactLog: [],
+    lastAdminLoginAt: null,
     createdAt: FieldValue.serverTimestamp(),
   };
 

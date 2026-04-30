@@ -25,7 +25,12 @@ const ACADEMY_COLLECTIONS = [
   'pushNotifications', 'userNotifications', 'genCleanupPresets', 'apiUsage',
 ];
 
-const UPDATE_ACADEMY_ALLOWED = new Set(['name', 'planId', 'studentLimit', 'billingStatus', 'grandfatheredPrice', 'customLimits']);
+const UPDATE_ACADEMY_ALLOWED = new Set([
+  'name', 'planId', 'studentLimit', 'billingStatus',
+  'grandfatheredPrice', 'customLimits',
+  // SuperAdmin Phase A (T1) 신규
+  'planExpiresAt', 'acquisitionChannel', 'internalMemo', 'featureFlags', 'contactLog',
+]);
 
 async function _verifySuperAdmin(auth, idToken) {
   if (!idToken) return { error: '토큰 필요', status: 401 };
@@ -50,7 +55,23 @@ async function _updateAcademy(db, body) {
     if (!UPDATE_ACADEMY_ALLOWED.has(k)) continue;
     let v = fields[k];
     if (k === 'studentLimit') v = parseInt(v) || 30;
-    if (k === 'grandfatheredPrice') v = (v === null || v === '') ? null : Number(v);
+    if (k === 'grandfatheredPrice') {
+      // 객체 형태로만 허용 — { enabled, monthlyPrice, yearlyPrice, grantedAt, note }
+      if (v && typeof v === 'object') {
+        const monthly = Number(v.monthlyPrice) > 0 ? Number(v.monthlyPrice) : 0;
+        const yearly  = Number(v.yearlyPrice)  > 0 ? Number(v.yearlyPrice)  : 0;
+        const enabled = !!v.enabled && (monthly > 0 || yearly > 0);
+        v = {
+          enabled,
+          monthlyPrice: monthly,
+          yearlyPrice: yearly,
+          grantedAt: enabled ? FieldValue.serverTimestamp() : null,
+          note: typeof v.note === 'string' ? v.note : '',
+        };
+      } else {
+        v = { enabled: false, monthlyPrice: 0, yearlyPrice: 0, grantedAt: null, note: '' };
+      }
+    }
     if (k === 'customLimits' && v && typeof v === 'object') {
       // 숫자만 받고 0/빈값은 필드 제거 (plan 기본 사용)
       const cl = {};
@@ -59,6 +80,18 @@ async function _updateAcademy(db, body) {
         if (!isNaN(cv) && cv > 0) cl[ck] = cv;
       }
       v = Object.keys(cl).length > 0 ? cl : null;  // null 이면 override 해제
+    }
+    if (k === 'featureFlags' && v && typeof v === 'object') {
+      // boolean 만 허용
+      const ff = {};
+      for (const fk of Object.keys(v)) ff[fk] = !!v[fk];
+      v = ff;
+    }
+    if (k === 'contactLog' && !Array.isArray(v)) {
+      continue;  // 배열 아니면 무시
+    }
+    if ((k === 'acquisitionChannel' || k === 'internalMemo') && typeof v !== 'string') {
+      v = String(v || '');
     }
     update[k] = v;
   }

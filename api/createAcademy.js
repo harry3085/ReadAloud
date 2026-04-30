@@ -12,7 +12,11 @@
 //     adminPassword: string,       // 학원장 임시 비밀번호 (8자 이상)
 //     planId?: string,             // 'lite' | 'standard' | 'pro' (기본: 'lite')
 //     studentLimit?: number,       // 30 / 60 / 100 (기본: 30)
-//     grandfatheredPrice?: number  // 얼리어답터 가격 보장 (선택)
+//     grandfatheredPrice?: {       // 얼리어답터 가격 보장 (선택)
+//       enabled?, monthlyPrice?, yearlyPrice?, note?
+//     }
+//     acquisitionChannel?: string, // 가입 경로 (선택)
+//     internalMemo?: string,       // 운영자 메모 (선택)
 //   }
 //
 // 응답:
@@ -65,7 +69,17 @@ module.exports = async (req, res) => {
     const adminPassword = String(body.adminPassword || '');
     const planId = String(body.planId || 'lite');
     const studentLimit = parseInt(body.studentLimit) || 30;
-    const grandfatheredPrice = body.grandfatheredPrice ? Number(body.grandfatheredPrice) : null;
+    const acquisitionChannel = String(body.acquisitionChannel || '');
+    const internalMemo = String(body.internalMemo || '');
+
+    // grandfatheredPrice — 객체로 받음. 누락 시 비활성 기본값.
+    const gpInput = body.grandfatheredPrice;
+    const monthlyPrice = gpInput && Number(gpInput.monthlyPrice) > 0 ? Number(gpInput.monthlyPrice) : 0;
+    const yearlyPrice  = gpInput && Number(gpInput.yearlyPrice)  > 0 ? Number(gpInput.yearlyPrice)  : 0;
+    const gpNote       = gpInput && typeof gpInput.note === 'string' ? gpInput.note : '';
+    const grandfatheredPrice = (monthlyPrice > 0 || yearlyPrice > 0)
+      ? { enabled: true, monthlyPrice, yearlyPrice, grantedAt: FieldValue.serverTimestamp(), note: gpNote }
+      : { enabled: false, monthlyPrice: 0, yearlyPrice: 0, grantedAt: null, note: '' };
 
     // 1. super_admin 인증 검증
     if (!idToken) return bad(res, 401, '인증 토큰이 필요합니다.');
@@ -153,6 +167,12 @@ module.exports = async (req, res) => {
           storageBytes: 0,
           lastResetAt: new Date().toISOString().slice(0, 7),
         },
+        // SuperAdmin Phase A (T1) 신규 필드
+        acquisitionChannel,
+        internalMemo,
+        featureFlags: { aiGrowthReport: false, recordingAiFeedback: false },
+        contactLog: [],
+        lastAdminLoginAt: null,
         createdBy: caller.uid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),

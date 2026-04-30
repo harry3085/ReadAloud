@@ -16,7 +16,11 @@
 //   --admin-email 학원장 이메일 (필수)
 //   --plan        free | lite | standard | pro (기본: lite)
 //   --limit       학생 수 한도 30/60/100 (기본: 30)
-//   --grandfathered <원>  (선택) 얼리어답터 가격 보장
+//   --grandfathered-monthly <원>  (선택) 얼리어답터 월 가격 보장
+//   --grandfathered-yearly  <원>  (선택) 얼리어답터 연 가격 보장
+//   --grandfathered-note   <text> (선택) 가격 보장 메모
+//   --acquisition <text>          (선택) 가입 경로 (예: 지인, 검색, 광고)
+//   --memo        <text>          (선택) 운영자 내부 메모
 //   --password <pw>       (선택) 학원장 임시 비밀번호. 미지정 시 자동 생성
 //   --apply       실제 실행 (없으면 DRY-RUN)
 //
@@ -57,7 +61,14 @@ async function main() {
   const adminEmail = (opts['admin-email'] || '').toLowerCase();
   const planId = opts.plan || 'lite';
   const studentLimit = parseInt(opts.limit) || 30;
-  const grandfatheredPrice = opts.grandfathered ? Number(opts.grandfathered) : null;
+  const monthlyPrice = opts['grandfathered-monthly'] ? Number(opts['grandfathered-monthly']) : 0;
+  const yearlyPrice = opts['grandfathered-yearly'] ? Number(opts['grandfathered-yearly']) : 0;
+  const grandfatheredNote = opts['grandfathered-note'] || '';
+  const grandfatheredPrice = (monthlyPrice > 0 || yearlyPrice > 0)
+    ? { enabled: true, monthlyPrice, yearlyPrice, grantedAt: new Date(), note: grandfatheredNote }
+    : { enabled: false, monthlyPrice: 0, yearlyPrice: 0, grantedAt: null, note: '' };
+  const acquisitionChannel = opts.acquisition || '';
+  const internalMemo = opts.memo || '';
   const password = opts.password || generateRandomPassword();
 
   // 검증
@@ -82,7 +93,11 @@ async function main() {
   console.log(`학원장 이메일: ${adminEmail}`);
   console.log(`plan:        ${planId}`);
   console.log(`학생 한도:    ${studentLimit}`);
-  if (grandfatheredPrice) console.log(`보장 가격:    ${grandfatheredPrice}`);
+  if (grandfatheredPrice.enabled) {
+    console.log(`보장 가격:    월 ${monthlyPrice}원 / 연 ${yearlyPrice}원${grandfatheredNote ? ` (${grandfatheredNote})` : ''}`);
+  }
+  if (acquisitionChannel) console.log(`가입 경로:    ${acquisitionChannel}`);
+  if (internalMemo)       console.log(`내부 메모:    ${internalMemo}`);
   console.log(`임시 비밀번호: ${password}\n`);
 
   // 사전 중복 체크
@@ -146,6 +161,12 @@ async function main() {
         storageBytes: 0,
         lastResetAt: new Date().toISOString().slice(0, 7),
       },
+      // SuperAdmin Phase A (T1) 신규 필드
+      acquisitionChannel,
+      internalMemo,
+      featureFlags: { aiGrowthReport: false, recordingAiFeedback: false },
+      contactLog: [],
+      lastAdminLoginAt: null,
       createdBy: 'cli',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

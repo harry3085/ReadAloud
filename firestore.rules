@@ -204,10 +204,15 @@ service cloud.firestore {
 
     // 학원 문서
     // read: 자기 학원만 (Phase 4-5 강화 — 자기 학원 정보만 노출)
-    // write: super_admin 전용
+    // create / delete: super_admin 전용
+    // update: super_admin 전용 + 학원장이 자기 학원의 lastAdminLoginAt 만 갱신 가능 (T1)
     match /academies/{academyId} {
       allow read: if isSuperAdmin() || (isSignedIn() && academyId == myAcademyId());
-      allow write: if isSuperAdmin();
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && academyId == myAcademyId()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastAdminLoginAt'])
+      );
     }
 
     // username → (uid, email) 매핑 (로그인 전 조회 필수)

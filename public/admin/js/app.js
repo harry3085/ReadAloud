@@ -135,6 +135,12 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
   adminProfile = {uid: user.uid, ...snap.data()};
   await _loadMyAcademyContext(user, snap.data());
+  // T1: 학원장 마지막 로그인 시각 기록 (super_admin 제외, 권한 부족 시 silent)
+  if (window.MY_ROLE !== 'super_admin' && window.MY_ACADEMY_ID) {
+    try {
+      await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), { lastAdminLoginAt: serverTimestamp() });
+    } catch(_) { /* rules 미배포 등 무시 */ }
+  }
   document.getElementById('adminName').textContent = adminProfile.name || '관리자';
   await initDashboard();
 });
