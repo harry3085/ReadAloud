@@ -8841,8 +8841,8 @@ function _qgSetCustomPrompt(type, value) {
   } catch(e) { console.warn(e); }
 }
 
-async function _qgFetchDefaultPrompt(type) {
-  if (_qgAiPromptDefaults[type]) return _qgAiPromptDefaults[type];
+async function _qgFetchDefaultPrompt(type, { forceRefresh = false } = {}) {
+  if (!forceRefresh && _qgAiPromptDefaults[type]) return _qgAiPromptDefaults[type];
   try {
     const res = await fetch('/api/generate-quiz?type=' + encodeURIComponent(type));
     const data = await res.json();
@@ -8856,6 +8856,7 @@ async function _qgFetchDefaultPrompt(type) {
 
 window.qgOpenPromptModal = async () => {
   _qgPromptEditingType = _qgAiPromptTypes.includes(_qgCurrentType) ? _qgCurrentType : 'mcq';
+  Object.keys(_qgAiPromptDefaults).forEach(k => delete _qgAiPromptDefaults[k]);
 
   const html = `
     <div style="width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -8961,6 +8962,7 @@ window.qgResetPrompt = async () => {
   if (!_qgGetCustomPrompt(apiType)) { showAlert('입력 확인', '이미 기본값 사용 중'); return; }
   if (!(await showConfirm('기본값으로 복원?', `${label}의 사용자 정의가 삭제됩니다.`))) return;
   _qgSetCustomPrompt(apiType, '');
+  delete _qgAiPromptDefaults[apiType];
   showToast('기본값으로 복원됨');
   _qgRenderPromptTabs();
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
