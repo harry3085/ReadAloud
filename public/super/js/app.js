@@ -355,30 +355,35 @@ window.closeModal = () => {
 };
 
 // ── 학원 관리 합계 카드 ───────────────────────────────
-function _renderAcademiesSummary(academies, planMap) {
+async function _renderAcademiesSummary(academies, planMap) {
   const el = document.getElementById('academiesSummary');
   if (!el) return;
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const in30days = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
-
-  const toDate = (t) => {
-    if (!t) return null;
-    if (typeof t.toDate === 'function') return t.toDate();
-    if (t.seconds !== undefined) return new Date(t.seconds * 1000);
-    if (t._seconds !== undefined) return new Date(t._seconds * 1000);
-    return null;
-  };
+  const in31days = new Date(now.getTime() + 31 * 24 * 3600 * 1000);
 
   let active = 0, newThisMonth = 0, expiringSoon = 0, overdue = 0;
   academies.forEach(a => {
     if (a.billingStatus === 'active') active++;
     if (a.billingStatus === 'grace' || a.billingStatus === 'suspended') overdue++;
-    const created = toDate(a.createdAt);
+    const created = _toDateOrNull(a.createdAt);
     if (created && created >= thisMonthStart) newThisMonth++;
-    const expires = toDate(a.planExpiresAt);
-    if (expires && expires <= in30days && expires >= now) expiringSoon++;
+    const expires = _toDateOrNull(a.planExpiresAt);
+    if (expires && expires.getTime() >= now.getTime() && expires.getTime() <= in31days.getTime()) expiringSoon++;
   });
+
+  // 이번 달 매출 합계 (subscriptions 에서 approved 만)
+  let monthlyRevenue = 0;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'subscriptions'),
+      where('status', '==', 'approved'),
+      where('approvedAt', '>=', Timestamp.fromDate(thisMonthStart)),
+    ));
+    snap.forEach(d => { monthlyRevenue += (d.data().amount || 0); });
+  } catch (e) {
+    console.warn('[summary] 매출 쿼리 실패 (인덱스 빌드 중일 수 있음):', e.message);
+  }
 
   const card = (label, big, sub, color) => `
     <div class="card" style="padding:12px 14px;text-align:center;">
@@ -389,9 +394,9 @@ function _renderAcademiesSummary(academies, planMap) {
   el.innerHTML = [
     card('🏢 활성 학원', `${active}`, `전체 ${academies.length}개`, 'var(--teal)'),
     card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
-    card('⏳ 만료 임박', `${expiringSoon}`, '30일 이내', expiringSoon > 0 ? '#f59e0b' : ''),
+    card('⏳ 만료 임박', `${expiringSoon}`, '31일 이내', expiringSoon > 0 ? '#f59e0b' : ''),
     card('💸 미납 학원', `${overdue}`, 'grace + suspended', overdue > 0 ? '#dc2626' : ''),
-    card('💰 이번 달 매출', '—', 'T4 결제 관리 후', '#999'),
+    card('💰 이번 달 매출', monthlyRevenue > 0 ? _amountKRW(monthlyRevenue) : '0원', 'subscriptions approved', monthlyRevenue > 0 ? '#059669' : '#999'),
   ].join('');
 }
 
@@ -1286,7 +1291,7 @@ async function loadAcademies() {
 
     _academiesCache = academies;
     _plansCache = planMap;
-    _renderAcademiesSummary(academies, planMap);
+    await _renderAcademiesSummary(academies, planMap);
     el.innerHTML = academies.map(a => {
       const expCls = _expiryClass(a.planExpiresAt);
       const expText = _fmtDate(a.planExpiresAt);
@@ -1761,8 +1766,8 @@ function _refreshRevenueCard(totalThisMonth) {
   cards[4].outerHTML = `
     <div class="card" style="padding:12px 14px;text-align:center;">
       <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">💰 이번 달 매출</div>
-      <div style="font-size:18px;font-weight:800;color:#059669;line-height:1.1;">${_amountKRW(totalThisMonth)}</div>
-      <div style="font-size:10px;color:#999;margin-top:4px;">approved 합계</div>
+      <div style="font-size:22px;font-weight:800;color:${totalThisMonth > 0 ? '#059669' : '#999'};line-height:1.1;">${totalThisMonth > 0 ? _amountKRW(totalThisMonth) : '0원'}</div>
+      <div style="font-size:10px;color:#999;margin-top:4px;">subscriptions approved</div>
     </div>`;
 }
 
