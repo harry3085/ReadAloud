@@ -87,8 +87,29 @@ async function _updateAcademy(db, body) {
       for (const fk of Object.keys(v)) ff[fk] = !!v[fk];
       v = ff;
     }
-    if (k === 'contactLog' && !Array.isArray(v)) {
-      continue;  // 배열 아니면 무시
+    if (k === 'contactLog') {
+      if (!Array.isArray(v)) continue;
+      // 항목의 at(ISO 문자열) → Date 로 정규화
+      v = v.map(entry => {
+        const e = entry && typeof entry === 'object' ? { ...entry } : {};
+        if (typeof e.at === 'string') {
+          const d = new Date(e.at);
+          if (!isNaN(d.getTime())) e.at = d;
+        }
+        // type 화이트리스트
+        if (!['call', 'email', 'kakao', 'meeting'].includes(e.type)) e.type = 'call';
+        e.summary = String(e.summary || '');
+        e.nextAction = String(e.nextAction || '');
+        return e;
+      });
+    }
+    if (k === 'planExpiresAt') {
+      if (v === null || v === '') {
+        v = null;
+      } else if (typeof v === 'string') {
+        const d = new Date(v);
+        v = isNaN(d.getTime()) ? null : d;
+      }
     }
     if ((k === 'acquisitionChannel' || k === 'internalMemo') && typeof v !== 'string') {
       v = String(v || '');

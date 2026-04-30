@@ -52,6 +52,42 @@ async function logAdminAction(action, targetType, targetId, details) {
   }
 }
 
+// ── 날짜·배지 포맷 헬퍼 (T3) ─────────────────────────
+function _toDateOrNull(t) {
+  if (!t) return null;
+  if (typeof t.toDate === 'function') return t.toDate();
+  if (t.seconds !== undefined) return new Date(t.seconds * 1000);
+  if (t._seconds !== undefined) return new Date(t._seconds * 1000);
+  if (typeof t === 'string') { const d = new Date(t); return isNaN(d.getTime()) ? null : d; }
+  if (t instanceof Date) return t;
+  return null;
+}
+function _fmtDate(t) {
+  const d = _toDateOrNull(t);
+  return d ? d.toISOString().slice(0, 10) : '-';
+}
+function _fmtDateTime(t) {
+  const d = _toDateOrNull(t);
+  if (!d) return '-';
+  return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+function _expiryClass(t) {
+  const d = _toDateOrNull(t);
+  if (!d) return '';
+  const now = Date.now();
+  const ms = d.getTime() - now;
+  if (ms < 0) return 'color:#dc2626;font-weight:700;';      // 만료됨
+  if (ms < 30 * 24 * 3600 * 1000) return 'color:#f59e0b;font-weight:700;';  // 30일 이내
+  return '';
+}
+function _billingBadge(status) {
+  if (status === 'active')    return '<span class="badge badge-green">active</span>';
+  if (status === 'grace')     return '<span class="badge" style="background:#fef3c7;color:#92400e;">grace</span>';
+  if (status === 'suspended') return '<span class="badge badge-red">suspended</span>';
+  if (status === 'trial')     return '<span class="badge" style="background:#dbeafe;color:#1e40af;">trial</span>';
+  return `<span class="badge">${esc(status || '-')}</span>`;
+}
+
 window.doLogout = async () => {
   await signOut(auth);
   location.href = '/';
@@ -321,21 +357,28 @@ window.closeModal = () => {
 function _renderAcademiesSummary(academies, planMap) {
   const el = document.getElementById('academiesSummary');
   if (!el) return;
-  let totalStudents = 0, totalAi = 0, totalRec = 0, totalLimit = 0, totalAiLimit = 0;
-  let active = 0;
+  const now = new Date();
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const in30days = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+
+  const toDate = (t) => {
+    if (!t) return null;
+    if (typeof t.toDate === 'function') return t.toDate();
+    if (t.seconds !== undefined) return new Date(t.seconds * 1000);
+    if (t._seconds !== undefined) return new Date(t._seconds * 1000);
+    return null;
+  };
+
+  let active = 0, newThisMonth = 0, expiringSoon = 0, overdue = 0;
   academies.forEach(a => {
-    const u = a.usage || {};
-    const p = planMap[a.planId] || {};
-    const cl = a.customLimits || {};
-    totalStudents += (u.activeStudentsCount || 0);
-    totalAi += (u.aiCallsThisMonth || 0);
-    totalRec += (u.recordingCallsThisMonth || 0);
-    totalLimit += (a.studentLimit || 0);
-    totalAiLimit += (cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0);
     if (a.billingStatus === 'active') active++;
+    if (a.billingStatus === 'grace' || a.billingStatus === 'suspended') overdue++;
+    const created = toDate(a.createdAt);
+    if (created && created >= thisMonthStart) newThisMonth++;
+    const expires = toDate(a.planExpiresAt);
+    if (expires && expires <= in30days && expires >= now) expiringSoon++;
   });
-  const aiPct = totalAiLimit ? Math.min(100, Math.round((totalAi / totalAiLimit) * 100)) : 0;
-  const studentPct = totalLimit ? Math.min(100, Math.round((totalStudents / totalLimit) * 100)) : 0;
+
   const card = (label, big, sub, color) => `
     <div class="card" style="padding:12px 14px;text-align:center;">
       <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">${label}</div>
@@ -343,11 +386,11 @@ function _renderAcademiesSummary(academies, planMap) {
       ${sub ? `<div style="font-size:10px;color:#999;margin-top:4px;">${sub}</div>` : ''}
     </div>`;
   el.innerHTML = [
-    card('🏢 학원 수', `${academies.length}`, `${active} active`, 'var(--teal)'),
-    card('👥 총 학생', `${totalStudents}`, `한도 ${totalLimit} (${studentPct}%)`),
-    card('✨ AI 월 호출', `${totalAi}`, `한도 ${totalAiLimit || '-'} (${aiPct}%)`, aiPct >= 70 ? '#f59e0b' : 'var(--text)'),
-    card('🎤 녹음 월 평가', `${totalRec}`, '학원별 한도 합', ''),
-    card('💳 active', `${active}/${academies.length}`, '결제 활성', active === academies.length ? '#059669' : '#dc2626'),
+    card('🏢 활성 학원', `${active}`, `전체 ${academies.length}개`, 'var(--teal)'),
+    card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
+    card('⏳ 만료 임박', `${expiringSoon}`, '30일 이내', expiringSoon > 0 ? '#f59e0b' : ''),
+    card('💸 미납 학원', `${overdue}`, 'grace + suspended', overdue > 0 ? '#dc2626' : ''),
+    card('💰 이번 달 매출', '—', 'T4 결제 관리 후', '#999'),
   ].join('');
 }
 
@@ -597,7 +640,7 @@ window.openAcademyCreateModal = () => {
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
   box.innerHTML = `
-    <div style="width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div style="width:min(620px,94vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">+ 신규 학원 등록</div>
       </div>
@@ -613,7 +656,36 @@ window.openAcademyCreateModal = () => {
             <select id="newAcLimit" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
               <option value="30">30명</option><option value="60">60명</option><option value="100">100명</option>
             </select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">가입 경로</div>
+            <select id="newAcChannel" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+              <option value="">선택</option>
+              <option value="referral">지인 소개</option>
+              <option value="search">검색</option>
+              <option value="ad">광고</option>
+              <option value="blog">블로그</option>
+              <option value="sns">SNS</option>
+              <option value="other">기타</option>
+            </select></div>
         </div>
+
+        <details style="margin-top:0;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">⭐ 얼리어답터 가격 보장 (선택)</summary>
+          <div style="margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;"><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">월 가격 (원)</div>
+                <input id="newAcGfMonthly" type="number" min="0" placeholder="예: 30000" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+              <div style="flex:1;"><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">연 가격 (원)</div>
+                <input id="newAcGfYearly" type="number" min="0" placeholder="예: 300000" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+            </div>
+            <div><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">메모</div>
+              <input id="newAcGfNote" type="text" placeholder="예: 베타 1호 학원" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+            <div style="font-size:10px;color:#999;">월/연 가격을 비워두면 가격 보장 비활성. 0 초과 값 입력 시 자동 활성.</div>
+          </div>
+        </details>
+
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">운영자 메모 (선택)</div>
+          <textarea id="newAcMemo" rows="3" placeholder="예: 처음 상담 시 ChatGPT 사용 경험 있음 / 주말에만 응답 가능 / ..." style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;"></textarea></div>
+
         <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보</div>
         <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일 *</div>
           <input id="newAdEmail" type="email" placeholder="owner@example.com" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
@@ -634,6 +706,11 @@ window.submitNewAcademy = async () => {
   const subdomain = (document.getElementById('newAcSubdomain')?.value || '').trim().toLowerCase();
   const planId = document.getElementById('newAcPlan')?.value || 'lite';
   const studentLimit = parseInt(document.getElementById('newAcLimit')?.value) || 30;
+  const acquisitionChannel = document.getElementById('newAcChannel')?.value || '';
+  const internalMemo = (document.getElementById('newAcMemo')?.value || '').trim();
+  const gfMonthly = parseInt(document.getElementById('newAcGfMonthly')?.value) || 0;
+  const gfYearly = parseInt(document.getElementById('newAcGfYearly')?.value) || 0;
+  const gfNote = (document.getElementById('newAcGfNote')?.value || '').trim();
   const adminEmail = (document.getElementById('newAdEmail')?.value || '').trim().toLowerCase();
   const adminPassword = (document.getElementById('newAdPw')?.value || '').trim();
 
@@ -643,15 +720,25 @@ window.submitNewAcademy = async () => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) { showToast('유효한 이메일'); return; }
   if (adminPassword.length < 8) { showToast('비밀번호 8자 이상'); return; }
 
+  const grandfatheredPrice = (gfMonthly > 0 || gfYearly > 0)
+    ? { enabled: true, monthlyPrice: gfMonthly, yearlyPrice: gfYearly, note: gfNote }
+    : null;
+
   try {
     const idToken = await _currentUser.getIdToken();
     const r = await fetch('/api/createAcademy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, name, subdomain, adminEmail, adminPassword, planId, studentLimit }),
+      body: JSON.stringify({
+        idToken, name, subdomain, adminEmail, adminPassword, planId, studentLimit,
+        acquisitionChannel, internalMemo, grandfatheredPrice,
+      }),
     });
     const j = await r.json();
     if (!j.success) { showToast('등록 실패: ' + (j.error || j.detail || '')); return; }
-    await logAdminAction('create_academy', 'academy', subdomain, { name, planId, studentLimit, adminEmail });
+    await logAdminAction('create_academy', 'academy', subdomain, {
+      name, planId, studentLimit, adminEmail,
+      acquisitionChannel, hasGrandfathered: !!grandfatheredPrice,
+    });
     closeModal();
     showToast(`✅ ${name} 등록 완료 (username: ${j.adminUsername})`);
     await loadAcademies();
@@ -660,7 +747,9 @@ window.submitNewAcademy = async () => {
   }
 };
 
-// ── 학원 상세 / 편집 모달 ────────────────────────────
+// ── 학원 상세 / 편집 모달 (T3: 4탭 구조) ──────────────
+let _acmContext = null; // { academyId, academy, adminUser, planMap }
+
 window.openAcademyModal = async (academyId) => {
   const a = _academiesCache.find(x => x.id === academyId);
   if (!a) { showToast('학원 정보 없음'); return; }
@@ -676,74 +765,29 @@ window.openAcademyModal = async (academyId) => {
   } catch (e) { console.warn(e); }
   const adminUser = admins[0] || null;
 
-  const planOpts = Object.keys(_plansCache).map(pid =>
-    `<option value="${esc(pid)}" ${a.planId === pid ? 'selected' : ''}>${esc(_plansCache[pid].displayName || pid)}</option>`
-  ).join('');
+  _acmContext = { academyId, academy: a, adminUser };
 
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
+  const tabBtn = (id, label) =>
+    `<button class="acm-tab-btn" data-tab="${id}" onclick="acmTab('${id}')" style="background:none;border:none;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer;font-size:13px;color:#666;">${label}</button>`;
+
   box.innerHTML = `
-    <div style="width:min(640px,94vw);max-height:88vh;display:flex;flex-direction:column;">
-      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+    <div style="width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">🏢 ${esc(a.name)} <span style="color:#999;font-weight:400;font-size:13px;">(${esc(a.subdomain || a.id)})</span></div>
+        <div style="margin-top:10px;display:flex;gap:2px;">
+          ${tabBtn('basic','기본 정보')}
+          ${tabBtn('timeline','📜 타임라인')}
+          ${tabBtn('memo','📝 메모')}
+          ${tabBtn('usage','📊 사용량')}
+        </div>
       </div>
-      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
-        <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;">학원 정보</div>
-
-        <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학원명</div>
-          <input id="acName" type="text" value="${esc(a.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-
-        <div style="display:flex;gap:12px;">
-          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
-            <select id="acPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
-          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
-            <input id="acLimit" type="number" min="0" value="${a.studentLimit || 30}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">상태</div>
-            <select id="acStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
-              <option value="active" ${a.billingStatus === 'active' ? 'selected' : ''}>active</option>
-              <option value="suspended" ${a.billingStatus === 'suspended' ? 'selected' : ''}>suspended</option>
-              <option value="cancelled" ${a.billingStatus === 'cancelled' ? 'selected' : ''}>cancelled</option>
-            </select></div>
-        </div>
-
-        <details style="margin-top:4px;">
-          <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">⚙️ 한도 override (비워두면 플랜 기본값 사용)</summary>
-          <div style="display:flex;gap:12px;margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
-            <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">AI 월 호출 (override)</div>
-              <input id="acLimitAi" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.aiQuotaPerMonth) || '∞'}" value="${a.customLimits?.aiQuotaPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
-            <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">녹음 월 평가 (override)</div>
-              <input id="acLimitRec" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.perTypeQuota?.recording?.check) || '∞'}" value="${a.customLimits?.recordingPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
-          </div>
-          <div style="font-size:10px;color:#999;margin-top:4px;">※ 입력 시 plan 한도 무시. 비워두면 plan 기본값 사용.</div>
-        </details>
-
-        <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보 ${adminUser ? '' : '(없음)'}</div>
-
-        ${adminUser ? `
-          <div style="display:flex;gap:12px;">
-            <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이름</div>
-              <input id="adName" type="text" value="${esc(adminUser.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-            <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">username</div>
-              <input id="adUsername" type="text" value="${esc(adminUser.username || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          </div>
-          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일</div>
-            <input id="adEmail" type="email" value="${esc(adminUser.email || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">새 비밀번호 (변경 시만)</div>
-            <input id="adPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <input type="hidden" id="adUid" value="${esc(adminUser.uid)}">
-          <input type="hidden" id="adOrigUsername" value="${esc(adminUser.username || '')}">
-          <input type="hidden" id="adOrigEmail" value="${esc(adminUser.email || '')}">
-          <input type="hidden" id="adOrigName" value="${esc(adminUser.name || '')}">
-        ` : `<div style="color:#888;font-size:13px;">학원장 계정이 없습니다. CLI 로 생성 필요.</div>`}
-
-        <div style="margin-top:12px;padding:14px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;">
-          <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:6px;">⚠️ 위험 영역</div>
-          <div style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5;">
-            학원을 영구 삭제합니다. 소속 학생/시험/점수/공지 등 모든 데이터가 사라집니다.<br>
-            백업 JSON 다운로드 → 영구 삭제 단계로 진행됩니다.
-          </div>
-          <button class="btn btn-secondary" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca;" onclick="openAcademyDeleteModal('${a.id}')">🗑 학원 영구 삭제</button>
-        </div>
+      <div style="overflow-y:auto;flex:1;">
+        <div id="acm-pane-basic" class="acm-tab-pane" style="padding:16px 22px;display:none;flex-direction:column;gap:14px;">${_renderAcmBasic(a, adminUser)}</div>
+        <div id="acm-pane-timeline" class="acm-tab-pane" style="padding:16px 22px;display:none;">로딩 중...</div>
+        <div id="acm-pane-memo" class="acm-tab-pane" style="padding:16px 22px;display:none;flex-direction:column;gap:14px;">${_renderAcmMemo(a)}</div>
+        <div id="acm-pane-usage" class="acm-tab-pane" style="padding:16px 22px;display:none;">${_renderAcmUsage(a)}</div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
@@ -751,6 +795,283 @@ window.openAcademyModal = async (academyId) => {
       </div>
     </div>`;
   overlay.style.display = 'flex';
+  acmTab('basic');
+};
+
+window.acmTab = (id) => {
+  document.querySelectorAll('.acm-tab-pane').forEach(el => {
+    if (el.id === 'acm-pane-' + id) {
+      el.style.display = (id === 'basic' || id === 'memo') ? 'flex' : 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  });
+  document.querySelectorAll('.acm-tab-btn').forEach(b => {
+    const active = b.dataset.tab === id;
+    b.style.color = active ? 'var(--teal)' : '#666';
+    b.style.borderBottomColor = active ? 'var(--teal)' : 'transparent';
+    b.style.fontWeight = active ? '700' : '400';
+  });
+  if (id === 'timeline') _loadAcmTimeline();
+};
+
+function _renderAcmBasic(a, adminUser) {
+  const planOpts = Object.keys(_plansCache).map(pid =>
+    `<option value="${esc(pid)}" ${a.planId === pid ? 'selected' : ''}>${esc(_plansCache[pid].displayName || pid)}</option>`
+  ).join('');
+  const channels = [
+    ['', '선택'], ['referral', '지인 소개'], ['search', '검색'],
+    ['ad', '광고'], ['blog', '블로그'], ['sns', 'SNS'], ['other', '기타'],
+  ];
+  const channelOpts = channels.map(([v, l]) =>
+    `<option value="${esc(v)}" ${(a.acquisitionChannel || '') === v ? 'selected' : ''}>${esc(l)}</option>`
+  ).join('');
+  const expiresVal = (() => {
+    const d = _toDateOrNull(a.planExpiresAt);
+    return d ? d.toISOString().slice(0, 10) : '';
+  })();
+  const gp = a.grandfatheredPrice && typeof a.grandfatheredPrice === 'object' ? a.grandfatheredPrice : {};
+
+  return `
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;">학원 정보</div>
+
+    <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학원명</div>
+      <input id="acName" type="text" value="${esc(a.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+
+    <div style="display:flex;gap:12px;">
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
+        <select id="acPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
+        <input id="acLimit" type="number" min="0" value="${a.studentLimit || 30}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">결제 상태</div>
+        <select id="acStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+          <option value="active" ${a.billingStatus === 'active' ? 'selected' : ''}>active</option>
+          <option value="trial" ${a.billingStatus === 'trial' ? 'selected' : ''}>trial</option>
+          <option value="grace" ${a.billingStatus === 'grace' ? 'selected' : ''}>grace (유예)</option>
+          <option value="suspended" ${a.billingStatus === 'suspended' ? 'selected' : ''}>suspended (정지)</option>
+        </select></div>
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">만료일</div>
+        <input id="acExpires" type="date" value="${esc(expiresVal)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">가입 경로</div>
+        <select id="acChannel" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${channelOpts}</select></div>
+      <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">마지막 학원장 로그인</div>
+        <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#666;background:#fafafa;">${_fmtDateTime(a.lastAdminLoginAt)}</div></div>
+    </div>
+
+    <details ${gp.enabled ? 'open' : ''} style="margin-top:0;">
+      <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">⭐ 얼리어답터 가격 보장 ${gp.enabled ? '<span style="color:#059669;">(활성)</span>' : ''}</summary>
+      <div style="margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;"><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">월 가격 (원)</div>
+            <input id="acGfMonthly" type="number" min="0" value="${gp.monthlyPrice || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+          <div style="flex:1;"><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">연 가격 (원)</div>
+            <input id="acGfYearly" type="number" min="0" value="${gp.yearlyPrice || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+        </div>
+        <div><div style="font-size:11px;color:var(--gray);margin-bottom:3px;">메모</div>
+          <input id="acGfNote" type="text" value="${esc(gp.note || '')}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+        ${gp.grantedAt ? `<div style="font-size:10px;color:#999;">부여 시각: ${esc(_fmtDateTime(gp.grantedAt))}</div>` : ''}
+        <div style="font-size:10px;color:#999;">월/연 가격 둘 다 0이면 비활성. 0 초과 값 입력 시 자동 활성.</div>
+      </div>
+    </details>
+
+    <details style="margin-top:0;">
+      <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">⚙️ 한도 override (비워두면 플랜 기본값 사용)</summary>
+      <div style="display:flex;gap:12px;margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+        <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">AI 월 호출 (override)</div>
+          <input id="acLimitAi" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.aiQuotaPerMonth) || '∞'}" value="${a.customLimits?.aiQuotaPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+        <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">녹음 월 평가 (override)</div>
+          <input id="acLimitRec" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.perTypeQuota?.recording?.check) || '∞'}" value="${a.customLimits?.recordingPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
+      </div>
+    </details>
+
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보 ${adminUser ? '' : '(없음)'}</div>
+
+    ${adminUser ? `
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이름</div>
+          <input id="adName" type="text" value="${esc(adminUser.name || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">username</div>
+          <input id="adUsername" type="text" value="${esc(adminUser.username || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      </div>
+      <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">이메일</div>
+        <input id="adEmail" type="email" value="${esc(adminUser.email || '')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">새 비밀번호 (변경 시만)</div>
+        <input id="adPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+      <input type="hidden" id="adUid" value="${esc(adminUser.uid)}">
+      <input type="hidden" id="adOrigUsername" value="${esc(adminUser.username || '')}">
+      <input type="hidden" id="adOrigEmail" value="${esc(adminUser.email || '')}">
+      <input type="hidden" id="adOrigName" value="${esc(adminUser.name || '')}">
+    ` : `<div style="color:#888;font-size:13px;">학원장 계정이 없습니다. CLI 로 생성 필요.</div>`}
+
+    <div style="margin-top:12px;padding:14px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;">
+      <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:6px;">⚠️ 위험 영역</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5;">
+        학원을 영구 삭제합니다. 소속 학생/시험/점수/공지 등 모든 데이터가 사라집니다.<br>
+        백업 JSON 다운로드 → 영구 삭제 단계로 진행됩니다.
+      </div>
+      <button class="btn btn-secondary" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca;" onclick="openAcademyDeleteModal('${a.id}')">🗑 학원 영구 삭제</button>
+    </div>`;
+}
+
+function _renderAcmMemo(a) {
+  const memo = a.internalMemo || '';
+  const log = Array.isArray(a.contactLog) ? a.contactLog.slice().sort((x, y) => {
+    const xt = _toDateOrNull(x.at)?.getTime() || 0;
+    const yt = _toDateOrNull(y.at)?.getTime() || 0;
+    return yt - xt;
+  }) : [];
+  const typeLabel = (t) => ({ call: '📞 통화', email: '✉️ 이메일', kakao: '💬 카카오', meeting: '🤝 미팅' })[t] || t;
+  const logHtml = log.length ? log.map(e => `
+    <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:white;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray);margin-bottom:4px;">
+        <span>${esc(typeLabel(e.type || 'call'))}</span>
+        <span>${esc(_fmtDateTime(e.at))}</span>
+      </div>
+      <div style="font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(e.summary || '')}</div>
+      ${e.nextAction ? `<div style="margin-top:6px;font-size:11px;color:#0369a1;">→ ${esc(e.nextAction)}</div>` : ''}
+    </div>`).join('') : '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">연락 기록 없음</div>';
+
+  return `
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;">운영자 메모</div>
+    <div><textarea id="acMemo" rows="6" placeholder="자유 메모 (학원장에게 보이지 않음)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;outline:none;resize:vertical;line-height:1.5;">${esc(memo)}</textarea></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">
+      <span>연락 기록 (${log.length})</span>
+      <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="acmContactLogToggleForm()">+ 연락 기록 추가</button>
+    </div>
+
+    <div id="acm-contact-form" style="display:none;padding:12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;">
+        <select id="acmClType" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;">
+          <option value="call">📞 통화</option>
+          <option value="email">✉️ 이메일</option>
+          <option value="kakao">💬 카카오</option>
+          <option value="meeting">🤝 미팅</option>
+        </select>
+      </div>
+      <textarea id="acmClSummary" rows="3" placeholder="대화 요약" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;outline:none;resize:vertical;"></textarea>
+      <input id="acmClNext" type="text" placeholder="후속 조치 (선택)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;">
+      <div style="display:flex;justify-content:flex-end;gap:6px;">
+        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="acmContactLogToggleForm()">취소</button>
+        <button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="acmAddContactLog()">즉시 저장</button>
+      </div>
+    </div>
+
+    <div id="acm-contact-list" style="display:flex;flex-direction:column;gap:8px;">${logHtml}</div>`;
+}
+
+function _renderAcmUsage(a) {
+  const u = a.usage || {};
+  const p = _plansCache[a.planId] || {};
+  const cl = a.customLimits || {};
+  const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || '∞';
+  const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || '∞';
+  const row = (label, used, limit) => `
+    <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;">
+      <span style="font-size:13px;color:var(--gray);">${label}</span>
+      <span style="font-weight:700;font-size:14px;">${used} <span style="color:#999;font-weight:400;font-size:12px;">/ ${limit}</span></span>
+    </div>`;
+  return `
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">이번 달 사용량</div>
+    ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || '∞')}
+    ${row('✨ AI 호출', u.aiCallsThisMonth || 0, aiLimit)}
+    ${row('📖 객관식 호출', u.mcqCallsThisMonth || 0, '-')}
+    ${row('🎤 녹음 평가', u.recordingCallsThisMonth || 0, recLimit)}
+    ${row('💾 Storage', `${Math.round((u.storageBytes || 0) / 1024 / 1024)}MB`, '-')}
+    <div style="margin-top:14px;padding:12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;line-height:1.5;">
+      ℹ️ 이번 달 일별 추이·Top10·시스템 헬스 등 상세 모니터링은 <b>T5 (사용량·모니터링) 탭</b>에서 제공됩니다.
+    </div>`;
+}
+
+async function _loadAcmTimeline() {
+  if (!_acmContext) return;
+  const { academyId } = _acmContext;
+  const pane = document.getElementById('acm-pane-timeline');
+  if (!pane) return;
+  pane.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">로딩 중...</div>';
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'adminLogs'),
+      where('targetId', '==', academyId),
+      orderBy('at', 'desc'),
+    ));
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, 50);
+    if (!logs.length) {
+      pane.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">기록 없음</div>';
+      return;
+    }
+    const summarize = (l) => {
+      const d = l.details || {};
+      if (Array.isArray(d.changedFields) && d.changedFields.length) return '필드: ' + d.changedFields.join(', ');
+      const compact = Object.entries(d).filter(([k]) => k !== 'changedFields').map(([k,v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ');
+      return compact || '-';
+    };
+    pane.innerHTML = `
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <table class="table" style="margin:0;">
+          <thead><tr><th style="width:135px;">시각</th><th style="width:130px;">작업자</th><th style="width:160px;">action</th><th>요약</th></tr></thead>
+          <tbody>
+            ${logs.map(l => `
+              <tr>
+                <td class="td-sub">${esc(_fmtDateTime(l.at))}</td>
+                <td class="td-sub">${esc((l.actorEmail || l.actor || '').slice(0, 20))}</td>
+                <td><span class="badge badge-teal" style="font-size:10px;">${esc(l.action || '-')}</span></td>
+                <td class="td-sub" style="font-size:11px;">${esc(summarize(l))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#999;">최대 50건 표시</div>`;
+  } catch (e) {
+    console.error(e);
+    pane.innerHTML = `<div style="padding:20px;text-align:center;color:#e05050;font-size:12px;">로드 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+window.acmContactLogToggleForm = () => {
+  const f = document.getElementById('acm-contact-form');
+  if (!f) return;
+  const showing = f.style.display !== 'none';
+  f.style.display = showing ? 'none' : 'flex';
+  if (!showing) {
+    document.getElementById('acmClSummary').value = '';
+    document.getElementById('acmClNext').value = '';
+    document.getElementById('acmClType').value = 'call';
+    document.getElementById('acmClSummary').focus();
+  }
+};
+
+window.acmAddContactLog = async () => {
+  if (!_acmContext) return;
+  const { academyId, academy } = _acmContext;
+  const type = document.getElementById('acmClType')?.value || 'call';
+  const summary = (document.getElementById('acmClSummary')?.value || '').trim();
+  const nextAction = (document.getElementById('acmClNext')?.value || '').trim();
+  if (!summary) { showToast('요약을 입력하세요'); return; }
+
+  const entry = { at: new Date(), type, summary, nextAction };
+  const newLog = [...(Array.isArray(academy.contactLog) ? academy.contactLog : []), entry];
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/superAdmin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, action: 'updateAcademy', academyId, fields: { contactLog: newLog } }),
+    });
+    const j = await r.json();
+    if (!j.success) { showToast('저장 실패: ' + j.error); return; }
+    await logAdminAction('add_contact_log', 'academy', academyId, { type, summaryLength: summary.length });
+    // 로컬 캐시 + UI 갱신
+    academy.contactLog = newLog;
+    const idx = _academiesCache.findIndex(x => x.id === academyId);
+    if (idx >= 0) _academiesCache[idx] = academy;
+    document.getElementById('acm-pane-memo').innerHTML = _renderAcmMemo(academy);
+    showToast('연락 기록 추가됨');
+  } catch (e) {
+    showToast('오류: ' + e.message);
+  }
 };
 
 window.saveAcademy = async (academyId) => {
@@ -780,6 +1101,37 @@ window.saveAcademy = async (academyId) => {
     (newCustom.aiQuotaPerMonth || 0) !== (oldCustom.aiQuotaPerMonth || 0) ||
     (newCustom.recordingPerMonth || 0) !== (oldCustom.recordingPerMonth || 0);
   if (customChanged) acFields.customLimits = newCustom;
+
+  // T3 신규 필드: 가입 경로 / 만료일 / 얼리어답터 가격 / 메모
+  const newChannel = (document.getElementById('acChannel')?.value || '').trim();
+  if (newChannel !== (a.acquisitionChannel || '')) acFields.acquisitionChannel = newChannel;
+
+  const newExpiresStr = document.getElementById('acExpires')?.value || '';
+  const oldExpires = _toDateOrNull(a.planExpiresAt);
+  const oldExpStr = oldExpires ? oldExpires.toISOString().slice(0, 10) : '';
+  if (newExpiresStr !== oldExpStr) {
+    acFields.planExpiresAt = newExpiresStr ? new Date(newExpiresStr + 'T00:00:00Z') : null;
+  }
+
+  const newGfMonthly = parseInt(document.getElementById('acGfMonthly')?.value) || 0;
+  const newGfYearly = parseInt(document.getElementById('acGfYearly')?.value) || 0;
+  const newGfNote = (document.getElementById('acGfNote')?.value || '').trim();
+  const oldGp = (a.grandfatheredPrice && typeof a.grandfatheredPrice === 'object') ? a.grandfatheredPrice : {};
+  const gpChanged =
+    (newGfMonthly !== (oldGp.monthlyPrice || 0)) ||
+    (newGfYearly !== (oldGp.yearlyPrice || 0)) ||
+    (newGfNote !== (oldGp.note || ''));
+  if (gpChanged) {
+    acFields.grandfatheredPrice = {
+      enabled: newGfMonthly > 0 || newGfYearly > 0,
+      monthlyPrice: newGfMonthly,
+      yearlyPrice: newGfYearly,
+      note: newGfNote,
+    };
+  }
+
+  const newMemo = (document.getElementById('acMemo')?.value || '').trim();
+  if (newMemo !== (a.internalMemo || '')) acFields.internalMemo = newMemo;
 
   // 학원장 정보 변경분
   const adminFields = {};
@@ -868,7 +1220,7 @@ window.saveProfile = async () => {
 async function loadAcademies() {
   const el = document.getElementById('academiesTableBody');
   try {
-    el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
+    el.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
     const [acadSnap, planSnap] = await Promise.all([
       getDocs(query(collection(db, 'academies'), orderBy('createdAt', 'asc'))),
       getDocs(collection(db, 'plans')),
@@ -878,20 +1230,10 @@ async function loadAcademies() {
 
     const academies = acadSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (!academies.length) {
-      el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">학원이 없습니다.</td></tr>';
+      el.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">학원이 없습니다.</td></tr>';
       return;
     }
 
-    const fmtDate = (t) => {
-      if (!t) return '-';
-      let d;
-      if (typeof t.toDate === 'function') d = t.toDate();
-      else if (t.seconds !== undefined) d = new Date(t.seconds * 1000);
-      else if (t._seconds !== undefined) d = new Date(t._seconds * 1000);
-      else if (typeof t === 'string') d = new Date(t);
-      else return '-';
-      return isNaN(d.getTime()) ? '-' : d.toISOString().slice(0, 10);
-    };
     const fmtUsage = (a) => {
       const u = a.usage || {};
       const p = planMap[a.planId] || {};
@@ -911,20 +1253,26 @@ async function loadAcademies() {
     _academiesCache = academies;
     _plansCache = planMap;
     _renderAcademiesSummary(academies, planMap);
-    el.innerHTML = academies.map(a => `
+    el.innerHTML = academies.map(a => {
+      const expCls = _expiryClass(a.planExpiresAt);
+      const expText = _fmtDate(a.planExpiresAt);
+      const lastLogin = _fmtDateTime(a.lastAdminLoginAt);
+      return `
       <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
         <td class="td-main">${esc(a.name || '-')}</td>
         <td class="td-mono">${esc(a.subdomain || a.id)}</td>
         <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
         <td class="td-center">${a.studentLimit || '-'}</td>
         <td>${fmtUsage(a)}</td>
-        <td class="td-sub">${fmtDate(a.createdAt)}</td>
-        <td><span class="badge ${a.billingStatus === 'active' ? 'badge-green' : 'badge-red'}">${esc(a.billingStatus || '-')}</span></td>
-      </tr>
-    `).join('');
+        <td class="td-sub">${_fmtDate(a.createdAt)}</td>
+        <td class="td-sub" style="${expCls}">${expText}</td>
+        <td class="td-sub">${lastLogin}</td>
+        <td>${_billingBadge(a.billingStatus)}</td>
+      </tr>`;
+    }).join('');
   } catch (e) {
     console.error(e);
-    el.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message)}</td></tr>`;
+    el.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message)}</td></tr>`;
   }
 }
 
