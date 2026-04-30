@@ -162,9 +162,7 @@ module.exports = async (req, res) => {
         usage: {
           activeStudentsCount: 0,
           aiCallsThisMonth: 0,
-          mcqCallsThisMonth: 0,
           recordingCallsThisMonth: 0,
-          storageBytes: 0,
           lastResetAt: new Date().toISOString().slice(0, 7),
         },
         // SuperAdmin Phase A (T1) 신규 필드

@@ -49,9 +49,7 @@ async function main() {
     usage: {
       activeStudentsCount: 0,     // 마이그레이션 스크립트에서 실제 카운트로 채움
       aiCallsThisMonth: 0,
-      mcqCallsThisMonth: 0,
       recordingCallsThisMonth: 0,
-      storageBytes: 0,
       lastResetAt: new Date().toISOString().slice(0, 7),
     },
     // SuperAdmin Phase A (T1) 신규 필드
