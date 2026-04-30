@@ -29,7 +29,8 @@ function _ensureApp() {
 }
 
 function _currentYearMonth() {
-  return new Date().toISOString().slice(0, 7); // YYYY-MM
+  // KST(UTC+9) 기준 YYYY-MM — apiUsage doc ID 와 동일 기준
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
 }
 
 async function verifyAndCheckQuota({ idToken, quotaKind }) {

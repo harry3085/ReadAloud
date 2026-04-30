@@ -581,10 +581,13 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
     </div>`;
 }
 
+// KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
+function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
+
 // Gemini API 호출 로거 (학원별 일별 집계, 위젯용)
 async function _logApiCall(endpoint){
   try {
-    const today = new Date().toISOString().slice(0,10);
+    const today = _ymdKST();
     const academyId = window.MY_ACADEMY_ID || 'default';
     await setDoc(doc(db, 'apiUsage', `${academyId}_${today}`), {
       academyId,

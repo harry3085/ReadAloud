@@ -2217,11 +2217,16 @@ const GEMINI_DAILY_LIMIT = 1000;        // gemini-3.1-flash-lite-preview RPD
 const GEMINI_ENDPOINTS = ['cleanup-ocr', 'generate-quiz', 'check-recording'];
 const VISION_ENDPOINTS = ['ocr'];
 
-function _todayYMD() { return new Date().toISOString().slice(0, 10); }
+// KST(UTC+9) 기준 — apiUsage doc ID 와 동일 기준 (api/_lib/quota.js / 학원장·학생 앱 _ymdKST)
+function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
+function _todayYMD() { return _ymdKST(); }
 function _thisMonthRange() {
-  const n = new Date();
-  const start = new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10);
-  const next = new Date(n.getFullYear(), n.getMonth() + 1, 1).toISOString().slice(0, 10);
+  const ym = _ymdKST().slice(0, 7); // 'YYYY-MM' (KST)
+  const [y, m] = ym.split('-').map(Number);
+  const start = `${ym}-01`;
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const next = `${ny}-${String(nm).padStart(2, '0')}-01`;
   return { start, next };
 }
 

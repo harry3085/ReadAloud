@@ -18,8 +18,8 @@ async function main() {
     console.log(`  ${json.replace(/\n/g, '\n  ')}\n`);
   });
 
-  console.log('=== 오늘 날짜로 합계 ===');
-  const today = new Date().toISOString().slice(0, 10);
+  console.log('=== 오늘 날짜로 합계 (KST 기준) ===');
+  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const todaySnap = await db.collection('apiUsage').where('date', '==', today).get();
   let total = 0;
   todaySnap.forEach(d => { total += d.data().total || 0; });
