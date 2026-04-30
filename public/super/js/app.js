@@ -965,24 +965,16 @@ function _renderAcmMemo(a) {
 
 function _renderAcmUsage(a) {
   const u = a.usage || {};
-  const p = _plansCache[a.planId] || {};
-  const cl = a.customLimits || {};
-  const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || '∞';
-  const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || '∞';
-  const row = (label, used, limit) => `
-    <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;">
-      <span style="font-size:13px;color:var(--gray);">${label}</span>
-      <span style="font-weight:700;font-size:14px;">${used} <span style="color:#999;font-weight:400;font-size:12px;">/ ${limit}</span></span>
-    </div>`;
   return `
-    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">이번 달 사용량</div>
-    ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || '∞')}
-    ${row('✨ AI 호출', u.aiCallsThisMonth || 0, aiLimit)}
-    ${row('📖 객관식 호출', u.mcqCallsThisMonth || 0, '-')}
-    ${row('🎤 녹음 평가', u.recordingCallsThisMonth || 0, recLimit)}
-    ${row('💾 Storage', `${Math.round((u.storageBytes || 0) / 1024 / 1024)}MB`, '-')}
-    <div style="margin-top:14px;padding:12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;line-height:1.5;">
-      ℹ️ 이번 달 일별 추이·Top10·시스템 헬스 등 상세 모니터링은 <b>T5 (사용량·모니터링) 탭</b>에서 제공됩니다.
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">학생 한도 (실시간)</div>
+    <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;">
+      <span style="font-size:13px;color:var(--gray);">👥 활성 학생</span>
+      <span style="font-weight:700;font-size:14px;">${u.activeStudentsCount || 0} <span style="color:#999;font-weight:400;font-size:12px;">/ ${a.studentLimit || '∞'}</span></span>
+    </div>
+    <div style="margin-top:14px;padding:14px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;line-height:1.5;">
+      ℹ️ AI 호출·녹음 평가·일별 추이·Gemini 쿼터 게이지·Top10 등 본격적인 사용량 모니터링은 <b>T5 (사용량·모니터링) 탭</b>에서 제공됩니다.
+      <br><br>
+      <span style="color:#999;font-size:11px;">학원별 일별 사용량 원본은 <code style="background:#fff;padding:1px 4px;border-radius:3px;">apiUsage/{academyId}_{YYYY-MM-DD}</code> 컬렉션에 기록되고 있습니다 (T5에서 집계 표시).</span>
     </div>`;
 }
 
