@@ -46,6 +46,7 @@
   <div class="super-tabs">
     <button class="active" id="tab-academies" onclick="goTab('academies')">🏢 학원 관리</button>
     <button id="tab-users" onclick="goTab('users')">👥 사용자 검색</button>
+    <button id="tab-billing" onclick="goTab('billing')">💳 결제 관리</button>
     <button id="tab-prompts" onclick="goTab('prompts')">🤖 AI 프롬프트</button>
     <button id="tab-presets" onclick="goTab('presets')">🧹 클린업 프리셋</button>
     <button id="tab-tools" onclick="goTab('tools')">🛠 도구</button>
@@ -110,6 +111,23 @@
           <tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색어 입력 후 Enter 또는 🔍 클릭</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- 결제 관리 (T4) -->
+  <div class="page" id="page-billing">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-shrink:0;">
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="loadBillingDashboard()">↻ 다시 로드</button>
+        <button class="btn btn-secondary" onclick="exportBillingCsv()">📥 CSV Export</button>
+      </div>
+      <button class="btn btn-primary" onclick="openSubscriptionCreateModal()">+ 결제 등록</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:12px;padding-right:4px;">
+      <div id="billingPending"     class="card" style="padding:0;"></div>
+      <div id="billingExpiringSoon" class="card" style="padding:0;"></div>
+      <div id="billingOverdue"      class="card" style="padding:0;"></div>
+      <div id="billingHistory"      class="card" style="padding:0;"></div>
     </div>
   </div>
 

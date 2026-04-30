@@ -240,5 +240,14 @@ service cloud.firestore {
       allow create: if isSuperAdmin();
       allow update, delete: if false;
     }
+
+    // 학원 구독료 결제 (T4) — 학원이 우리에게 내는 구독료
+    // 학원장이 학생에게 받는 수강료(/payments) 와 분리됨
+    // read: super_admin 전용 + 자기 학원장 (자기 결제 이력 조회)
+    // create / update / delete: super_admin 전용
+    match /subscriptions/{id} {
+      allow read: if isSuperAdmin() || (isSignedIn() && resource.data.academyId == myAcademyId());
+      allow write: if isSuperAdmin();
+    }
   }
 }

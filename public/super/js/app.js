@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, deleteDoc, writeBatch, query, orderBy, where, limit, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -105,6 +105,7 @@ window.goTab = (id) => {
   if (page) page.classList.add('active');
   if (id === 'academies') loadAcademies();
   else if (id === 'users') runUserSearch();
+  else if (id === 'billing') loadBillingDashboard();
   else if (id === 'prompts') loadPromptsConfig();
   else if (id === 'presets') loadPresetsConfig();
 };
@@ -813,6 +814,7 @@ window.acmTab = (id) => {
     b.style.fontWeight = active ? '700' : '400';
   });
   if (id === 'timeline') _loadAcmTimeline();
+  if (id === 'basic' && _acmContext) _loadAcmPaymentHistory(_acmContext.academyId);
 };
 
 function _renderAcmBasic(a, adminUser) {
@@ -906,6 +908,12 @@ function _renderAcmBasic(a, adminUser) {
       <input type="hidden" id="adOrigName" value="${esc(adminUser.name || '')}">
     ` : `<div style="color:#888;font-size:13px;">학원장 계정이 없습니다. CLI 로 생성 필요.</div>`}
 
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+      <span>💳 최근 결제 이력</span>
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="closeModal();goTab('billing');openSubscriptionCreateModal('${a.id}')">+ 결제 등록</button>
+    </div>
+    <div id="acm-payment-history" style="font-size:12px;color:#bbb;text-align:center;padding:10px;">로딩 중...</div>
+
     <div style="margin-top:12px;padding:14px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;">
       <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:6px;">⚠️ 위험 영역</div>
       <div style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5;">
@@ -914,6 +922,40 @@ function _renderAcmBasic(a, adminUser) {
       </div>
       <button class="btn btn-secondary" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca;" onclick="openAcademyDeleteModal('${a.id}')">🗑 학원 영구 삭제</button>
     </div>`;
+}
+
+async function _loadAcmPaymentHistory(academyId) {
+  const el = document.getElementById('acm-payment-history');
+  if (!el) return;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'subscriptions'),
+      where('academyId', '==', academyId),
+      orderBy('requestedAt', 'desc'),
+      limit(5),
+    ));
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (rows.length === 0) {
+      el.innerHTML = '<div style="padding:14px;text-align:center;color:#bbb;font-size:12px;">결제 이력 없음</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="table" style="margin:0;font-size:12px;">
+        <thead><tr><th>요청/승인일</th><th>플랜</th><th>주기</th><th>금액</th><th>상태</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td class="td-sub">${esc(_fmtDate(r.approvedAt || r.requestedAt))}</td>
+              <td><span class="badge badge-teal">${esc(r.plan || '-')}</span> ${r.studentTier || '-'}</td>
+              <td>${r.billingCycle === 'yearly' ? '연' : '월'}</td>
+              <td style="font-weight:600;">${_amountKRW(r.amount)}</td>
+              <td>${STATUS_BADGE[r.status] || esc(r.status || '-')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<div style="padding:14px;color:#e05050;font-size:12px;">로드 실패: ${esc(e.message)}</div>`;
+  }
 }
 
 function _renderAcmMemo(a) {
@@ -1508,4 +1550,541 @@ window.deletePresetConfig = async (i) => {
     console.error(e);
     showToast('삭제 실패: ' + e.message);
   }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 결제 관리 (T4) — subscriptions 컬렉션
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _subscriptionsCache = []; // 최근 로드된 결제 이력 (CSV export 용)
+
+const PLAN_OPTIONS = ['lite', 'standard', 'pro'];
+const STUDENT_TIERS = [30, 60, 100];
+const PAYMENT_METHOD_LABELS = {
+  bank_transfer: '계좌이체',
+  card: '카드',
+  cash: '현금',
+  other: '기타',
+};
+const STATUS_LABELS = {
+  pending: '대기',
+  approved: '승인',
+  rejected: '거부',
+  refunded: '환불',
+};
+const STATUS_BADGE = {
+  pending:  '<span class="badge" style="background:#fef3c7;color:#92400e;">대기</span>',
+  approved: '<span class="badge badge-green">승인</span>',
+  rejected: '<span class="badge badge-red">거부</span>',
+  refunded: '<span class="badge" style="background:#e0e7ff;color:#3730a3;">환불</span>',
+};
+
+function _amountKRW(n) {
+  return ((Number(n) || 0)).toLocaleString('ko-KR') + '원';
+}
+
+function _calcPeriodEnd(startDate, billingCycle) {
+  const d = new Date(startDate);
+  if (billingCycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+function _firstOfThisMonth() {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), 1);
+}
+
+window.loadBillingDashboard = async () => {
+  try {
+    if (!_academiesCache.length) await loadAcademies();
+    await Promise.all([
+      _renderBillingPending(),
+      _renderBillingExpiringSoon(),
+      _renderBillingOverdue(),
+      _renderBillingHistory(),
+    ]);
+  } catch (e) {
+    console.error('[billing]', e);
+    showToast('결제 데이터 로드 실패: ' + e.message);
+  }
+};
+
+async function _renderBillingPending() {
+  const el = document.getElementById('billingPending');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:14px 18px;color:#bbb;font-size:12px;">로딩 중...</div>';
+  const snap = await getDocs(query(
+    collection(db, 'subscriptions'),
+    where('status', '==', 'pending'),
+    orderBy('requestedAt', 'desc'),
+  ));
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const acadName = (id) => _academiesCache.find(a => a.id === id)?.name || id;
+  el.innerHTML = `
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;display:flex;align-items:center;justify-content:space-between;">
+      <span>⏳ 결제 대기 (${rows.length})</span>
+    </div>
+    ${rows.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">대기 중인 결제 없음</div>' : `
+    <table class="table" style="margin:0;">
+      <thead><tr>
+        <th>학원</th><th>플랜</th><th>주기</th><th>금액</th><th>결제방법</th><th>요청일</th><th style="width:170px;">액션</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td class="td-main">${esc(acadName(r.academyId))}</td>
+            <td><span class="badge badge-teal">${esc(r.plan || '-')}</span> ${r.studentTier || '-'}명</td>
+            <td>${r.billingCycle === 'yearly' ? '연' : '월'}</td>
+            <td style="font-weight:700;">${_amountKRW(r.amount)}</td>
+            <td class="td-sub">${esc(PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod || '-')}${r.paidByName ? `<br><span style="font-size:11px;color:#999;">${esc(r.paidByName)}</span>` : ''}</td>
+            <td class="td-sub">${esc(_fmtDate(r.requestedAt))}</td>
+            <td>
+              <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;" onclick="approveSubscription('${r.id}')">승인</button>
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="rejectSubscription('${r.id}')">거부</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`}`;
+}
+
+async function _renderBillingExpiringSoon() {
+  const el = document.getElementById('billingExpiringSoon');
+  if (!el) return;
+  const now = Date.now();
+  const in30 = now + 30 * 24 * 3600 * 1000;
+  const rows = _academiesCache
+    .map(a => ({ ...a, _exp: _toDateOrNull(a.planExpiresAt) }))
+    .filter(a => a._exp && a._exp.getTime() >= now && a._exp.getTime() <= in30)
+    .sort((x, y) => x._exp - y._exp);
+  el.innerHTML = `
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">⏰ 만료 임박 (30일 이내, ${rows.length})</div>
+    ${rows.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">없음</div>' : `
+    <table class="table" style="margin:0;">
+      <thead><tr><th>학원</th><th>플랜</th><th>만료일</th><th>D-day</th><th>학원장 이메일</th></tr></thead>
+      <tbody>
+        ${rows.map(a => {
+          const d = Math.ceil((a._exp.getTime() - now) / (24 * 3600 * 1000));
+          return `<tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
+            <td class="td-main">${esc(a.name)}</td>
+            <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
+            <td class="td-sub" style="color:#f59e0b;font-weight:700;">${esc(_fmtDate(a.planExpiresAt))}</td>
+            <td class="td-sub" style="font-weight:700;color:${d <= 7 ? '#dc2626' : '#f59e0b'};">D-${d}</td>
+            <td class="td-sub">-</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`}`;
+}
+
+async function _renderBillingOverdue() {
+  const el = document.getElementById('billingOverdue');
+  if (!el) return;
+  const rows = _academiesCache.filter(a => a.billingStatus === 'grace' || a.billingStatus === 'suspended');
+  const now = Date.now();
+  el.innerHTML = `
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">💸 미납 학원 (${rows.length})</div>
+    ${rows.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">미납 학원 없음</div>' : `
+    <table class="table" style="margin:0;">
+      <thead><tr><th>학원</th><th>상태</th><th>만료일</th><th>경과일</th><th>마지막 로그인</th></tr></thead>
+      <tbody>
+        ${rows.map(a => {
+          const exp = _toDateOrNull(a.planExpiresAt);
+          const past = exp ? Math.floor((now - exp.getTime()) / (24 * 3600 * 1000)) : '-';
+          return `<tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
+            <td class="td-main">${esc(a.name)}</td>
+            <td>${_billingBadge(a.billingStatus)}</td>
+            <td class="td-sub">${esc(_fmtDate(a.planExpiresAt))}</td>
+            <td class="td-sub" style="color:#dc2626;font-weight:700;">${past === '-' ? '-' : `+${past}일`}</td>
+            <td class="td-sub">${esc(_fmtDateTime(a.lastAdminLoginAt))}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`}`;
+}
+
+async function _renderBillingHistory() {
+  const el = document.getElementById('billingHistory');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:14px 18px;color:#bbb;font-size:12px;">로딩 중...</div>';
+  // status='approved' 우선, 그 다음 rejected/refunded — 일단 최근 100건 ('approved' 인 것만 정렬)
+  // 인덱스: status + approvedAt desc (approved 만)
+  const snap = await getDocs(query(
+    collection(db, 'subscriptions'),
+    where('status', '==', 'approved'),
+    orderBy('approvedAt', 'desc'),
+    limit(100),
+  ));
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  _subscriptionsCache = rows;
+  const acadName = (id) => _academiesCache.find(a => a.id === id)?.name || id;
+  const totalThisMonth = rows
+    .filter(r => { const d = _toDateOrNull(r.approvedAt); return d && d >= _firstOfThisMonth(); })
+    .reduce((s, r) => s + (r.amount || 0), 0);
+  el.innerHTML = `
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;display:flex;justify-content:space-between;">
+      <span>📒 결제 이력 (승인 완료, 최근 100건)</span>
+      <span style="font-weight:400;color:#666;font-size:12px;">이번 달 매출 합계: <b style="color:#059669;">${_amountKRW(totalThisMonth)}</b></span>
+    </div>
+    ${rows.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">승인된 결제 없음</div>' : `
+    <table class="table" style="margin:0;">
+      <thead><tr>
+        <th>승인일</th><th>학원</th><th>플랜</th><th>주기</th><th>금액</th><th>결제방법</th><th>입금자</th><th>기간</th><th style="width:80px;">환불</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td class="td-sub">${esc(_fmtDate(r.approvedAt))}</td>
+            <td class="td-main">${esc(acadName(r.academyId))}</td>
+            <td><span class="badge badge-teal">${esc(r.plan || '-')}</span> ${r.studentTier || '-'}</td>
+            <td>${r.billingCycle === 'yearly' ? '연' : '월'}</td>
+            <td style="font-weight:700;">${_amountKRW(r.amount)}</td>
+            <td class="td-sub">${esc(PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod || '-')}</td>
+            <td class="td-sub">${esc(r.paidByName || '-')}</td>
+            <td class="td-sub">${esc(_fmtDate(r.periodStart))} ~ ${esc(_fmtDate(r.periodEnd))}</td>
+            <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="refundSubscription('${r.id}')">환불</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`}`;
+  // T3 매출 카드 갱신 (학원 관리 탭이 이미 로드돼 있을 때)
+  _refreshRevenueCard(totalThisMonth);
+}
+
+function _refreshRevenueCard(totalThisMonth) {
+  // academiesSummary 의 5번째 카드를 매출 카드로 교체 (이미 렌더돼 있을 때만)
+  const sum = document.getElementById('academiesSummary');
+  if (!sum) return;
+  const cards = sum.children;
+  if (cards.length < 5) return;
+  cards[4].outerHTML = `
+    <div class="card" style="padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">💰 이번 달 매출</div>
+      <div style="font-size:18px;font-weight:800;color:#059669;line-height:1.1;">${_amountKRW(totalThisMonth)}</div>
+      <div style="font-size:10px;color:#999;margin-top:4px;">approved 합계</div>
+    </div>`;
+}
+
+// ── 결제 등록 모달 ──────────────────────────────────
+window.openSubscriptionCreateModal = (presetAcademyId) => {
+  const acadOpts = _academiesCache.map(a =>
+    `<option value="${esc(a.id)}" ${presetAcademyId === a.id ? 'selected' : ''}>${esc(a.name)} (${esc(a.subdomain || a.id)}, ${esc(a.planId || '-')})</option>`
+  ).join('');
+  const planOpts = PLAN_OPTIONS.map(p => `<option value="${p}">${p}</option>`).join('');
+  const tierOpts = STUDENT_TIERS.map(t => `<option value="${t}">${t}명</option>`).join('');
+  const today = new Date().toISOString().slice(0, 10);
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(680px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;">+ 결제 등록</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">학원이 우리에게 낸 구독료. 즉시 승인 옵션을 켜면 학원 상태가 바로 갱신됩니다.</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;">
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">학원 *</div>
+          <select id="subAcademy" onchange="_subOnAcademyChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${acadOpts}</select></div>
+
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">플랜 *</div>
+            <select id="subPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">학생 한도</div>
+            <select id="subTier" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${tierOpts}</select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">청구 주기 *</div>
+            <select id="subCycle" onchange="_subOnCycleChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+              <option value="monthly">월</option>
+              <option value="yearly">연</option>
+            </select></div>
+        </div>
+
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">금액 (원) *</div>
+          <input id="subAmount" type="number" min="0" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+          <div id="subAmountHint" style="font-size:10px;color:#999;margin-top:3px;"></div></div>
+
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">결제 방법 *</div>
+            <select id="subMethod" onchange="_subOnMethodChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+              <option value="bank_transfer">계좌이체</option>
+              <option value="card">카드</option>
+              <option value="cash">현금</option>
+              <option value="other">기타</option>
+            </select></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">입금자명</div>
+            <input id="subPaidBy" type="text" placeholder="계좌이체 시 통장 입금자명" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">통장 메모</div>
+            <input id="subBankRef" type="text" placeholder="선택" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">기간 시작</div>
+            <input id="subPeriodStart" type="date" value="${today}" onchange="_subRecalcEnd()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">기간 종료 (자동 계산)</div>
+            <input id="subPeriodEnd" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        </div>
+
+        <details style="margin-top:0;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">📑 인보이스·세금 (선택)</summary>
+          <div style="margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:10px;align-items:flex-end;">
+              <label style="font-size:12px;color:var(--gray);display:flex;align-items:center;gap:5px;">
+                <input id="subInvoice" type="checkbox"> 인보이스 발급
+              </label>
+              <input id="subInvoiceNum" type="text" placeholder="인보이스 번호" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;">
+              <input id="subTaxId" type="text" placeholder="사업자번호" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;">
+            </div>
+          </div>
+        </details>
+
+        <div><div style="font-size:13px;color:var(--gray);margin-bottom:5px;">메모</div>
+          <textarea id="subMemo" rows="2" placeholder="선택" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;"></textarea></div>
+
+        <label style="font-size:13px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #fde68a;background:#fef9c3;border-radius:8px;color:#854d0e;cursor:pointer;">
+          <input id="subAutoApprove" type="checkbox" checked> 즉시 승인 (체크 시 학원의 billingStatus / planExpiresAt / planId / studentLimit 자동 갱신)
+        </label>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="submitSubscription()">등록</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+  // 초기값 셋업
+  _subOnAcademyChange();
+  _subRecalcEnd();
+};
+
+window._subOnAcademyChange = () => {
+  const acadId = document.getElementById('subAcademy')?.value;
+  const a = _academiesCache.find(x => x.id === acadId);
+  if (!a) return;
+  // 학원의 현재 plan / studentLimit 으로 default
+  const planSel = document.getElementById('subPlan');
+  const tierSel = document.getElementById('subTier');
+  if (planSel && a.planId && PLAN_OPTIONS.includes(a.planId)) planSel.value = a.planId;
+  if (tierSel && a.studentLimit) {
+    const closest = STUDENT_TIERS.reduce((p, c) => Math.abs(c - a.studentLimit) < Math.abs(p - a.studentLimit) ? c : p, STUDENT_TIERS[0]);
+    tierSel.value = closest;
+  }
+  // 얼리어답터 가격 자동 채움
+  const gp = a.grandfatheredPrice || {};
+  const cycle = document.getElementById('subCycle')?.value || 'monthly';
+  const amtInput = document.getElementById('subAmount');
+  const hint = document.getElementById('subAmountHint');
+  if (gp.enabled) {
+    const auto = cycle === 'yearly' ? (gp.yearlyPrice || 0) : (gp.monthlyPrice || 0);
+    if (auto > 0 && amtInput) amtInput.value = auto;
+    if (hint) hint.innerHTML = `⭐ 얼리어답터 가격 보장 적용 (${esc(gp.note || '')})`;
+  } else {
+    if (hint) hint.textContent = '';
+  }
+};
+
+window._subOnCycleChange = () => {
+  _subOnAcademyChange();  // 가격 재계산
+  _subRecalcEnd();
+};
+
+window._subOnMethodChange = () => {
+  // 현재는 입금자명 강제 X — 나중에 필요하면 활성화
+};
+
+window._subRecalcEnd = () => {
+  const startStr = document.getElementById('subPeriodStart')?.value;
+  const cycle = document.getElementById('subCycle')?.value || 'monthly';
+  const endEl = document.getElementById('subPeriodEnd');
+  if (!startStr || !endEl) return;
+  const start = new Date(startStr + 'T00:00:00Z');
+  const end = _calcPeriodEnd(start, cycle);
+  endEl.value = end.toISOString().slice(0, 10);
+};
+
+window.submitSubscription = async () => {
+  const academyId = document.getElementById('subAcademy')?.value;
+  const plan = document.getElementById('subPlan')?.value;
+  const studentTier = parseInt(document.getElementById('subTier')?.value) || 30;
+  const billingCycle = document.getElementById('subCycle')?.value || 'monthly';
+  const amount = parseInt(document.getElementById('subAmount')?.value) || 0;
+  const paymentMethod = document.getElementById('subMethod')?.value || 'bank_transfer';
+  const paidByName = (document.getElementById('subPaidBy')?.value || '').trim();
+  const bankReference = (document.getElementById('subBankRef')?.value || '').trim();
+  const periodStartStr = document.getElementById('subPeriodStart')?.value;
+  const periodEndStr = document.getElementById('subPeriodEnd')?.value;
+  const invoiceIssued = !!document.getElementById('subInvoice')?.checked;
+  const invoiceNumber = (document.getElementById('subInvoiceNum')?.value || '').trim();
+  const taxId = (document.getElementById('subTaxId')?.value || '').trim();
+  const memo = (document.getElementById('subMemo')?.value || '').trim();
+  const autoApprove = !!document.getElementById('subAutoApprove')?.checked;
+
+  if (!academyId) { showToast('학원을 선택하세요'); return; }
+  if (!amount || amount <= 0) { showToast('금액을 입력하세요'); return; }
+  if (!periodStartStr || !periodEndStr) { showToast('기간을 입력하세요'); return; }
+  if (paymentMethod === 'bank_transfer' && !paidByName) { showToast('계좌이체는 입금자명 필수'); return; }
+
+  const periodStart = new Date(periodStartStr + 'T00:00:00Z');
+  const periodEnd = new Date(periodEndStr + 'T00:00:00Z');
+
+  const subRef = doc(collection(db, 'subscriptions'));
+  const academyRef = doc(db, 'academies', academyId);
+  const acadCached = _academiesCache.find(x => x.id === academyId);
+
+  try {
+    const batch = writeBatch(db);
+    const subData = {
+      academyId, amount, plan, studentTier, billingCycle,
+      paymentMethod, paidByName, bankReference,
+      periodStart: Timestamp.fromDate(periodStart),
+      periodEnd: Timestamp.fromDate(periodEnd),
+      invoiceIssued, invoiceNumber, taxId, memo,
+      requestedAt: serverTimestamp(),
+      status: autoApprove ? 'approved' : 'pending',
+    };
+    if (autoApprove) {
+      subData.approvedAt = serverTimestamp();
+      subData.approvedBy = auth.currentUser?.uid || '';
+    }
+    batch.set(subRef, subData);
+
+    if (autoApprove) {
+      batch.update(academyRef, {
+        billingStatus: 'active',
+        planExpiresAt: Timestamp.fromDate(periodEnd),
+        planId: plan,
+        studentLimit: studentTier,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    await logAdminAction(autoApprove ? 'create_subscription_auto_approve' : 'create_subscription', 'academy', academyId, {
+      subscriptionId: subRef.id, plan, studentTier, billingCycle, amount, paymentMethod,
+      autoApproved: autoApprove,
+    });
+    closeModal();
+    showToast(autoApprove ? '✅ 등록 + 즉시 승인 완료' : '✅ 결제 등록 (대기)');
+    // 캐시·UI 갱신
+    if (autoApprove && acadCached) {
+      acadCached.billingStatus = 'active';
+      acadCached.planExpiresAt = periodEnd;
+      acadCached.planId = plan;
+      acadCached.studentLimit = studentTier;
+    }
+    await loadBillingDashboard();
+  } catch (e) {
+    console.error(e);
+    showToast('등록 실패: ' + e.message);
+  }
+};
+
+// ── 승인/거부/환불 액션 ─────────────────────────────
+window.approveSubscription = async (subId) => {
+  if (!confirm('이 결제를 승인하시겠습니까? 학원의 billingStatus / planExpiresAt / planId / studentLimit 가 갱신됩니다.')) return;
+  try {
+    const subRef = doc(db, 'subscriptions', subId);
+    const subSnap = await getDoc(subRef);
+    if (!subSnap.exists()) { showToast('결제 정보 없음'); return; }
+    const sub = subSnap.data();
+    const academyRef = doc(db, 'academies', sub.academyId);
+
+    const batch = writeBatch(db);
+    batch.update(subRef, {
+      status: 'approved',
+      approvedAt: serverTimestamp(),
+      approvedBy: auth.currentUser?.uid || '',
+    });
+    batch.update(academyRef, {
+      billingStatus: 'active',
+      planExpiresAt: sub.periodEnd,
+      planId: sub.plan,
+      studentLimit: sub.studentTier,
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    await logAdminAction('approve_subscription', 'academy', sub.academyId, {
+      subscriptionId: subId, plan: sub.plan, amount: sub.amount,
+    });
+    showToast('✅ 승인 완료');
+    await loadAcademies();  // 학원 목록 캐시 갱신
+    await loadBillingDashboard();
+  } catch (e) {
+    console.error(e);
+    showToast('승인 실패: ' + e.message);
+  }
+};
+
+window.rejectSubscription = async (subId) => {
+  const reason = prompt('거부 사유 (선택, 메모로 저장)');
+  if (reason === null) return;  // 사용자가 취소
+  try {
+    await updateDoc(doc(db, 'subscriptions', subId), {
+      status: 'rejected',
+      rejectedAt: serverTimestamp(),
+      rejectedBy: auth.currentUser?.uid || '',
+      rejectionReason: reason || '',
+    });
+    await logAdminAction('reject_subscription', 'subscription', subId, { reason: reason || '' });
+    showToast('거부 처리됨');
+    await loadBillingDashboard();
+  } catch (e) {
+    console.error(e);
+    showToast('거부 실패: ' + e.message);
+  }
+};
+
+window.refundSubscription = async (subId) => {
+  if (!confirm('이 결제를 환불 처리하시겠습니까?\n(학원의 billingStatus 는 자동 변경되지 않습니다 — 필요 시 학원 관리에서 수동 조정)')) return;
+  try {
+    await updateDoc(doc(db, 'subscriptions', subId), {
+      status: 'refunded',
+      refundedAt: serverTimestamp(),
+      refundedBy: auth.currentUser?.uid || '',
+    });
+    await logAdminAction('refund_subscription', 'subscription', subId, {});
+    showToast('환불 처리됨');
+    await loadBillingDashboard();
+  } catch (e) {
+    console.error(e);
+    showToast('환불 실패: ' + e.message);
+  }
+};
+
+// ── CSV Export ─────────────────────────────────────
+window.exportBillingCsv = () => {
+  if (!_subscriptionsCache.length) { showToast('이력 없음 — 먼저 결제 관리 탭을 로드하세요'); return; }
+  const acadName = (id) => _academiesCache.find(a => a.id === id)?.name || id;
+  const headers = ['승인일', '학원ID', '학원명', '플랜', '학생한도', '주기', '금액', '결제방법', '입금자명', '통장메모', '기간시작', '기간종료', '인보이스번호', '사업자번호', '메모'];
+  const csvLine = (arr) => arr.map(v => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(',');
+  const lines = [csvLine(headers)];
+  for (const r of _subscriptionsCache) {
+    lines.push(csvLine([
+      _fmtDate(r.approvedAt),
+      r.academyId,
+      acadName(r.academyId),
+      r.plan || '',
+      r.studentTier || '',
+      r.billingCycle === 'yearly' ? '연' : '월',
+      r.amount || 0,
+      PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod || '',
+      r.paidByName || '',
+      r.bankReference || '',
+      _fmtDate(r.periodStart),
+      _fmtDate(r.periodEnd),
+      r.invoiceNumber || '',
+      r.taxId || '',
+      r.memo || '',
+    ]));
+  }
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('📥 CSV 다운로드');
 };
