@@ -1048,3 +1048,120 @@ admin/app.js 제거된 함수들 (216줄 ↓):
 3. **학원장 대시보드 달력** ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
 4. **학원 설정 페이지 (화이트라벨)** ([project_academy_settings_page.md](memory/project_academy_settings_page.md))
 5. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+
+---
+
+## 2026-04-30 (오후): 글로벌 설정 Firestore 이전 완료 — super_admin 이 AI 프롬프트·클린업 프리셋 default 편집
+
+당일 SW v206 → v209 (5 commit). 메모리 [project_global_config_refactor.md](memory/project_global_config_refactor.md) Option A (글로벌 default 만, 학원별 override 미구현) 구현 완료.
+
+### 1) 인프라 — `appConfig/*` Firestore 이전
+- **`firestore.rules`**: `appConfig/{configId}` — 로그인 사용자 read / `isSuperAdmin()` write
+- **초기 시드** ([scripts/admin/seed-app-config.js](scripts/admin/seed-app-config.js)): DRY-RUN / `--apply` / `--force`
+  - `api/generate-quiz.js` 의 `SYSTEM_PROMPTS` 정규식 + `Function` 평가로 동적 추출 (중복 정의 회피)
+  - 코드 상수 `_CLEANUP_DEFAULT_PRESETS` 인라인 복사
+  - `appConfig/aiPrompts` 6 유형 + `appConfig/cleanupPresets` 4 프리셋 시드 완료
+- **3단 fallback**:
+  1. 학원장 커스텀 (AI: localStorage / 클린업: 학원별 `genCleanupPresets`)
+  2. `appConfig/*` (글로벌 default — super_admin 편집)
+  3. 코드 상수 (안전망)
+
+### 2) super_admin 앱 — 2 탭 추가
+- **🤖 AI 프롬프트** (`page-prompts`): 6 유형 버튼 + textarea + 변경 감지 ●
+  - `_promptsCache` 메모리 캐시 / `_promptsDirty` 가드 / `setDoc(..., {merge:true})`
+  - "갱신 즉시 모든 학원에 반영" 안내문
+- **🧹 클린업 프리셋** (`page-presets`): 카드 목록 + 신규/수정/삭제 모달
+  - `presets` 배열 통째로 `setDoc` (배열 수정용)
+
+### 3) 학원장 앱 — 글로벌 default 우선 사용
+- **`api/generate-quiz.js`**: `getEffectivePrompt(quizType)` 추가
+  - GET (`?type=X` / 전체) · POST 양쪽에서 사용
+  - `customSystemPrompt` body 우선 → `appConfig/aiPrompts` → 코드 상수
+  - **호출당 read 1회** (캐시 미적용 — 즉시 반영 우선, $0.0000006 / call 미미)
+- **`public/admin/js/app.js`**: `_getEffectiveCleanupDefaults()` 추가
+  - `appConfig/cleanupPresets` 우선 → `_CLEANUP_DEFAULT_PRESETS` fallback
+  - 학원 첫 진입 시드 (`_cleanupSeedDefaults`) + 누락 복구 (`cleanupRestoreDefaults`) 양쪽에 적용
+
+### 4) 클린업 프리셋 — AI 프롬프트와 동일한 default 동기화 모델 (commit da1f464)
+초기 구현은 super_admin 갱신이 학원에 반영 안 되는 문제 — `cleanupRestoreDefaults` 가 학원에 없는 이름만 추가하고 같은 이름은 절대 안 덮어썼음. 사용자 피드백으로 재설계:
+
+**개념 정렬** (AI 프롬프트와 동일):
+- AI 프롬프트 6 유형 ↔ 글로벌 default 4 프리셋 (이름 매칭)
+- 둘 다 추가/삭제 불가, 편집·복원만 가능
+- 사용자 추가 (커스텀) 만 자유 CRUD
+
+**구현**:
+- `_cleanupGetGlobalDefaultsByName(forceRefresh)` — Map 캐시. 매니저 모달 열 때 force-refresh 로 super_admin 갱신 즉시 반영
+- `_cleanupRenderPresetManager` 가 글로벌과 비교해서:
+  - 기본 프리셋 (이름 매칭): prompt/description 다르면 ● 빨간 점, [↺ 기본값] 버튼 (다를 때만 활성), [🗑 삭제] 숨김
+  - 사용자 추가: ● 없음, 복원 없음, [🗑 삭제] 가능
+- `cleanupResetPreset(id)` — `updateDoc` 으로 prompt/description 만 덮어씀 (order/isDefault 메타 보존)
+- `cleanupDeletePreset` 가드 — 기본 이름이면 `showAlert('삭제 불가')`
+- 상단 [↻ 기본값 복원] → [+ 누락된 기본값 추가] 로 명칭 변경 (괄호로 누락 개수 표시, 0개면 비활성)
+
+### 5) 디버깅 함정 3건
+
+**A. firebase-admin 초기화 누락 (commit 7d23f14)** — 진짜 원인
+- `api/generate-quiz.js` 가 `getFirestore` 만 import 하고 admin app 초기화 X
+- GET 핸들러는 `verifyAndCheckQuota` 안 거쳐서 init 안 일어남
+- `getFirestore()` 가 "default app does not exist" throw → catch → 코드 상수 반환
+- **= super_admin 이 갱신해도 학원장은 영원히 옛 default**
+- 해결: `_ensureAdminApp()` 헬퍼를 `getEffectivePrompt` 진입 시 호출 (`api/_lib/quota.js` 와 동일 패턴)
+
+**B. 학원장 앱 `_qgAiPromptDefaults` 모듈 캐시 (commit b845769)**
+- 첫 fetch 후 영원히 캐시 — [↺ 기본값] 눌러도 stale 값
+- 해결: `qgOpenPromptModal` 에서 `Object.keys(_qgAiPromptDefaults).forEach(k => delete _qgAiPromptDefaults[k])` (const 라 재할당 X), `qgResetPrompt` 에서 해당 type 캐시 `delete`
+- `_qgFetchDefaultPrompt` 에 `{ forceRefresh }` 옵션 추가 (확장 여지)
+
+**C. 클린업 프리셋 — "이름 같으면 기존 유지" 가 너무 보수적**
+- 학원이 글로벌 갱신을 받으려면 [🗑 삭제] → [↻ 기본값 복원] 2단계 필요했음
+- 게다가 ID 새로 생기니 추적 어려움
+- 해결: 위 §4 의 per-preset reset 모델
+
+### 6) 학원장 앱 `qgSavePrompt` 의 자동 cleanup 검증
+- localStorage 에 저장 시 `val === def` 면 `_qgSetCustomPrompt(apiType, '')` 로 자동 삭제 (● 사라짐)
+- super_admin 이 default 를 학원장 커스텀과 동일하게 갱신한 경우 학원장 다음 [💾 저장] 한 번에 자동 정리됨 — 의도한 동작
+
+---
+
+## 작업 규칙 추가 (2026-04-30 오후)
+
+- **API 함수에서 firebase-admin 사용 시 초기화 보장 필수** — `getFirestore()`/`getAuth()` 호출 전 반드시 `_ensureApp()` 패턴. 한 핸들러에서 다른 헬퍼가 init 했을 거라 가정 X (cold start / 다른 method 분기 시 init 안 일어날 수 있음). `api/_lib/quota.js` 의 `_ensureApp` 참고.
+- **글로벌 default 와 학원 커스텀 동기화 UI 표준** (AI 프롬프트·클린업 프리셋 공통):
+  - 매번 모달 열 때 글로벌 default fresh fetch (cache invalidate)
+  - 글로벌 매칭되는 항목 = 시스템 default → 추가/삭제 X, 편집/복원만
+  - 글로벌 안 매칭되는 항목 = 사용자 커스텀 → 자유 CRUD
+  - 시스템 default 이름 옆 빨간 ● 로 "글로벌과 다름" 표시
+  - 카드별 [↺ 기본값] 버튼은 ● 있을 때만 활성
+
+---
+
+## 파일 크기 / SW 캐시 (2026-04-30 오후)
+- `public/admin/js/app.js`: ~8870줄 (+50, 프리셋 동기화 모델 + 헬퍼)
+- `public/super/index.html`: ~280줄 (탭 2개 추가)
+- `public/super/js/app.js`: ~600줄 (+250, 프롬프트·프리셋 CRUD)
+- `api/generate-quiz.js`: +33줄 (getEffectivePrompt + _ensureAdminApp)
+- `firestore.rules`: +9줄 (appConfig)
+- `scripts/admin/seed-app-config.js`: 신규 ~155줄
+- SW 캐시: `kunsori-v209`
+
+## 진행률 (2026-04-30 오후)
+- 멀티테넌시 인프라: **~95%** (변동 없음)
+- 녹음숙제 시스템: **~95%** (변동 없음)
+- 알림 시스템: **~95%** (변동 없음)
+- 학생 랭킹: **~100%** (변동 없음)
+- super_admin 앱: **~92%** (글로벌 default 편집 UI 추가)
+- **글로벌 설정 Firestore 이전: ~100%** (Option A 완료. 학원별 override 는 별도 폴더 — `project_global_config_refactor.md` 의 "추가 메뉴: 학원별 customPrompts 검토" 항목)
+- 인쇄 시스템: **~95%** (변동 없음)
+- Phase 5 출시 준비: **0%**
+
+## 다음 세션 후보 (2026-04-30 오후 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제
+2. **학원장 대시보드 달력** ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
+3. **학원 설정 페이지 (화이트라벨)** ([project_academy_settings_page.md](memory/project_academy_settings_page.md))
+4. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+
+**완료 (이 세션)**:
+- ✅ AI 프롬프트·클린업 프리셋 글로벌 default Firestore 이전 (Option A)
+- ✅ 클린업 프리셋 동기화 모델 (per-preset reset / 기본 삭제 불가)
+- ✅ firebase-admin 초기화 함정 작업 규칙 명문화
