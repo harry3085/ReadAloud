@@ -7,13 +7,30 @@
 // 인증: idToken 검증 + 학원 AI 월 쿼터 체크 (Phase 3)
 
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+
+// firebase-admin 앱 초기화 보장 — GET 경로는 verifyAndCheckQuota 를 안 거쳐서
+// 별도로 초기화 안 하면 getFirestore() 가 throw 함.
+function _ensureAdminApp() {
+  if (getApps().length) return;
+  let pk = process.env.FIREBASE_PRIVATE_KEY || '';
+  pk = pk.replace(/^"|"$/g, '').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+  initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: pk,
+    }),
+  });
+}
 
 // appConfig/aiPrompts (Firestore 글로벌 default) → 코드 상수 fallback.
 // super_admin 이 super 앱에서 편집한 default 가 즉시 모든 학원에 반영됨.
 // 호출당 read 1회 ($0.0000006) — 캐시 미적용 (즉시 반영 우선).
 async function getEffectivePrompt(quizType) {
   try {
+    _ensureAdminApp();
     const snap = await getFirestore().doc('appConfig/aiPrompts').get();
     if (snap.exists) {
       const v = snap.data()[quizType];
