@@ -52,6 +52,55 @@ async function logAdminAction(action, targetType, targetId, details) {
   }
 }
 
+// ── 확인·입력 모달 헬퍼 (T4 후속, 통일) ──────────────
+// 브라우저 기본 confirm()/prompt() 대신 슈퍼 앱 디자인에 맞춘 모달.
+// 다른 모달 위에도 띄울 수 있도록 별도 overlay 를 동적 생성 (z-index 400).
+function _superPromptCore({ title, message, mode, confirmText, cancelText, defaultValue = '', placeholder = '', danger = false, multiline = false } = {}) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;display:flex;align-items:center;justify-content:center;';
+    const inputHtml = mode === 'prompt'
+      ? (multiline
+          ? `<textarea id="_supInput" rows="3" placeholder="${esc(placeholder)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;resize:vertical;line-height:1.5;">${esc(defaultValue)}</textarea>`
+          : `<input id="_supInput" type="text" value="${esc(defaultValue)}" placeholder="${esc(placeholder)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">`)
+      : '';
+    const confirmStyle = danger ? 'background:#dc2626;border-color:#dc2626;color:white;' : '';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:min(440px,92vw);overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(title || (mode === 'prompt' ? '입력' : '확인'))}</div>
+          ${message ? `<div style="margin-top:6px;font-size:13px;color:#555;line-height:1.5;white-space:pre-wrap;">${esc(message)}</div>` : ''}
+        </div>
+        ${mode === 'prompt' ? `<div style="padding:14px 22px;">${inputHtml}</div>` : ''}
+        <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa;">
+          <button class="btn btn-secondary" data-act="cancel">${esc(cancelText || '취소')}</button>
+          <button class="btn btn-primary" data-act="confirm" style="${confirmStyle}">${esc(confirmText || '확인')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const inputEl = ov.querySelector('#_supInput');
+    const cancelVal = mode === 'prompt' ? null : false;
+    const okVal = mode === 'prompt' ? () => (inputEl?.value ?? '') : () => true;
+    const finish = (val) => { document.body.removeChild(ov); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') finish(cancelVal);
+      else if (e.key === 'Enter' && (!multiline || e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        finish(okVal());
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    ov.querySelector('[data-act="cancel"]').onclick = () => finish(cancelVal);
+    ov.querySelector('[data-act="confirm"]').onclick = () => finish(okVal());
+    if (!danger) {
+      ov.onclick = (e) => { if (e.target === ov) finish(cancelVal); };
+    }
+    setTimeout(() => inputEl?.focus(), 30);
+  });
+}
+window.showSuperConfirm = (opts) => _superPromptCore({ ...opts, mode: 'confirm' });
+window.showSuperPrompt  = (opts) => _superPromptCore({ ...opts, mode: 'prompt' });
+
 // ── 날짜·배지 포맷 헬퍼 (T3) ─────────────────────────
 function _toDateOrNull(t) {
   if (!t) return null;
@@ -515,7 +564,12 @@ window.executeAcademyDelete = async (academyId, subdomain) => {
   const confirmSubdomain = (inp?.value || '').trim();
   if (confirmSubdomain !== subdomain) { showToast('subdomain 불일치'); return; }
 
-  const yes = window.confirm(`정말로 학원 "${academyId}" 를 영구 삭제할까요?\n\n복구 불가합니다 (백업 JSON 으로만).`);
+  const yes = await showSuperConfirm({
+    title: '학원 영구 삭제',
+    message: `학원 "${academyId}" 를 영구 삭제할까요?\n\n복구 불가합니다 (백업 JSON 으로만).`,
+    confirmText: '영구 삭제',
+    danger: true,
+  });
   if (!yes) return;
 
   const status = document.getElementById('acDelStatus');
@@ -1357,9 +1411,14 @@ function _renderPromptsTabs() {
   }).join('');
 }
 
-window.switchPromptsType = (t) => {
+window.switchPromptsType = async (t) => {
   if (_promptsDirty) {
-    if (!confirm('변경분이 저장되지 않았어요. 그래도 다른 유형으로 이동할까요?')) return;
+    const ok = await showSuperConfirm({
+      title: '변경분 미저장',
+      message: '저장되지 않은 변경분이 있어요. 다른 유형으로 이동할까요?',
+      confirmText: '이동',
+    });
+    if (!ok) return;
     // 현재 textarea 값 다시 읽기 (저장 안 됐으니 로컬에만 있는 값 복원하려면 다시 받아야)
     _promptsCache[_promptsActiveType] = document.getElementById('promptsText').value;
   } else {
@@ -1538,7 +1597,13 @@ window.savePresetModal = async (idx) => {
 
 window.deletePresetConfig = async (i) => {
   const p = _presetsCache[i];
-  if (!confirm(`"${p.name}" 프리셋을 삭제할까요?\n(이미 시드된 학원의 프리셋은 삭제 안 됨 — 글로벌 default 만 사라짐)`)) return;
+  const ok = await showSuperConfirm({
+    title: '프리셋 삭제',
+    message: `"${p.name}" 프리셋을 삭제할까요?\n\n이미 시드된 학원의 프리셋은 삭제되지 않습니다 — 글로벌 default 만 사라집니다.`,
+    confirmText: '삭제',
+    danger: true,
+  });
+  if (!ok) return;
   const removedName = p?.name || '';
   _presetsCache.splice(i, 1);
   try {
@@ -1983,7 +2048,12 @@ window.submitSubscription = async () => {
 
 // ── 승인/거부/환불 액션 ─────────────────────────────
 window.approveSubscription = async (subId) => {
-  if (!confirm('이 결제를 승인하시겠습니까? 학원의 billingStatus / planExpiresAt / planId / studentLimit 가 갱신됩니다.')) return;
+  const ok = await showSuperConfirm({
+    title: '결제 승인',
+    message: '이 결제를 승인하시겠습니까?\n\n학원의 billingStatus / planExpiresAt / planId / studentLimit 가 자동 갱신됩니다.',
+    confirmText: '승인',
+  });
+  if (!ok) return;
   try {
     const subRef = doc(db, 'subscriptions', subId);
     const subSnap = await getDoc(subRef);
@@ -2018,7 +2088,14 @@ window.approveSubscription = async (subId) => {
 };
 
 window.rejectSubscription = async (subId) => {
-  const reason = prompt('거부 사유 (선택, 메모로 저장)');
+  const reason = await showSuperPrompt({
+    title: '결제 거부',
+    message: '거부 사유를 입력하세요 (선택, 메모로 저장).',
+    placeholder: '예: 입금자명 불일치',
+    confirmText: '거부',
+    danger: true,
+    multiline: true,
+  });
   if (reason === null) return;  // 사용자가 취소
   try {
     await updateDoc(doc(db, 'subscriptions', subId), {
@@ -2037,7 +2114,13 @@ window.rejectSubscription = async (subId) => {
 };
 
 window.refundSubscription = async (subId) => {
-  if (!confirm('이 결제를 환불 처리하시겠습니까?\n(학원의 billingStatus 는 자동 변경되지 않습니다 — 필요 시 학원 관리에서 수동 조정)')) return;
+  const ok = await showSuperConfirm({
+    title: '결제 환불',
+    message: '이 결제를 환불 처리하시겠습니까?\n\n학원의 billingStatus 는 자동 변경되지 않습니다 — 필요 시 학원 관리에서 수동 조정하세요.',
+    confirmText: '환불 처리',
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await updateDoc(doc(db, 'subscriptions', subId), {
       status: 'refunded',
