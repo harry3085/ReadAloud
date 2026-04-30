@@ -126,7 +126,7 @@ function _expiryClass(t) {
   const now = Date.now();
   const ms = d.getTime() - now;
   if (ms < 0) return 'color:#dc2626;font-weight:700;';      // 만료됨
-  if (ms < 30 * 24 * 3600 * 1000) return 'color:#f59e0b;font-weight:700;';  // 30일 이내
+  if (ms < 10 * 24 * 3600 * 1000) return 'color:#f59e0b;font-weight:700;';  // 10일 이내
   return '';
 }
 function _billingBadge(status) {
@@ -409,7 +409,8 @@ async function _renderAcademiesSummary(academies, planMap) {
   if (!el) return;
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const in31days = new Date(now.getTime() + 31 * 24 * 3600 * 1000);
+  const EXPIRING_DAYS = 10; // 만료 임박 기준 (월결제 31일은 너무 너그러워 모든 월결제 학원이 임박이 됨)
+  const inHorizon = new Date(now.getTime() + EXPIRING_DAYS * 24 * 3600 * 1000);
 
   let active = 0, newThisMonth = 0, expiringSoon = 0, overdue = 0;
   academies.forEach(a => {
@@ -418,20 +419,22 @@ async function _renderAcademiesSummary(academies, planMap) {
     const created = _toDateOrNull(a.createdAt);
     if (created && created >= thisMonthStart) newThisMonth++;
     const expires = _toDateOrNull(a.planExpiresAt);
-    if (expires && expires.getTime() >= now.getTime() && expires.getTime() <= in31days.getTime()) expiringSoon++;
+    if (expires && expires.getTime() >= now.getTime() && expires.getTime() <= inHorizon.getTime()) expiringSoon++;
   });
 
   // 이번 달 매출 합계 (subscriptions 에서 approved 만)
+  // orderBy('approvedAt','desc') 명시해서 status+approvedAt+DESC 인덱스와 매칭
   let monthlyRevenue = 0;
   try {
     const snap = await getDocs(query(
       collection(db, 'subscriptions'),
       where('status', '==', 'approved'),
       where('approvedAt', '>=', Timestamp.fromDate(thisMonthStart)),
+      orderBy('approvedAt', 'desc'),
     ));
     snap.forEach(d => { monthlyRevenue += (d.data().amount || 0); });
   } catch (e) {
-    console.warn('[summary] 매출 쿼리 실패 (인덱스 빌드 중일 수 있음):', e.message);
+    console.warn('[summary] 매출 쿼리 실패:', e.message);
   }
 
   const card = (label, big, sub, color) => `
@@ -443,7 +446,7 @@ async function _renderAcademiesSummary(academies, planMap) {
   el.innerHTML = [
     card('🏢 활성 학원', `${active}`, `전체 ${academies.length}개`, 'var(--teal)'),
     card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
-    card('⏳ 만료 임박', `${expiringSoon}`, '31일 이내', expiringSoon > 0 ? '#f59e0b' : ''),
+    card('⏳ 만료 임박', `${expiringSoon}`, `${EXPIRING_DAYS}일 이내`, expiringSoon > 0 ? '#f59e0b' : ''),
     card('💸 미납 학원', `${overdue}`, 'grace + suspended', overdue > 0 ? '#dc2626' : ''),
     card('💰 이번 달 매출', monthlyRevenue > 0 ? _amountKRW(monthlyRevenue) : '0원', 'subscriptions approved', monthlyRevenue > 0 ? '#059669' : '#999'),
   ].join('');
@@ -1722,14 +1725,15 @@ async function _renderBillingPending() {
 async function _renderBillingExpiringSoon() {
   const el = document.getElementById('billingExpiringSoon');
   if (!el) return;
+  const EXPIRING_DAYS = 10;
   const now = Date.now();
-  const in30 = now + 30 * 24 * 3600 * 1000;
+  const horizon = now + EXPIRING_DAYS * 24 * 3600 * 1000;
   const rows = _academiesCache
     .map(a => ({ ...a, _exp: _toDateOrNull(a.planExpiresAt) }))
-    .filter(a => a._exp && a._exp.getTime() >= now && a._exp.getTime() <= in30)
+    .filter(a => a._exp && a._exp.getTime() >= now && a._exp.getTime() <= horizon)
     .sort((x, y) => x._exp - y._exp);
   el.innerHTML = `
-    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">⏰ 만료 임박 (30일 이내, ${rows.length})</div>
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">⏰ 만료 임박 (${EXPIRING_DAYS}일 이내, ${rows.length})</div>
     ${rows.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">없음</div>' : `
     <table class="table" style="margin:0;">
       <thead><tr><th>학원</th><th>플랜</th><th>만료일</th><th>D-day</th><th>학원장 이메일</th></tr></thead>
