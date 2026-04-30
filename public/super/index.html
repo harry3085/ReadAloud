@@ -42,11 +42,15 @@
   </div>
 </header>
 
+<!-- 글로벌 경고 배너 (T5: Gemini 일일 쿼터 80%↑ 시 표시) -->
+<div id="globalAlert" style="display:none;background:#dc2626;color:white;padding:10px 18px;font-size:13px;font-weight:600;text-align:center;flex-shrink:0;"></div>
+
 <main class="super-main">
   <div class="super-tabs">
     <button class="active" id="tab-academies" onclick="goTab('academies')">🏢 학원 관리</button>
     <button id="tab-users" onclick="goTab('users')">👥 사용자 검색</button>
     <button id="tab-billing" onclick="goTab('billing')">💳 결제 관리</button>
+    <button id="tab-usage" onclick="goTab('usage')">📊 사용량·모니터링</button>
     <button id="tab-prompts" onclick="goTab('prompts')">🤖 AI 프롬프트</button>
     <button id="tab-presets" onclick="goTab('presets')">🧹 클린업 프리셋</button>
     <button id="tab-tools" onclick="goTab('tools')">🛠 도구</button>
@@ -131,6 +135,19 @@
     </div>
   </div>
 
+  <!-- 사용량·모니터링 (T5) -->
+  <div class="page" id="page-usage">
+    <div id="usageSummary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;flex-shrink:0;">
+      <!-- 5장 카드 — JS 가 채움 -->
+    </div>
+    <div style="flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:12px;padding-right:4px;">
+      <div id="geminiGauge"   class="card" style="padding:18px;flex-shrink:0;"></div>
+      <div id="usageTop10"    class="card" style="padding:0;"></div>
+      <div id="usageEndpoints" class="card" style="padding:0;"></div>
+      <div id="systemHealth"  class="card" style="padding:18px;flex-shrink:0;"></div>
+    </div>
+  </div>
+
   <!-- AI 프롬프트 — 글로벌 default 편집 -->
   <div class="page" id="page-prompts">
     <div class="card" style="padding:18px;flex:1;display:flex;flex-direction:column;min-height:0;">
@@ -182,9 +199,12 @@
     <div class="card" style="padding:18px;">
       <div style="font-weight:700;margin-bottom:10px;">외부 대시보드</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <a class="btn btn-primary" href="https://aistudio.google.com/rate-limit?timeRange=last-90-days&project=readaloud-51113" target="_blank" rel="noopener">🤖 Gemini 사용량 (Google)</a>
+        <a class="btn btn-primary" href="https://aistudio.google.com/rate-limit?timeRange=last-90-days&project=readaloud-51113" target="_blank" rel="noopener">🤖 Gemini 사용량</a>
+        <a class="btn btn-secondary" href="https://console.cloud.google.com/apis/api/vision.googleapis.com/quotas?project=readaloud-51113" target="_blank" rel="noopener">👁 Vision API 쿼터</a>
         <a class="btn btn-secondary" href="https://console.firebase.google.com/project/readaloud-51113/overview" target="_blank" rel="noopener">🔥 Firebase Console</a>
+        <a class="btn btn-secondary" href="https://console.firebase.google.com/project/readaloud-51113/storage/usage" target="_blank" rel="noopener">📦 Storage 용량</a>
         <a class="btn btn-secondary" href="https://vercel.com/harry-kims-projects-2eb6982d/readaloud-app" target="_blank" rel="noopener">▲ Vercel</a>
+        <a class="btn btn-secondary" href="https://vercel.com/harry-kims-projects-2eb6982d/readaloud-app/usage" target="_blank" rel="noopener">📊 Vercel 사용량</a>
       </div>
       <div style="margin-top:18px;font-size:12px;color:var(--gray);">
         ※ Gemini 공식 대시보드는 슈퍼 관리자만 접근 가능. 학원장(academy_admin) 은 자기 학원 위젯만 볼 수 있음.

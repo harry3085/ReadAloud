@@ -155,6 +155,7 @@ window.goTab = (id) => {
   if (id === 'academies') loadAcademies();
   else if (id === 'users') runUserSearch();
   else if (id === 'billing') loadBillingDashboard();
+  else if (id === 'usage') loadUsageDashboard();
   else if (id === 'prompts') loadPromptsConfig();
   else if (id === 'presets') loadPresetsConfig();
 };
@@ -1069,16 +1070,41 @@ function _renderAcmMemo(a) {
 
 function _renderAcmUsage(a) {
   const u = a.usage || {};
+  const p = _plansCache[a.planId] || {};
+  const cl = a.customLimits || {};
+  const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0;
+  const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || 0;
+  const ai = u.aiCallsThisMonth || 0;
+  const rec = u.recordingCallsThisMonth || 0;
+  const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
+  const recPct = recLimit > 0 ? (rec / recLimit) * 100 : 0;
+  const studentPct = a.studentLimit > 0 ? ((u.activeStudentsCount || 0) / a.studentLimit) * 100 : 0;
+  const aiOver = !!cl.aiQuotaPerMonth;
+  const recOver = !!cl.recordingPerMonth;
+  const bar = (pct, color) => `
+    <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;">
+      <div style="width:${Math.min(100, pct).toFixed(1)}%;height:100%;background:${color};"></div>
+    </div>`;
+  const row = (label, used, limit, pct, color, override) => `
+    <div style="padding:12px 14px;border-bottom:1px solid #eee;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--gray);">${label}${override ? ' <span title="customLimits override" style="color:#f59e0b;">*</span>' : ''}</span>
+        <span style="font-weight:700;font-size:14px;">
+          ${used.toLocaleString()} <span style="color:#999;font-weight:400;font-size:12px;">/ ${limit > 0 ? limit.toLocaleString() : '∞'}</span>
+          ${limit > 0 ? `<span style="margin-left:8px;font-size:11px;color:${color};">${pct.toFixed(0)}%</span>` : ''}
+        </span>
+      </div>
+      ${limit > 0 ? bar(pct, color) : ''}
+    </div>`;
+  const lastReset = u.lastResetAt || '-';
   return `
-    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">학생 한도 (실시간)</div>
-    <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;">
-      <span style="font-size:13px;color:var(--gray);">👥 활성 학생</span>
-      <span style="font-weight:700;font-size:14px;">${u.activeStudentsCount || 0} <span style="color:#999;font-weight:400;font-size:12px;">/ ${a.studentLimit || '∞'}</span></span>
-    </div>
-    <div style="margin-top:14px;padding:14px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;line-height:1.5;">
-      ℹ️ AI 호출·녹음 평가·일별 추이·Gemini 쿼터 게이지·Top10 등 본격적인 사용량 모니터링은 <b>T5 (사용량·모니터링) 탭</b>에서 제공됩니다.
-      <br><br>
-      <span style="color:#999;font-size:11px;">학원별 일별 사용량 원본은 <code style="background:#fff;padding:1px 4px;border-radius:3px;">apiUsage/{academyId}_{YYYY-MM-DD}</code> 컬렉션에 기록되고 있습니다 (T5에서 집계 표시).</span>
+    <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">이번 달 사용량 (실시간 카운터)</div>
+    ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || 0, studentPct, _thresholdColor(studentPct), false)}
+    ${row('✨ AI 호출 (Gemini)', ai, aiLimit, aiPct, _thresholdColor(aiPct), aiOver)}
+    ${row('🎤 녹음 평가', rec, recLimit, recPct, _thresholdColor(recPct), recOver)}
+    <div style="padding:10px 14px;font-size:11px;color:#999;">자동 리셋 기준: ${esc(lastReset)} (api/_lib/quota.js 가 매월 리셋 트리거)</div>
+    <div style="margin-top:10px;padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:12px;color:#0c4a6e;line-height:1.5;">
+      ℹ️ Gemini 일일 쿼터 게이지·전사 Top 10·시스템 헬스 등 <b>전사 모니터링</b>은 <b>📊 사용량·모니터링</b> 탭에서 확인하세요.
     </div>`;
 }
 
@@ -2180,3 +2206,325 @@ window.exportBillingCsv = () => {
   URL.revokeObjectURL(url);
   showToast('📥 CSV 다운로드');
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 사용량·모니터링 (T5)
+// apiUsage 컬렉션은 {academyId}_{YYYY-MM-DD} 학원별 분리 형식.
+// byEndpoint 키: ocr (Vision) / cleanup-ocr / generate-quiz / check-recording (Gemini)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const GEMINI_DAILY_LIMIT = 1000;        // gemini-3.1-flash-lite-preview RPD
+const GEMINI_ENDPOINTS = ['cleanup-ocr', 'generate-quiz', 'check-recording'];
+const VISION_ENDPOINTS = ['ocr'];
+
+function _todayYMD() { return new Date().toISOString().slice(0, 10); }
+function _thisMonthRange() {
+  const n = new Date();
+  const start = new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10);
+  const next = new Date(n.getFullYear(), n.getMonth() + 1, 1).toISOString().slice(0, 10);
+  return { start, next };
+}
+
+function _thresholdColor(pct) {
+  if (pct > 95) return '#dc2626';
+  if (pct > 80) return '#f59e0b';
+  if (pct > 50) return '#3b82f6';
+  return '#059669';
+}
+
+window.loadUsageDashboard = async () => {
+  if (!_academiesCache.length) {
+    try { await loadAcademies(); } catch (_) {}
+  }
+  await Promise.all([
+    _loadUsageSummary(),
+    _loadGeminiGauge(),
+    _loadAcademyTop10(),
+    _loadEndpointBreakdown(),
+    _loadSystemHealth(),
+  ]);
+};
+
+async function _todayApiCalls() {
+  const today = _todayYMD();
+  const snap = await getDocs(query(collection(db, 'apiUsage'), where('date', '==', today)));
+  let total = 0;
+  let byEndpoint = {};
+  snap.forEach(d => {
+    const data = d.data();
+    total += data.total || 0;
+    Object.entries(data.byEndpoint || {}).forEach(([k, v]) => {
+      byEndpoint[k] = (byEndpoint[k] || 0) + v;
+    });
+  });
+  return { total, byEndpoint, geminiTotal: GEMINI_ENDPOINTS.reduce((s, k) => s + (byEndpoint[k] || 0), 0) };
+}
+
+async function _thisMonthApiCalls() {
+  const { start, next } = _thisMonthRange();
+  const snap = await getDocs(query(
+    collection(db, 'apiUsage'),
+    where('date', '>=', start),
+    where('date', '<', next),
+  ));
+  let total = 0;
+  const byEndpoint = {};
+  const byAcademy = {};
+  snap.forEach(d => {
+    const data = d.data();
+    total += data.total || 0;
+    Object.entries(data.byEndpoint || {}).forEach(([k, v]) => { byEndpoint[k] = (byEndpoint[k] || 0) + v; });
+    const aid = data.academyId || 'unknown';
+    byAcademy[aid] = (byAcademy[aid] || 0) + (data.total || 0);
+  });
+  return { total, byEndpoint, byAcademy };
+}
+
+// ── T5-B: 5장 카드 ────────────────────────────────────
+async function _loadUsageSummary() {
+  const el = document.getElementById('usageSummary');
+  if (!el) return;
+  // 활성 학원
+  const active = _academiesCache.filter(a => a.billingStatus === 'active').length;
+  // 이번 달 신규
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const newThisMonth = _academiesCache.filter(a => {
+    const c = _toDateOrNull(a.createdAt);
+    return c && c >= monthStart;
+  }).length;
+  // 이번 달 AI 호출 합계 + Gemini 일일 쿼터
+  const [today, month, revenue] = await Promise.all([
+    _todayApiCalls(),
+    _thisMonthApiCalls(),
+    _thisMonthRevenue(),
+  ]);
+  const geminiTotal = today.geminiTotal;
+  const geminiPct = (geminiTotal / GEMINI_DAILY_LIMIT) * 100;
+  const monthGemini = GEMINI_ENDPOINTS.reduce((s, k) => s + (month.byEndpoint[k] || 0), 0);
+
+  const card = (label, big, sub, color, bg) => `
+    <div class="card" style="padding:12px 14px;text-align:center;${bg ? `background:${bg};` : ''}">
+      <div style="font-size:11px;color:var(--gray);margin-bottom:4px;">${label}</div>
+      <div style="font-size:22px;font-weight:800;color:${color || 'var(--text)'};line-height:1.1;">${big}</div>
+      ${sub ? `<div style="font-size:10px;color:#999;margin-top:4px;">${sub}</div>` : ''}
+    </div>`;
+  el.innerHTML = [
+    card('🏢 활성 학원', `${active}`, `전체 ${_academiesCache.length}개`, 'var(--teal)'),
+    card('✨ 이번 달 AI', monthGemini.toLocaleString(), `전체 호출 ${month.total.toLocaleString()}`, '#0ea5e9'),
+    card('🤖 Gemini 오늘', `${geminiTotal} / ${GEMINI_DAILY_LIMIT}`, `${geminiPct.toFixed(1)}%`, _thresholdColor(geminiPct), geminiPct > 80 ? '#fef3c7' : ''),
+    card('💰 이번 달 매출', revenue > 0 ? _amountKRW(revenue) : '0원', 'subscriptions approved', revenue > 0 ? '#059669' : '#999'),
+    card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
+  ].join('');
+}
+
+async function _thisMonthRevenue() {
+  try {
+    const { start } = _thisMonthRange();
+    const snap = await getDocs(query(
+      collection(db, 'subscriptions'),
+      where('status', '==', 'approved'),
+      where('approvedAt', '>=', Timestamp.fromDate(new Date(start + 'T00:00:00'))),
+      orderBy('approvedAt', 'desc'),
+    ));
+    let total = 0;
+    snap.forEach(d => { total += (d.data().amount || 0); });
+    return total;
+  } catch (e) {
+    console.warn('[usage] 매출 쿼리 실패:', e.message);
+    return 0;
+  }
+}
+
+// ── T5-C: Gemini 게이지 + 글로벌 배너 ────────────────
+async function _loadGeminiGauge() {
+  const el = document.getElementById('geminiGauge');
+  if (!el) return;
+  const today = await _todayApiCalls();
+  const used = today.geminiTotal;
+  const pct = (used / GEMINI_DAILY_LIMIT) * 100;
+  const color = _thresholdColor(pct);
+  const status = pct > 95 ? '위험' : pct > 80 ? '경고' : pct > 50 ? '주의' : '정상';
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div style="font-weight:700;font-size:16px;">🤖 Gemini 일일 쿼터</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:3px;">
+          모델: gemini-3.1-flash-lite-preview · 한도 ${GEMINI_DAILY_LIMIT} RPD · 매일 자정(태평양 시간) 리셋
+        </div>
+      </div>
+      <a href="https://aistudio.google.com/rate-limit?timeRange=last-90-days&project=readaloud-51113" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:12px;">
+        Google AI Studio →
+      </a>
+    </div>
+
+    <div style="background:#f0f0f0;border-radius:8px;overflow:hidden;height:28px;position:relative;">
+      <div style="background:${color};height:100%;width:${Math.min(100, pct)}%;transition:width 0.3s;"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#222;">
+        ${used} / ${GEMINI_DAILY_LIMIT} (${pct.toFixed(1)}%) — ${status}
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;color:var(--gray);">
+      ${GEMINI_ENDPOINTS.map(ep => `
+        <div style="padding:6px 10px;background:#fafafa;border:1px solid var(--border);border-radius:6px;text-align:center;">
+          ${esc(ep)}: <b style="color:var(--text);">${(today.byEndpoint[ep] || 0).toLocaleString()}</b>
+        </div>`).join('')}
+    </div>
+
+    ${pct > 80 ? `
+      <div style="margin-top:12px;padding:10px 14px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;font-size:13px;color:#854d0e;">
+        ⚠️ 일일 쿼터 ${pct.toFixed(0)}% 도달. ${pct > 95 ? '즉시 유료 전환 검토 필요.' : '추이 관찰 중.'}
+      </div>
+    ` : ''}
+  `;
+
+  // 글로벌 배너 (헤더 아래)
+  const ga = document.getElementById('globalAlert');
+  if (ga) {
+    if (pct > 80) {
+      ga.style.display = 'block';
+      ga.style.background = pct > 95 ? '#dc2626' : '#f59e0b';
+      ga.innerHTML = `⚠️ Gemini 일일 쿼터 ${pct.toFixed(0)}% 도달 (${used}/${GEMINI_DAILY_LIMIT}) — 80% 초과 시 모든 학원 AI 기능 곧 중단`;
+    } else {
+      ga.style.display = 'none';
+    }
+  }
+}
+
+// ── T5-D: 학원별 사용량 Top 10 ────────────────────────
+async function _loadAcademyTop10() {
+  const el = document.getElementById('usageTop10');
+  if (!el) return;
+  // academies.usage 카운터 (이번 달 누적, quota.js 가 increment)
+  const data = _academiesCache.map(a => {
+    const u = a.usage || {};
+    const p = _plansCache[a.planId] || {};
+    const cl = a.customLimits || {};
+    const ai = u.aiCallsThisMonth || 0;
+    const rec = u.recordingCallsThisMonth || 0;
+    const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0;
+    const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || 0;
+    const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
+    return { id: a.id, name: a.name || a.id, planId: a.planId, students: u.activeStudentsCount || 0, ai, rec, aiLimit, recLimit, aiPct };
+  });
+  data.sort((x, y) => (y.ai + y.rec) - (x.ai + x.rec));
+  const top10 = data.slice(0, 10);
+
+  el.innerHTML = `
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">📊 학원별 사용량 Top 10 (이번 달)</div>
+    ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
+    <table class="table" style="margin:0;">
+      <thead><tr>
+        <th>학원명</th><th>플랜</th><th>학생</th><th>AI 호출</th><th>녹음 평가</th><th>AI 한도 대비</th>
+      </tr></thead>
+      <tbody>
+        ${top10.map(a => `
+          <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
+            <td class="td-main">${esc(a.name)}</td>
+            <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
+            <td class="td-center">${a.students}</td>
+            <td class="td-center" style="font-weight:600;">${a.ai.toLocaleString()}</td>
+            <td class="td-center" style="font-weight:600;">${a.rec.toLocaleString()}</td>
+            <td class="td-center" style="font-weight:700;color:${_thresholdColor(a.aiPct)};">
+              ${a.aiLimit > 0 ? `${a.aiPct.toFixed(0)}%` : '∞'}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`}`;
+}
+
+// ── 엔드포인트 분포 (이번 달 전체) ────────────────────
+async function _loadEndpointBreakdown() {
+  const el = document.getElementById('usageEndpoints');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:14px 18px;color:#bbb;font-size:12px;">로딩 중...</div>';
+  try {
+    const month = await _thisMonthApiCalls();
+    const total = month.total || 1;
+    const allKeys = [...GEMINI_ENDPOINTS, ...VISION_ENDPOINTS];
+    el.innerHTML = `
+      <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">🧩 엔드포인트별 호출 (이번 달, 총 ${month.total.toLocaleString()})</div>
+      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+        ${allKeys.map(k => {
+          const v = month.byEndpoint[k] || 0;
+          const pct = total > 0 ? (v / total) * 100 : 0;
+          const isVision = VISION_ENDPOINTS.includes(k);
+          return `
+            <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+              <div style="font-size:11px;color:var(--gray);">${esc(k)}${isVision ? ' (Vision)' : ' (Gemini)'}</div>
+              <div style="font-size:18px;font-weight:700;margin-top:2px;">${v.toLocaleString()}</div>
+              <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:6px;overflow:hidden;">
+                <div style="width:${pct.toFixed(1)}%;height:100%;background:${isVision ? '#8b5cf6' : '#0ea5e9'};"></div>
+              </div>
+              <div style="font-size:10px;color:#999;margin-top:3px;">${pct.toFixed(1)}%</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div style="padding:14px 18px;color:#e05050;font-size:12px;">로드 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── T5-E: 시스템 헬스 ────────────────────────────────
+async function _loadSystemHealth() {
+  const el = document.getElementById('systemHealth');
+  if (!el) return;
+  const sevenDaysAgo = Date.now() - 7 * 24 * 3600 * 1000;
+  let activeCnt = 0;
+  const inactiveActive = []; // billingStatus=active 인데 7일 미접속
+  for (const a of _academiesCache) {
+    const last = _toDateOrNull(a.lastAdminLoginAt);
+    if (last && last.getTime() >= sevenDaysAgo) activeCnt++;
+    else if (a.billingStatus === 'active') inactiveActive.push(a);
+  }
+  const inactiveLabel = inactiveActive.length === 0 ? '없음'
+    : inactiveActive.slice(0, 3).map(a => esc(a.name || a.id)).join(', ')
+      + (inactiveActive.length > 3 ? ` 외 ${inactiveActive.length - 3}곳` : '');
+
+  el.innerHTML = `
+    <div style="font-weight:700;margin-bottom:12px;">⚡ 시스템 헬스</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:11px;color:var(--gray);">학원장 로그인 활성도 (7일)</div>
+        <div style="font-size:18px;font-weight:700;margin-top:3px;">${activeCnt} / ${_academiesCache.length} 학원</div>
+      </div>
+      <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:11px;color:var(--gray);">7일 미접속 (active 학원)</div>
+        <div style="font-size:13px;font-weight:600;margin-top:3px;color:${inactiveActive.length > 0 ? '#dc2626' : 'var(--text)'};line-height:1.4;">${inactiveLabel}</div>
+      </div>
+      <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:11px;color:var(--gray);">AI 평가 실패율 (24h)</div>
+        <div style="font-size:14px;color:var(--gray);margin-top:3px;">Phase B (Cloud Function)</div>
+      </div>
+    </div>
+  `;
+}
+
+// 5분마다 글로벌 배너 갱신 (Gemini 쿼터 80% 감지)
+let _globalAlertTimer = null;
+function _startGlobalAlertCheck() {
+  if (_globalAlertTimer) return;
+  const tick = async () => {
+    try {
+      const today = await _todayApiCalls();
+      const pct = (today.geminiTotal / GEMINI_DAILY_LIMIT) * 100;
+      const ga = document.getElementById('globalAlert');
+      if (!ga) return;
+      if (pct > 80) {
+        ga.style.display = 'block';
+        ga.style.background = pct > 95 ? '#dc2626' : '#f59e0b';
+        ga.innerHTML = `⚠️ Gemini 일일 쿼터 ${pct.toFixed(0)}% 도달 (${today.geminiTotal}/${GEMINI_DAILY_LIMIT}) — 80% 초과 시 모든 학원 AI 기능 곧 중단`;
+      } else {
+        ga.style.display = 'none';
+      }
+    } catch (_) {}
+  };
+  tick();
+  _globalAlertTimer = setInterval(tick, 5 * 60 * 1000);
+}
+// 슈퍼 앱 진입 후 호출 (auth 체크 통과 직후)
+setTimeout(() => {
+  if (auth.currentUser) _startGlobalAlertCheck();
+}, 3000);
