@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -50,6 +50,8 @@ window.goTab = (id) => {
   if (page) page.classList.add('active');
   if (id === 'academies') loadAcademies();
   else if (id === 'users') runUserSearch();
+  else if (id === 'prompts') loadPromptsConfig();
+  else if (id === 'presets') loadPresetsConfig();
 };
 
 // ── 사용자 검색 ──────────────────────────────────────
@@ -901,3 +903,240 @@ async function loadAcademies() {
     el.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message)}</td></tr>`;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI 프롬프트 default — appConfig/aiPrompts (글로벌, super_admin 편집)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PROMPT_TYPES = ['mcq', 'fill_blank', 'unscramble', 'subjective', 'recording', 'vocab'];
+const PROMPT_LABELS = {
+  mcq: '📖 객관식', fill_blank: '✏️ 빈칸채우기', unscramble: '🔀 언스크램블',
+  subjective: '✍️ 해석(주관식)', recording: '🎤 녹음숙제', vocab: '📝 단어시험',
+};
+let _promptsCache = {};       // Firestore 에서 로드한 원본
+let _promptsActiveType = 'mcq';
+let _promptsDirty = false;    // 변경분 있음
+
+window.loadPromptsConfig = async () => {
+  const status = document.getElementById('promptsStatus');
+  if (status) status.textContent = '로딩 중...';
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'aiPrompts'));
+    _promptsCache = snap.exists() ? { ...snap.data() } : {};
+    _promptsDirty = false;
+    document.getElementById('promptsSaveBtn').style.display = 'none';
+    _renderPromptsTabs();
+    _showPromptsType(_promptsActiveType);
+    if (status) status.textContent = `✓ 로드 완료 (${PROMPT_TYPES.filter(t => _promptsCache[t]).length}/${PROMPT_TYPES.length}개 정의됨)`;
+  } catch (e) {
+    console.error(e);
+    if (status) status.innerHTML = `<span style="color:#e05050;">로드 실패: ${esc(e.message)}</span>`;
+  }
+};
+
+function _renderPromptsTabs() {
+  const tabs = document.getElementById('promptsTabs');
+  if (!tabs) return;
+  tabs.innerHTML = PROMPT_TYPES.map(t => {
+    const active = t === _promptsActiveType;
+    const filled = !!_promptsCache[t];
+    return `<button onclick="switchPromptsType('${t}')" class="btn ${active ? 'btn-primary' : 'btn-secondary'}" style="font-size:12px;padding:6px 12px;${!filled ? 'opacity:0.5;' : ''}">
+      ${PROMPT_LABELS[t]}${filled ? '' : ' (미정의)'}
+    </button>`;
+  }).join('');
+}
+
+window.switchPromptsType = (t) => {
+  if (_promptsDirty) {
+    if (!confirm('변경분이 저장되지 않았어요. 그래도 다른 유형으로 이동할까요?')) return;
+    // 현재 textarea 값 다시 읽기 (저장 안 됐으니 로컬에만 있는 값 복원하려면 다시 받아야)
+    _promptsCache[_promptsActiveType] = document.getElementById('promptsText').value;
+  } else {
+    // 안전: 현재 textarea 값을 캐시에 동기 (사용자가 편집 중일 수도)
+    const cur = document.getElementById('promptsText')?.value;
+    if (cur != null) _promptsCache[_promptsActiveType] = cur;
+  }
+  _promptsActiveType = t;
+  _renderPromptsTabs();
+  _showPromptsType(t);
+};
+
+function _showPromptsType(t) {
+  const ta = document.getElementById('promptsText');
+  if (!ta) return;
+  ta.value = _promptsCache[t] || '';
+  ta.oninput = () => {
+    _promptsDirty = true;
+    document.getElementById('promptsSaveBtn').style.display = '';
+  };
+}
+
+window.savePromptsConfig = async () => {
+  const status = document.getElementById('promptsStatus');
+  // 현재 보이는 textarea 값을 캐시에 반영
+  const cur = document.getElementById('promptsText')?.value;
+  if (cur != null) _promptsCache[_promptsActiveType] = cur;
+  // 메타필드 (timestamp 등) 제외하고 6 유형만 payload 에 담기
+  const payload = {};
+  PROMPT_TYPES.forEach(t => {
+    if (typeof _promptsCache[t] === 'string') payload[t] = _promptsCache[t];
+  });
+  payload._updatedAt = serverTimestamp();
+  payload._updatedBy = _currentUser?.uid || '';
+  try {
+    if (status) status.textContent = '저장 중...';
+    await setDoc(doc(db, 'appConfig', 'aiPrompts'), payload, { merge: true });
+    _promptsDirty = false;
+    document.getElementById('promptsSaveBtn').style.display = 'none';
+    if (status) status.innerHTML = `<span style="color:#059669;">✓ 저장 완료 — 모든 학원에 즉시 반영</span>`;
+    showToast('AI 프롬프트 default 저장됨');
+  } catch (e) {
+    console.error(e);
+    if (status) status.innerHTML = `<span style="color:#e05050;">저장 실패: ${esc(e.message)}</span>`;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 클린업 프리셋 default — appConfig/cleanupPresets (글로벌, super_admin 편집)
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _presetsCache = [];
+
+window.loadPresetsConfig = async () => {
+  const status = document.getElementById('presetsStatus');
+  if (status) status.textContent = '로딩 중...';
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'cleanupPresets'));
+    _presetsCache = snap.exists() ? (snap.data().presets || []) : [];
+    _renderPresetsList();
+    if (status) status.textContent = `✓ ${_presetsCache.length}개 프리셋`;
+  } catch (e) {
+    console.error(e);
+    if (status) status.innerHTML = `<span style="color:#e05050;">로드 실패: ${esc(e.message)}</span>`;
+  }
+};
+
+function _renderPresetsList() {
+  const el = document.getElementById('presetsList');
+  if (!el) return;
+  if (_presetsCache.length === 0) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:#bbb;">프리셋이 없습니다. 우측 상단 [+ 신규 프리셋] 으로 추가하세요.</div>';
+    return;
+  }
+  el.innerHTML = _presetsCache.map((p, i) => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;background:white;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:14px;">${esc(p.name || '(이름 없음)')}${p.isDefault ? ' <span style="font-size:10px;color:var(--gray);font-weight:400;">(기본)</span>' : ''}</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px;">${esc(p.description || '')}</div>
+          <div style="font-size:10px;color:#bbb;margin-top:3px;">order=${p.order ?? i + 1} · prompt ${(p.prompt || '').length}자</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px;" onclick="editPresetConfig(${i})">✏️ 편집</button>
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px;color:#e05050;" onclick="deletePresetConfig(${i})">🗑 삭제</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.addPresetConfig = () => {
+  _editPresetModal({ name: '', description: '', prompt: '', order: _presetsCache.length + 1, isDefault: false }, -1);
+};
+
+window.editPresetConfig = (i) => {
+  _editPresetModal({ ..._presetsCache[i] }, i);
+};
+
+function _editPresetModal(preset, idx) {
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;">${idx === -1 ? '+ 신규 프리셋' : '✏️ 프리셋 편집'}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:4px;">학원장 앱의 AI OCR 정리 프리셋 default</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="display:grid;grid-template-columns:1fr 100px 100px;gap:8px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">이름 *</label>
+            <input id="prModalName" value="${esc(preset.name || '')}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">order</label>
+            <input id="prModalOrder" type="number" value="${preset.order ?? 1}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">기본?</label>
+            <select id="prModalDefault" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;background:white;">
+              <option value="true"${preset.isDefault ? ' selected' : ''}>기본 ✓</option>
+              <option value="false"${!preset.isDefault ? ' selected' : ''}>일반</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;font-weight:600;color:var(--gray);">설명</label>
+          <input id="prModalDesc" value="${esc(preset.description || '')}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--gray);">프롬프트 *</label>
+          <textarea id="prModalPrompt" rows="14" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,Consolas,monospace;line-height:1.5;margin-top:3px;resize:vertical;">${esc(preset.prompt || '')}</textarea>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="savePresetModal(${idx})">저장</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+}
+
+window.savePresetModal = async (idx) => {
+  const name = document.getElementById('prModalName').value.trim();
+  const description = document.getElementById('prModalDesc').value.trim();
+  const prompt = document.getElementById('prModalPrompt').value.trim();
+  const order = parseInt(document.getElementById('prModalOrder').value) || 1;
+  const isDefault = document.getElementById('prModalDefault').value === 'true';
+
+  if (!name) { showToast('이름을 입력하세요'); return; }
+  if (!prompt || prompt.length < 10) { showToast('프롬프트는 최소 10자'); return; }
+
+  const preset = { name, description, prompt, order, isDefault };
+  if (idx === -1) _presetsCache.push(preset);
+  else _presetsCache[idx] = preset;
+
+  try {
+    await setDoc(doc(db, 'appConfig', 'cleanupPresets'), {
+      presets: _presetsCache,
+      _updatedAt: serverTimestamp(),
+      _updatedBy: _currentUser?.uid || '',
+    }, { merge: false });
+    closeModal();
+    _renderPresetsList();
+    showToast(idx === -1 ? '추가됨' : '저장됨');
+    document.getElementById('presetsStatus').textContent = `✓ ${_presetsCache.length}개 프리셋`;
+  } catch (e) {
+    console.error(e);
+    showToast('저장 실패: ' + e.message);
+  }
+};
+
+window.deletePresetConfig = async (i) => {
+  const p = _presetsCache[i];
+  if (!confirm(`"${p.name}" 프리셋을 삭제할까요?\n(이미 시드된 학원의 프리셋은 삭제 안 됨 — 글로벌 default 만 사라짐)`)) return;
+  _presetsCache.splice(i, 1);
+  try {
+    await setDoc(doc(db, 'appConfig', 'cleanupPresets'), {
+      presets: _presetsCache,
+      _updatedAt: serverTimestamp(),
+      _updatedBy: _currentUser?.uid || '',
+    }, { merge: false });
+    _renderPresetsList();
+    showToast('삭제됨');
+    document.getElementById('presetsStatus').textContent = `✓ ${_presetsCache.length}개 프리셋`;
+  } catch (e) {
+    console.error(e);
+    showToast('삭제 실패: ' + e.message);
+  }
+};

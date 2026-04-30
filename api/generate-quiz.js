@@ -7,6 +7,23 @@
 // 인증: idToken 검증 + 학원 AI 월 쿼터 체크 (Phase 3)
 
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
+const { getFirestore } = require('firebase-admin/firestore');
+
+// appConfig/aiPrompts (Firestore 글로벌 default) → 코드 상수 fallback.
+// super_admin 이 super 앱에서 편집한 default 가 즉시 모든 학원에 반영됨.
+// 호출당 read 1회 ($0.0000006) — 캐시 미적용 (즉시 반영 우선).
+async function getEffectivePrompt(quizType) {
+  try {
+    const snap = await getFirestore().doc('appConfig/aiPrompts').get();
+    if (snap.exists) {
+      const v = snap.data()[quizType];
+      if (typeof v === 'string' && v.length > 20) return v;
+    }
+  } catch (e) {
+    console.warn('[generate-quiz] appConfig/aiPrompts read failed:', e.message);
+  }
+  return SYSTEM_PROMPTS[quizType];
+}
 
 // 모델 폴백 체인 (2026-04-27 유료 티어 전환):
 //   1차 2.5-flash-lite — GA 안정 + 빠름 + 저렴 (95%+ 1차 통과)
@@ -409,15 +426,20 @@ module.exports = async function handler(req, res) {
     return res.status(204).end();
   }
   // GET: 기본 프롬프트 조회 (관리자 UI에서 편집용)
+  // 우선순위: appConfig/aiPrompts (글로벌 default) → 코드 상수 fallback
   if (req.method === 'GET') {
     const t = req.query?.type;
     if (t) {
-      if (SYSTEM_PROMPTS[t]) {
-        return res.status(200).json({ success: true, type: t, prompt: SYSTEM_PROMPTS[t] });
-      }
-      return res.status(400).json({ error: `Unknown type: ${t}` });
+      if (!SYSTEM_PROMPTS[t]) return res.status(400).json({ error: `Unknown type: ${t}` });
+      const prompt = await getEffectivePrompt(t);
+      return res.status(200).json({ success: true, type: t, prompt });
     }
-    return res.status(200).json({ success: true, prompts: SYSTEM_PROMPTS });
+    // 전체 조회 — 6 유형 모두 effective 값 반환
+    const out = {};
+    for (const key of Object.keys(SYSTEM_PROMPTS)) {
+      out[key] = await getEffectivePrompt(key);
+    }
+    return res.status(200).json({ success: true, prompts: out });
   }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -475,10 +497,13 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── 프롬프트 구성 ───
-    // 사용자 정의 프롬프트가 있으면 우선 사용 (최소 길이 20자)
+    // 우선순위:
+    //   1. customSystemPrompt (학원장 localStorage 에 저장된 학원별 커스텀)
+    //   2. appConfig/aiPrompts (super_admin 편집한 글로벌 default)
+    //   3. SYSTEM_PROMPTS (코드 fallback, 1·2 다 비었거나 짧을 때)
     const systemPrompt = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim().length >= 20)
       ? customSystemPrompt.trim()
-      : SYSTEM_PROMPTS[quizType];
+      : (await getEffectivePrompt(quizType));
     const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, req.body || {});
 
     // ─── Gemini API 호출 (폴백 체인 + 동일 모델 1회 재시도) ───

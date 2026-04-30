@@ -217,5 +217,14 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+
+    // 글로벌 앱 설정 (super_admin 편집)
+    // 현재 항목: aiPrompts (AI Generator 시스템 프롬프트), cleanupPresets (AI OCR 정리 프리셋)
+    // read: 로그인 사용자 누구나 (학원장 앱이 default 표시·시드용으로 읽음)
+    // write: super_admin 전용
+    match /appConfig/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
   }
 }

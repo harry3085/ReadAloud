@@ -3436,9 +3436,22 @@ async function _cleanupLoadPresets() {
   }
 }
 
+// 글로벌 default 우선 (appConfig/cleanupPresets) — 코드 상수는 fallback
+async function _getEffectiveCleanupDefaults() {
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'cleanupPresets'));
+    if (snap.exists()) {
+      const arr = snap.data()?.presets;
+      if (Array.isArray(arr) && arr.length > 0) return arr;
+    }
+  } catch (e) { console.warn('[cleanup] appConfig/cleanupPresets read failed:', e.message); }
+  return _CLEANUP_DEFAULT_PRESETS;
+}
+
 async function _cleanupSeedDefaults() {
   const uid = auth.currentUser?.uid || '';
-  await Promise.all(_CLEANUP_DEFAULT_PRESETS.map(p =>
+  const defaults = await _getEffectiveCleanupDefaults();
+  await Promise.all(defaults.map(p =>
     addDoc(collection(db, 'genCleanupPresets'), {
       ...p,
       createdAt: serverTimestamp(),
@@ -4028,9 +4041,11 @@ window.cleanupDeletePreset = async (id) => {
 };
 
 // ─── 기본값 복원 (누락된 기본 프리셋만 재추가) ───
+// 우선순위: appConfig/cleanupPresets (super_admin 글로벌) → 코드 상수 fallback
 window.cleanupRestoreDefaults = async () => {
   const existingNames = new Set(_cleanupPresets.map(p => p.name));
-  const missing = _CLEANUP_DEFAULT_PRESETS.filter(p => !existingNames.has(p.name));
+  const defaults = await _getEffectiveCleanupDefaults();
+  const missing = defaults.filter(p => !existingNames.has(p.name));
   if (missing.length === 0) { showAlert('입력 확인', '모든 기본 프리셋이 이미 존재합니다'); return; }
   const ok = await showConfirm(`${missing.length}개의 기본 프리셋을 복원하시겠습니까?`, missing.map(p => '• ' + p.name).join('\n'));
   if (!ok) return;
