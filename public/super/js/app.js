@@ -1100,27 +1100,20 @@ function _renderAcmUsage(a) {
   const u = a.usage || {};
   const p = _plansCache[a.planId] || {};
   const cl = a.customLimits || {};
-  // T1 byTier + customLimits 한도, T3 5분류 카운터 합산 (학원장 위젯과 동일 패턴)
+  // T1 byTier + customLimits 한도 (학원장 위젯과 동일 패턴)
   const tier = String(a.studentLimit || 30);
   const byTier = p.byTier || {};
   const tl = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
-  const ai = (u.ocrCallsThisMonth || 0) + (u.cleanupCallsThisMonth || 0) + (u.generatorCallsThisMonth || 0);
-  const aiLimit = (cl.ocrPerMonth ?? tl.ocrPerMonth ?? 0)
-                + (cl.cleanupPerMonth ?? tl.cleanupPerMonth ?? 0)
-                + (cl.generatorPerMonth ?? tl.generatorPerMonth ?? 0)
-                || (p.limits?.aiQuotaPerMonth || 0);  // 안전망 폴백
-  const rec = u.recordingCallsThisMonth || 0;
-  const recLimit = cl.recordingPerMonth ?? tl.recordingPerMonth ?? p.limits?.perTypeQuota?.recording?.check ?? 0;
-  const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
-  const recPct = recLimit > 0 ? (rec / recLimit) * 100 : 0;
+
   const studentPct = a.studentLimit > 0 ? ((u.activeStudentsCount || 0) / a.studentLimit) * 100 : 0;
-  const aiOver = (cl.ocrPerMonth ?? cl.cleanupPerMonth ?? cl.generatorPerMonth) !== undefined;
-  const recOver = cl.recordingPerMonth !== undefined;
   const bar = (pct, color) => `
     <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;">
       <div style="width:${Math.min(100, pct).toFixed(1)}%;height:100%;background:${color};"></div>
     </div>`;
-  const row = (label, used, limit, pct, color, override) => `
+  const row = (label, used, limit, override) => {
+    const pct = limit > 0 ? (used / limit) * 100 : 0;
+    const color = _thresholdColor(pct);
+    return `
     <div style="padding:12px 14px;border-bottom:1px solid #eee;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:13px;color:var(--gray);">${label}${override ? ' <span title="customLimits override" style="color:#f59e0b;">*</span>' : ''}</span>
@@ -1131,15 +1124,25 @@ function _renderAcmUsage(a) {
       </div>
       ${limit > 0 ? bar(pct, color) : ''}
     </div>`;
+  };
+
+  // 5분류 (학원장 대시보드·loadQuotaUsage 와 동일 순서·라벨)
+  const items = [
+    { label: '📷 OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth' },
+    { label: '🧹 OCR 정리',    counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth' },
+    { label: '✨ Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth' },
+    { label: '🎤 녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth' },
+    { label: '📈 성장 리포트', counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth' },
+  ];
+
   const lastReset = u.lastResetAt || '-';
   return `
     <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">이번 달 사용량 (실시간 카운터)</div>
-    ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || 0, studentPct, _thresholdColor(studentPct), false)}
-    ${row('✨ AI 호출 (Gemini)', ai, aiLimit, aiPct, _thresholdColor(aiPct), aiOver)}
-    ${row('🎤 녹음 평가', rec, recLimit, recPct, _thresholdColor(recPct), recOver)}
+    ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || 0, false)}
+    ${items.map(it => row(it.label, u[it.counter] || 0, cl[it.limitField] ?? tl[it.limitField] ?? 0, cl[it.limitField] !== undefined)).join('')}
     <div style="padding:10px 14px;font-size:11px;color:#999;">자동 리셋 기준: ${esc(lastReset)} (api/_lib/quota.js 가 매월 리셋 트리거)</div>
     <div style="margin-top:10px;padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:12px;color:#0c4a6e;line-height:1.5;">
-      ℹ️ Gemini 일일 쿼터 게이지·전사 Top 10·시스템 헬스 등 <b>전사 모니터링</b>은 <b>📊 사용량·모니터링</b> 탭에서 확인하세요.
+      ℹ️ Gemini 일일 쿼터 게이지·전사 Top 10·시스템 헬스 등 <b>전사 모니터링</b>은 <b>📊 사용량·모니터링</b> 탭에서 확인하세요. * 표시는 customLimits override.
     </div>`;
 }
 
@@ -2454,25 +2457,41 @@ async function _loadAcademyTop10() {
     const tier = String(a.studentLimit || 30);
     const byTier = p.byTier || {};
     const tl = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
-    const ai = (u.ocrCallsThisMonth || 0) + (u.cleanupCallsThisMonth || 0) + (u.generatorCallsThisMonth || 0);
-    const aiLimit = (cl.ocrPerMonth ?? tl.ocrPerMonth ?? 0)
-                  + (cl.cleanupPerMonth ?? tl.cleanupPerMonth ?? 0)
-                  + (cl.generatorPerMonth ?? tl.generatorPerMonth ?? 0)
-                  || (p.limits?.aiQuotaPerMonth || 0);
-    const rec = u.recordingCallsThisMonth || 0;
-    const recLimit = cl.recordingPerMonth ?? tl.recordingPerMonth ?? p.limits?.perTypeQuota?.recording?.check ?? 0;
-    const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
-    return { id: a.id, name: a.name || a.id, planId: a.planId, students: u.activeStudentsCount || 0, ai, rec, aiLimit, recLimit, aiPct };
+    const ocr = u.ocrCallsThisMonth || 0;
+    const cleanup = u.cleanupCallsThisMonth || 0;
+    const generator = u.generatorCallsThisMonth || 0;
+    const recording = u.recordingCallsThisMonth || 0;
+    const growth = u.growthReportCallsThisMonth || 0;
+    // 4 AI 분류 합산 한도 대비 % (정렬·색상용)
+    const aiSum = ocr + cleanup + generator + growth;
+    const aiSumLimit = (cl.ocrPerMonth         ?? tl.ocrPerMonth         ?? 0)
+                     + (cl.cleanupPerMonth     ?? tl.cleanupPerMonth     ?? 0)
+                     + (cl.generatorPerMonth   ?? tl.generatorPerMonth   ?? 0)
+                     + (cl.growthReportPerMonth ?? tl.growthReportPerMonth ?? 0);
+    const aiPct = aiSumLimit > 0 ? (aiSum / aiSumLimit) * 100 : 0;
+    return {
+      id: a.id, name: a.name || a.id, planId: a.planId,
+      students: u.activeStudentsCount || 0,
+      ocr, cleanup, generator, recording, growth,
+      total: aiSum + recording, aiLimit: aiSumLimit, aiPct,
+    };
   });
-  data.sort((x, y) => (y.ai + y.rec) - (x.ai + x.rec));
+  data.sort((x, y) => y.total - x.total);
   const top10 = data.slice(0, 10);
 
   el.innerHTML = `
     <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">📊 학원별 사용량 Top 10 (이번 달)</div>
     ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
-    <table class="table" style="margin:0;">
+    <table class="table" style="margin:0;font-size:12px;">
       <thead><tr>
-        <th>학원명</th><th>플랜</th><th>학생</th><th>AI 호출</th><th>녹음 평가</th><th>AI 한도 대비</th>
+        <th>학원명</th><th>플랜</th>
+        <th class="td-center" title="활성 학생">👥</th>
+        <th class="td-center" title="OCR">📷</th>
+        <th class="td-center" title="OCR 정리">🧹</th>
+        <th class="td-center" title="Generator">✨</th>
+        <th class="td-center" title="녹음숙제">🎤</th>
+        <th class="td-center" title="성장 리포트">📈</th>
+        <th class="td-center" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
       </tr></thead>
       <tbody>
         ${top10.map(a => `
@@ -2480,8 +2499,11 @@ async function _loadAcademyTop10() {
             <td class="td-main">${esc(a.name)}</td>
             <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
             <td class="td-center">${a.students}</td>
-            <td class="td-center" style="font-weight:600;">${a.ai.toLocaleString()}</td>
-            <td class="td-center" style="font-weight:600;">${a.rec.toLocaleString()}</td>
+            <td class="td-center">${a.ocr.toLocaleString()}</td>
+            <td class="td-center">${a.cleanup.toLocaleString()}</td>
+            <td class="td-center">${a.generator.toLocaleString()}</td>
+            <td class="td-center">${a.recording.toLocaleString()}</td>
+            <td class="td-center">${a.growth.toLocaleString()}</td>
             <td class="td-center" style="font-weight:700;color:${_thresholdColor(a.aiPct)};">
               ${a.aiLimit > 0 ? `${a.aiPct.toFixed(0)}%` : '∞'}
             </td>
