@@ -8411,10 +8411,11 @@ window.tpOpenPublishModal = async () => {
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">형식</label>
-                  <select id="tpVocabFormat" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                  <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
                     <option value="mixed" selected>혼합</option>
                     <option value="short">주관식(스펠링)</option>
                     <option value="mcq">객관식</option>
+                    <option value="speaking">🎤 말하기 (음성 인식)</option>
                   </select>
                 </div>
                 <div>
@@ -8441,6 +8442,25 @@ window.tpOpenPublishModal = async () => {
                 </label>
               </div>
               <div style="font-size:10px;color:var(--gray);margin-top:6px;">※ 학생이 풀 때마다 매번 새로 섞이며, 재시험 시에도 다시 섞입니다</div>
+
+              <!-- 🎤 말하기 모드 전용 옵션 -->
+              <div id="tpSpeakingOpts" style="display:none;margin-top:10px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;">
+                <div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:6px;">🎤 말하기 채점 옵션</div>
+                <div style="display:grid;grid-template-columns:1fr;gap:6px;">
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:#78350f;">엄격도</label>
+                    <select id="tpSpeakingStrictness" style="width:100%;padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                      <option value="lenient">🟢 너그러움 (오타·비슷한 발음 허용)</option>
+                      <option value="normal" selected>🟡 보통 (일반 학습용)</option>
+                      <option value="strict">🔴 엄격 (정확한 발음만 인정)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="font-size:10px;color:#78350f;margin-top:6px;line-height:1.5;">
+                  ※ 학생은 한글 뜻을 보고 영어로 발음 (방향·객관식비율 옵션 자동 무시)<br>
+                  ※ 마이크 권한 필요 — Chrome 권장. 30초 안에 2회까지 시도 가능.
+                </div>
+              </div>
             </div>`
           : ''}
 
@@ -8477,6 +8497,25 @@ window.tpOpenPublishModal = async () => {
   `;
   showModal(html);
   _tpUpdateModalSummary();
+};
+
+// 단어시험 형식 변경 시 — 말하기 모드 옵션 토글 + 방향·비율 옵션 무력화
+window._tpVocabFormatChanged = () => {
+  const fmt = document.getElementById('tpVocabFormat')?.value;
+  const isSpeaking = fmt === 'speaking';
+  const speakOpts = document.getElementById('tpSpeakingOpts');
+  const direction = document.getElementById('tpVocabDirection');
+  const mcqRatio = document.getElementById('tpVocabMcqRatio');
+  if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
+  if (direction) {
+    direction.disabled = isSpeaking;
+    direction.style.opacity = isSpeaking ? '0.4' : '1';
+    if (isSpeaking) direction.value = 'ko2en';  // 시각적으로도 ko2en 표시
+  }
+  if (mcqRatio) {
+    mcqRatio.disabled = isSpeaking;
+    mcqRatio.style.opacity = isSpeaking ? '0.4' : '1';
+  }
 };
 
 window.tpModalToggleGroup = (g) => {
@@ -8567,13 +8606,18 @@ window.tpPublish = async () => {
   // Phase 6B: vocab 풀이 옵션 (학생앱에서 매번 적용)
   let vocabOptions = null;
   if (cfg.testMode === 'vocab') {
+    const fmt = document.getElementById('tpVocabFormat')?.value || 'mixed';
     vocabOptions = {
-      format: document.getElementById('tpVocabFormat')?.value || 'mixed',         // mixed | short | mcq
-      direction: document.getElementById('tpVocabDirection')?.value || 'mixed',   // mixed | en2ko | ko2en
+      format: fmt,                                                                                    // mixed | short | mcq | speaking
+      direction: fmt === 'speaking' ? 'ko2en' : (document.getElementById('tpVocabDirection')?.value || 'mixed'),
       mcqRatio: Math.max(0, Math.min(100, parseInt(document.getElementById('tpVocabMcqRatio')?.value) || 50)),
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
       shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
     };
+    // 🎤 말하기 모드일 때만 엄격도 저장
+    if (fmt === 'speaking') {
+      vocabOptions.speakingStrictness = document.getElementById('tpSpeakingStrictness')?.value || 'normal';
+    }
   }
 
   const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
