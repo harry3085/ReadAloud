@@ -294,6 +294,7 @@ async function loadApiUsage(){
       { keys: ['check-recording'],    label: '🎤 녹음숙제' },
       { keys: ['generate-quiz'],      label: '✨ AI Generator' },
       { keys: ['ocr', 'cleanup-ocr'], label: '📝 AI OCR' },
+      { keys: ['growth-report'],      label: '📈 성장 리포트' },
     ];
     const total = t.total || 0;
     const pct = Math.min(100, Math.round((total / 500) * 100));
@@ -308,14 +309,16 @@ async function loadApiUsage(){
     const studentCur = usage.activeStudentsCount || 0;
     const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
 
-    // AI 월 호출 = OCR + Cleanup + Generator 합산
+    // AI 월 호출 = OCR + Cleanup + Generator + 성장 리포트 합산 (모두 비용 발생 endpoint)
     const aiCur = (usage.ocrCallsThisMonth || 0)
                 + (usage.cleanupCallsThisMonth || 0)
-                + (usage.generatorCallsThisMonth || 0);
-    const _aiLim3 = (cl.ocrPerMonth       ?? tierLimits.ocrPerMonth       ?? 0)
-                  + (cl.cleanupPerMonth   ?? tierLimits.cleanupPerMonth   ?? 0)
-                  + (cl.generatorPerMonth ?? tierLimits.generatorPerMonth ?? 0);
-    const aiLim = _aiLim3 > 0 ? _aiLim3 : (limits.aiQuotaPerMonth || '∞');
+                + (usage.generatorCallsThisMonth || 0)
+                + (usage.growthReportThisMonth || 0);
+    const _aiLim4 = (cl.ocrPerMonth         ?? tierLimits.ocrPerMonth         ?? 0)
+                  + (cl.cleanupPerMonth     ?? tierLimits.cleanupPerMonth     ?? 0)
+                  + (cl.generatorPerMonth   ?? tierLimits.generatorPerMonth   ?? 0)
+                  + (cl.growthReportPerMonth ?? tierLimits.growthReportPerMonth ?? 0);
+    const aiLim = _aiLim4 > 0 ? _aiLim4 : (limits.aiQuotaPerMonth || '∞');
 
     // 녹음 월 평가 — byTier 우선, 옛 limits 안전망
     const recCur = usage.recordingCallsThisMonth || 0;
@@ -341,7 +344,7 @@ async function loadApiUsage(){
           ${fracBar(studentCur, studentLim)}
         </div>
         <div>
-          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출 <span style="color:var(--gray);font-size:10px;">(OCR+정리+생성)</span></span><span><b>${aiCur}</b>/${aiLim}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출 <span style="color:var(--gray);font-size:10px;">(OCR+정리+생성+리포트)</span></span><span><b>${aiCur}</b>/${aiLim}</span></div>
           ${fracBar(aiCur, aiLim)}
         </div>
         <div>

@@ -60,6 +60,8 @@ module.exports = async function handler(req, res) {
 
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'growthReport' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
+    // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
+    await incrementUsage({ ...q, res, endpoint: 'growth-report' });
 
     if (!studentUid || typeof studentUid !== 'string') {
       return res.status(400).json({ error: 'studentUid required' });
@@ -193,9 +195,6 @@ module.exports = async function handler(req, res) {
       generatedBy: q.callerUid,
       model: usedModel,
     });
-
-    // 9) 카운터 증가
-    await incrementUsage({ ...q, res });
 
     return res.json({
       success: true,
