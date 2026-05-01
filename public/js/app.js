@@ -3737,6 +3737,57 @@ const _origUpdateAllBadgesForVocab = window.updateAllBadges;
 // Phase 6D 에서 updateTestBadge 제거 시 updateVocabBadge 로 완전 대체
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 말하기 시험 — 음성 인식 채점 헬퍼 (T1)
+// vocab 시험의 한 변형 (vocabOptions.format='speaking') 으로 동작. T2 에서 _vqState 분기.
+// ═══════════════════════════════════════════════════════════════════════════
+const SPK_STRICTNESS_CONFIG = {
+  lenient: { maxAlternatives: 5, similarityThreshold: 0.7, label: '🟢 너그러움' },
+  normal:  { maxAlternatives: 5, similarityThreshold: 0.8, label: '🟡 보통' },
+  strict:  { maxAlternatives: 1, similarityThreshold: 1.0, label: '🔴 엄격' },
+};
+
+function _spkLevenshteinSimilarity(a, b) {
+  if (!a || !b) return 0;
+  a = String(a).toLowerCase();
+  b = String(b).toLowerCase();
+  const m = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) m[0][i] = i;
+  for (let j = 0; j <= b.length; j++) m[j][0] = j;
+  for (let j = 1; j <= b.length; j++) {
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      m[j][i] = Math.min(m[j][i - 1] + 1, m[j - 1][i] + 1, m[j - 1][i - 1] + cost);
+    }
+  }
+  const dist = m[b.length][a.length];
+  const maxLen = Math.max(a.length, b.length);
+  return maxLen === 0 ? 1 : 1 - dist / maxLen;
+}
+
+// 음성 인식 결과(SpeechRecognitionResultList[0]) + 정답 영단어 + 엄격도 → 채점 결과
+function _spkGradeAnswer(recognitionResults, correctEnglish, strictness) {
+  const cfg = SPK_STRICTNESS_CONFIG[strictness] || SPK_STRICTNESS_CONFIG.normal;
+  const ans = String(correctEnglish || '').toLowerCase().trim();
+  if (!ans) return { correct: false, alternatives: [] };
+
+  const alternatives = Array.from(recognitionResults || []).slice(0, cfg.maxAlternatives);
+
+  for (const alt of alternatives) {
+    const said = String(alt.transcript || '').toLowerCase().trim();
+    if (!said) continue;
+    if (said === ans) return { correct: true, matchedWith: said, similarity: 1.0 };
+    if (cfg.similarityThreshold < 1.0) {
+      const sim = _spkLevenshteinSimilarity(said, ans);
+      if (sim >= cfg.similarityThreshold) return { correct: true, matchedWith: said, similarity: sim };
+    }
+  }
+  return {
+    correct: false,
+    alternatives: alternatives.map(a => a.transcript || '').filter(Boolean),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Phase 6C: 언스크램블 v2 (unscramble) — genTests(testMode='unscramble') 기반
 // 홈 "언스크램블" 카드는 새 로직으로 완전 교체. 기존 goUnscramble 덮어씀
 // ═══════════════════════════════════════════════════════════════════════════
