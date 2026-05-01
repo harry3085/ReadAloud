@@ -1381,8 +1381,18 @@ async function loadAcademies() {
       const expText = _fmtDate(a.planExpiresAt);
       const lastLogin = _fmtDateTime(a.lastAdminLoginAt);
       const overrideKeys = Object.keys(a.customLimits || {}).filter(k => a.customLimits[k] != null);
+      const _labelKo = {
+        ocrPerMonth: 'OCR',
+        cleanupPerMonth: 'Cleanup',
+        generatorPerMonth: 'AI Generator',
+        recordingPerMonth: '녹음 평가',
+        growthReportPerMonth: '성장 리포트',
+        storageGB: 'Storage(GB)',
+        maxStudents: '학생 한도',
+        aiQuotaPerMonth: 'AI 호출(옛)',
+      };
       const overrideDot = overrideKeys.length
-        ? `<span title="Override: ${esc(overrideKeys.map(k => `${k}=${a.customLimits[k]}`).join(', '))}" style="color:#dc2626;font-size:14px;margin-left:5px;cursor:help;line-height:1;">●</span>`
+        ? `<span title="📌 한도 Override\n${overrideKeys.map(k => `· ${_labelKo[k] || k}: ${a.customLimits[k]}`).join('\n')}" style="color:#dc2626;font-size:14px;margin-left:5px;cursor:help;line-height:1;">●</span>`
         : '';
       return `
       <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
