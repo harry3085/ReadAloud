@@ -1928,7 +1928,8 @@ window.loadPersonalScore = async(uid) => {
               <th style="text-align:right;padding:8px 10px;font-weight:600;">평균</th>
               <th style="text-align:right;padding:8px 10px;font-weight:600;">응시</th>
               <th style="text-align:left;padding:8px 10px;font-weight:600;">요약</th>
-              <th style="text-align:center;padding:8px 6px;font-weight:600;width:40px;"></th>
+              <th style="text-align:center;padding:8px 6px;font-weight:600;width:32px;"></th>
+              <th style="text-align:center;padding:8px 6px;font-weight:600;width:32px;"></th>
             </tr>
           </thead>
           <tbody>
@@ -1946,6 +1947,8 @@ window.loadPersonalScore = async(uid) => {
               <td style="padding:8px 10px;text-align:right;color:var(--gray);">${totalAtt}회</td>
               <td style="padding:8px 10px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;max-width:0;white-space:nowrap;">${esc(summary)}${summary.length >= 60 ? '…' : ''}</td>
               <td style="padding:8px 6px;text-align:center;">👁</td>
+              <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation();grDeleteReport('${esc(h.id)}','${esc(uid)}')" title="삭제"
+                  onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color=''">🗑</td>
             </tr>`;
           }).join('')}
           </tbody>
@@ -2076,6 +2079,24 @@ window.grShowFromList = (reportId) => {
   _grRenderModal(item.report, item.id, _grStudentUid, _grHistoryCache, item.id);
 };
 
+// 성장 리포트 삭제 — fromModal=true 면 삭제 후 모달 닫음
+window.grDeleteReport = async (reportId, uid, fromModal = false) => {
+  if (!reportId) return;
+  const ok = await showConfirm('성장 리포트 삭제', '이 리포트를 삭제할까요? 복구할 수 없습니다.');
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'growthReports', reportId));
+    showToast('🗑 리포트 삭제됨');
+    if (fromModal) closeModal();
+    if (uid && _personalSelectedUid === uid) {
+      // detail 영역 재로드 (이력 표 갱신)
+      loadPersonalScore(uid);
+    }
+  } catch (e) {
+    showToast('삭제 실패: ' + (e.message || e.code));
+  }
+};
+
 function _grRenderModal(r, reportId, uid, history, currentId) {
   history = history || _grHistoryCache || [];
   currentId = currentId || reportId;
@@ -2196,7 +2217,8 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
 
         <div style="font-size:10px;color:#bbb;margin-top:12px;text-align:right;">${reportId ? 'reportId: ' + esc(reportId) : ''}</div>
       </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <button class="btn btn-secondary" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;" onclick="grDeleteReport('${esc(currentId||'')}','${esc(uid||'')}',true)">🗑 이 리포트 삭제</button>
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
       </div>
     </div>`;
