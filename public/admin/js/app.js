@@ -290,16 +290,6 @@ async function loadApiUsage(){
     const bE = t.byEndpoint || {};
     const cnt = (k) => (bE[k] || 0) + (t['byEndpoint.' + k] || 0);
 
-    const items = [
-      { keys: ['check-recording'],    label: '🎤 녹음숙제' },
-      { keys: ['generate-quiz'],      label: '✨ AI Generator' },
-      { keys: ['ocr', 'cleanup-ocr'], label: '📝 AI OCR' },
-      { keys: ['growth-report'],      label: '📈 성장 리포트' },
-    ];
-    const total = t.total || 0;
-    const pct = Math.min(100, Math.round((total / 500) * 100));
-    const barColor = pct >= 80 ? '#dc2626' : (pct >= 50 ? '#f59e0b' : '#059669');
-
     // 월별 한도 분수 — T1 byTier[tier] + customLimits 우선, 옛 plan.limits 안전망 폴백
     const cl = acad.customLimits || {};
     const tier = String(acad.studentLimit || 30);
@@ -309,20 +299,14 @@ async function loadApiUsage(){
     const studentCur = usage.activeStudentsCount || 0;
     const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
 
-    // AI 월 호출 = OCR + Cleanup + Generator + 성장 리포트 합산 (모두 비용 발생 endpoint)
-    const aiCur = (usage.ocrCallsThisMonth || 0)
-                + (usage.cleanupCallsThisMonth || 0)
-                + (usage.generatorCallsThisMonth || 0)
-                + (usage.growthReportCallsThisMonth || 0);
-    const _aiLim4 = (cl.ocrPerMonth         ?? tierLimits.ocrPerMonth         ?? 0)
-                  + (cl.cleanupPerMonth     ?? tierLimits.cleanupPerMonth     ?? 0)
-                  + (cl.generatorPerMonth   ?? tierLimits.generatorPerMonth   ?? 0)
-                  + (cl.growthReportPerMonth ?? tierLimits.growthReportPerMonth ?? 0);
-    const aiLim = _aiLim4 > 0 ? _aiLim4 : (limits.aiQuotaPerMonth || '∞');
-
-    // 녹음 월 평가 — byTier 우선, 옛 limits 안전망
-    const recCur = usage.recordingCallsThisMonth || 0;
-    const recLim = cl.recordingPerMonth ?? tierLimits.recordingPerMonth ?? limits.perTypeQuota?.recording?.check ?? '∞';
+    // 5분류 (상세 페이지·super 앱과 동일 순서: OCR → 정리 → Generator → 녹음 → 리포트)
+    const items = [
+      { label: '📷 OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
+      { label: '🧹 OCR 정리',    dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
+      { label: '✨ Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
+      { label: '🎤 녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
+      { label: '📈 성장 리포트', dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
+    ];
 
     const fracBar = (cur, lim) => {
       if (typeof lim !== 'number' || lim <= 0) return '';
@@ -331,40 +315,43 @@ async function loadApiUsage(){
       return `<div style="height:3px;background:#eee;border-radius:2px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:${p}%;background:${c};"></div></div>`;
     };
 
+    // 한 줄에 [라벨 / 일사용량 / 월사용량/한도 + 진도바] — 5분류 통일 형식
+    const renderRow = (it) => {
+      const day = it.dailyKeys.reduce((s,k) => s + cnt(k), 0);
+      const month = usage[it.monthCounter] || 0;
+      const lim = cl[it.limitField] ?? tierLimits[it.limitField];
+      const limStr = (typeof lim === 'number' && isFinite(lim)) ? lim : '∞';
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <span>${it.label}</span>
+            <span style="color:var(--gray);font-size:10px;">오늘 <b style="color:var(--text);">${day}</b> · 이번 달 <b style="color:var(--text);">${month}</b>/${limStr}</span>
+          </div>
+          ${fracBar(month, lim)}
+        </div>`;
+    };
+
     body.innerHTML = `
-      <!-- 플랜 + 월별 한도 -->
+      <!-- 플랜 + 학원명 + 상세 링크 -->
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
         <span class="badge badge-teal" style="font-size:11px;">${esc((plan.displayName || planId).toUpperCase())}</span>
         <span style="font-size:11px;color:var(--gray);">${esc(acad.name || '')}</span>
         <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">📊 상세 →</a></span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;margin-bottom:10px;">
+
+      <!-- 6줄: 학생 + 5분류 -->
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
         <div>
-          <div style="display:flex;justify-content:space-between;"><span>👥 학생</span><span><b>${studentCur}</b>/${studentLim}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <span>👥 학생</span>
+            <span style="color:var(--gray);font-size:10px;">재원생 <b style="color:var(--text);">${studentCur}</b>/${studentLim}</span>
+          </div>
           ${fracBar(studentCur, studentLim)}
         </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출 <span style="color:var(--gray);font-size:10px;">(OCR+정리+생성+리포트)</span></span><span><b>${aiCur}</b>/${aiLim}</span></div>
-          ${fracBar(aiCur, aiLim)}
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;"><span>🎤 녹음 월 평가</span><span><b>${recCur}</b>/${recLim}</span></div>
-          ${fracBar(recCur, recLim)}
-        </div>
+        ${items.map(renderRow).join('')}
       </div>
 
-      <!-- 오늘 항목별 -->
-      <div style="border-top:1px dashed #eee;padding-top:8px;margin-bottom:6px;">
-        <div style="font-size:10px;color:var(--gray);margin-bottom:4px;">오늘 호출</div>
-        <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
-          ${items.map(it => {
-            const sum = it.keys.reduce((s,k) => s + cnt(k), 0);
-            return `<div style="display:flex;justify-content:space-between;"><span>${it.label}</span><span style="font-weight:600;color:var(--text);">${sum}</span></div>`;
-          }).join('')}
-        </div>
-      </div>
-
-      <div style="font-size:10px;color:#bbb;">총 오늘: ${total}회 · 어제: ${y.total || 0}회</div>`;
+      <div style="margin-top:8px;font-size:10px;color:#bbb;">총 오늘: ${t.total || 0}회 · 어제: ${y.total || 0}회</div>`;
   } catch(e) {
     body.innerHTML = '<div style="color:#bbb;font-size:11px;">집계 로드 실패</div>';
   }
