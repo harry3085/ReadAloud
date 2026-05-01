@@ -140,6 +140,10 @@
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       결제 관리
     </div>
+    <div class="nav-item" onclick="goPage('quotaUsage')" id="nav-quotaUsage">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      AI 사용량
+    </div>
   </div>
 </nav>
 
@@ -626,6 +630,25 @@
           <div class="tbl-page" id="paymentPagination"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- AI 사용량 (T5) -->
+  <div class="page" id="page-quotaUsage">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📊 AI 사용량</div>
+        <div class="page-sub">이번 달 5분류 한도 사용 현황 — 매월 1일 자동 리셋</div>
+      </div>
+      <button class="btn btn-secondary" onclick="loadQuotaUsage()">↺ 새로고침</button>
+    </div>
+    <div class="card" style="padding:18px;">
+      <div id="quotaUsageHeader" style="font-size:13px;color:var(--gray);margin-bottom:14px;"></div>
+      <div id="quotaUsageGrid"></div>
+      <p style="font-size:12px;color:var(--gray);margin-top:18px;border-top:1px solid var(--border);padding-top:12px;">
+        한도 부족 시 플랜 업그레이드 또는 학원별 override 를 운영팀에 문의하세요.<br>
+        ⚠️ 80% 이상 도달 시 노란색, 95% 이상 빨간색으로 표시됩니다.
+      </p>
     </div>
   </div>
 

@@ -164,6 +164,7 @@ const pageLabels = {
   'test-list':'시험 목록',
   'score-report':'성적 리포트', 'score-personal':'개인별 분석',
   message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
+  quotaUsage:'AI 사용량',
   generator:'AI OCR',
   'quiz-generate':'AI Generator', 'quiz-sets':'문제 세트 목록',
   'test-word':'단어시험',
@@ -189,6 +190,7 @@ window.goPage = async(id) => {
   else if(id==='notice') await loadNotices();
   else if(id==='hwfile') await loadHwFileAdmin();
   else if(id==='payment') await loadPayments();
+  else if(id==='quotaUsage') await loadQuotaUsage();
   else if(id==='message') await loadMessages();
   else if(id==='test-list') await loadTestList();
   else if(id==='score-report') initScoreReport();
@@ -331,6 +333,69 @@ async function loadApiUsage(){
       <div style="font-size:10px;color:#bbb;">총 오늘: ${total}회 · 어제: ${y.total || 0}회</div>`;
   } catch(e) {
     body.innerHTML = '<div style="color:#bbb;font-size:11px;">집계 로드 실패</div>';
+  }
+}
+
+// AI 사용량 페이지 (T5) — 5분류 한도 진행 바
+async function loadQuotaUsage(){
+  const grid = document.getElementById('quotaUsageGrid');
+  const header = document.getElementById('quotaUsageHeader');
+  if (!grid) return;
+  grid.innerHTML = '<div style="color:#bbb;padding:20px;text-align:center;">로딩 중...</div>';
+  try {
+    const academyId = window.MY_ACADEMY_ID || 'default';
+    const acadSnap = await getDoc(doc(db, 'academies', academyId));
+    if (!acadSnap.exists()) { grid.innerHTML = '<div style="color:#dc2626;">학원 정보 없음</div>'; return; }
+    const acad = acadSnap.data();
+    const planId = acad.planId || 'lite';
+    const planSnap = await getDoc(doc(db, 'plans', planId));
+    if (!planSnap.exists()) { grid.innerHTML = '<div style="color:#dc2626;">플랜 정보 없음</div>'; return; }
+    const plan = planSnap.data();
+
+    const tier = String(acad.studentLimit || 30);
+    const byTier = plan.byTier || {};
+    const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+    const customLimits = acad.customLimits || {};
+    const usage = acad.usage || {};
+
+    const items = [
+      { label: '📷 OCR (이미지 인식)',       counter: 'ocrCallsThisMonth',       limitField: 'ocrPerMonth',          color: '#0ea5e9' },
+      { label: '🧹 Cleanup (텍스트 정리)',    counter: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      color: '#06b6d4' },
+      { label: '✨ Generator (AI 문제 생성)', counter: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    color: '#f59e0b' },
+      { label: '🎙 녹음 평가',                counter: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    color: '#8b5cf6' },
+      { label: '📈 성장 리포트',              counter: 'growthReportThisMonth',   limitField: 'growthReportPerMonth', color: '#10b981' },
+    ];
+
+    const planName = (plan.displayName || planId).toUpperCase();
+    header.innerHTML = `<span class="badge badge-teal" style="font-size:11px;">${esc(planName)}</span>
+      <span style="margin-left:8px;">${esc(acad.name || '')} · 학생 한도 ${esc(tier)}명</span>`;
+
+    grid.innerHTML = items.map(item => {
+      const current = usage[item.counter] || 0;
+      const limitRaw = customLimits[item.limitField] ?? tierLimits[item.limitField];
+      const limit = (typeof limitRaw === 'number') ? limitRaw : 0;
+      const isOverride = customLimits[item.limitField] !== undefined;
+      const percent = limit > 0 ? Math.min(100, (current / limit) * 100) : 0;
+      const barColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : item.color;
+      const labelColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)';
+
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
+            <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
+            <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / ${limit.toLocaleString()} <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span></span>
+          </div>
+          <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
+            <div style="background:${barColor};height:100%;width:${percent}%;transition:width 0.3s;"></div>
+          </div>
+          ${percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
+            : percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
+            : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="color:#dc2626;padding:20px;">로드 실패: ${esc(e.message)}</div>`;
   }
 }
 
