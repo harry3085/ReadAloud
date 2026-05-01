@@ -1813,9 +1813,8 @@ async function loadPersonalStudentList(){
   try{
     const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
     _personalStudents = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // 기본: 모든 반 펼침
+    // 기본: 모든 반 닫힘 (검색 시에만 자동 펼침)
     _personalGroupOpen.clear();
-    new Set(_personalStudents.map(s => s.group || '(반 미지정)')).forEach(g => _personalGroupOpen.add(g));
     renderPersonalStudentTree();
   }catch(e){console.warn(e);}
 }
