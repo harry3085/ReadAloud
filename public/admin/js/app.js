@@ -1885,10 +1885,15 @@ const _GR_MODE_LABELS = {
   unscramble:'🔀 언스크램블', recording:'🎤 녹음숙제',
 };
 
+// 모달 세션 동안 활성 학생의 history 캐시 (이력 클릭 시 재호출 회피)
+let _grHistoryCache = [];   // [{id, generatedAt, report, ...}]
+let _grStudentUid = null;
+
 window.openGrowthReport = async (uid) => {
   if (!uid) return;
   showToast('🤖 AI 성장 리포트 생성 중... (10~20초)');
   try {
+    // 1) 신규 리포트 생성
     const res = await _geminiFetch('/api/growth-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1904,13 +1909,68 @@ window.openGrowthReport = async (uid) => {
       showToast('리포트 생성 실패: ' + (data.error || res.status));
       return;
     }
-    _grRenderModal(data.report, data.reportId);
+
+    // 2) 같은 학생의 과거 history 10건 조회 (방금 생성한 거 포함)
+    let history = [];
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'growthReports'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('studentUid', '==', uid),
+        orderBy('generatedAt', 'desc'),
+        limit(10),
+      ));
+      history = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) {
+      console.warn('[growth-report history]', e.message);
+    }
+
+    _grHistoryCache = history;
+    _grStudentUid = uid;
+    _grRenderModal(data.report, data.reportId, uid, history, data.reportId);
   } catch(e) {
     showToast('네트워크 에러: ' + e.message);
   }
 };
 
-function _grRenderModal(r, reportId) {
+// 이력 항목 클릭 — 캐시에서 찾아서 본문만 교체 (재호출 X)
+window.grSelectHistory = (reportId) => {
+  const item = _grHistoryCache.find(h => h.id === reportId);
+  if (!item) { showToast('이력 데이터 없음'); return; }
+  _grRenderModal(item.report, item.id, _grStudentUid, _grHistoryCache, item.id);
+};
+
+function _grRenderModal(r, reportId, uid, history, currentId) {
+  history = history || _grHistoryCache || [];
+  currentId = currentId || reportId;
+  const isLatest = history.length > 0 && history[0].id === currentId;
+  const isHistorical = !isLatest && currentId !== reportId;
+
+  // 이력 드롭다운 항목들
+  const historyItems = history.map((h, idx) => {
+    const at = h.generatedAt?.toDate?.() ? h.generatedAt.toDate() : new Date();
+    const dateStr = at.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const summary = (h.report?.summary || '').slice(0, 40);
+    const isCurrent = h.id === currentId;
+    const tag = idx === 0 ? '<span style="background:#10b981;color:white;font-size:9px;padding:1px 5px;border-radius:3px;margin-right:4px;">최신</span>' : '';
+    return `
+      <div onclick="grSelectHistory('${esc(h.id)}')"
+           style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;${isCurrent ? 'background:#fef2ec;' : ''}"
+           onmouseover="this.style.background='${isCurrent ? '#fef2ec' : '#f8f9fa'}'"
+           onmouseout="this.style.background='${isCurrent ? '#fef2ec' : 'white'}'">
+        <div style="font-size:11px;font-weight:600;color:#475569;">${tag}${esc(dateStr)}${isCurrent ? ' <span style="color:var(--teal);">●현재</span>' : ''}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(summary)}${summary.length >= 40 ? '…' : ''}</div>
+      </div>`;
+  }).join('');
+
+  const historyDropdown = history.length > 0 ? `
+    <div style="position:relative;" id="grHistoryWrap">
+      <button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="grToggleHistory()">📚 이력 (${history.length}) ▾</button>
+      <div id="grHistoryPanel" style="display:none;position:absolute;top:100%;right:0;margin-top:4px;width:300px;max-height:400px;overflow-y:auto;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:10;">
+        ${historyItems}
+      </div>
+    </div>` : '';
+
   const modeBars = Object.entries(_GR_MODE_LABELS).map(([k, lbl]) => {
     const m = r.modeBreakdown?.[k] || { avg:0, count:0, lastScore:null };
     const pct = Math.min(100, m.avg);
@@ -1932,14 +1992,19 @@ function _grRenderModal(r, reportId) {
     <div style="font-size:13px;line-height:1.5;padding:6px 10px;background:${color};border-radius:6px;margin-bottom:6px;">• ${esc(s)}</div>
   `).join('') || '<div style="color:var(--gray);font-size:12px;">없음</div>';
 
+  const historicalBadge = isHistorical
+    ? `<span style="background:#fbbf24;color:white;font-size:10px;padding:2px 6px;border-radius:3px;margin-left:6px;">과거 리포트</span>`
+    : '';
+
   const html = `
     <div id="grReportRoot" style="width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;">
-      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-size:17px;font-weight:700;line-height:1.3;">📈 AI 성장 리포트</div>
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:17px;font-weight:700;line-height:1.3;">📈 AI 성장 리포트${historicalBadge}</div>
           <div style="margin-top:4px;font-size:12px;color:var(--gray);">기간: ${esc(r.periodFrom||'')} ~ ${esc(r.periodTo||'')} (최근 30일)</div>
         </div>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+          ${historyDropdown}
           <button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="printGrowthReport()">📄 인쇄/PDF</button>
         </div>
       </div>
@@ -2001,6 +2066,26 @@ function _grRenderModal(r, reportId) {
     </div>`;
   showModal(html);
 }
+
+window.grToggleHistory = () => {
+  const panel = document.getElementById('grHistoryPanel');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    // 외부 클릭 시 닫기
+    setTimeout(() => {
+      const handler = (e) => {
+        const wrap = document.getElementById('grHistoryWrap');
+        if (wrap && !wrap.contains(e.target)) {
+          panel.style.display = 'none';
+          document.removeEventListener('click', handler);
+        }
+      };
+      document.addEventListener('click', handler);
+    }, 0);
+  }
+};
 
 window.printGrowthReport = () => {
   const body = document.getElementById('grReportBody');
