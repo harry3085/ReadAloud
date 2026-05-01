@@ -2619,6 +2619,10 @@ function _fmtTestDateTime(t){
 
 function _testModeLabel(t){
   // 레거시 tests (testMode 없음)은 단어시험 = vocab 으로 간주
+  // 단어시험 + vocabOptions.format='speaking' 은 🎤 말하기 배지로 구분
+  if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
+    return `<span class="badge" style="background:#fef3c7;color:#78350f;font-size:11px;padding:2px 7px;border-radius:10px;">🎤 말하기</span>`;
+  }
   return _unifiedTypeBadge(t.testMode || 'vocab');
 }
 
