@@ -180,7 +180,7 @@ const pageLabels = {
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
   'test-list':'시험 목록',
   'score-report':'성적 리포트', 'score-personal':'성장 리포트',
-  message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
+  message:'메시지 관리', notice:'공지 관리', hwfile:'자료실', payment:'결제 관리',
   quotaUsage:'AI 사용량',
   generator:'AI OCR',
   'quiz-generate':'AI Generator', 'quiz-sets':'문제 세트 목록',
@@ -970,7 +970,7 @@ window.deleteNotice = async(id) => {
   showToast('삭제됐어요.'); await loadNotices();
 };
 
-// ── 숙제파일 관리 ────────────────────────────────────────
+// ── 자료실 (구 숙제파일) ─────────────────────────────────
 async function loadHwFileAdmin(){
   const el = document.getElementById('hwfileTableBody'); if(!el) return;
   try{
@@ -1014,7 +1014,7 @@ window.editHwFile = async(id) => {
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 숙제파일 수정</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 자료 수정</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
@@ -1073,7 +1073,7 @@ window.openHwFileModal = async() => {
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">📁 숙제파일 등록</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">📁 자료 등록</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">

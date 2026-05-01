@@ -513,7 +513,7 @@ window.openAcademyDeleteModal = async (academyId) => {
             ${row('📄 페이지 (genPages)', counts.genPages||0)}
             ${row('🏷 반 (groups)', counts.groups||0)}
             ${row('💳 결제', counts.payments||0)}
-            ${row('📁 숙제파일', counts.hwFiles||0)}
+            ${row('📁 자료실', counts.hwFiles||0)}
             ${row('🔔 푸시 + 알림', (counts.pushNotifications||0) + (counts.userNotifications||0))}
             ${row('🧹 AI 정리 프리셋', counts.genCleanupPresets||0)}
             ${row('📈 일별 API 사용량', counts.apiUsage||0)}
@@ -522,7 +522,7 @@ window.openAcademyDeleteModal = async (academyId) => {
             </div>
           </div>
           <div style="font-size:11px;color:#888;margin-top:6px;">
-            ※ Storage (숙제파일/녹음파일) 의 실제 파일은 Firestore 외부라 별도 정리됩니다.
+            ※ Storage (자료실/녹음파일) 의 실제 파일은 Firestore 외부라 별도 정리됩니다.
           </div>
         </div>
 
