@@ -3097,7 +3097,10 @@ window.genHandleDrop = (e) => {
 };
 
 window.genHandleFiles = async (files) => {
-  const list = [...files].filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  // 파일명 자연 정렬 (page1, page2, ..., page10 순) — 드롭 순서가 OS 별로 달라 page 넘버링 일관성 위해
+  const list = [...files]
+    .filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   if (!list.length) return;
 
   let compressedCount = 0;
