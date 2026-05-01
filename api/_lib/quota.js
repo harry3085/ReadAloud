@@ -156,7 +156,6 @@ const ALL_MONTHLY_COUNTERS = [
   'generatorCallsThisMonth',
   'recordingCallsThisMonth',
   'growthReportThisMonth',
-  'aiCallsThisMonth',  // deprecated 이지만 일관성 위해 같이 0 리셋
 ];
 
 // 호출 성공 후 카운터 증가 (호출자가 응답 직전에 호출)

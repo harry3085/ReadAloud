@@ -155,8 +155,11 @@ async function main() {
       settings: { recordingIntegrity: { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 } },
       usage: {
         activeStudentsCount: 0,
-        aiCallsThisMonth: 0,
+        ocrCallsThisMonth: 0,
+        cleanupCallsThisMonth: 0,
+        generatorCallsThisMonth: 0,
         recordingCallsThisMonth: 0,
+        growthReportThisMonth: 0,
         lastResetAt: new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
       },
       // SuperAdmin Phase A (T1) 신규 필드

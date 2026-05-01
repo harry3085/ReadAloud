@@ -1065,15 +1065,22 @@ function _renderAcmUsage(a) {
   const u = a.usage || {};
   const p = _plansCache[a.planId] || {};
   const cl = a.customLimits || {};
-  const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0;
-  const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || 0;
-  const ai = u.aiCallsThisMonth || 0;
+  // T1 byTier + customLimits 한도, T3 5분류 카운터 합산 (학원장 위젯과 동일 패턴)
+  const tier = String(a.studentLimit || 30);
+  const byTier = p.byTier || {};
+  const tl = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+  const ai = (u.ocrCallsThisMonth || 0) + (u.cleanupCallsThisMonth || 0) + (u.generatorCallsThisMonth || 0);
+  const aiLimit = (cl.ocrPerMonth ?? tl.ocrPerMonth ?? 0)
+                + (cl.cleanupPerMonth ?? tl.cleanupPerMonth ?? 0)
+                + (cl.generatorPerMonth ?? tl.generatorPerMonth ?? 0)
+                || (p.limits?.aiQuotaPerMonth || 0);  // 안전망 폴백
   const rec = u.recordingCallsThisMonth || 0;
+  const recLimit = cl.recordingPerMonth ?? tl.recordingPerMonth ?? p.limits?.perTypeQuota?.recording?.check ?? 0;
   const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
   const recPct = recLimit > 0 ? (rec / recLimit) * 100 : 0;
   const studentPct = a.studentLimit > 0 ? ((u.activeStudentsCount || 0) / a.studentLimit) * 100 : 0;
-  const aiOver = !!cl.aiQuotaPerMonth;
-  const recOver = !!cl.recordingPerMonth;
+  const aiOver = (cl.ocrPerMonth ?? cl.cleanupPerMonth ?? cl.generatorPerMonth) !== undefined;
+  const recOver = cl.recordingPerMonth !== undefined;
   const bar = (pct, color) => `
     <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;">
       <div style="width:${Math.min(100, pct).toFixed(1)}%;height:100%;background:${color};"></div>
@@ -2404,15 +2411,21 @@ async function _loadGeminiGauge() {
 async function _loadAcademyTop10() {
   const el = document.getElementById('usageTop10');
   if (!el) return;
-  // academies.usage 카운터 (이번 달 누적, quota.js 가 increment)
+  // academies.usage 카운터 (이번 달 누적, quota.js 가 increment) — 5분류 합산 + byTier 한도
   const data = _academiesCache.map(a => {
     const u = a.usage || {};
     const p = _plansCache[a.planId] || {};
     const cl = a.customLimits || {};
-    const ai = u.aiCallsThisMonth || 0;
+    const tier = String(a.studentLimit || 30);
+    const byTier = p.byTier || {};
+    const tl = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+    const ai = (u.ocrCallsThisMonth || 0) + (u.cleanupCallsThisMonth || 0) + (u.generatorCallsThisMonth || 0);
+    const aiLimit = (cl.ocrPerMonth ?? tl.ocrPerMonth ?? 0)
+                  + (cl.cleanupPerMonth ?? tl.cleanupPerMonth ?? 0)
+                  + (cl.generatorPerMonth ?? tl.generatorPerMonth ?? 0)
+                  || (p.limits?.aiQuotaPerMonth || 0);
     const rec = u.recordingCallsThisMonth || 0;
-    const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || 0;
-    const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || 0;
+    const recLimit = cl.recordingPerMonth ?? tl.recordingPerMonth ?? p.limits?.perTypeQuota?.recording?.check ?? 0;
     const aiPct = aiLimit > 0 ? (ai / aiLimit) * 100 : 0;
     return { id: a.id, name: a.name || a.id, planId: a.planId, students: u.activeStudentsCount || 0, ai, rec, aiLimit, recLimit, aiPct };
   });

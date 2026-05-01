@@ -21,7 +21,6 @@ const ALL_MONTHLY_COUNTERS = [
   'generatorCallsThisMonth',
   'recordingCallsThisMonth',
   'growthReportThisMonth',
-  'aiCallsThisMonth',  // deprecated, 일관성 유지를 위해 0 리셋
 ];
 
 function _currentYearMonthKST() {

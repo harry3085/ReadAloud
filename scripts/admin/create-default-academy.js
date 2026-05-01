@@ -48,8 +48,11 @@ async function main() {
     planExpiresAt: null,          // default 학원은 운영팀 소유라 만료 없음
     usage: {
       activeStudentsCount: 0,     // 마이그레이션 스크립트에서 실제 카운트로 채움
-      aiCallsThisMonth: 0,
+      ocrCallsThisMonth: 0,
+      cleanupCallsThisMonth: 0,
+      generatorCallsThisMonth: 0,
       recordingCallsThisMonth: 0,
+      growthReportThisMonth: 0,
       lastResetAt: new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
     },
     // SuperAdmin Phase A (T1) 신규 필드
