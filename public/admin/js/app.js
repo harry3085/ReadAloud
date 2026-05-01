@@ -265,7 +265,7 @@ async function loadApiUsage(){
     const planId = acad.planId || 'lite';
     const planSnap = await getDoc(doc(db, 'plans', planId));
     const plan = planSnap.exists() ? planSnap.data() : {};
-    const limits = plan.limits || {};
+    const limits = plan.limits || {};  // 안전망 — T1 전 학원 폴백
     const usage = acad.usage || {};
 
     const t = todaySnap.exists() ? todaySnap.data() : { total: 0, byEndpoint: {} };
@@ -282,14 +282,27 @@ async function loadApiUsage(){
     const pct = Math.min(100, Math.round((total / 500) * 100));
     const barColor = pct >= 80 ? '#dc2626' : (pct >= 50 ? '#f59e0b' : '#059669');
 
-    // 월별 한도 분수 — academy.customLimits 우선
+    // 월별 한도 분수 — T1 byTier[tier] + customLimits 우선, 옛 plan.limits 안전망 폴백
     const cl = acad.customLimits || {};
+    const tier = String(acad.studentLimit || 30);
+    const byTier = plan.byTier || {};
+    const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+
     const studentCur = usage.activeStudentsCount || 0;
-    const studentLim = acad.studentLimit || 30;
-    const aiCur = usage.aiCallsThisMonth || 0;
-    const aiLim = cl.aiQuotaPerMonth || limits.aiQuotaPerMonth || '∞';
+    const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
+
+    // AI 월 호출 = OCR + Cleanup + Generator 합산
+    const aiCur = (usage.ocrCallsThisMonth || 0)
+                + (usage.cleanupCallsThisMonth || 0)
+                + (usage.generatorCallsThisMonth || 0);
+    const _aiLim3 = (cl.ocrPerMonth       ?? tierLimits.ocrPerMonth       ?? 0)
+                  + (cl.cleanupPerMonth   ?? tierLimits.cleanupPerMonth   ?? 0)
+                  + (cl.generatorPerMonth ?? tierLimits.generatorPerMonth ?? 0);
+    const aiLim = _aiLim3 > 0 ? _aiLim3 : (limits.aiQuotaPerMonth || '∞');
+
+    // 녹음 월 평가 — byTier 우선, 옛 limits 안전망
     const recCur = usage.recordingCallsThisMonth || 0;
-    const recLim = cl.recordingPerMonth || limits.perTypeQuota?.recording?.check || '∞';
+    const recLim = cl.recordingPerMonth ?? tierLimits.recordingPerMonth ?? limits.perTypeQuota?.recording?.check ?? '∞';
 
     const fracBar = (cur, lim) => {
       if (typeof lim !== 'number' || lim <= 0) return '';
@@ -303,6 +316,7 @@ async function loadApiUsage(){
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
         <span class="badge badge-teal" style="font-size:11px;">${esc((plan.displayName || planId).toUpperCase())}</span>
         <span style="font-size:11px;color:var(--gray);">${esc(acad.name || '')}</span>
+        <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">📊 상세 →</a></span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;margin-bottom:10px;">
         <div>
@@ -310,7 +324,7 @@ async function loadApiUsage(){
           ${fracBar(studentCur, studentLim)}
         </div>
         <div>
-          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출</span><span><b>${aiCur}</b>/${aiLim}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>✨ AI 월 호출 <span style="color:var(--gray);font-size:10px;">(OCR+정리+생성)</span></span><span><b>${aiCur}</b>/${aiLim}</span></div>
           ${fracBar(aiCur, aiLim)}
         </div>
         <div>
