@@ -2619,11 +2619,15 @@ function _fmtTestDateTime(t){
 
 function _testModeLabel(t){
   // 레거시 tests (testMode 없음)은 단어시험 = vocab 으로 간주
-  // 단어시험 + vocabOptions.format='speaking' 은 🎤 말하기 배지로 구분
-  if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
-    return `<span class="badge" style="background:#fef3c7;color:#78350f;font-size:11px;padding:2px 7px;border-radius:10px;">🎤 말하기</span>`;
-  }
   return _unifiedTypeBadge(t.testMode || 'vocab');
+}
+
+// 단어시험 중 vocabOptions.format='speaking' 이면 시험명 옆에 붙일 작은 배지
+function _testNameSpeakingBadge(t) {
+  if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
+    return ` <span class="badge" style="background:#fef3c7;color:#78350f;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;vertical-align:middle;">🎤 말하기</span>`;
+  }
+  return '';
 }
 
 // ─── 시험 통계 공용 계산 (시험 목록 + 시험 유형별 최근 시험 공유) ───
@@ -2717,7 +2721,7 @@ window.loadTestList = async() => {
       <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}','${t._src}')" id="test-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
-        <td class="td-main">${esc(t.name)||'-'}</td>
+        <td class="td-main">${esc(t.name)||'-'}${_testNameSpeakingBadge(t)}</td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
         <td class="td-sm">${esc(bookName)}</td>
