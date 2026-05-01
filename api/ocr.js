@@ -12,6 +12,9 @@ module.exports = async function handler(req, res) {
     // 인증 + OCR 월 쿼터 (T2/T3 5분류 분리)
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ocr' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
+    // 쿼터 통과 시점에 카운트 — 이후 어디서 실패해도 (파서/Gemini 5xx 등) 사용자 시도로 간주.
+    // daily(_logApiCall) 와 monthly 정합성 확보 + 비용 보수적 관리.
+    await incrementUsage({ ...q, res });
 
     if (!imageBase64) {
       return res.status(400).json({ error: 'imageBase64 required' });
@@ -57,7 +60,6 @@ module.exports = async function handler(req, res) {
 
     const confidence = wordCount > 0 ? Math.round((totalConf / wordCount) * 100) : 0;
 
-    await incrementUsage({ ...q, res });
     res.status(200).json({ success: true, text, confidence, blockCount, provider: 'google-vision' });
   } catch (err) {
     console.error('OCR error:', err);

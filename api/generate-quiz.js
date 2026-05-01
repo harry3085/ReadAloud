@@ -473,6 +473,9 @@ module.exports = async function handler(req, res) {
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
+    // 쿼터 통과 시점에 카운트 — 이후 파서 실패/Gemini 5xx 등 어디서 실패해도 사용자 시도로 간주.
+    // daily(_logApiCall) 와 monthly 정합성 확보 + 비용 보수적 관리.
+    await incrementUsage({ ...q, res });
 
     // ─── 입력 검증 ───
     if (!Array.isArray(pages) || pages.length === 0) {
@@ -635,9 +638,6 @@ module.exports = async function handler(req, res) {
 
     // 목표 초과는 잘라냄
     if (validated.length > targetCount) validated = validated.slice(0, targetCount);
-
-    // 학원 AI 월 사용량 +1 (Phase 3)
-    await incrementUsage({ ...q, res });
 
     return res.status(200).json({
       success: true,
