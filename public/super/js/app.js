@@ -727,11 +727,14 @@ window._onAcPlanChange = () => {
 
 // ── 신규 학원 추가 모달 ──────────────────────────────
 window.openAcademyCreateModal = () => {
-  const planOpts = Object.keys(_plansCache).length
-    ? Object.keys(_plansCache).map(pid => `<option value="${esc(pid)}">${esc(_plansCache[pid].displayName || pid)}</option>`).join('')
-    : '<option value="lite">Lite</option><option value="standard">Standard</option><option value="pro">Pro</option>';
-  // 첫 plan 의 byTier 옵션을 학생 한도 select default 로
-  const firstPlanId = Object.keys(_plansCache)[0] || 'lite';
+  // plan.order 기준 정렬 (Free=0, Lite=1, Standard=2, Pro=3)
+  const sortedPlanIds = Object.keys(_plansCache)
+    .sort((x, y) => (_plansCache[x].order ?? 99) - (_plansCache[y].order ?? 99));
+  const planOpts = sortedPlanIds.length
+    ? sortedPlanIds.map(pid => `<option value="${esc(pid)}">${esc(_plansCache[pid].displayName || pid)}</option>`).join('')
+    : '<option value="free">Free</option><option value="lite">Lite</option><option value="standard">Standard</option><option value="pro">Pro</option>';
+  // 첫 plan(=Free) 의 byTier 옵션을 학생 한도 select default 로
+  const firstPlanId = sortedPlanIds[0] || 'free';
   const initialLimitOpts = _planTierOptions(firstPlanId);
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
@@ -913,9 +916,12 @@ window.acmTab = (id) => {
 };
 
 function _renderAcmBasic(a, adminUser) {
-  const planOpts = Object.keys(_plansCache).map(pid =>
-    `<option value="${esc(pid)}" ${a.planId === pid ? 'selected' : ''}>${esc(_plansCache[pid].displayName || pid)}</option>`
-  ).join('');
+  // plan.order 기준 정렬 (Free=0, Lite=1, Standard=2, Pro=3)
+  const planOpts = Object.keys(_plansCache)
+    .sort((x, y) => (_plansCache[x].order ?? 99) - (_plansCache[y].order ?? 99))
+    .map(pid =>
+      `<option value="${esc(pid)}" ${a.planId === pid ? 'selected' : ''}>${esc(_plansCache[pid].displayName || pid)}</option>`
+    ).join('');
   const channels = [
     ['', '선택'], ['referral', '지인 소개'], ['search', '검색'],
     ['ad', '광고'], ['blog', '블로그'], ['sns', 'SNS'], ['other', '기타'],
