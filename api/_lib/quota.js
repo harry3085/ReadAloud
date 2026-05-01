@@ -11,7 +11,7 @@
 //   'cleanup'      — api/cleanup-ocr.js      (cleanupCallsThisMonth   vs byTier[tier].cleanupPerMonth)
 //   'generator'    — api/generate-quiz.js    (generatorCallsThisMonth vs byTier[tier].generatorPerMonth)
 //   'recording'    — api/check-recording.js  (recordingCallsThisMonth vs byTier[tier].recordingPerMonth)
-//   'growthReport' — api/growth-report.js    (growthReportThisMonth   vs byTier[tier].growthReportPerMonth)
+//   'growthReport' — api/growth-report.js    (growthReportCallsThisMonth   vs byTier[tier].growthReportPerMonth)
 //   'student'      — api/createStudent.js    (activeStudentsCount     vs studentLimit / customLimits.maxStudents)
 //   'ai' (deprecated) — generator 로 자동 매핑 + 콘솔 경고
 
@@ -43,7 +43,7 @@ const QUOTA_CONFIG = {
   cleanup:      { counterField: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      label: 'Cleanup' },
   generator:    { counterField: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    label: 'Generator' },
   recording:    { counterField: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    label: '녹음 평가' },
-  growthReport: { counterField: 'growthReportThisMonth',   limitField: 'growthReportPerMonth', label: '성장 리포트' },
+  growthReport: { counterField: 'growthReportCallsThisMonth',   limitField: 'growthReportPerMonth', label: '성장 리포트' },
 };
 
 async function verifyAndCheckQuota({ idToken, quotaKind }) {
@@ -155,7 +155,7 @@ const ALL_MONTHLY_COUNTERS = [
   'cleanupCallsThisMonth',
   'generatorCallsThisMonth',
   'recordingCallsThisMonth',
-  'growthReportThisMonth',
+  'growthReportCallsThisMonth',
 ];
 
 // KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일

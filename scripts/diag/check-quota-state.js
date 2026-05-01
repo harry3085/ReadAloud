@@ -14,7 +14,7 @@ const QUOTA_FIELDS = [
   { counter: 'cleanupCallsThisMonth',   limitKey: 'cleanupPerMonth',      label: 'Cleanup' },
   { counter: 'generatorCallsThisMonth', limitKey: 'generatorPerMonth',    label: 'Generator' },
   { counter: 'recordingCallsThisMonth', limitKey: 'recordingPerMonth',    label: '녹음' },
-  { counter: 'growthReportThisMonth',   limitKey: 'growthReportPerMonth', label: '리포트' },
+  { counter: 'growthReportCallsThisMonth',   limitKey: 'growthReportPerMonth', label: '리포트' },
 ];
 
 function _ymKST() { return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7); }

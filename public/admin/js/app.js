@@ -313,7 +313,7 @@ async function loadApiUsage(){
     const aiCur = (usage.ocrCallsThisMonth || 0)
                 + (usage.cleanupCallsThisMonth || 0)
                 + (usage.generatorCallsThisMonth || 0)
-                + (usage.growthReportThisMonth || 0);
+                + (usage.growthReportCallsThisMonth || 0);
     const _aiLim4 = (cl.ocrPerMonth         ?? tierLimits.ocrPerMonth         ?? 0)
                   + (cl.cleanupPerMonth     ?? tierLimits.cleanupPerMonth     ?? 0)
                   + (cl.generatorPerMonth   ?? tierLimits.generatorPerMonth   ?? 0)
@@ -397,7 +397,7 @@ async function loadQuotaUsage(){
       { label: '🧹 Cleanup (텍스트 정리)',    counter: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      color: '#06b6d4' },
       { label: '✨ Generator (AI 문제 생성)', counter: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    color: '#f59e0b' },
       { label: '🎙 녹음 평가',                counter: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    color: '#8b5cf6' },
-      { label: '📈 성장 리포트',              counter: 'growthReportThisMonth',   limitField: 'growthReportPerMonth', color: '#10b981' },
+      { label: '📈 성장 리포트',              counter: 'growthReportCallsThisMonth',   limitField: 'growthReportPerMonth', color: '#10b981' },
     ];
 
     const planName = (plan.displayName || planId).toUpperCase();

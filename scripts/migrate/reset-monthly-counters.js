@@ -20,7 +20,7 @@ const ALL_MONTHLY_COUNTERS = [
   'cleanupCallsThisMonth',
   'generatorCallsThisMonth',
   'recordingCallsThisMonth',
-  'growthReportThisMonth',
+  'growthReportCallsThisMonth',
 ];
 
 function _currentYearMonthKST() {

@@ -1,7 +1,7 @@
 // academies.usage 의 5분류 카운터 백필 (T4).
 //
 // T2/T3 에서 quota.js 가 5분류로 분리됨 — academies/{id}.usage 에도 새 필드 4개 추가:
-//   ocrCallsThisMonth, cleanupCallsThisMonth, generatorCallsThisMonth, growthReportThisMonth
+//   ocrCallsThisMonth, cleanupCallsThisMonth, generatorCallsThisMonth, growthReportCallsThisMonth
 //
 // 기존 필드는 그대로 유지:
 //   - aiCallsThisMonth          (deprecated, 더 이상 +1 안 됨 — 별도 cleanup 시점에 제거)
@@ -21,7 +21,7 @@ const NEW_COUNTERS = [
   'ocrCallsThisMonth',
   'cleanupCallsThisMonth',
   'generatorCallsThisMonth',
-  'growthReportThisMonth',
+  'growthReportCallsThisMonth',
 ];
 
 async function main() {

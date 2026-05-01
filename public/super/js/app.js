@@ -1399,7 +1399,7 @@ async function loadAcademies() {
         ${cell(u.cleanupCallsThisMonth || 0,    'cleanupPerMonth',      '정리')} ·
         ${cell(u.generatorCallsThisMonth || 0,  'generatorPerMonth',    '생성')}<br>
         ${cell(u.recordingCallsThisMonth || 0,  'recordingPerMonth',    '녹음')} ·
-        ${cell(u.growthReportThisMonth || 0,    'growthReportPerMonth', '리포트')}
+        ${cell(u.growthReportCallsThisMonth || 0,    'growthReportPerMonth', '리포트')}
       </div>`;
     };
 
