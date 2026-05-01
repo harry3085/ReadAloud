@@ -1824,8 +1824,14 @@ window.loadPersonalScore = async(uid) => {
   try{
     const userSnap=await getDoc(doc(db,'users',uid));
     const u=userSnap.data();
-    const scoresSnap=await getDocs(query(collection(db,'scores'),where('userId','==',uid),orderBy('createdAt','desc')));
-    const scores=scoresSnap.docs.map(d=>d.data());
+    // uid 표준 키 + academyId 필터 (멀티테넌시 rules 통과). 정렬은 클라 측.
+    const scoresSnap=await getDocs(query(
+      collection(db,'scores'),
+      where('uid','==',uid),
+      where('academyId','==',window.MY_ACADEMY_ID),
+    ));
+    const scores=scoresSnap.docs.map(d=>d.data())
+      .sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
     const avg=scores.length?Math.round(scores.reduce((s,r)=>s+r.score,0)/scores.length):0;
     detail.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -1867,7 +1873,10 @@ window.loadPersonalScore = async(uid) => {
         </table>
       </div>
     `;
-  }catch(e){detail.innerHTML='<div style="color:#e05050;padding:20px;">불러오기 실패</div>';}
+  }catch(e){
+    console.error('[loadPersonalScore]', e);
+    detail.innerHTML=`<div style="color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+  }
 };
 
 // ── AI 성장 리포트 (api/growth-report 호출 + 모달 + PDF) ─────────────────
