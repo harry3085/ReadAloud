@@ -155,6 +155,15 @@ async function _loadMyAcademyContext(user, userDocData) {
 
 onAuthStateChanged(auth, async user => {
   if(!user){ window.location.href='/'; return; }
+  // super_admin Custom Claims 가진 사용자는 학원장 앱 진입 차단 → /super/ 로 추방.
+  // 정상 super_admin 보호 + 옛 admin 계정에 잘못 박힌 super_admin claims 방어.
+  try {
+    const tk = await user.getIdTokenResult();
+    if (tk.claims?.role === 'super_admin') {
+      window.location.href = '/super/';
+      return;
+    }
+  } catch(_) {}
   const snap = await getDoc(doc(db,'users',user.uid));
   if(!snap.exists() || snap.data().role !== 'admin'){
     window.location.href='/'; return;
