@@ -37,8 +37,8 @@ module.exports = async function handler(req, res) {
     // 인증 + Cleanup 월 쿼터 (T2/T3 5분류 분리)
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'cleanup' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
-    // 쿼터 통과 시점에 카운트 — 이후 어디서 실패해도 사용자 시도로 간주 (보수적 관리)
-    await incrementUsage({ ...q, res });
+    // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
+    await incrementUsage({ ...q, res, endpoint: 'cleanup-ocr' });
 
     if (typeof text !== 'string' || text.trim().length < 5) {
       return res.status(400).json({ error: '정리할 본문이 너무 짧거나 비어 있습니다' });

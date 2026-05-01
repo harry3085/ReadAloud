@@ -13,8 +13,8 @@ module.exports = async function handler(req, res) {
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ocr' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
     // 쿼터 통과 시점에 카운트 — 이후 어디서 실패해도 (파서/Gemini 5xx 등) 사용자 시도로 간주.
-    // daily(_logApiCall) 와 monthly 정합성 확보 + 비용 보수적 관리.
-    await incrementUsage({ ...q, res });
+    // daily/monthly 단일 writer (서버) 통합 — 클라 _logApiCall 폐기, 정합성 보장.
+    await incrementUsage({ ...q, res, endpoint: 'ocr' });
 
     if (!imageBase64) {
       return res.status(400).json({ error: 'imageBase64 required' });

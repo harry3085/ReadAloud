@@ -104,8 +104,8 @@ module.exports = async (req, res) => {
     // 인증 + 녹음 월 쿼터 (Phase 3)
     const q = await _verifyQuota({ idToken, quotaKind: 'recording' });
     if (q.error) { res.status(q.status).json({ success: false, error: q.error, limit: q.limit, currentCount: q.currentCount }); return; }
-    // 쿼터 통과 시점에 카운트 — 이후 어디서 실패해도 사용자 시도로 간주 (보수적 관리)
-    await _incUsage({ ...q, res });
+    // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
+    await _incUsage({ ...q, res, endpoint: 'check-recording' });
     const rawMime = body.mimeType || 'audio/webm';
     // Gemini 공식 지원: wav/mp3/aiff/aac/ogg/flac
     // 브라우저가 주로 내보내는 webm/mp4 는 거부되므로 호환 포맷으로 리라벨

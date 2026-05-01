@@ -158,10 +158,21 @@ const ALL_MONTHLY_COUNTERS = [
   'growthReportThisMonth',
 ];
 
+// KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
+function _ymdKST() {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 // 호출 성공 후 카운터 증가 (호출자가 응답 직전에 호출)
 // res 를 같이 넘기면 X-Quota-* 응답 헤더 자동 set (T8 — 학원장 앱 토스트용)
-async function incrementUsage({ acadRef, counterField, needsReset, res, currentCount, limit, kindLabel }) {
+// endpoint 를 같이 넘기면 apiUsage 일별 카운터도 같은 트랜잭션에서 +1 (대시보드용)
+//   → daily(클라) / monthly(서버) 분리 writer 패턴 폐기, 단일 writer 로 정합성 보장
+async function incrementUsage({ acadRef, counterField, needsReset, res, currentCount, limit, kindLabel, endpoint }) {
   if (!counterField) return;
+  const academyId = acadRef?.id;
+  const db = acadRef?.firestore;
+
+  // 1) academies/{id}.usage.{counterField} — 월별 카운터 (쿼터 게이트)
   const update = { [`usage.${counterField}`]: FieldValue.increment(1) };
   if (needsReset) {
     update[`usage.lastResetAt`] = _currentYearMonth();
@@ -173,7 +184,22 @@ async function incrementUsage({ acadRef, counterField, needsReset, res, currentC
   }
   try { await acadRef.update(update); } catch (e) { /* silent */ }
 
-  // 응답 헤더로 사용량 통보 (한도 무한 또는 res 미지정 시 skip)
+  // 2) apiUsage/{academyId}_{date} — 일별 카운터 (대시보드 위젯)
+  // 이전엔 클라 _logApiCall 이 썼지만 daily/monthly 드리프트 원인이라 서버로 통합.
+  if (endpoint && academyId && db) {
+    try {
+      const today = _ymdKST();
+      await db.doc(`apiUsage/${academyId}_${today}`).set({
+        academyId,
+        date: today,
+        total: FieldValue.increment(1),
+        byEndpoint: { [endpoint]: FieldValue.increment(1) },
+        lastAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (e) { /* silent */ }
+  }
+
+  // 3) 응답 헤더로 사용량 통보 (한도 무한 또는 res 미지정 시 skip)
   if (res && typeof res.setHeader === 'function' && typeof limit === 'number' && isFinite(limit) && limit > 0) {
     const after = (typeof currentCount === 'number' ? currentCount : 0) + 1;
     const pct = Math.round((after / limit) * 100);

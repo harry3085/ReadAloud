@@ -75,23 +75,9 @@ const PAGE_SIZE = 10;
 // KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
 function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
 
-// Gemini API 호출 로거 (학원별 일별 집계, 대시보드 위젯용)
-async function _logApiCall(endpoint){
-  try {
-    const today = _ymdKST();
-    const academyId = window.MY_ACADEMY_ID || 'default';
-    await setDoc(doc(db, 'apiUsage', `${academyId}_${today}`), {
-      academyId,
-      date: today,
-      total: increment(1),
-      byEndpoint: { [endpoint]: increment(1) },
-      lastAt: serverTimestamp(),
-    }, { merge: true });
-  } catch(e) { /* silent */ }
-}
-
-// fetch + idToken 자동주입 + 사용량 로깅 wrapper
-// /api/generate-quiz / /api/cleanup-ocr / /api/ocr 호출 시 사용
+// fetch + idToken 자동주입 wrapper.
+// 일별/월별 사용량 카운트는 서버 quota.js incrementUsage 가 단일 writer 로 통합 처리
+// (이전 클라 _logApiCall 은 daily/monthly 드리프트 원인이라 폐기됨, 2026-05-02).
 async function _geminiFetch(url, init){
   // body 에 idToken 자동 주입 (Phase 3 — 서버 인증)
   let finalInit = init;
@@ -104,9 +90,7 @@ async function _geminiFetch(url, init){
     }
   } catch(_) {}
   const res = await fetch(url, finalInit);
-  const ep = String(url).replace(/^\/api\//, '');
-  _logApiCall(ep);
-  // 대시보드 위젯 자동 갱신 (1.5초 후 — increment 반영 대기)
+  // 대시보드 위젯 자동 갱신 (1.5초 후 — 서버 incrementUsage 반영 대기)
   if (currentPage === 'dashboard' && typeof loadApiUsage === 'function') {
     setTimeout(() => loadApiUsage(), 1500);
   }

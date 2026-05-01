@@ -590,20 +590,8 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
 // KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
 function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
 
-// Gemini API 호출 로거 (학원별 일별 집계, 위젯용)
-async function _logApiCall(endpoint){
-  try {
-    const today = _ymdKST();
-    const academyId = window.MY_ACADEMY_ID || 'default';
-    await setDoc(doc(db, 'apiUsage', `${academyId}_${today}`), {
-      academyId,
-      date: today,
-      total: increment(1),
-      byEndpoint: { [endpoint]: increment(1) },
-      lastAt: serverTimestamp(),
-    }, { merge: true });
-  } catch(e) { /* silent: logging 실패해도 앱 동작엔 영향 없음 */ }
-}
+// Gemini API 호출 카운트는 서버 quota.js incrementUsage 가 단일 writer 로 처리.
+// (이전 클라 _logApiCall 은 daily/monthly 드리프트 원인이라 폐기됨, 2026-05-02)
 
 function filterMyTests(allTests, myGroup, myUid){
   return allTests.filter(t=>{
@@ -1151,7 +1139,6 @@ async function _fbFetchTranslation(sentence) {
         systemPrompt: '다음 영어 문장을 자연스러운 한국어로 번역하세요. 번역문만 한 줄로 출력하고, 인용부호·설명·부연 없이 깔끔하게. 직역이 아닌 의역을 선호하세요.',
       }),
     });
-    _logApiCall('cleanup-ocr');
     const data = await res.json();
     return (data.success && data.cleaned) ? String(data.cleaned).trim() : '';
   } catch (e) {
@@ -2605,7 +2592,6 @@ async function _rv2Submit() {
         evaluationSeconds: evalSec,
       }),
     });
-    _logApiCall('check-recording');
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(`평가 실패: ${data?.error || res.status}`);
