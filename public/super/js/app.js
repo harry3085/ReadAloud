@@ -1380,11 +1380,15 @@ async function loadAcademies() {
       const expCls = _expiryClass(a.planExpiresAt);
       const expText = _fmtDate(a.planExpiresAt);
       const lastLogin = _fmtDateTime(a.lastAdminLoginAt);
+      const overrideKeys = Object.keys(a.customLimits || {}).filter(k => a.customLimits[k] != null);
+      const overrideDot = overrideKeys.length
+        ? `<span title="Override: ${esc(overrideKeys.map(k => `${k}=${a.customLimits[k]}`).join(', '))}" style="color:#dc2626;font-size:14px;margin-left:5px;cursor:help;line-height:1;">●</span>`
+        : '';
       return `
       <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
         <td class="td-main">${esc(a.name || '-')}</td>
         <td class="td-mono">${esc(a.subdomain || a.id)}</td>
-        <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
+        <td><span class="badge badge-teal">${esc(a.planId || '-')}</span>${overrideDot}</td>
         <td class="td-center">${a.studentLimit || '-'}</td>
         <td>${fmtUsage(a)}</td>
         <td class="td-sub">${_fmtDate(a.createdAt)}</td>
