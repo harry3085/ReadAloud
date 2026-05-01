@@ -197,28 +197,30 @@
 
   <!-- 한도 관리 (T6) -->
   <div class="page" id="page-quotaAdmin">
-    <div class="card" style="padding:14px 18px;margin-bottom:14px;">
-      <div style="font-weight:700;margin-bottom:6px;">⚙️ 플랜 × 구간별 한도</div>
-      <div style="font-size:12px;color:var(--gray);">
-        한도 변경은 <b>해당 플랜·구간을 사용 중인 모든 학원에 즉시 반영</b>됩니다.
-        특정 학원만 다르게 하려면 아래 [학원별 Override] 사용.
+    <div style="flex:1;overflow-y:auto;min-height:0;padding-right:4px;">
+      <div class="card" style="padding:14px 18px;margin-bottom:14px;">
+        <div style="font-weight:700;margin-bottom:6px;">⚙️ 플랜 × 구간별 한도</div>
+        <div style="font-size:12px;color:var(--gray);">
+          한도 변경은 <b>해당 플랜·구간을 사용 중인 모든 학원에 즉시 반영</b>됩니다.
+          특정 학원만 다르게 하려면 아래 [학원별 Override] 사용.
+        </div>
       </div>
-    </div>
-    <div id="planQuotaCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(560px,1fr));gap:14px;margin-bottom:20px;">
-      <div style="padding:18px;color:#bbb;text-align:center;">로딩 중...</div>
-    </div>
+      <div id="planQuotaCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(560px,1fr));gap:14px;margin-bottom:20px;">
+        <div style="padding:18px;color:#bbb;text-align:center;">로딩 중...</div>
+      </div>
 
-    <div class="card" style="padding:18px;margin-bottom:20px;">
-      <div style="font-weight:700;margin-bottom:8px;">🏢 학원별 Override (customLimits)</div>
-      <div style="font-size:12px;color:var(--gray);margin-bottom:10px;">학원 이름으로 검색 후 [Override] 클릭. 빈 값은 플랜 기본값 사용.</div>
-      <input type="text" id="quotaAcademySearch" placeholder="학원명 검색..." oninput="searchAcademyForQuota(this.value)"
-             style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:10px;outline:none;">
-      <div id="quotaAcademyResults" style="font-size:13px;"></div>
-    </div>
+      <div class="card" style="padding:18px;margin-bottom:20px;">
+        <div style="font-weight:700;margin-bottom:8px;">🏢 학원별 Override (customLimits)</div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:10px;">학원 이름으로 검색 후 [Override] 클릭. 빈 값은 플랜 기본값 사용.</div>
+        <input type="text" id="quotaAcademySearch" placeholder="학원명 검색..." oninput="searchAcademyForQuota(this.value)"
+               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:10px;outline:none;">
+        <div id="quotaAcademyResults" style="font-size:13px;"></div>
+      </div>
 
-    <div class="card" style="padding:18px;">
-      <div style="font-weight:700;margin-bottom:10px;">📜 한도 변경 이력 (최근 50건)</div>
-      <div id="quotaChangeHistory" style="font-size:13px;">로딩 중...</div>
+      <div class="card" style="padding:18px;">
+        <div style="font-weight:700;margin-bottom:10px;">📜 한도 변경 이력 (최근 50건)</div>
+        <div id="quotaChangeHistory" style="font-size:13px;">로딩 중...</div>
+      </div>
     </div>
   </div>
 
