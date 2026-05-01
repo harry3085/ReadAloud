@@ -2,14 +2,18 @@
 //
 // 사용:
 //   const { verifyAndCheckQuota } = require('./_lib/quota');
-//   const r = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+//   const r = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
 //   if (r.error) return res.status(r.status).json({ error: r.error, ...r });
 //   // r.academyId / r.callerUid / r.planId 사용
 //
-// quotaKind:
-//   'ai'        — generate-quiz / cleanup-ocr / ocr  (aiCallsThisMonth vs limits.aiQuotaPerMonth)
-//   'recording' — check-recording                    (recordingCallsThisMonth vs limits.perTypeQuota.recording.check)
-//   'student'   — createStudent                      (activeStudentsCount vs studentLimit)
+// quotaKind (T1 plans byTier 차등화 + T2 5분류 분리):
+//   'ocr'          — api/ocr.js              (ocrCallsThisMonth       vs byTier[tier].ocrPerMonth)
+//   'cleanup'      — api/cleanup-ocr.js      (cleanupCallsThisMonth   vs byTier[tier].cleanupPerMonth)
+//   'generator'    — api/generate-quiz.js    (generatorCallsThisMonth vs byTier[tier].generatorPerMonth)
+//   'recording'    — api/check-recording.js  (recordingCallsThisMonth vs byTier[tier].recordingPerMonth)
+//   'growthReport' — api/growth-report.js    (growthReportThisMonth   vs byTier[tier].growthReportPerMonth)
+//   'student'      — api/createStudent.js    (activeStudentsCount     vs studentLimit / customLimits.maxStudents)
+//   'ai' (deprecated) — generator 로 자동 매핑 + 콘솔 경고
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
@@ -32,6 +36,15 @@ function _currentYearMonth() {
   // KST(UTC+9) 기준 YYYY-MM — apiUsage doc ID 와 동일 기준
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
 }
+
+// 5분류 한도 매핑 — counterField (academies.usage), limitField (plan.byTier[tier])
+const QUOTA_CONFIG = {
+  ocr:          { counterField: 'ocrCallsThisMonth',       limitField: 'ocrPerMonth',          label: 'OCR' },
+  cleanup:      { counterField: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      label: 'Cleanup' },
+  generator:    { counterField: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    label: 'Generator' },
+  recording:    { counterField: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    label: '녹음 평가' },
+  growthReport: { counterField: 'growthReportThisMonth',   limitField: 'growthReportPerMonth', label: '성장 리포트' },
+};
 
 async function verifyAndCheckQuota({ idToken, quotaKind }) {
   if (!idToken) return { error: '인증 토큰이 필요합니다.', status: 401 };
@@ -73,37 +86,42 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
   const planSnap = await db.doc('plans/' + (academy.planId || 'lite')).get();
   if (!planSnap.exists) return { error: '플랜 정보 없음', status: 500 };
   const plan = planSnap.data();
-  const limits = plan.limits || {};
-  const overrides = academy.customLimits || {};  // 학원별 override (있으면 plan 무시)
+  const overrides = academy.customLimits || {};  // 학원별 override (있으면 byTier 무시)
 
   // 4) 월 자동 리셋 (lastResetAt 이 이번 달과 다르면 카운터 0)
   const ym = _currentYearMonth();
   const usage = academy.usage || {};
   const needsReset = (usage.lastResetAt !== ym);
 
-  // 5) 한도 체크 (customLimits 우선, 없으면 plan)
+  // 4.5) 'ai' 는 deprecated — generator 로 매핑 (T3 호환성)
+  if (quotaKind === 'ai') {
+    console.warn('[quota] quotaKind=ai is deprecated, use "generator" instead');
+    quotaKind = 'generator';
+  }
+
+  // 5) 한도 체크 (customLimits 우선, 없으면 plan.byTier[tier])
   let counterField = null;  // usage 의 어느 필드를 increment 할지
   let currentCount = 0;
   let limit = Infinity;
   let kindLabel = '';
 
-  if (quotaKind === 'ai') {
-    counterField = 'aiCallsThisMonth';
-    currentCount = needsReset ? 0 : (usage.aiCallsThisMonth || 0);
-    limit = overrides.aiQuotaPerMonth || limits.aiQuotaPerMonth || Infinity;
-    kindLabel = 'AI 월 호출';
-  } else if (quotaKind === 'recording') {
-    counterField = 'recordingCallsThisMonth';
-    currentCount = needsReset ? 0 : (usage.recordingCallsThisMonth || 0);
-    limit = overrides.recordingPerMonth
-         || (limits.perTypeQuota && limits.perTypeQuota.recording && limits.perTypeQuota.recording.check)
-         || Infinity;
-    kindLabel = '녹음 평가 월';
-  } else if (quotaKind === 'student') {
+  if (quotaKind === 'student') {
     counterField = null; // 별도 처리 — increment 가 아닌 추가 시점
     currentCount = usage.activeStudentsCount || 0;
-    limit = academy.studentLimit || Infinity;
+    limit = overrides.maxStudents ?? academy.studentLimit ?? Infinity;
     kindLabel = '학생 수';
+  } else if (QUOTA_CONFIG[quotaKind]) {
+    const cfg = QUOTA_CONFIG[quotaKind];
+    counterField = cfg.counterField;
+    currentCount = needsReset ? 0 : (usage[cfg.counterField] || 0);
+
+    // plan.byTier[tier] 우선, 없으면 ['30'], 그것도 없으면 첫 키, 최종 Infinity
+    const tier = String(academy.studentLimit || 30);
+    const byTier = plan.byTier || {};
+    const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+    limit = overrides[cfg.limitField] ?? tierLimits[cfg.limitField] ?? Infinity;
+
+    kindLabel = cfg.label;
   } else {
     return { error: 'quotaKind 미지원: ' + quotaKind, status: 500 };
   }
