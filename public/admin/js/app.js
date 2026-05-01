@@ -4952,18 +4952,6 @@ const QG_TYPE_OPTIONS = {
       { key:'difficulty', label:'난이도',   type:'select', choices:['하','중','상'], default:'중' },
     ],
   },
-  'unscramble': {
-    label: '언스크램블',
-    icon: '🔀',
-    enabled: true,
-    phaseLabel: null,
-    noteHint: '본문 문장을 AI 가 청크 갯수에 맞게 나눠 언스크램블 문제를 만듭니다.',
-    options: [
-      { key:'count',       label:'문제수',     type:'number', default:10, min:3, max:50 },
-      { key:'difficulty',  label:'난이도',     type:'select', choices:['하','중','상'], default:'중' },
-      { key:'chunkCount',  label:'청크 갯수',  type:'number', default:4, min:2, max:8 },
-    ],
-  },
   'fill_blank': {
     label: '빈칸채우기',
     icon: '✏️',
@@ -4974,6 +4962,18 @@ const QG_TYPE_OPTIONS = {
       { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:50 },
       { key:'difficulty',        label:'난이도',             type:'select', choices:['하','중','상'], default:'중' },
       { key:'blanksPerSentence', label:'문장별 빈칸 개수',   type:'number', default:1, min:1, max:5 },
+    ],
+  },
+  'unscramble': {
+    label: '언스크램블',
+    icon: '🔀',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문 문장을 AI 가 청크 갯수에 맞게 나눠 언스크램블 문제를 만듭니다.',
+    options: [
+      { key:'count',       label:'문제수',     type:'number', default:10, min:3, max:50 },
+      { key:'difficulty',  label:'난이도',     type:'select', choices:['하','중','상'], default:'중' },
+      { key:'chunkCount',  label:'청크 갯수',  type:'number', default:4, min:2, max:8 },
     ],
   },
   'mcq': {
