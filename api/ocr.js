@@ -9,8 +9,8 @@ module.exports = async function handler(req, res) {
   try {
     const { idToken, imageBase64, mimeType } = req.body;
 
-    // 인증 + AI 월 쿼터 (Vision 도 학원 AI 비용에 합산)
-    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+    // 인증 + OCR 월 쿼터 (T2/T3 5분류 분리)
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ocr' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
 
     if (!imageBase64) {

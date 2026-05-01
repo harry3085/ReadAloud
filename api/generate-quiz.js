@@ -470,8 +470,8 @@ module.exports = async function handler(req, res) {
 
     const { idToken, pages, count, type, customSystemPrompt } = req.body || {};
 
-    // ─── 인증 + 쿼터 체크 (Phase 3) ───
-    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ai' });
+    // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
 
     // ─── 입력 검증 ───
