@@ -3257,7 +3257,8 @@ window.genDoCreatePage = async () => {
 };
 
 window.genEditPage = () => {
-  if (_genCheckedPages.size!==1) return;
+  if (_genCheckedPages.size === 0) return;
+  if (_genCheckedPages.size >= 2) { _genOpenMergePagesModal(); return; }
   const pid=[..._genCheckedPages][0];
   const page=_genPages.find(p=>p.id===pid);
   if (!page) return;
@@ -3290,6 +3291,114 @@ window.genDoEditPage = async (pid) => {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
     closeModal(); await loadGenerator();
   } catch(e){ showToast('저장 실패: '+e.message); }
+};
+
+// 여러 Page 선택 + [수정] → 병합 모달
+function _genOpenMergePagesModal() {
+  const ids = [..._genCheckedPages];
+  const pages = ids.map(id => _genPages.find(p => p.id === id)).filter(Boolean);
+  // serialNumber 오름차순 (없으면 끝으로)
+  pages.sort((a, b) => (a.serialNumber || 9e9) - (b.serialNumber || 9e9));
+  if (pages.length < 2) return;
+
+  // 챕터 일치 검사
+  const chapterIds = [...new Set(pages.map(p => p.chapterId || ''))];
+  const sameChapter = chapterIds.length === 1 && chapterIds[0];
+  const targetChapter = sameChapter ? pages[0] : null;
+  const chapterInfo = sameChapter
+    ? `같은 챕터 <b>'${esc(targetChapter.chapterName || '-')}'</b> 로 배정`
+    : '챕터 다름 (또는 미배정 섞임) → <b>미배정</b> 으로 저장';
+
+  const list = pages.map((p, i) => `
+    <li style="margin-bottom:4px;">
+      <span style="color:var(--gray);">${i + 1}.</span>
+      <b>${esc(p.title || '-')}</b>
+      <span style="color:var(--gray);font-size:11px;">${esc((p.text || '').slice(0, 40))}${(p.text || '').length > 40 ? '…' : ''}</span>
+    </li>`).join('');
+
+  const defaultTitle = (pages[0].title || 'Page') + ' (병합)';
+
+  showModal(`
+    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">✂ Page 병합</div>
+        <div style="margin-top:6px;font-size:13px;color:var(--gray);">선택된 ${pages.length}개 페이지의 본문을 순서대로 합쳐 1개로 만듭니다.</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">병합될 페이지 (이 순서)</div>
+        <ol style="font-size:13px;line-height:1.6;padding-left:22px;margin:0 0 14px 0;">${list}</ol>
+        <div style="font-size:12px;color:var(--text);margin-bottom:14px;background:#fafafa;border:1px solid var(--border);border-radius:6px;padding:8px 10px;">→ ${chapterInfo}</div>
+
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">새 Page 제목 <span style="color:#dc2626;">*</span></div>
+          <input id="gnMT" type="text" value="${esc(defaultTitle)}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;">
+          <input id="gnMDel" type="checkbox" checked style="width:16px;height:16px;cursor:pointer;">
+          <span>병합 후 원본 ${pages.length}개 삭제 <span style="color:var(--gray);font-size:11px;">(해제 시 원본 보존)</span></span>
+        </label>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="genDoMergePages('${ids.join(',')}')">✂ 병합 실행</button>
+      </div>
+    </div>`);
+}
+
+window.genDoMergePages = async (idsCsv) => {
+  const ids = idsCsv.split(',').filter(Boolean);
+  const newTitle = (document.getElementById('gnMT')?.value || '').trim();
+  const deleteOriginals = !!document.getElementById('gnMDel')?.checked;
+
+  if (!newTitle) { showAlert('입력 확인', '새 Page 제목을 입력하세요.'); return; }
+
+  const pages = ids.map(id => _genPages.find(p => p.id === id)).filter(Boolean);
+  if (pages.length < 2) { showToast('병합할 페이지가 부족합니다'); return; }
+  pages.sort((a, b) => (a.serialNumber || 9e9) - (b.serialNumber || 9e9));
+
+  // 본문 합치기 — 사이에 빈 줄
+  const mergedText = pages.map(p => (p.text || '').trim()).filter(Boolean).join('\n\n');
+
+  // 챕터 일치 → 그 챕터 사용, 아니면 미배정
+  const chapterIds = [...new Set(pages.map(p => p.chapterId || ''))];
+  const sameChapter = chapterIds.length === 1 && chapterIds[0];
+  const ch = sameChapter ? pages[0] : null;
+
+  // serialNumber: 미배정 페이지 수 + 1 (OCR 패턴 동일)
+  const nextSerial = _genPages.filter(p => !p.chapterId).length + 1;
+
+  try {
+    await addDoc(collection(db, 'genPages'), {
+      title: newTitle,
+      text: mergedText,
+      serialNumber: ch ? (pages[0].serialNumber || nextSerial) : nextSerial,
+      chapterId: ch ? ch.chapterId : null,
+      chapterName: ch ? (ch.chapterName || '') : '',
+      bookId: ch ? (ch.bookId || null) : null,
+      bookName: ch ? (ch.bookName || '') : '',
+      ocrConfidence: 0,
+      ocrProvider: 'merged',
+      imageUrl: '',
+      edited: true,
+      createdAt: serverTimestamp(),
+      createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    });
+
+    if (deleteOriginals) {
+      await Promise.all(ids.map(id => deleteDoc(doc(db, 'genPages', id))));
+    }
+
+    _genCheckedPages.clear();
+    closeModal();
+    await loadGenerator();
+    showToast(deleteOriginals
+      ? `✂ ${pages.length}개 페이지 병합 완료 — 원본 삭제됨`
+      : `✂ ${pages.length}개 페이지 병합 완료 — 원본 보존`);
+  } catch (e) {
+    showToast('병합 실패: ' + e.message);
+  }
 };
 
 window.genSavePage = async () => {

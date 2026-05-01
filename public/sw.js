@@ -1,7 +1,7 @@
 // 큰소리 영어 Service Worker — 앱 쉘 캐시 + 일반 fetch 만
 // FCM 백그라운드 알림은 firebase-messaging-sw.js (Firebase 자동 등록 SW) 가 전담.
 
-const CACHE_NAME = 'kunsori-v217';
+const CACHE_NAME = 'kunsori-v218';
 const APP_SHELL = [
   '/',
   '/index.html',
