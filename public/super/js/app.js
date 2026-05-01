@@ -846,6 +846,7 @@ window.openAcademyModal = async (academyId) => {
           ${tabBtn('timeline','📜 타임라인')}
           ${tabBtn('memo','📝 메모')}
           ${tabBtn('usage','📊 사용량')}
+          ${tabBtn('override','⚙️ Override')}
         </div>
       </div>
       <div style="overflow-y:auto;flex:1;">
@@ -853,6 +854,7 @@ window.openAcademyModal = async (academyId) => {
         <div id="acm-pane-timeline" class="acm-tab-pane" style="padding:16px 22px;display:none;">로딩 중...</div>
         <div id="acm-pane-memo" class="acm-tab-pane" style="padding:16px 22px;display:none;flex-direction:column;gap:14px;">${_renderAcmMemo(a)}</div>
         <div id="acm-pane-usage" class="acm-tab-pane" style="padding:16px 22px;display:none;">${_renderAcmUsage(a)}</div>
+        <div id="acm-pane-override" class="acm-tab-pane" style="padding:16px 22px;display:none;">${_renderAcmOverride(a)}</div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
@@ -2899,3 +2901,92 @@ async function loadQuotaChangeHistory() {
     el.innerHTML = `<div style="padding:8px;color:#dc2626;">로드 실패: ${esc(e.message)} <br><span style="font-size:11px;">(adminLogs composite index 가 필요할 수 있음 — Firebase Console 에서 자동 생성 링크 확인)</span></div>`;
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// T7 — 학원 상세 모달 [⚙️ Override] 탭
+// ════════════════════════════════════════════════════════════════
+
+function _renderAcmOverride(a) {
+  const planId = a.planId || 'lite';
+  const plan = _plansCache[planId] || {};
+  const tier = String(a.studentLimit || 30);
+  const byTier = plan.byTier || {};
+  const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+  const cl = a.customLimits || {};
+
+  const rows = QUOTA_FIELDS.map(f => `
+    <tr>
+      <td style="padding:8px 4px;font-size:13px;font-weight:500;">${esc(f.label)}</td>
+      <td style="padding:8px 4px;font-size:12px;color:var(--gray);text-align:right;">기본: ${tierLimits[f.key] ?? '-'}</td>
+      <td style="padding:8px 4px;">
+        <input id="acmOv_${f.key}" type="number" min="0" value="${cl[f.key] !== undefined ? cl[f.key] : ''}"
+          placeholder="기본값 사용"
+          style="width:140px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="font-size:13px;color:var(--gray);margin-bottom:12px;line-height:1.6;">
+      <b>${esc(plan.displayName || planId)}</b> · ${esc(tier)}명 구간<br>
+      빈 값은 플랜 기본값 사용. 입력 시 이 학원만 별도 적용 (학원 행에 빨간 ● 표시).
+    </div>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid var(--border);border-bottom:1px solid var(--border);">${rows}</table>
+    <div style="margin-top:14px;">
+      <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">변경 사유 <span style="color:#dc2626;">*</span></div>
+      <textarea id="acmOv_reason" rows="2" placeholder="예: 베타 시연 학원 일시 상향"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+    </div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end;">
+      <button class="btn btn-primary" onclick="saveAcmOverride('${esc(a.id)}')">💾 Override 저장</button>
+    </div>
+  `;
+}
+
+window.saveAcmOverride = async (academyId) => {
+  const reason = (document.getElementById('acmOv_reason')?.value || '').trim();
+  if (!reason) {
+    await showSuperConfirm({ title: '사유 필수', message: '변경 사유를 입력하세요.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+  const a = _academiesCache.find(x => x.id === academyId);
+  const before = { ...(a?.customLimits || {}) };
+
+  const after = {};
+  for (const f of QUOTA_FIELDS) {
+    const raw = document.getElementById(`acmOv_${f.key}`)?.value;
+    if (raw !== undefined && raw !== '') {
+      const v = parseInt(raw, 10);
+      if (isFinite(v)) after[f.key] = v;
+    }
+  }
+
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+  const changedFields = allKeys.filter(k => before[k] !== after[k]);
+  if (changedFields.length === 0) {
+    await showSuperConfirm({ title: '변경 없음', message: '바뀐 값이 없습니다.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, 'academies', academyId), {
+      customLimits: Object.keys(after).length > 0 ? after : null,
+      updatedAt: serverTimestamp(),
+    });
+    await logAdminAction('update_custom_limits', 'academy', academyId, {
+      academyName: a?.name || '',
+      changedFields,
+      before: changedFields.reduce((o,k) => (o[k]=before[k] ?? null, o), {}),
+      after:  changedFields.reduce((o,k) => (o[k]=after[k]  ?? null, o), {}),
+      reason,
+    });
+    // 캐시 갱신 — 학원 행 ● 즉시 반영
+    if (a) a.customLimits = Object.keys(after).length > 0 ? after : null;
+    _quotaAcademyCache = null;  // 한도 관리 탭 재로드 시 fresh
+    closeModal();
+    await loadAcademies();
+    showToast?.('✅ Override 저장 완료');
+  } catch (e) {
+    await showSuperConfirm({ title: '저장 실패', message: e.message, confirmText: '확인', cancelText: '닫기' });
+  }
+};
