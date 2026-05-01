@@ -156,6 +156,7 @@ window.goTab = (id) => {
   else if (id === 'users') runUserSearch();
   else if (id === 'billing') loadBillingDashboard();
   else if (id === 'usage') loadUsageDashboard();
+  else if (id === 'quotaAdmin') loadQuotaAdmin();
   else if (id === 'prompts') loadPromptsConfig();
   else if (id === 'presets') loadPresetsConfig();
 };
@@ -2533,3 +2534,353 @@ function _startGlobalAlertCheck() {
 setTimeout(() => {
   if (auth.currentUser) _startGlobalAlertCheck();
 }, 3000);
+
+// ════════════════════════════════════════════════════════════════
+// T6 — 한도 관리 탭
+// ════════════════════════════════════════════════════════════════
+
+const QUOTA_FIELDS = [
+  { key: 'ocrPerMonth',          label: 'OCR' },
+  { key: 'cleanupPerMonth',      label: 'Cleanup' },
+  { key: 'generatorPerMonth',    label: 'Generator' },
+  { key: 'recordingPerMonth',    label: '녹음' },
+  { key: 'growthReportPerMonth', label: '리포트' },
+  { key: 'storageGB',            label: 'Storage(GB)' },
+];
+
+let _plansCache = null;
+
+async function loadQuotaAdmin() {
+  await Promise.all([
+    loadPlanQuotaCards(),
+    loadQuotaChangeHistory(),
+  ]);
+  // 검색 결과는 사용자가 입력했을 때만 갱신
+  const kw = document.getElementById('quotaAcademySearch')?.value || '';
+  if (kw) searchAcademyForQuota(kw);
+  else document.getElementById('quotaAcademyResults').innerHTML = '<div style="color:var(--gray);padding:8px;">학원명을 입력하세요.</div>';
+}
+
+async function loadPlanQuotaCards() {
+  const el = document.getElementById('planQuotaCards');
+  if (!el) return;
+  try {
+    const snap = await getDocs(collection(db, 'plans'));
+    const plans = [];
+    snap.forEach(d => plans.push({ id: d.id, ...d.data() }));
+    plans.sort((a, b) => (a.order || 0) - (b.order || 0));
+    _plansCache = plans;
+
+    el.innerHTML = plans.map(plan => {
+      const tiers = Object.keys(plan.byTier || {});
+      const rows = tiers.map(tier => {
+        const t = plan.byTier[tier];
+        const cells = QUOTA_FIELDS.map(f => `<td style="text-align:right;">${t[f.key] ?? '-'}</td>`).join('');
+        return `<tr>
+          <td style="font-weight:600;">${esc(tier)}명</td>
+          ${cells}
+          <td><button class="btn btn-sm btn-secondary" onclick="openQuotaEditModal('${esc(plan.id)}','${esc(tier)}')">편집</button></td>
+        </tr>`;
+      }).join('');
+
+      const head = QUOTA_FIELDS.map(f => `<th style="text-align:right;">${esc(f.label)}</th>`).join('');
+
+      return `
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:700;font-size:15px;">${esc(plan.displayName || plan.id)}</div>
+            <span style="font-size:11px;color:var(--gray);">order ${plan.order ?? '-'}</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;font-size:12px;border-collapse:collapse;">
+              <thead style="background:#fafafa;">
+                <tr><th style="text-align:left;padding:8px 10px;">구간</th>${head}<th></th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="padding:14px;color:#dc2626;">로드 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+window.openQuotaEditModal = async (planId, tier) => {
+  const plan = (_plansCache || []).find(p => p.id === planId);
+  if (!plan) return;
+  const t = (plan.byTier || {})[tier] || {};
+
+  // 영향 받는 학원 수 계산 (planId + studentLimit 매칭)
+  let affectedCount = 0;
+  try {
+    const snap = await getDocs(query(collection(db, 'academies'),
+      where('planId', '==', planId),
+      where('studentLimit', '==', Number(tier))
+    ));
+    affectedCount = snap.size;
+  } catch (_) {}
+
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  const inputs = QUOTA_FIELDS.map(f => `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <label style="width:120px;font-size:13px;color:var(--gray);">${esc(f.label)}</label>
+      <input id="qe_${f.key}" type="number" min="0" value="${t[f.key] ?? 0}"
+        style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+    </div>
+  `).join('');
+
+  box.innerHTML = `
+    <div style="width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">⚙️ ${esc(plan.displayName)} · ${esc(tier)}명 구간 한도 편집</div>
+        <div style="margin-top:6px;font-size:13px;color:${affectedCount > 0 ? '#dc2626' : 'var(--gray)'};">
+          ⚠ 이 변경은 현재 ${affectedCount}곳 학원에 즉시 반영됩니다 (해당 플랜·구간 사용 중).
+        </div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;">
+        ${inputs}
+        <div style="margin-top:6px;">
+          <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">변경 사유 <span style="color:#dc2626;">*</span></div>
+          <textarea id="qe_reason" rows="2" placeholder="예: 베타 학원 피드백 반영"
+            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveQuotaEdit('${esc(planId)}','${esc(tier)}',${affectedCount})">저장</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.saveQuotaEdit = async (planId, tier, affectedCount) => {
+  const reason = (document.getElementById('qe_reason')?.value || '').trim();
+  if (!reason) {
+    await showSuperConfirm({ title: '사유 필수', message: '변경 사유를 입력하세요.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+
+  const plan = (_plansCache || []).find(p => p.id === planId);
+  const before = { ...((plan.byTier || {})[tier] || {}) };
+  const after = { ...before };
+  for (const f of QUOTA_FIELDS) {
+    const v = parseInt(document.getElementById(`qe_${f.key}`)?.value, 10);
+    after[f.key] = isFinite(v) ? v : 0;
+  }
+
+  // 변경된 키 목록 (로그용)
+  const changedFields = QUOTA_FIELDS
+    .map(f => f.key)
+    .filter(k => before[k] !== after[k]);
+
+  if (changedFields.length === 0) {
+    await showSuperConfirm({ title: '변경 없음', message: '바뀐 값이 없습니다.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, 'plans', planId), {
+      [`byTier.${tier}`]: after,
+      updatedAt: serverTimestamp(),
+    });
+    await logAdminAction('update_plan_quota', 'plan', planId, {
+      tier,
+      changedFields,
+      before: changedFields.reduce((o,k) => (o[k]=before[k], o), {}),
+      after:  changedFields.reduce((o,k) => (o[k]=after[k],  o), {}),
+      affectedCount,
+      reason,
+    });
+    closeModal();
+    await loadQuotaAdmin();
+  } catch (e) {
+    await showSuperConfirm({ title: '저장 실패', message: e.message, confirmText: '확인', cancelText: '닫기' });
+  }
+};
+
+let _quotaAcademyCache = null;
+
+window.searchAcademyForQuota = async (keyword) => {
+  const el = document.getElementById('quotaAcademyResults');
+  if (!el) return;
+  const kw = (keyword || '').trim().toLowerCase();
+  if (!kw) {
+    el.innerHTML = '<div style="color:var(--gray);padding:8px;">학원명을 입력하세요.</div>';
+    return;
+  }
+  try {
+    if (!_quotaAcademyCache) {
+      const snap = await getDocs(collection(db, 'academies'));
+      _quotaAcademyCache = [];
+      snap.forEach(d => _quotaAcademyCache.push({ id: d.id, ...d.data() }));
+    }
+    const matched = _quotaAcademyCache.filter(a =>
+      (a.name || '').toLowerCase().includes(kw) ||
+      (a.subdomain || '').toLowerCase().includes(kw) ||
+      (a.id || '').toLowerCase().includes(kw)
+    ).slice(0, 30);
+
+    if (matched.length === 0) {
+      el.innerHTML = '<div style="color:var(--gray);padding:8px;">검색 결과 없음</div>';
+      return;
+    }
+    el.innerHTML = matched.map(a => {
+      const cl = a.customLimits || {};
+      const overrideKeys = QUOTA_FIELDS.filter(f => cl[f.key] !== undefined).map(f => `${f.label}=${cl[f.key]}`);
+      return `
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:600;">${esc(a.name || a.id)}</div>
+            <div style="font-size:11px;color:var(--gray);">${esc(a.planId || '-')} · ${esc(String(a.studentLimit || '-'))}명 · ${esc(a.subdomain || a.id)}</div>
+            ${overrideKeys.length > 0
+              ? `<div style="font-size:11px;color:#0ea5e9;margin-top:3px;">override: ${esc(overrideKeys.join(', '))}</div>`
+              : ''}
+          </div>
+          <button class="btn btn-sm btn-secondary" onclick="openCustomLimitsModal('${esc(a.id)}')">Override</button>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="padding:8px;color:#dc2626;">검색 실패: ${esc(e.message)}</div>`;
+  }
+};
+
+window.openCustomLimitsModal = async (academyId) => {
+  const a = (_quotaAcademyCache || []).find(x => x.id === academyId);
+  if (!a) return;
+  const planId = a.planId || 'lite';
+  const plan = (_plansCache || []).find(p => p.id === planId)
+            || (await getDoc(doc(db, 'plans', planId))).data();
+  const tier = String(a.studentLimit || 30);
+  const byTier = (plan && plan.byTier) || {};
+  const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+  const cl = a.customLimits || {};
+
+  const rows = QUOTA_FIELDS.map(f => `
+    <tr>
+      <td style="padding:6px 4px;font-size:13px;">${esc(f.label)}</td>
+      <td style="padding:6px 4px;font-size:12px;color:var(--gray);text-align:right;">기본: ${tierLimits[f.key] ?? '-'}</td>
+      <td style="padding:6px 4px;">
+        <input id="cl_${f.key}" type="number" min="0" value="${cl[f.key] !== undefined ? cl[f.key] : ''}"
+          placeholder="기본값 사용"
+          style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+      </td>
+    </tr>
+  `).join('');
+
+  const overlay = document.getElementById('modalOverlay');
+  const box = document.getElementById('modalBox');
+  box.innerHTML = `
+    <div style="width:min(540px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">🏢 ${esc(a.name || a.id)} — Override</div>
+        <div style="margin-top:6px;font-size:13px;color:var(--gray);">
+          ${esc(plan?.displayName || planId)} · ${esc(tier)}명 구간<br>
+          비워두면 플랜 기본값 사용. 입력 시 해당 학원만 별도 적용.
+        </div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+        <div style="margin-top:12px;">
+          <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">변경 사유 <span style="color:#dc2626;">*</span></div>
+          <textarea id="cl_reason" rows="2" placeholder="예: 시연 학원 일시 상향"
+            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="saveCustomLimits('${esc(academyId)}')">저장</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.saveCustomLimits = async (academyId) => {
+  const reason = (document.getElementById('cl_reason')?.value || '').trim();
+  if (!reason) {
+    await showSuperConfirm({ title: '사유 필수', message: '변경 사유를 입력하세요.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+  const a = (_quotaAcademyCache || []).find(x => x.id === academyId);
+  const before = { ...(a?.customLimits || {}) };
+
+  const after = {};
+  for (const f of QUOTA_FIELDS) {
+    const raw = document.getElementById(`cl_${f.key}`)?.value;
+    if (raw !== undefined && raw !== '') {
+      const v = parseInt(raw, 10);
+      if (isFinite(v)) after[f.key] = v;
+    }
+  }
+  // 변경된 키
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+  const changedFields = allKeys.filter(k => before[k] !== after[k]);
+  if (changedFields.length === 0) {
+    await showSuperConfirm({ title: '변경 없음', message: '바뀐 값이 없습니다.', confirmText: '확인', cancelText: '닫기' });
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, 'academies', academyId), {
+      customLimits: Object.keys(after).length > 0 ? after : null,
+      updatedAt: serverTimestamp(),
+    });
+    await logAdminAction('update_custom_limits', 'academy', academyId, {
+      academyName: a?.name || '',
+      changedFields,
+      before: changedFields.reduce((o,k) => (o[k]=before[k] ?? null, o), {}),
+      after:  changedFields.reduce((o,k) => (o[k]=after[k]  ?? null, o), {}),
+      reason,
+    });
+    closeModal();
+    _quotaAcademyCache = null;  // 다음 검색 시 재로드
+    const kw = document.getElementById('quotaAcademySearch')?.value || '';
+    if (kw) await searchAcademyForQuota(kw);
+    await loadQuotaChangeHistory();
+  } catch (e) {
+    await showSuperConfirm({ title: '저장 실패', message: e.message, confirmText: '확인', cancelText: '닫기' });
+  }
+};
+
+async function loadQuotaChangeHistory() {
+  const el = document.getElementById('quotaChangeHistory');
+  if (!el) return;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'adminLogs'),
+      where('action', 'in', ['update_plan_quota', 'update_custom_limits']),
+      orderBy('at', 'desc'),
+      limit(50)
+    ));
+    if (snap.empty) {
+      el.innerHTML = '<div style="color:var(--gray);padding:8px;">변경 이력 없음</div>';
+      return;
+    }
+    el.innerHTML = snap.docs.map(d => {
+      const log = d.data();
+      const at = _fmtDateTime(log.at);
+      const det = log.details || {};
+      let target = '';
+      if (log.action === 'update_plan_quota') {
+        target = `플랜 <b>${esc(log.targetId)}</b> · ${esc(det.tier || '?')}명 구간 (영향 ${det.affectedCount ?? '?'}곳)`;
+      } else {
+        target = `학원 <b>${esc(det.academyName || log.targetId)}</b> Override`;
+      }
+      const fields = (det.changedFields || []).map(k => {
+        const before = det.before?.[k];
+        const after = det.after?.[k];
+        return `${esc(k)}: ${before ?? '-'} → ${after ?? '-'}`;
+      }).join(', ');
+      return `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <div><span style="color:var(--gray);font-size:11px;">${esc(at)}</span> · ${target}</div>
+          <div style="font-size:12px;color:#555;margin-top:3px;">${fields}</div>
+          ${det.reason ? `<div style="font-size:11px;color:var(--gray);margin-top:2px;">사유: ${esc(det.reason)}</div>` : ''}
+          <div style="font-size:10px;color:#bbb;margin-top:2px;">by ${esc(log.actorEmail || log.actor || '')}</div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="padding:8px;color:#dc2626;">로드 실패: ${esc(e.message)} <br><span style="font-size:11px;">(adminLogs composite index 가 필요할 수 있음 — Firebase Console 에서 자동 생성 링크 확인)</span></div>`;
+  }
+}
