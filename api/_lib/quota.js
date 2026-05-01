@@ -148,14 +148,27 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
   };
 }
 
+// 월별 자동 리셋 대상 카운터 — 새 달 첫 호출 시 모두 0 으로 리셋
+const ALL_MONTHLY_COUNTERS = [
+  'ocrCallsThisMonth',
+  'cleanupCallsThisMonth',
+  'generatorCallsThisMonth',
+  'recordingCallsThisMonth',
+  'growthReportThisMonth',
+  'aiCallsThisMonth',  // deprecated 이지만 일관성 위해 같이 0 리셋
+];
+
 // 호출 성공 후 카운터 증가 (호출자가 응답 직전에 호출)
 async function incrementUsage({ acadRef, counterField, needsReset }) {
   if (!counterField) return;
   const update = { [`usage.${counterField}`]: FieldValue.increment(1) };
   if (needsReset) {
     update[`usage.lastResetAt`] = _currentYearMonth();
-    // 다른 카운터들은 그대로 두고 (월별 리셋 대상만 분리하려면 별도 로직)
-    update[`usage.${counterField}`] = 1; // 새 달이면 1로 시작
+    // 모든 월별 카운터 0 으로 리셋, 자기 자신만 1 로 시작
+    // (이전 버전은 자기 카운터만 1 로 리셋해서 다른 분류는 4월 값이 잔존하던 버그)
+    for (const c of ALL_MONTHLY_COUNTERS) {
+      update[`usage.${c}`] = (c === counterField) ? 1 : 0;
+    }
   }
   try { await acadRef.update(update); } catch (e) { /* silent */ }
 }
