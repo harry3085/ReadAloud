@@ -2421,22 +2421,28 @@ async function _thisMonthRevenue() {
   }
 }
 
-// ── T5-C: Gemini 게이지 + 글로벌 배너 ────────────────
+// ── T5-C: Gemini 사용량 + (유료 전환 후 쿼터 게이지 폐기) ────────────────
 async function _loadGeminiGauge() {
   const el = document.getElementById('geminiGauge');
   if (!el) return;
   const today = await _todayApiCalls();
-  const used = today.geminiTotal;
-  const pct = (used / GEMINI_DAILY_LIMIT) * 100;
-  const color = _thresholdColor(pct);
-  const status = pct > 95 ? '위험' : pct > 80 ? '경고' : pct > 50 ? '주의' : '정상';
+
+  // 5분류 라벨 (학원장 대시보드·Top 10 과 동일 순서)
+  const items = [
+    { key: 'ocr',             label: '📷 OCR',         provider: 'Vision' },
+    { key: 'cleanup-ocr',     label: '🧹 OCR 정리',    provider: 'Gemini' },
+    { key: 'generate-quiz',   label: '✨ Generator',   provider: 'Gemini' },
+    { key: 'check-recording', label: '🎤 녹음숙제',     provider: 'Gemini' },
+    { key: 'growth-report',   label: '📈 성장 리포트', provider: 'Gemini' },
+  ];
+  const totalToday = items.reduce((s, it) => s + (today.byEndpoint[it.key] || 0), 0);
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <div>
-        <div style="font-weight:700;font-size:16px;">🤖 Gemini 일일 쿼터</div>
+        <div style="font-weight:700;font-size:16px;">🤖 AI 사용량 (오늘 전사)</div>
         <div style="font-size:12px;color:var(--gray);margin-top:3px;">
-          모델: gemini-3.1-flash-lite-preview · 한도 ${GEMINI_DAILY_LIMIT} RPD · 매일 자정(태평양 시간) 리셋
+          유료 전환 — 일일 호출 한도 없음. 실제 비용은 Google AI Studio 에서 확인.
         </div>
       </div>
       <a href="https://aistudio.google.com/rate-limit?timeRange=last-90-days&project=readaloud-51113" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:12px;">
@@ -2444,34 +2450,30 @@ async function _loadGeminiGauge() {
       </a>
     </div>
 
-    <div style="background:#f0f0f0;border-radius:8px;overflow:hidden;height:28px;position:relative;">
-      <div style="background:${color};height:100%;width:${Math.min(100, pct)}%;transition:width 0.3s;"></div>
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#222;">
-        ${used} / ${GEMINI_DAILY_LIMIT} (${pct.toFixed(1)}%) — ${status}
-      </div>
+    <div style="display:flex;align-items:baseline;gap:8px;padding:10px 14px;background:#fafafa;border-radius:8px;margin-bottom:10px;">
+      <span style="font-size:12px;color:var(--gray);">오늘 총 호출</span>
+      <span style="font-size:28px;font-weight:800;color:var(--text);">${totalToday.toLocaleString()}</span>
     </div>
 
-    <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;color:var(--gray);">
-      ${GEMINI_ENDPOINTS.map(ep => `
-        <div style="padding:6px 10px;background:#fafafa;border:1px solid var(--border);border-radius:6px;text-align:center;">
-          ${esc(ep)}: <b style="color:var(--text);">${(today.byEndpoint[ep] || 0).toLocaleString()}</b>
-        </div>`).join('')}
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+      ${items.map(it => {
+        const v = today.byEndpoint[it.key] || 0;
+        return `
+          <div style="padding:10px 8px;background:#fafafa;border:1px solid var(--border);border-radius:6px;text-align:center;">
+            <div style="font-size:11px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
+            <div style="font-size:18px;font-weight:700;margin-top:4px;color:var(--text);">${v.toLocaleString()}</div>
+            <div style="font-size:9px;color:#bbb;margin-top:2px;">${it.provider}</div>
+          </div>`;
+      }).join('')}
     </div>
-
-    ${pct > 80 ? `
-      <div style="margin-top:12px;padding:10px 14px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;font-size:13px;color:#854d0e;">
-        ⚠️ 일일 쿼터 ${pct.toFixed(0)}% 도달. ${pct > 95 ? '즉시 유료 전환 검토 필요.' : '추이 관찰 중.'}
-      </div>
-    ` : ''}
   `;
 
-  // 글로벌 배너 (헤더 아래)
+  // 글로벌 배너 — 유료 전환으로 의미 없음, 숨김
   const ga = document.getElementById('globalAlert');
   if (ga) {
-    if (pct > 80) {
+    if (false) {  // disabled — 한도 없음
       ga.style.display = 'block';
-      ga.style.background = pct > 95 ? '#dc2626' : '#f59e0b';
-      ga.innerHTML = `⚠️ Gemini 일일 쿼터 ${pct.toFixed(0)}% 도달 (${used}/${GEMINI_DAILY_LIMIT}) — 80% 초과 시 모든 학원 AI 기능 곧 중단`;
+      ga.innerHTML = '';
     } else {
       ga.style.display = 'none';
     }
@@ -2506,6 +2508,7 @@ window.reconcileStorageNow = async () => {
     // 학원 캐시 갱신 + Top 10 다시 로드
     await loadAcademies();
     _loadAcademyTop10();
+    showToast(`✅ Storage 점검 완료 — ${j.academiesUpdated}개 학원 갱신, 총 ${totalMB} MB`);
   } catch (e) {
     showAlert('Storage 점검 실패', e.message);
   }
@@ -2558,23 +2561,36 @@ async function _loadAcademyTop10() {
       <button onclick="reconcileStorageNow()" style="padding:6px 12px;font-size:12px;background:var(--teal);color:white;border:none;border-radius:6px;cursor:pointer;">🔄 Storage 점검</button>
     </div>
     ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
-    <table class="table" style="margin:0;font-size:12px;">
+    <table class="table" style="margin:0;font-size:12px;table-layout:fixed;width:100%;">
+      <colgroup>
+        <col style="width:18%;">
+        <col style="width:8%;">
+        <col style="width:8%;">
+        <col style="width:8%;">
+        <col style="width:9%;">
+        <col style="width:9%;">
+        <col style="width:8%;">
+        <col style="width:9%;">
+        <col style="width:8%;">
+        <col style="width:9%;">
+      </colgroup>
       <thead><tr>
-        <th>학원명</th><th>플랜</th>
-        <th class="td-center" title="활성 학생">👥</th>
-        <th class="td-center" title="OCR">📷</th>
-        <th class="td-center" title="OCR 정리">🧹</th>
-        <th class="td-center" title="Generator">✨</th>
-        <th class="td-center" title="녹음숙제">🎤</th>
-        <th class="td-center" title="성장 리포트">📈</th>
-        <th class="td-center" title="Storage 사용량 (수동 점검)">💾</th>
-        <th class="td-center" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
+        <th style="white-space:nowrap;">학원명</th>
+        <th style="white-space:nowrap;">플랜</th>
+        <th class="td-center" style="white-space:nowrap;">👥 학생</th>
+        <th class="td-center" style="white-space:nowrap;">📷 OCR</th>
+        <th class="td-center" style="white-space:nowrap;">🧹 정리</th>
+        <th class="td-center" style="white-space:nowrap;">✨ 생성</th>
+        <th class="td-center" style="white-space:nowrap;">🎤 녹음</th>
+        <th class="td-center" style="white-space:nowrap;">📈 리포트</th>
+        <th class="td-center" style="white-space:nowrap;" title="Storage 사용량 (수동 점검)">💾 저장</th>
+        <th class="td-center" style="white-space:nowrap;" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
       </tr></thead>
       <tbody>
         ${top10.map(a => `
           <tr style="cursor:pointer;" onclick="openAcademyModal('${a.id}')">
-            <td class="td-main">${esc(a.name)}</td>
-            <td><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
+            <td class="td-main" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(a.name)}">${esc(a.name)}</td>
+            <td style="white-space:nowrap;"><span class="badge badge-teal">${esc(a.planId || '-')}</span></td>
             <td class="td-center">${a.students}</td>
             <td class="td-center">${a.ocr.toLocaleString()}</td>
             <td class="td-center">${a.cleanup.toLocaleString()}</td>
@@ -2591,30 +2607,36 @@ async function _loadAcademyTop10() {
     </table>`}`;
 }
 
-// ── 엔드포인트 분포 (이번 달 전체) ────────────────────
+// ── 엔드포인트 분포 (이번 달 전체) — 5분류 통일 ────────
 async function _loadEndpointBreakdown() {
   const el = document.getElementById('usageEndpoints');
   if (!el) return;
   el.innerHTML = '<div style="padding:14px 18px;color:#bbb;font-size:12px;">로딩 중...</div>';
   try {
     const month = await _thisMonthApiCalls();
-    const total = month.total || 1;
-    const allKeys = [...GEMINI_ENDPOINTS, ...VISION_ENDPOINTS];
+    // 5분류 (학원장 대시보드 / Top 10 / Gemini 카드 와 동일 순서)
+    const items = [
+      { key: 'ocr',             label: '📷 OCR',         provider: 'Vision', color: '#8b5cf6' },
+      { key: 'cleanup-ocr',     label: '🧹 OCR 정리',    provider: 'Gemini', color: '#06b6d4' },
+      { key: 'generate-quiz',   label: '✨ Generator',   provider: 'Gemini', color: '#f59e0b' },
+      { key: 'check-recording', label: '🎤 녹음숙제',     provider: 'Gemini', color: '#a855f7' },
+      { key: 'growth-report',   label: '📈 성장 리포트', provider: 'Gemini', color: '#10b981' },
+    ];
+    const itemsTotal = items.reduce((s, it) => s + (month.byEndpoint[it.key] || 0), 0);
     el.innerHTML = `
-      <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">🧩 엔드포인트별 호출 (이번 달, 총 ${month.total.toLocaleString()})</div>
-      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
-        ${allKeys.map(k => {
-          const v = month.byEndpoint[k] || 0;
-          const pct = total > 0 ? (v / total) * 100 : 0;
-          const isVision = VISION_ENDPOINTS.includes(k);
+      <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">🧩 엔드포인트별 호출 (이번 달, 총 ${itemsTotal.toLocaleString()})</div>
+      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+        ${items.map(it => {
+          const v = month.byEndpoint[it.key] || 0;
+          const pct = itemsTotal > 0 ? (v / itemsTotal) * 100 : 0;
           return `
             <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
-              <div style="font-size:11px;color:var(--gray);">${esc(k)}${isVision ? ' (Vision)' : ' (Gemini)'}</div>
-              <div style="font-size:18px;font-weight:700;margin-top:2px;">${v.toLocaleString()}</div>
+              <div style="font-size:12px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
+              <div style="font-size:18px;font-weight:700;margin-top:4px;">${v.toLocaleString()}</div>
               <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:6px;overflow:hidden;">
-                <div style="width:${pct.toFixed(1)}%;height:100%;background:${isVision ? '#8b5cf6' : '#0ea5e9'};"></div>
+                <div style="width:${pct.toFixed(1)}%;height:100%;background:${it.color};"></div>
               </div>
-              <div style="font-size:10px;color:#999;margin-top:3px;">${pct.toFixed(1)}%</div>
+              <div style="font-size:10px;color:#999;margin-top:3px;">${it.provider} · ${pct.toFixed(1)}%</div>
             </div>`;
         }).join('')}
       </div>`;
