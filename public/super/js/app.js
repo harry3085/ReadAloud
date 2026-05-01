@@ -2548,7 +2548,8 @@ const QUOTA_FIELDS = [
   { key: 'storageGB',            label: 'Storage(GB)' },
 ];
 
-let _plansCache = null;
+// T6 자체 캐시 — 위쪽 _plansCache (학원 모달용 객체) 와 별개. 정렬된 배열 형태.
+let _t6Plans = [];
 
 async function loadQuotaAdmin() {
   await Promise.all([
@@ -2569,7 +2570,7 @@ async function loadPlanQuotaCards() {
     const plans = [];
     snap.forEach(d => plans.push({ id: d.id, ...d.data() }));
     plans.sort((a, b) => (a.order || 0) - (b.order || 0));
-    _plansCache = plans;
+    _t6Plans = plans;
 
     el.innerHTML = plans.map(plan => {
       const tiers = Object.keys(plan.byTier || {});
@@ -2607,7 +2608,7 @@ async function loadPlanQuotaCards() {
 }
 
 window.openQuotaEditModal = async (planId, tier) => {
-  const plan = (_plansCache || []).find(p => p.id === planId);
+  const plan = _t6Plans.find(p => p.id === planId);
   if (!plan) return;
   const t = (plan.byTier || {})[tier] || {};
 
@@ -2662,7 +2663,7 @@ window.saveQuotaEdit = async (planId, tier, affectedCount) => {
     return;
   }
 
-  const plan = (_plansCache || []).find(p => p.id === planId);
+  const plan = _t6Plans.find(p => p.id === planId);
   const before = { ...((plan.byTier || {})[tier] || {}) };
   const after = { ...before };
   for (const f of QUOTA_FIELDS) {
@@ -2750,7 +2751,7 @@ window.openCustomLimitsModal = async (academyId) => {
   const a = (_quotaAcademyCache || []).find(x => x.id === academyId);
   if (!a) return;
   const planId = a.planId || 'lite';
-  const plan = (_plansCache || []).find(p => p.id === planId)
+  const plan = _t6Plans.find(p => p.id === planId)
             || (await getDoc(doc(db, 'plans', planId))).data();
   const tier = String(a.studentLimit || 30);
   const byTier = (plan && plan.byTier) || {};
