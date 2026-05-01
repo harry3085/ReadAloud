@@ -2897,6 +2897,8 @@ function _genRenderChapters() {
 function _genRenderPages() {
   const el = document.getElementById('genPageList');
   const cnt = document.getElementById('genPageCount');
+  const clearBtn = document.getElementById('genPageClearBtn');
+  if (clearBtn) clearBtn.style.display = (_genActivePage || _genCheckedPages.size > 0) ? '' : 'none';
   _genUpdateSortMark('pages');
   if (!el) return;
   const filtered = _genFilteredPages();
@@ -2960,6 +2962,12 @@ window.genClearChapter = () => {
   _genActiveChapter = null;
   _genCheckedChapters.clear();
   _genRenderChapters(); _genRenderPages();
+};
+window.genClearPage = () => {
+  _genActivePage = null;
+  _genCheckedPages.clear();
+  _genRenderPages();
+  _genUpdateEditor();
 };
 
 function _genToolbar(type) {
