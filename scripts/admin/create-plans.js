@@ -30,8 +30,14 @@ async function main() {
     };
 
     console.log(`• plans/${plan.id} (${plan.displayName}) — ${exists ? 'UPDATE' : 'CREATE'}`);
-    console.log(`    price: ${plan.price.tier30} / ${plan.price.tier60} / ${plan.price.tier100} 원`);
-    console.log(`    aiQuotaPerMonth: ${plan.limits.aiQuotaPerMonth}`);
+    const priceStr = Object.entries(plan.price).map(([k, v]) => `${k}=${v}`).join(' / ');
+    console.log(`    price: ${priceStr} 원`);
+    const tiers = Object.keys(plan.byTier || {});
+    console.log(`    tiers: ${tiers.join('/')}명`);
+    tiers.forEach(t => {
+      const x = plan.byTier[t];
+      console.log(`      [${t.padStart(3)}] OCR=${x.ocrPerMonth} Cleanup=${x.cleanupPerMonth} Gen=${x.generatorPerMonth} Rec=${x.recordingPerMonth} Growth=${x.growthReportPerMonth} ${x.storageGB}GB`);
+    });
 
     if (apply) {
       await ref.set(payload, { merge: true });
