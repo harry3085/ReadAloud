@@ -2005,17 +2005,31 @@ function _grRenderModal(r, reportId) {
 window.printGrowthReport = () => {
   const body = document.getElementById('grReportBody');
   if (!body) return;
+  // CSS variables 가 inline style 로 안 들어가 있어 명시 색 변수 X.
+  // 인쇄 시 background 색이 빠지지 않도록 print-color-adjust: exact 강제.
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>AI 성장 리포트</title>
     <style>
-      body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; color: #222; }
-      @page { size: A4; margin: 12mm; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      html, body { margin: 0; padding: 0; }
+      body { font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; padding: 14mm; color: #222; line-height: 1.5; }
+      @page { size: A4; margin: 0; }
+      h1 { font-size: 18px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #E8714A; color: #E8714A; }
+      .meta { font-size: 11px; color: #666; margin-bottom: 14px; }
       .badge { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px; }
-    </style></head><body>${body.innerHTML}</body></html>`;
+      /* 모달 내용을 그대로 받지만 backgrounds 가 모두 살아나도록 */
+    </style></head><body>
+      <h1>📈 AI 성장 리포트</h1>
+      <div class="meta">생성: ${new Date().toLocaleString('ko-KR')}</div>
+      ${body.innerHTML}
+    </body></html>`;
   const win = window.open('', '_blank', 'width=900,height=1100');
   if (!win) { showToast('팝업 차단 — 허용 후 다시 시도하세요'); return; }
   win.document.write(html);
   win.document.close();
-  setTimeout(() => { win.print(); }, 400);
+  // 렌더링 후 인쇄 (이미지·폰트 로드 대기)
+  win.addEventListener('load', () => setTimeout(() => win.print(), 200));
+  // load 이벤트가 안 오는 경우 폴백
+  setTimeout(() => { try { win.print(); } catch(_){} }, 800);
 };
 
 // ── 공통 유틸 ─────────────────────────────────────────
