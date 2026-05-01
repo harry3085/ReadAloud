@@ -3054,31 +3054,114 @@ window.genToggleCheckAll = (type, cb) => {
 };
 
 // ── 이미지 업로드 ──
+// Vercel functions 한도 4.5MB — base64 인코딩(×1.33) + JSON 오버헤드 고려해서
+// 원본 3MB 초과 또는 image/heic 같은 특이 포맷이면 자동 압축.
+const _GEN_COMPRESS_THRESHOLD = 3 * 1024 * 1024;  // 3MB
+const _GEN_MAX_DIM = 1800;                         // 최대 변
+const _GEN_JPEG_QUALITY = 0.85;
+
+async function _genCompressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const ratio = Math.min(1, _GEN_MAX_DIM / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * ratio));
+    const h = Math.max(1, Math.round(img.height * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', _GEN_JPEG_QUALITY));
+    if (!blob) throw new Error('canvas.toBlob 실패');
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = ev => res(ev.target.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    return { base64, mimeType: 'image/jpeg', size: blob.size };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 window.genHandleDrop = (e) => {
   e.preventDefault();
   document.getElementById('genDropZone').style.borderColor='var(--border)';
   genHandleFiles(e.dataTransfer.files);
 };
-window.genHandleFiles = (files) => {
-  [...files].forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      _genImages.push({ base64: ev.target.result.split(',')[1], name: file.name, mimeType: file.type });
-      _genRenderThumbnails();
-    };
-    reader.readAsDataURL(file);
-  });
+
+window.genHandleFiles = async (files) => {
+  const list = [...files].filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  if (!list.length) return;
+
+  let compressedCount = 0;
+  let totalBefore = 0, totalAfter = 0;
+  const errors = [];
+
+  for (const file of list) {
+    const origSize = file.size;
+    totalBefore += origSize;
+    const needCompress = origSize > _GEN_COMPRESS_THRESHOLD || /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+    try {
+      if (needCompress) {
+        const r = await _genCompressImage(file);
+        _genImages.push({ base64: r.base64, name: file.name, mimeType: r.mimeType, size: r.size, origSize, compressed: true });
+        compressedCount++;
+        totalAfter += r.size;
+      } else {
+        // 작은 파일은 원본 그대로 (불필요한 재인코딩 회피)
+        const base64 = await new Promise((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = ev => res(ev.target.result.split(',')[1]);
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        _genImages.push({ base64, name: file.name, mimeType: file.type, size: origSize, origSize, compressed: false });
+        totalAfter += origSize;
+      }
+    } catch (e) {
+      errors.push(`${file.name}: ${e.message}`);
+    }
+  }
+
+  _genRenderThumbnails();
+
+  // 일괄 안내 토스트
+  if (compressedCount > 0) {
+    const before = (totalBefore / 1024 / 1024).toFixed(1);
+    const after = (totalAfter / 1024 / 1024).toFixed(1);
+    showToast(`📦 ${compressedCount}장 자동 압축됨 (${before}MB → ${after}MB)`);
+  }
+  if (errors.length) {
+    showToast(`⚠️ ${errors.length}장 처리 실패: ${errors[0]}`);
+  }
 };
+
 function _genRenderThumbnails() {
   const el = document.getElementById('genThumbnails');
   if (!el) return;
-  el.innerHTML = _genImages.map((img,i) => `
-    <div style="position:relative;width:72px;flex-shrink:0;">
+  el.innerHTML = _genImages.map((img,i) => {
+    const sizeKB = Math.round((img.size || 0) / 1024);
+    const tip = img.compressed
+      ? `압축됨: ${((img.origSize||0)/1024/1024).toFixed(1)}MB → ${(sizeKB/1024).toFixed(1)}MB`
+      : `${sizeKB}KB`;
+    const badge = img.compressed
+      ? `<span title="${esc(tip)}" style="position:absolute;bottom:18px;right:2px;background:rgba(14,165,233,0.95);color:white;font-size:9px;padding:1px 4px;border-radius:3px;line-height:1.2;">📦</span>`
+      : '';
+    return `
+    <div style="position:relative;width:72px;flex-shrink:0;" title="${esc(tip)}">
       <img src="data:${img.mimeType};base64,${img.base64}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
       <button onclick="genRemoveImage(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#e05050;color:white;cursor:pointer;font-size:10px;padding:0;line-height:1;">x</button>
+      ${badge}
       <div style="font-size:9px;color:var(--gray);text-align:center;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(img.name)}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 window.genRemoveImage = (i) => { _genImages.splice(i,1); _genRenderThumbnails(); };
 
@@ -3099,6 +3182,17 @@ window.runGenOcr = async () => {
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({imageBase64:_genImages[i].base64,mimeType:_genImages[i].mimeType}),
       });
+      // 응답이 JSON 아닐 가능성 — 413 (Request Entity Too Large) 등은 plain text 반환
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const text = (await res.text()).slice(0, 80);
+        if (res.status === 413) {
+          showToast(`[${i+1}] 이미지 너무 큼 (4.5MB 한도). 다른 사진 써보세요`);
+        } else {
+          showToast(`[${i+1}] 서버 응답 오류 (${res.status}): ${text}`);
+        }
+        continue;
+      }
       const data = await res.json();
       if (!res.ok||data.error){ showToast(`[${i+1}] OCR 실패: ${data.error||res.status}`); continue; }
       nextSerial++;
