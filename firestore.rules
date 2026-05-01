@@ -249,5 +249,18 @@ service cloud.firestore {
       allow read: if isSuperAdmin() || (isSignedIn() && resource.data.academyId == myAcademyId());
       allow write: if isSuperAdmin();
     }
+
+    // AI 성장 리포트 — 서버 API(api/growth-report.js)가 생성·저장
+    // read: 자기 학원 학원장 + 자기 본인(학생)
+    // create: 서버에서만 (Admin SDK 사용, rules 통과 안 함). 클라 직접 create 차단.
+    // update: 누구도 불가 (불변 스냅샷)
+    // delete: 자기 학원 학원장
+    match /growthReports/{id} {
+      allow read: if isAdminOfMyAcademy()
+                  || (isSignedIn() && isOwner(resource.data.studentUid) && resource.data.academyId == myAcademyId());
+      allow create: if false;
+      allow update: if false;
+      allow delete: if isAdminOfMyAcademy();
+    }
   }
 }

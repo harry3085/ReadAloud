@@ -1828,7 +1828,10 @@ window.loadPersonalScore = async(uid) => {
     const scores=scoresSnap.docs.map(d=>d.data());
     const avg=scores.length?Math.round(scores.reduce((s,r)=>s+r.score,0)/scores.length):0;
     detail.innerHTML=`
-      <div class="card-title">${u.name} · ${esc(u.group)||'-'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div class="card-title" style="margin:0;">${esc(u.name)} · ${esc(u.group)||'-'}</div>
+        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="openGrowthReport('${esc(uid)}')">📈 AI 성장 리포트</button>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;text-align:center;">
           <div style="font-size:24px;font-weight:800;color:var(--teal);">${scores.length}</div>
@@ -1865,6 +1868,145 @@ window.loadPersonalScore = async(uid) => {
       </div>
     `;
   }catch(e){detail.innerHTML='<div style="color:#e05050;padding:20px;">불러오기 실패</div>';}
+};
+
+// ── AI 성장 리포트 (api/growth-report 호출 + 모달 + PDF) ─────────────────
+const _GR_MODE_LABELS = {
+  vocab:'📝 단어시험', mcq:'📖 객관식', fill_blank:'✏️ 빈칸채우기',
+  unscramble:'🔀 언스크램블', recording:'🎤 녹음숙제',
+};
+
+window.openGrowthReport = async (uid) => {
+  if (!uid) return;
+  showToast('🤖 AI 성장 리포트 생성 중... (10~20초)');
+  try {
+    const res = await _geminiFetch('/api/growth-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentUid: uid, period: 'last30d' }),
+    });
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      showToast(`서버 응답 오류 (${res.status})`);
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast('리포트 생성 실패: ' + (data.error || res.status));
+      return;
+    }
+    _grRenderModal(data.report, data.reportId);
+  } catch(e) {
+    showToast('네트워크 에러: ' + e.message);
+  }
+};
+
+function _grRenderModal(r, reportId) {
+  const modeBars = Object.entries(_GR_MODE_LABELS).map(([k, lbl]) => {
+    const m = r.modeBreakdown?.[k] || { avg:0, count:0, lastScore:null };
+    const pct = Math.min(100, m.avg);
+    const color = m.avg >= 80 ? '#10b981' : m.avg >= 60 ? '#f59e0b' : (m.count > 0 ? '#dc2626' : '#cbd5e1');
+    const lastTxt = m.count > 0 ? `최근 ${m.lastScore}점` : '응시 없음';
+    return `
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span>${lbl}</span>
+          <span style="color:var(--gray);">${m.count}회 · 평균 <b style="color:var(--text);">${m.avg}점</b> · ${lastTxt}</span>
+        </div>
+        <div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${color};transition:width 0.3s;"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const list = (arr, color) => (arr || []).map(s => `
+    <div style="font-size:13px;line-height:1.5;padding:6px 10px;background:${color};border-radius:6px;margin-bottom:6px;">• ${esc(s)}</div>
+  `).join('') || '<div style="color:var(--gray);font-size:12px;">없음</div>';
+
+  const html = `
+    <div id="grReportRoot" style="width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:17px;font-weight:700;line-height:1.3;">📈 AI 성장 리포트</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--gray);">기간: ${esc(r.periodFrom||'')} ~ ${esc(r.periodTo||'')} (최근 30일)</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="printGrowthReport()">📄 인쇄/PDF</button>
+        </div>
+      </div>
+      <div id="grReportBody" style="padding:18px 22px;overflow-y:auto;flex:1;">
+        <!-- 통계 카드 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+          <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:var(--teal);">${r.totalAttempts}</div>
+            <div style="font-size:11px;color:var(--gray);">총 응시</div>
+          </div>
+          <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:var(--teal);">${r.avgScore}점</div>
+            <div style="font-size:11px;color:var(--gray);">평균</div>
+          </div>
+          <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#10b981;">${r.passedCount}</div>
+            <div style="font-size:11px;color:var(--gray);">80점 이상</div>
+          </div>
+        </div>
+
+        <!-- 총평 -->
+        <div style="margin-bottom:18px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📝 총평</div>
+          <div style="font-size:13px;line-height:1.7;color:#333;background:#fefce8;border-left:3px solid #eab308;padding:10px 14px;border-radius:4px;">${esc(r.summary||'')}</div>
+        </div>
+
+        <!-- 모드별 점수 -->
+        <div style="margin-bottom:18px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📊 모드별 점수</div>
+          ${modeBars}
+        </div>
+
+        <!-- 강점/약점/추천 3 칼럼 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#10b981;">💪 강점</div>
+            ${list(r.strengths, '#ecfdf5')}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#f59e0b;">📍 성장 여지</div>
+            ${list(r.weaknesses, '#fffbeb')}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#0ea5e9;">💡 추천</div>
+            ${list(r.recommendations, '#eff6ff')}
+          </div>
+        </div>
+
+        <!-- 추세 -->
+        <div style="padding:10px 14px;background:#f8fafc;border-radius:6px;font-size:12px;color:#475569;line-height:1.6;">
+          <b>추세:</b> ${esc(r.improvementNote||'')}
+        </div>
+
+        <div style="font-size:10px;color:#bbb;margin-top:12px;text-align:right;">${reportId ? 'reportId: ' + esc(reportId) : ''}</div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+      </div>
+    </div>`;
+  showModal(html);
+}
+
+window.printGrowthReport = () => {
+  const body = document.getElementById('grReportBody');
+  if (!body) return;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>AI 성장 리포트</title>
+    <style>
+      body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; color: #222; }
+      @page { size: A4; margin: 12mm; }
+      .badge { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px; }
+    </style></head><body>${body.innerHTML}</body></html>`;
+  const win = window.open('', '_blank', 'width=900,height=1100');
+  if (!win) { showToast('팝업 차단 — 허용 후 다시 시도하세요'); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => { win.print(); }, 400);
 };
 
 // ── 공통 유틸 ─────────────────────────────────────────
