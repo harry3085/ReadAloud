@@ -945,16 +945,6 @@ function _renderAcmBasic(a, adminUser) {
       </div>
     </details>
 
-    <details style="margin-top:0;">
-      <summary style="cursor:pointer;font-size:12px;color:var(--gray);user-select:none;">⚙️ 한도 override (비워두면 플랜 기본값 사용)</summary>
-      <div style="display:flex;gap:12px;margin-top:8px;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
-        <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">AI 월 호출 (override)</div>
-          <input id="acLimitAi" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.aiQuotaPerMonth) || '∞'}" value="${a.customLimits?.aiQuotaPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
-        <div style="flex:1;"><div style="font-size:12px;color:var(--gray);margin-bottom:4px;">녹음 월 평가 (override)</div>
-          <input id="acLimitRec" type="number" min="0" placeholder="${(_plansCache[a.planId]?.limits?.perTypeQuota?.recording?.check) || '∞'}" value="${a.customLimits?.recordingPerMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;"></div>
-      </div>
-    </details>
-
     <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-top:8px;">학원장 정보 ${adminUser ? '' : '(없음)'}</div>
 
     ${adminUser ? `
@@ -1215,17 +1205,7 @@ window.saveAcademy = async (academyId) => {
   if (!isNaN(newLimit) && newLimit !== a.studentLimit) acFields.studentLimit = newLimit;
   if (newStatus && newStatus !== a.billingStatus) acFields.billingStatus = newStatus;
 
-  // customLimits override
-  const aiOver = document.getElementById('acLimitAi')?.value.trim();
-  const recOver = document.getElementById('acLimitRec')?.value.trim();
-  const newCustom = {};
-  if (aiOver) newCustom.aiQuotaPerMonth = parseInt(aiOver);
-  if (recOver) newCustom.recordingPerMonth = parseInt(recOver);
-  const oldCustom = a.customLimits || {};
-  const customChanged =
-    (newCustom.aiQuotaPerMonth || 0) !== (oldCustom.aiQuotaPerMonth || 0) ||
-    (newCustom.recordingPerMonth || 0) !== (oldCustom.recordingPerMonth || 0);
-  if (customChanged) acFields.customLimits = newCustom;
+  // customLimits 는 [⚙️ Override] 탭(saveAcmOverride) 에서 별도 저장 — 여기서 손대지 않음
 
   // T3 신규 필드: 가입 경로 / 만료일 / 얼리어답터 가격 / 메모
   const newChannel = (document.getElementById('acChannel')?.value || '').trim();
