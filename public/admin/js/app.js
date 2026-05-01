@@ -110,7 +110,31 @@ async function _geminiFetch(url, init){
   if (currentPage === 'dashboard' && typeof loadApiUsage === 'function') {
     setTimeout(() => loadApiUsage(), 1500);
   }
+  // T8 — 한도 사용 % 검사 → 80%/95% 임계 토스트 (한 페이지 세션 내 중복 회피)
+  _checkQuotaWarning(res);
   return res;
+}
+
+// T8 — 응답 헤더의 X-Quota-* 검사 후 80%/95% 임계 토스트
+const _quotaWarned = {};  // { [kindLabel]: { warned80: bool, warned95: bool } }
+function _checkQuotaWarning(res){
+  try {
+    const pct = parseInt(res.headers.get('X-Quota-Percent'), 10);
+    if (!isFinite(pct)) return;
+    const kindRaw = res.headers.get('X-Quota-Kind') || '';
+    const kind = kindRaw ? decodeURIComponent(kindRaw) : '한도';
+    const used = res.headers.get('X-Quota-Used');
+    const limit = res.headers.get('X-Quota-Limit');
+    const state = _quotaWarned[kind] || { warned80: false, warned95: false };
+    if (pct >= 95 && !state.warned95) {
+      state.warned95 = true;
+      showToast(`⚠️ ${kind} 한도 ${pct}% 도달 (${used}/${limit}) — 곧 차단됩니다`);
+    } else if (pct >= 80 && !state.warned80) {
+      state.warned80 = true;
+      showToast(`${kind} 한도 ${pct}% 도달 (${used}/${limit})`);
+    }
+    _quotaWarned[kind] = state;
+  } catch(_) {}
 }
 
 // ── 인증 체크 ──────────────────────────────────────────

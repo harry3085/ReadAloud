@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
 
     const confidence = wordCount > 0 ? Math.round((totalConf / wordCount) * 100) : 0;
 
-    await incrementUsage(q);
+    await incrementUsage({ ...q, res });
     res.status(200).json({ success: true, text, confidence, blockCount, provider: 'google-vision' });
   } catch (err) {
     console.error('OCR error:', err);

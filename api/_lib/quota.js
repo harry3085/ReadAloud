@@ -142,6 +142,7 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
     limit,
     currentCount,
     counterField,
+    kindLabel,
     needsReset,
     db, // 호출 측이 increment 할 때 재사용
     acadRef,
@@ -159,7 +160,8 @@ const ALL_MONTHLY_COUNTERS = [
 ];
 
 // 호출 성공 후 카운터 증가 (호출자가 응답 직전에 호출)
-async function incrementUsage({ acadRef, counterField, needsReset }) {
+// res 를 같이 넘기면 X-Quota-* 응답 헤더 자동 set (T8 — 학원장 앱 토스트용)
+async function incrementUsage({ acadRef, counterField, needsReset, res, currentCount, limit, kindLabel }) {
   if (!counterField) return;
   const update = { [`usage.${counterField}`]: FieldValue.increment(1) };
   if (needsReset) {
@@ -171,6 +173,18 @@ async function incrementUsage({ acadRef, counterField, needsReset }) {
     }
   }
   try { await acadRef.update(update); } catch (e) { /* silent */ }
+
+  // 응답 헤더로 사용량 통보 (한도 무한 또는 res 미지정 시 skip)
+  if (res && typeof res.setHeader === 'function' && typeof limit === 'number' && isFinite(limit) && limit > 0) {
+    const after = (typeof currentCount === 'number' ? currentCount : 0) + 1;
+    const pct = Math.round((after / limit) * 100);
+    try {
+      res.setHeader('X-Quota-Used', String(after));
+      res.setHeader('X-Quota-Limit', String(limit));
+      res.setHeader('X-Quota-Percent', String(pct));
+      if (kindLabel) res.setHeader('X-Quota-Kind', encodeURIComponent(kindLabel));
+    } catch (_) {}
+  }
 }
 
 module.exports = { verifyAndCheckQuota, incrementUsage };

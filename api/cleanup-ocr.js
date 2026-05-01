@@ -95,7 +95,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    await incrementUsage(q);
+    await incrementUsage({ ...q, res });
     return res.status(200).json({
       success: true,
       model: usedModel,

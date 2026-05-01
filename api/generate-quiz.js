@@ -637,7 +637,7 @@ module.exports = async function handler(req, res) {
     if (validated.length > targetCount) validated = validated.slice(0, targetCount);
 
     // 학원 AI 월 사용량 +1 (Phase 3)
-    await incrementUsage(q);
+    await incrementUsage({ ...q, res });
 
     return res.status(200).json({
       success: true,

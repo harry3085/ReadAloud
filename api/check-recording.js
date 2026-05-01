@@ -263,7 +263,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    await _incUsage(q);
+    await _incUsage({ ...q, res });
     // 통합 응답 — score + missedWords + note + feedback 한 번에
     const score = Math.max(0, Math.min(100, parseInt(parsed.score) || 0));
     const missedWords = Array.isArray(parsed.missedWords)

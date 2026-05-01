@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
     };
 
     // 호출 성공 시 카운터 증가 (한도 체크 통과 후)
-    await incrementUsage(q);
+    await incrementUsage({ ...q, res });
 
     return res.json({ success: true, report });
   } catch (err) {
