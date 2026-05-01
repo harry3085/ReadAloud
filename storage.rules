@@ -3,15 +3,6 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // ── 기존 녹음숙제 (recHw 시스템) ─────────────────────────
-    // 경로 예: recHw/{hwId}/{uid}_slot{n}_{timestamp}.webm
-    match /recHw/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 20 * 1024 * 1024
-                   && request.resource.contentType.matches('audio/.*');
-    }
-
     // ── AI 녹음숙제 (Phase 5, 5.5) ───────────────────────────
     // 경로 예: recordings/genTests/{testId}/{uid}/r{n}_{ts}.{webm|m4a}
     match /recordings/{allPaths=**} {
@@ -21,17 +12,40 @@ service firebase.storage {
                    && request.resource.contentType.matches('audio/.*');
     }
 
-    // ── 일반 파일 (숙제 파일, 공지 첨부 등) ─────────────────
+    // ── 학원장 숙제 파일 (PDF / Office / 이미지 / 텍스트만 허용) ───
+    // 영상/zip/실행파일 등 학원 외 용도 차단 (Storage 악용 방지, 2026-05-02)
+    // 단일 파일 한도 20 MB (이전 50 MB 에서 축소)
     match /hwFiles/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-                   && request.resource.size < 50 * 1024 * 1024;
+                   && request.resource.size < 20 * 1024 * 1024
+                   && (
+                     request.resource.contentType == 'application/pdf'
+                     || request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\..*')
+                     || request.resource.contentType == 'application/msword'
+                     || request.resource.contentType == 'application/vnd.ms-excel'
+                     || request.resource.contentType == 'application/vnd.ms-powerpoint'
+                     || request.resource.contentType.matches('application/.*hwp.*')
+                     || request.resource.contentType.matches('image/.*')
+                     || request.resource.contentType.matches('text/.*')
+                     || request.resource.contentType == 'application/vnd.hancom.hwp'
+                   );
     }
 
+    // ── 공지 첨부 (현재 미사용이지만 미래 보강) ──────────────
     match /notices/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-                   && request.resource.size < 20 * 1024 * 1024;
+                   && request.resource.size < 20 * 1024 * 1024
+                   && (
+                     request.resource.contentType == 'application/pdf'
+                     || request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\..*')
+                     || request.resource.contentType == 'application/msword'
+                     || request.resource.contentType == 'application/vnd.ms-excel'
+                     || request.resource.contentType.matches('application/.*hwp.*')
+                     || request.resource.contentType.matches('image/.*')
+                     || request.resource.contentType.matches('text/.*')
+                   );
     }
 
     // ── 기타 ─────────────────────────────────────────────────

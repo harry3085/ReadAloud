@@ -1111,6 +1111,33 @@ window.openHwFileModal = async() => {
   setTimeout(()=>document.getElementById('hwfName')?.focus(),100);
 };
 
+// hwFiles 허용 파일 타입 (storage.rules 와 동기화 필수)
+const _HW_ALLOWED_MIME = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.ms-excel',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.hancom.hwp',
+];
+const _HW_ALLOWED_MIME_PREFIX = [
+  'application/vnd.openxmlformats-officedocument.',  // docx/xlsx/pptx
+  'application/x-hwp',                                 // 한글 (변형)
+  'application/hwp',
+  'image/',
+  'text/',
+];
+function _isAllowedHwFile(file) {
+  const t = (file?.type || '').toLowerCase();
+  if (_HW_ALLOWED_MIME.includes(t)) return true;
+  if (_HW_ALLOWED_MIME_PREFIX.some(p => t.startsWith(p))) return true;
+  // contentType 비어있는 경우 확장자로 fallback (브라우저가 못 잡은 케이스)
+  const ext = (file?.name || '').split('.').pop()?.toLowerCase() || '';
+  const allowedExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'hwp', 'hwpx',
+                       'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif',
+                       'txt', 'csv'];
+  return allowedExts.includes(ext);
+}
+
 window.uploadHwFileAdmin = async() => {
   const name = document.getElementById('hwfName')?.value.trim();
   const targetVal = document.getElementById('hwfTarget')?.value||'all';
@@ -1118,6 +1145,22 @@ window.uploadHwFileAdmin = async() => {
   const file = fileEl?.files[0];
   if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
   if (!file) { showAlert('입력 확인', '파일을 선택하세요.'); return; }
+
+  // 사이즈 사전 체크 (storage.rules: 20 MB)
+  const MAX_BYTES = 20 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    showAlert('파일이 너무 큼', `학원장 파일은 단일 20 MB 이하만 가능합니다.\n현재 파일: ${mb} MB`);
+    return;
+  }
+  // 타입 사전 체크 (storage.rules 의 화이트리스트와 동기화)
+  if (!_isAllowedHwFile(file)) {
+    showAlert('지원하지 않는 파일',
+      '허용 형식: PDF / Word / Excel / PowerPoint / 한글(hwp) / 이미지 / 텍스트\n\n' +
+      '영상·압축파일·실행파일 등은 업로드할 수 없습니다.\n' +
+      '(교육 자료 외 용도로 학원 Storage 사용 금지)');
+    return;
+  }
 
   // 대상 파싱
   let group = '전체', targetUid = null;
