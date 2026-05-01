@@ -2559,6 +2559,12 @@ window.importStudentExcel = async() => {
   const dataRows = rows.slice(1).filter(r=>(r[0]||'').toString().trim());
   if (!dataRows.length) { showAlert('입력 확인', '등록할 학생이 없습니다.'); return; }
   if(!(await showConfirm(`${dataRows.length}명을 재원생으로 등록할까요?\n기본 비밀번호: 123456`))) return;
+
+  if (!currentUser) { showAlert('인증 확인', '로그인 상태가 아닙니다. 다시 로그인하세요.'); return; }
+  let idToken;
+  try { idToken = await currentUser.getIdToken(); }
+  catch(e) { showAlert('인증 실패', '인증 토큰을 받지 못했습니다: ' + e.message); return; }
+
   const btn = document.getElementById('excelImportBtn');
   btn.textContent='등록 중... 0/'+dataRows.length; btn.disabled=true;
   let success=0, fail=0, failList=[];
@@ -2566,18 +2572,10 @@ window.importStudentExcel = async() => {
     const row=dataRows[i];
     const username=(row[0]||'').toString().trim();
     const name=(row[1]||'').toString().trim();
-    if(!username||!name){failList.push(username||'?');fail++;continue;}
-    const email=username+'@kunsori.app';
+    if(!username||!name){failList.push((username||'?')+': 아이디/이름 누락');fail++;continue;}
     try{
-      const {initializeApp:ia}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-      const {getAuth:ga,createUserWithEmailAndPassword:cu,signOut:so}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-      const {getApp:gapp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-      let secApp;try{secApp=gapp('sec');}catch(e){secApp=ia({...firebaseConfig},'sec');}
-      const a2=ga(secApp);
-      const cred=await cu(a2,email,'123456');
-      await so(a2);
-      await setDoc(doc(db,'users',cred.user.uid),{
-        username, name, email,
+      const payload = {
+        idToken, username, password:'123456', name,
         group:(row[2]||'').toString().trim(),
         birth:(row[3]||'').toString().trim(),
         school:(row[4]||'').toString().trim(),
@@ -2585,10 +2583,26 @@ window.importStudentExcel = async() => {
         phone:(row[6]||'').toString().trim(),
         parentName:(row[7]||'').toString().trim(),
         parentPhone:(row[8]||'').toString().trim(),
-        role:'student', status:'active', createdAt:serverTimestamp()
+      };
+      const res = await fetch('/api/createStudent', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
       });
-      success++;
-    }catch(e){ console.log(username,'실패:',e.message); failList.push(username); fail++; }
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok || !data.success) {
+        const msg = data.error || `HTTP ${res.status}`;
+        console.log(username,'실패:',msg);
+        failList.push(`${username}: ${msg}`);
+        fail++;
+      } else {
+        success++;
+      }
+    }catch(e){
+      console.log(username,'실패:',e.message);
+      failList.push(`${username}: ${e.message}`);
+      fail++;
+    }
     btn.textContent=`등록 중... ${success+fail}/${dataRows.length}`;
   }
   btn.textContent='✅ 일괄 등록하기'; btn.disabled=false;
@@ -2597,13 +2611,15 @@ window.importStudentExcel = async() => {
     <div style="margin-top:12px;padding:14px;border-radius:8px;background:${resultColor};font-size:13px;">
       <div style="font-weight:600;margin-bottom:6px;">📊 등록 결과</div>
       <div>✅ 성공: <b>${success}명</b></div>
-      ${fail>0?`<div>❌ 실패: <b>${fail}명</b> (${failList.slice(0,5).join(', ')}${failList.length>5?'...':''})</div>`:''}
-      ${fail>0?`<div style="margin-top:4px;font-size:12px;color:#666;">실패 원인: 중복 아이디이거나 이미 가입된 계정</div>`:''}
+      ${fail>0?`<div style="margin-top:6px;">❌ 실패: <b>${fail}명</b></div>
+        <div style="margin-top:6px;max-height:140px;overflow:auto;font-size:12px;color:#555;background:white;padding:8px;border-radius:4px;border:1px solid #e5e5e5;">
+          ${failList.map(s=>`<div>• ${esc(s)}</div>`).join('')}
+        </div>`:''}
     </div>`;
   window._excelRows=null;
   document.getElementById('excelUpload').value='';
   document.getElementById('excelImportBtnWrap').style.display='none';
-  if(success>0) showToast(`✅ ${success}명 등록 완료!`);
+  if(success>0) { showToast(`✅ ${success}명 등록 완료!`); await loadStudents('active'); }
 };
 // 출제 일시 포맷터 (createdAt Timestamp 우선, 없으면 t.date 폴백)
 // YY-MM-DD HH:mm 형식 — lexicographic 정렬과 시간순 정렬 일치
