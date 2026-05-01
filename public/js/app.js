@@ -3259,6 +3259,8 @@ window.startVocab = async (testId, testName) => {
       }
       // 스펠링 쓰기는 항상 한글→영어 (알파벳 입력)
       if (fmt === 'short') dir = 'ko2en';
+      // 말하기는 항상 한글→영어 (한글 보고 영어로 발음)
+      if (fmt === 'speaking') dir = 'ko2en';
       const ans = { input: '', direction: dir, format: fmt };
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
@@ -3277,7 +3279,20 @@ window.startVocab = async (testId, testName) => {
       return ans;
     });
 
-    _vqState = { test, questions, currentIdx: 0, answers, opts };
+    // speaking 모드 전체 시험인지 — SpeechRecognition 지원 사전 체크
+    const hasSpeaking = answers.some(a => a.format === 'speaking');
+    if (hasSpeaking) {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        showToast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 사용을 권장합니다.');
+        return;
+      }
+    }
+
+    _vqState = {
+      test, questions, currentIdx: 0, answers, opts,
+      spk: { attempt: 0, recognition: null, strictness: opts.speakingStrictness || 'normal' },
+    };
 
     show('vocabQuiz');
     _vqRenderStep();
@@ -3317,6 +3332,8 @@ function _vqRenderStep() {
   // 지시문
   if (ans.format === 'mcq') {
     if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '뜻과 일치하는 한글을 고르세요.' : '알맞은 영어 단어를 고르세요.';
+  } else if (ans.format === 'speaking') {
+    if (instEl) instEl.textContent = '🎤 한글 뜻에 해당하는 영어 단어를 발음하세요.';
   } else {
     if (instEl) instEl.textContent = '뜻에 알맞는 영어 단어를 입력하세요.';
   }
@@ -3332,7 +3349,11 @@ function _vqRenderStep() {
     // TTS: 영단어 질문이 뜨면 발음 재생 (학습용)
     if (q.word) _fbSpeakWords([q.word]);
   } else {
-    if (labelEl) labelEl.textContent = ans.format === 'short' ? '한글 뜻 (영단어 쓰기)' : '한글 뜻';
+    if (labelEl) {
+      labelEl.textContent = ans.format === 'short' ? '한글 뜻 (영단어 쓰기)'
+                          : ans.format === 'speaking' ? '한글 뜻 (영어로 발음)'
+                          : '한글 뜻';
+    }
     if (promptEl) promptEl.textContent = q.meaning || '';
     if (headerHint) {
       if (ans.format === 'short') {
@@ -3342,13 +3363,20 @@ function _vqRenderStep() {
     }
   }
 
-  // MCQ / 스펠 표시 전환
+  // 영역 전환: MCQ / 스펠 / 말하기
+  const speakArea = document.getElementById('vqSpeakArea');
   if (ans.format === 'mcq') {
     if (choicesArea) { choicesArea.style.display = 'flex'; _vqRenderChoices(ans, choicesArea); }
     if (spellBoxes) spellBoxes.style.display = 'none';
+    if (speakArea) speakArea.style.display = 'none';
+  } else if (ans.format === 'speaking') {
+    if (choicesArea) choicesArea.style.display = 'none';
+    if (spellBoxes) spellBoxes.style.display = 'none';
+    if (speakArea) { speakArea.style.display = 'flex'; _vqSpkRenderArea(); }
   } else {
     if (spellBoxes) { spellBoxes.style.display = ''; _vqRenderSpellBoxes(ans); }
     if (choicesArea) choicesArea.style.display = 'none';
+    if (speakArea) speakArea.style.display = 'none';
     // 스펠 input 초기화 + 포커스
     const inp = document.getElementById('vqSpellInput');
     if (inp) {
@@ -3449,6 +3477,137 @@ window.vqSkip = () => {
     _vqSubmit();
   }
 };
+
+// ─── 말하기 (Speaking) — 마이크 영역 렌더 + 음성 인식 + 채점 ───
+function _vqSpkRenderArea() {
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  // 새 문제 진입 시 spk 상태 리셋
+  s.spk.attempt = 0;
+  if (s.spk.recognition) {
+    try { s.spk.recognition.stop(); } catch(_) {}
+    s.spk.recognition = null;
+  }
+  // UI 초기화
+  const btn = document.getElementById('vqSpkMicBtn');
+  const status = document.getElementById('vqSpkStatus');
+  const attemptEl = document.getElementById('vqSpkAttempt');
+  const result = document.getElementById('vqSpkResult');
+  if (btn) { btn.style.background = '#E8714A'; btn.disabled = !!ans._locked; btn.textContent = '🎤'; }
+  if (status) status.textContent = ans._locked ? '✓ 채점 완료' : '마이크 버튼을 누르고 영어로 말해보세요';
+  if (attemptEl) attemptEl.textContent = '';
+  if (result) result.style.display = ans._locked ? 'block' : 'none';
+}
+
+window.vqSpkStart = () => {
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  if (ans._locked) return;
+  const q = s.questions[s.currentIdx];
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    showToast('이 브라우저는 음성 인식을 지원하지 않습니다.');
+    return;
+  }
+
+  s.spk.attempt = (s.spk.attempt || 0) + 1;
+  const rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 5;
+
+  s.spk.recognition = rec;
+
+  const btn = document.getElementById('vqSpkMicBtn');
+  const status = document.getElementById('vqSpkStatus');
+  const attemptEl = document.getElementById('vqSpkAttempt');
+  if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
+  if (status) status.textContent = '🔴 듣고 있어요...';
+  if (attemptEl) attemptEl.textContent = `시도 ${s.spk.attempt}/2`;
+
+  rec.onresult = (e) => {
+    const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness);
+    if (grading.correct) {
+      _vqSpkFinalize(true, grading.matchedWith || q.word);
+    } else {
+      const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
+      if (s.spk.attempt < 2) {
+        // 1차 실패 — 재시도 안내
+        if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+        if (status) status.textContent = `❗ "${heard}" 로 들렸어요. 다시 시도하세요.`;
+      } else {
+        // 2차 실패 → 오답 확정
+        _vqSpkFinalize(false, heard);
+      }
+    }
+  };
+
+  rec.onerror = (e) => {
+    console.warn('[vqSpk]', e.error);
+    if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다. 브라우저 설정에서 허용해주세요.';
+      _vqSpkFinalize(false, '');
+      return;
+    }
+    if (e.error === 'no-speech' || e.error === 'aborted') {
+      if (s.spk.attempt < 2) {
+        if (status) status.textContent = '음성이 감지되지 않았어요. 다시 시도하세요.';
+      } else {
+        _vqSpkFinalize(false, '');
+      }
+      return;
+    }
+    if (status) status.textContent = `오류: ${e.error}. 다시 시도하세요.`;
+    if (s.spk.attempt >= 2) _vqSpkFinalize(false, '');
+  };
+
+  rec.onend = () => {
+    if (btn && !ans._locked) { btn.style.background = '#E8714A'; btn.disabled = false; }
+  };
+
+  try { rec.start(); } catch(e) {
+    if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+    if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
+  }
+};
+
+function _vqSpkFinalize(correct, heard) {
+  const s = _vqState;
+  const ans = s.answers[s.currentIdx];
+  const q = s.questions[s.currentIdx];
+  ans._locked = true;
+  // 정답이면 q.word 를 input 에 (vqIsAnsCorrect 통과), 오답이면 빈 문자열
+  ans.input = correct ? (q.word || '') : '';
+  ans.spkHeard = heard || '';
+  ans.spkAttempts = s.spk.attempt;
+  ans.spkCorrect = correct;
+  _vqStopTimer();
+
+  const btn = document.getElementById('vqSpkMicBtn');
+  const status = document.getElementById('vqSpkStatus');
+  const result = document.getElementById('vqSpkResult');
+  const icon = document.getElementById('vqSpkResultIcon');
+  const heardEl = document.getElementById('vqSpkHeard');
+  const answerEl = document.getElementById('vqSpkAnswer');
+  if (btn) { btn.disabled = true; btn.style.background = '#cbd5e1'; }
+  if (status) status.textContent = '';
+  if (result) result.style.display = 'block';
+  if (icon) {
+    icon.textContent = correct ? '⭐' : '❌';
+    icon.style.color = correct ? '#22c55e' : '#dc2626';
+  }
+  if (heardEl) heardEl.textContent = heard ? `들린 단어: "${heard}"` : '';
+  if (answerEl) answerEl.textContent = `정답: ${q.word || ''}`;
+
+  // 영단어 정답 발음 들려주기 (학습 효과)
+  if (q.word) _fbSpeakWords([q.word]);
+
+  // [다음] 버튼으로 전환 — 기존 vqShowNextButton 패턴 재사용
+  if (typeof _vqShowNextButton === 'function') _vqShowNextButton();
+}
 
 // MCQ 선택 → 즉시 정답/오답 피드백 → 자동 다음 (구버전 운영 방식)
 window.vqSelectMcq = (choiceIdx) => {
@@ -3655,12 +3814,13 @@ function _vqBuildDetail(questions, answers) {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
           <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
-          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':'단답'}</span>
+          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':a.format==='speaking'?'🎤 말하기':'단답'}</span>
         </div>
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
-          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>
-          ${!isCorrect ? ` · <span style="color:#059669;">정답: ${esc(target)}</span>` : ''}
+          ${a.format === 'speaking'
+            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${isCorrect ? '⭐ 정답' : '❌ 오답'}</span>${a.spkHeard ? ` · 들린 단어: "${esc(a.spkHeard)}"` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
+            : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect ? ` · <span style="color:#059669;">정답: ${esc(target)}</span>` : ''}`}
         </div>
       </div>`;
   }).join('');
@@ -3726,6 +3886,11 @@ window.vqViewPreviousResult = async (testId, testName) => {
 window.quitVocab = async () => {
   if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
   _vqStopTimer();
+  // 음성 인식 정리 (speaking 모드 종료 시)
+  if (_vqState?.spk?.recognition) {
+    try { _vqState.spk.recognition.stop(); } catch(_) {}
+    _vqState.spk.recognition = null;
+  }
   goHome();
 };
 

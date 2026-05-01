@@ -316,6 +316,19 @@
         <div id="vqChoicesArea" style="display:none;flex-direction:column;gap:8px;"></div>
         <!-- 스펠링 박스 -->
         <div class="spell-boxes" id="vqSpellBoxes" style="display:none;padding:4px 0;"></div>
+        <!-- 말하기 영역 (Speaking) -->
+        <div id="vqSpeakArea" style="display:none;flex-direction:column;align-items:center;padding:8px 0;gap:10px;">
+          <button id="vqSpkMicBtn" onclick="vqSpkStart()"
+            style="width:96px;height:96px;border-radius:50%;background:#E8714A;color:white;font-size:42px;border:0;cursor:pointer;box-shadow:0 4px 16px rgba(232,113,74,.35);transition:.15s;">🎤</button>
+          <div id="vqSpkStatus" style="font-size:13px;color:var(--gray);text-align:center;line-height:1.5;">마이크 버튼을 누르고 영어로 말해보세요</div>
+          <div id="vqSpkAttempt" style="font-size:11px;color:#94a3b8;"></div>
+          <!-- 인식 결과 영역 (정답/오답 시 표시) -->
+          <div id="vqSpkResult" style="display:none;text-align:center;padding-top:6px;">
+            <div id="vqSpkResultIcon" style="font-size:48px;line-height:1;"></div>
+            <div id="vqSpkHeard" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
+            <div id="vqSpkAnswer" style="font-size:18px;font-weight:700;margin-top:4px;color:#222;"></div>
+          </div>
+        </div>
         <!-- 정답/오답 피드백 배너 -->
         <div id="vqFeedbackBanner" style="display:none;margin-top:10px;text-align:center;font-weight:800;font-size:15px;"></div>
       </div>
