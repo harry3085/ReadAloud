@@ -2965,8 +2965,9 @@ window.genClearChapter = () => {
 function _genToolbar(type) {
   const cnt = type==='page'?_genCheckedPages.size:type==='chapter'?_genCheckedChapters.size:_genCheckedBooks.size;
   if (type==='page') {
-    ['genPageEditBtn','genPageMoveBtn','genPageExcludeBtn','genPageDeleteBtn'].forEach((id,i)=>{
-      const el=document.getElementById(id); if(el) el.disabled = i===0?cnt!==1:cnt===0;
+    // Page [수정] 은 1개=단일 수정 / 2개+=병합 모달 → 1개 이상이면 활성
+    ['genPageEditBtn','genPageMoveBtn','genPageExcludeBtn','genPageDeleteBtn'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.disabled = cnt===0;
     });
     // Cleanup 버튼: 1개 이상 체크 시 활성화
     const cleanupBtn=document.getElementById('genPageCleanupBtn');
