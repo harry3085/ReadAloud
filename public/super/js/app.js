@@ -2385,7 +2385,6 @@ async function _loadUsageSummary() {
     _thisMonthRevenue(),
   ]);
   const geminiTotal = today.geminiTotal;
-  const geminiPct = (geminiTotal / GEMINI_DAILY_LIMIT) * 100;
   const monthGemini = GEMINI_ENDPOINTS.reduce((s, k) => s + (month.byEndpoint[k] || 0), 0);
 
   const card = (label, big, sub, color, bg) => `
@@ -2397,7 +2396,7 @@ async function _loadUsageSummary() {
   el.innerHTML = [
     card('🏢 활성 학원', `${active}`, `전체 ${_academiesCache.length}개`, 'var(--teal)'),
     card('✨ 이번 달 AI', monthGemini.toLocaleString(), `전체 호출 ${month.total.toLocaleString()}`, '#0ea5e9'),
-    card('🤖 Gemini 오늘', `${geminiTotal} / ${GEMINI_DAILY_LIMIT}`, `${geminiPct.toFixed(1)}%`, _thresholdColor(geminiPct), geminiPct > 80 ? '#fef3c7' : ''),
+    card('🤖 AI 사용량 (오늘)', `${geminiTotal.toLocaleString()}`, '전사 호출 (Gemini+Vision)', '#0ea5e9'),
     card('💰 이번 달 매출', revenue > 0 ? _amountKRW(revenue) : '0원', 'subscriptions approved', revenue > 0 ? '#059669' : '#999'),
     card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
   ].join('');
