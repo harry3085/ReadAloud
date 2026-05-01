@@ -9529,9 +9529,23 @@ window.tpToggleTestProgress = async (testId) => {
                   </div>
                 `;
               }
-              return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 9px;font-size:11px;">
+              // 일반 시험 (vocab/mcq/fill_blank/unscramble/subjective)
+              // _writeUserCompleted 정책: c.score/passed/date 는 최고점 통과 시에만 저장
+              // 미통과면 latestScore/latestPassed/latestAt 폴백 사용
+              const score = c.score ?? c.latestScore ?? 0;
+              const passed = c.passed ?? c.latestPassed ?? false;
+              const dateStr = c.date
+                || (c.latestAt?.toDate?.() ? _ymdKST(c.latestAt.toDate()) : '');
+              const passScore = c.passScore || t.passScore || 80;
+              if (passed) {
+                return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 9px;font-size:11px;">
+                  <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+                  <div style="color:#2e7d32;">✓ ${score}점 · ${esc(dateStr)}</div>
+                </div>`;
+              }
+              return `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:5px 9px;font-size:11px;">
                 <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
-                <div style="color:#2e7d32;">✓ ${c.score||0}점 · ${esc(c.date||'')}</div>
+                <div style="color:#92400e;">⚠ ${score}점 (통과 ${passScore})</div>
               </div>`;
             }
             return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 9px;font-size:11px;">
