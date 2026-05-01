@@ -1095,8 +1095,13 @@ window.openHwFileModal = async() => {
           </div>
           <div>
             <div style="color:var(--gray);margin-bottom:6px;">파일 선택</div>
-            <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.hwp"
+            <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.heic,.heif,.txt,.csv"
               style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+            <div style="margin-top:6px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#475569;line-height:1.6;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:2px;">📋 허용 형식 (단일 파일 최대 20 MB)</div>
+              ✅ PDF · Word · Excel · PowerPoint · 한글(hwp) · 이미지 · 텍스트<br>
+              ❌ 영상 · 압축파일(zip) · 실행파일 · 음성 등 (학원 Storage 악용 방지)
+            </div>
           </div>
           <div id="hwfProgress" style="display:none;height:6px;background:#eee;border-radius:10px;overflow:hidden;">
             <div id="hwfProgressBar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;"></div>
