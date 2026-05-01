@@ -703,6 +703,15 @@ async function callGemini(model, apiKey, systemPrompt, userPrompt) {
   return { ok: true, text, usage: data.usageMetadata || null };
 }
 
+// 난이도 표기 정규화 — 한글 '하/중/상' / 영어 'easy/medium/hard' / 옛 학년('중1','초3' 등) 모두 영어로 매핑.
+function _normalizeDifficulty(d) {
+  if (d === '하') return 'easy';
+  if (d === '중') return 'medium';
+  if (d === '상') return 'hard';
+  if (d === 'easy' || d === 'medium' || d === 'hard') return d;
+  return 'medium';  // 옛 학년 값 또는 미지정 폴백
+}
+
 function buildUserPrompt(pages, count, type, opts) {
   const passages = pages.map((p, i) =>
     `[Passage ${i + 1}]\nID: ${p.id}\nTitle: ${p.title}\n---\n${p.text}\n---`
@@ -715,19 +724,19 @@ function buildUserPrompt(pages, count, type, opts) {
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels (per-question easy/medium/hard tag)
-- Target student grade level: ${opts?.difficulty || '중1'} — calibrate vocabulary, sentence complexity, and question depth to suit this Korean grade.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — calibrate vocabulary, sentence complexity, and question depth accordingly.`,
     fill_blank: `Please generate ${count} fill-in-the-blank questions.
 - Each question should mask approximately ${blanksPerSentence} word(s) per sentence (blanksPerSentence=${blanksPerSentence}).
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels (per-question easy/medium/hard tag)
-- Target student grade level: ${opts?.difficulty || '중1'} — pick blanks that test grammar/vocabulary appropriate for this Korean grade.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — pick blanks of suitable grammar/vocabulary level.`,
     subjective: `Please generate ${count} sentence-translation questions (English → Korean).
 - Pick ONE meaningful sentence per question from the given passages.
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
 - Vary difficulty levels (per-question easy/medium/hard tag).
-- Target student grade level: ${opts?.difficulty || '중1'} — sentence vocabulary, length, and grammar should suit this Korean grade.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — match sentence vocabulary, length, and grammar to this level.`,
     recording: `Please generate ${count} read-aloud (recording) sentence questions.
 - Pick sentences directly from the given passages (do NOT modify them).
 - Distribute across all passages (if multiple).
@@ -738,13 +747,13 @@ function buildUserPrompt(pages, count, type, opts) {
 - Each word appears only ONCE in the set.
 - Distribute across all passages (if multiple).
 - Include sourcePageId for each word.
-- Difficulty preset: ${opts?.difficulty || '중1'}.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)}.`,
     unscramble: `Please generate ${count} unscramble questions.
 - Split each sentence into ${Math.min(Math.max(parseInt(opts?.chunkCount)||4, 2), 10)} chunks (±1 allowed) using '/' separator, whichever respects natural linguistic boundaries better.
 - Pick meaningful sentences (6-30 words each).
 - Use semantic chunking based on chunk count: fewer chunks = larger semantic units.
 - Include sourcePageId for each sentence.
-- Difficulty preset: ${opts?.difficulty || '중1'}.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)}.`,
   };
 
   // 재시도 호출 시 이미 채택된 문장 목록을 넘겨 중복 선택 방지

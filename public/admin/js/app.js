@@ -4532,9 +4532,8 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문에서 중요 단어를 AI 가 선별해 단어 시험을 만듭니다.',
     options: [
-      { key:'count',      label:'문제수',         type:'number', default:20, min:5, max:100 },
-      { key:'difficulty', label:'난이도(학년)',   type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
-      { key:'passScore',  label:'통과점수',       type:'number', default:80, min:0, max:100 },
+      { key:'count',      label:'문제수',   type:'number', default:20, min:5, max:100 },
+      { key:'difficulty', label:'난이도',   type:'select', choices:['하','중','상'], default:'중' },
     ],
   },
   'unscramble': {
@@ -4544,10 +4543,9 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문 문장을 AI 가 청크 갯수에 맞게 나눠 언스크램블 문제를 만듭니다.',
     options: [
-      { key:'count',       label:'문제수',       type:'number', default:10, min:3, max:50 },
-      { key:'difficulty',  label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
-      { key:'chunkCount',  label:'청크 갯수',    type:'number', default:4, min:2, max:8 },
-      { key:'passScore',   label:'통과점수',     type:'number', default:80, min:0, max:100 },
+      { key:'count',       label:'문제수',     type:'number', default:10, min:3, max:50 },
+      { key:'difficulty',  label:'난이도',     type:'select', choices:['하','중','상'], default:'중' },
+      { key:'chunkCount',  label:'청크 갯수',  type:'number', default:4, min:2, max:8 },
     ],
   },
   'fill_blank': {
@@ -4555,15 +4553,11 @@ const QG_TYPE_OPTIONS = {
     icon: '✏️',
     enabled: true,
     phaseLabel: null,
-    noteHint: '본문 문장에서 단어를 가리고 빈칸을 채우는 문제를 만듭니다.',
+    noteHint: '본문 문장에서 AI 가 핵심 단어를 가리고 빈칸을 채우는 문제를 만듭니다.',
     options: [
-      { key:'generationMode', label:'생성 방식', type:'select',
-        choices:['규칙 기반 (즉시·무료)','AI 향상 (5~15초)'],
-        default:'규칙 기반 (즉시·무료)' },
       { key:'count',             label:'문제수',             type:'number', default:5, min:1, max:50 },
-      { key:'difficulty',        label:'난이도(학년)',       type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
+      { key:'difficulty',        label:'난이도',             type:'select', choices:['하','중','상'], default:'중' },
       { key:'blanksPerSentence', label:'문장별 빈칸 개수',   type:'number', default:1, min:1, max:5 },
-      { key:'passScore',         label:'통과점수',           type:'number', default:80, min:0, max:100 },
     ],
   },
   'mcq': {
@@ -4573,9 +4567,8 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '본문을 읽고 4지선다로 내용을 확인합니다.',
     options: [
-      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:50 },
-      { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
-      { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
+      { key:'count',      label:'문제수',  type:'number', default:5, min:1, max:50 },
+      { key:'difficulty', label:'난이도',  type:'select', choices:['하','중','상'], default:'중' },
     ],
   },
   'subjective': {
@@ -4585,9 +4578,8 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '원문 문장을 제시하고 학생이 손으로 한글 해석을 쓰는 시험지를 생성합니다. (학생앱 배정 없음)',
     options: [
-      { key:'count',      label:'문제수',       type:'number', default:5, min:1, max:50 },
-      { key:'difficulty', label:'난이도(학년)', type:'select', choices:['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'], default:'중1' },
-      { key:'passScore',  label:'통과점수',     type:'number', default:80, min:0, max:100 },
+      { key:'count',      label:'문제수',  type:'number', default:5, min:1, max:50 },
+      { key:'difficulty', label:'난이도',  type:'select', choices:['하','중','상'], default:'중' },
     ],
   },
   'recording': {
@@ -4637,6 +4629,16 @@ window.loadQuizGenerate = async () => {
   _qgActiveChapter = null;
   _qgRender();
 };
+
+// 난이도 표기 정규화 — 한글 '하/중/상' (현행) / 영어 'easy/medium/hard' / 옛 학년('중1' 등) 모두 영어로 매핑.
+// API 프롬프트에는 항상 'easy'/'medium'/'hard' 영어로 전달.
+function _qgMapDifficulty(d) {
+  if (d === '하') return 'easy';
+  if (d === '중') return 'medium';
+  if (d === '상') return 'hard';
+  if (d === 'easy' || d === 'medium' || d === 'hard') return d;
+  return 'medium';  // 옛 학년 값('중1','초3' 등) 폴백
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Phase 2.5: 4컬럼 레이아웃 (Book | Chapter | Page | 설정)
@@ -5234,7 +5236,7 @@ async function _qgCallMcq(opts) {
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', difficulty: opts.difficulty, customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', difficulty: _qgMapDifficulty(opts.difficulty), customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -5259,16 +5261,8 @@ async function _qgCallMcq(opts) {
   }
 }
 
-// ─── Fill-blank API 호출 (Phase 3 + 4 하이브리드) ───
+// ─── Fill-blank API 호출 ───
 async function _qgCallFillBlank(opts) {
-  const mode = opts.generationMode || '규칙 기반 (즉시·무료)';
-
-  // 규칙 기반 모드: 로컬 즉시 생성 (API 호출 없음)
-  if (mode.startsWith('규칙')) {
-    _qgGenFillBlankLocal(opts);
-    return;
-  }
-
   const btn = document.getElementById('qgGenBtn');
   const status = document.getElementById('qgStatus');
   if (btn) btn.disabled = true;
@@ -5287,7 +5281,7 @@ async function _qgCallFillBlank(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'fill_blank',
-        difficulty: opts.difficulty,
+        difficulty: _qgMapDifficulty(opts.difficulty),
         blanksPerSentence: opts.blanksPerSentence,
         customSystemPrompt: _qgGetCustomPrompt('fill_blank') || undefined,
       }),
@@ -5315,127 +5309,6 @@ async function _qgCallFillBlank(opts) {
   }
 }
 
-// ─── 빈칸채우기 규칙 기반 로컬 생성기 (Phase 4 하이브리드) ───
-// API 호출 없이 클라이언트에서 즉시 생성. stopwords 제외 + 내용어(4자+) 무작위 선별
-function _qgGenFillBlankLocal(opts) {
-  const status = document.getElementById('qgStatus');
-  const btn = document.getElementById('qgGenBtn');
-  if (btn) btn.disabled = true;
-  if (status) status.innerHTML = '⚡ 규칙 기반 생성 중...';
-
-  const t0 = Date.now();
-  const requested = Math.max(1, parseInt(opts.count) || 5);
-  const blanksPerSent = Math.min(Math.max(parseInt(opts.blanksPerSentence)||1, 1), 5);
-
-  const selectedPages = (_genPages||[]).filter(p => _qgSelectedPageIds.has(p.id));
-
-  const allSentences = [];
-  selectedPages.forEach(p => {
-    const raw = (p.text||'').replace(/\s+/g, ' ').trim();
-    const sents = raw.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
-    sents.forEach(s => {
-      if (s.length >= 20 && s.length <= 250) {
-        allSentences.push({ sentence: s, pageId: p.id, pageTitle: p.title||'' });
-      }
-    });
-  });
-
-  if (allSentences.length === 0) {
-    if (status) status.innerHTML = '<span style="color:#c33;">❌ 빈칸을 만들 문장이 부족합니다</span>';
-    showAlert('입력 확인', '선택한 Page에 적절한 문장이 없습니다 (20~250자)');
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  allSentences.sort(() => Math.random() - 0.5);
-
-  const stopwords = _qgStopwords();
-
-  const questions = [];
-  for (const item of allSentences) {
-    if (questions.length >= requested) break;
-    const q = _qgMakeBlankFromSentence(item, blanksPerSent, stopwords);
-    if (q) questions.push(q);
-  }
-
-  const sec = ((Date.now()-t0)/1000).toFixed(2);
-
-  if (questions.length === 0) {
-    if (status) status.innerHTML = '<span style="color:#c33;">❌ 조건에 맞는 문제를 만들 수 없습니다</span>';
-    showToast('조건에 맞는 문제 생성 실패. 빈칸 개수를 줄여보세요');
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  _qgGenerated = questions;
-  _qgExcluded.clear();
-  if (status) status.innerHTML = `<span style="color:#0a7a3a;">⚡ 즉시 생성 · ${sec}s · ${questions.length}/${requested}문제</span>`;
-  if (btn) btn.disabled = false;
-
-  _qgShowResultModal({
-    questions,
-    model: '규칙 기반 (로컬 생성)',
-    requestedCount: requested,
-  });
-}
-
-function _qgMakeBlankFromSentence(item, blanksPerSent, stopwords) {
-  const sent = item.sentence;
-  const words = sent.split(/\s+/);
-
-  const candidates = [];
-  words.forEach((w, i) => {
-    const clean = w.replace(/[^a-zA-Z']/g, '');
-    if (clean.length < 4) return;
-    if (stopwords.has(clean.toLowerCase())) return;
-    candidates.push({ word: clean, idx: i, original: w });
-  });
-
-  if (candidates.length < blanksPerSent) return null;
-
-  const picked = candidates
-    .slice()
-    .sort(() => Math.random() - 0.5)
-    .slice(0, blanksPerSent)
-    .sort((a, b) => a.idx - b.idx);
-
-  const blanks = picked.map(p => p.word);
-
-  const newWords = [...words];
-  picked.forEach(p => {
-    newWords[p.idx] = newWords[p.idx].replace(p.word, '___');
-  });
-
-  return {
-    type: 'fill_blank',
-    sentence: newWords.join(' '),
-    blanks,
-    questionKo: '문장의 빈칸에 알맞은 단어를 쓰세요.',
-    explanation: '',
-    sourcePageId: item.pageId,
-    sourcePageTitle: item.pageTitle,
-    difficulty: 'medium',
-  };
-}
-
-function _qgStopwords() {
-  return new Set([
-    'the','a','an','is','are','was','were','be','been','being','am',
-    'to','of','in','on','at','for','with','by','from','as','into','about',
-    'through','over','under','between','against','during','before','after',
-    'and','or','but','so','because','if','when','while','since','than',
-    'although','though','whereas','however','therefore','thus',
-    'i','you','he','she','it','we','they','me','him','her','us','them',
-    'this','that','these','those','my','your','his','her','its','our','their',
-    'mine','yours','hers','ours','theirs',
-    'not','no','yes','do','does','did','have','has','had','will','would',
-    'can','could','should','may','might','must','shall',
-    'just','also','only','even','still','always','never','often','sometimes',
-    'there','here','where','what','which','who','whom','whose','how','why',
-    'very','much','many','some','any','all','each','every','both','few','more','most','other','same','such',
-  ]);
-}
-
 // ─── Subjective API 호출 (Phase 4) ───
 async function _qgCallSubjective(opts) {
   const btn = document.getElementById('qgGenBtn');
@@ -5452,7 +5325,7 @@ async function _qgCallSubjective(opts) {
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', difficulty: opts.difficulty, customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
+      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', difficulty: _qgMapDifficulty(opts.difficulty), customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -5685,7 +5558,7 @@ async function _qgCallVocab(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'vocab',
-        difficulty: opts.difficulty,
+        difficulty: _qgMapDifficulty(opts.difficulty),
         customSystemPrompt: _qgGetCustomPrompt('vocab') || undefined,
       }),
     });
@@ -5734,7 +5607,7 @@ async function _qgCallUnscramble(opts) {
         pages: selectedPages,
         count: opts.count,
         type: 'unscramble',
-        difficulty: opts.difficulty,
+        difficulty: _qgMapDifficulty(opts.difficulty),
         chunkCount: parseInt(opts.chunkCount) || 4,
         customSystemPrompt: _qgGetCustomPrompt('unscramble') || undefined,
       }),
