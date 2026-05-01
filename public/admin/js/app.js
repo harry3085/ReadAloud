@@ -7927,6 +7927,9 @@ function _tpRender() {
   const root = document.getElementById(cfg.rootId);
   if (!root) return;
 
+  // 재렌더 시 스크롤 위치 보존 (체크박스 토글 등)
+  const prevScroll = document.getElementById('tpSetsScroll')?.scrollTop || 0;
+
   const folders = _tpBuildFolders(_tpSets);
   const filteredSets = _activeTestFolderKey
     ? _tpSets.filter(s => _tpFolderKeyOf(s) === _activeTestFolderKey)
@@ -7958,7 +7961,7 @@ function _tpRender() {
                 </button>` : ''}
             </div>
           </div>
-          <div style="flex:1;overflow-y:auto;">
+          <div id="tpSetsScroll" style="flex:1;overflow-y:auto;">
             ${!cfg.enabled
               ? _tpRenderDisabledState(cfg)
               : (filteredSets.length === 0
@@ -8021,6 +8024,12 @@ function _tpRender() {
 
   _tpAttachResizer(root);
   _tpAttachVResizer(root);
+
+  // 스크롤 위치 복원 — 체크박스 토글 시 깜빡임 방지
+  if (prevScroll > 0) {
+    const newEl = document.getElementById('tpSetsScroll');
+    if (newEl) newEl.scrollTop = prevScroll;
+  }
 }
 
 function _tpAttachResizer(scope) {
