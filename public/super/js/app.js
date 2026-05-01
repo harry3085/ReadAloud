@@ -1135,12 +1135,45 @@ function _renderAcmUsage(a) {
     { label: '📈 성장 리포트', counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth' },
   ];
 
+  // Storage 행 — bytes/GB 단위 (수동 reconcile 결과 기반)
+  const _fmtBytes = (n) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  };
+  const storageRow = (() => {
+    const bytes = u.storageBytes || 0;
+    const gb = bytes / 1024 / 1024 / 1024;
+    const limGB = cl.storageGB ?? tl.storageGB ?? 0;
+    const pct = limGB > 0 ? (gb / limGB) * 100 : 0;
+    const color = _thresholdColor(pct);
+    const override = cl.storageGB !== undefined;
+    const reconciledAt = u.storageReconciledAt?.toDate?.();
+    const reconciledStr = reconciledAt
+      ? reconciledAt.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '미측정';
+    return `
+      <div style="padding:12px 14px;border-bottom:1px solid #eee;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;color:var(--gray);">💾 Storage${override ? ' <span title="customLimits override" style="color:#f59e0b;">*</span>' : ''}</span>
+          <span style="font-weight:700;font-size:14px;">
+            ${_fmtBytes(bytes)} <span style="color:#999;font-weight:400;font-size:12px;">/ ${limGB > 0 ? limGB + ' GB' : '∞'}</span>
+            ${limGB > 0 ? `<span style="margin-left:8px;font-size:11px;color:${color};">${pct.toFixed(1)}%</span>` : ''}
+          </span>
+        </div>
+        ${limGB > 0 ? bar(pct, color) : ''}
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">마지막 점검: ${esc(reconciledStr)}</div>
+      </div>`;
+  })();
+
   const lastReset = u.lastResetAt || '-';
   return `
     <div style="font-weight:700;font-size:13px;color:var(--text);border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">이번 달 사용량 (실시간 카운터)</div>
     ${row('👥 활성 학생', u.activeStudentsCount || 0, a.studentLimit || 0, false)}
     ${items.map(it => row(it.label, u[it.counter] || 0, cl[it.limitField] ?? tl[it.limitField] ?? 0, cl[it.limitField] !== undefined)).join('')}
-    <div style="padding:10px 14px;font-size:11px;color:#999;">자동 리셋 기준: ${esc(lastReset)} (api/_lib/quota.js 가 매월 리셋 트리거)</div>
+    ${storageRow}
+    <div style="padding:10px 14px;font-size:11px;color:#999;">자동 리셋 기준: ${esc(lastReset)} (매월 KST 1일) · Storage 는 [🔄 Storage 점검] 으로 수동 갱신</div>
     <div style="margin-top:10px;padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:12px;color:#0c4a6e;line-height:1.5;">
       ℹ️ Gemini 일일 쿼터 게이지·전사 Top 10·시스템 헬스 등 <b>전사 모니터링</b>은 <b>📊 사용량·모니터링</b> 탭에서 확인하세요. * 표시는 customLimits override.
     </div>`;
@@ -2445,6 +2478,39 @@ async function _loadGeminiGauge() {
   }
 }
 
+// ── Storage 수동 점검 — 모든 학원 Storage 스캔 후 academies.usage.storageBytes 갱신.
+// hook 미구현 단계에서 super_admin 이 필요할 때 클릭으로 실행.
+window.reconcileStorageNow = async () => {
+  const ok = await showConfirm('Storage 점검', '전체 학원 Firebase Storage 를 스캔하여 점유량을 갱신합니다.\n수십 초 ~ 1분 소요될 수 있습니다.');
+  if (!ok) return;
+  showToast('🔄 Storage 스캔 중... (1분 정도 소요)');
+  try {
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/superAdmin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, action: 'reconcileStorage' }),
+    });
+    const j = await r.json();
+    if (!j.success) { showAlert('Storage 점검 실패', j.error || '알 수 없는 오류'); return; }
+    const totalMB = (j.totalBytes / 1024 / 1024).toFixed(2);
+    const unknownMB = (j.unknownBytes / 1024 / 1024).toFixed(2);
+    showAlert('✓ Storage 점검 완료',
+      `전체 ${j.totalFiles}개 파일 / ${totalMB} MB\n` +
+      `${j.academiesUpdated}개 학원 갱신됨\n` +
+      (j.unknownCount > 0 ? `⚠ 매핑 안 된 파일 ${j.unknownCount}개 / ${unknownMB} MB (orphan)` : '')
+    );
+    await logAdminAction('reconcile_storage', 'system', '-', {
+      totalFiles: j.totalFiles, totalBytes: j.totalBytes, unknownCount: j.unknownCount,
+    });
+    // 학원 캐시 갱신 + Top 10 다시 로드
+    await loadAcademies();
+    _loadAcademyTop10();
+  } catch (e) {
+    showAlert('Storage 점검 실패', e.message);
+  }
+};
+
 // ── T5-D: 학원별 사용량 Top 10 ────────────────────────
 async function _loadAcademyTop10() {
   const el = document.getElementById('usageTop10');
@@ -2462,6 +2528,7 @@ async function _loadAcademyTop10() {
     const generator = u.generatorCallsThisMonth || 0;
     const recording = u.recordingCallsThisMonth || 0;
     const growth = u.growthReportCallsThisMonth || 0;
+    const storageBytes = u.storageBytes || 0;
     // 4 AI 분류 합산 한도 대비 % (정렬·색상용)
     const aiSum = ocr + cleanup + generator + growth;
     const aiSumLimit = (cl.ocrPerMonth         ?? tl.ocrPerMonth         ?? 0)
@@ -2472,15 +2539,24 @@ async function _loadAcademyTop10() {
     return {
       id: a.id, name: a.name || a.id, planId: a.planId,
       students: u.activeStudentsCount || 0,
-      ocr, cleanup, generator, recording, growth,
+      ocr, cleanup, generator, recording, growth, storageBytes,
       total: aiSum + recording, aiLimit: aiSumLimit, aiPct,
     };
   });
   data.sort((x, y) => y.total - x.total);
   const top10 = data.slice(0, 10);
 
+  const _fmtBytes = (n) => {
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
+  };
+
   el.innerHTML = `
-    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">📊 학원별 사용량 Top 10 (이번 달)</div>
+    <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+      <span>📊 학원별 사용량 Top 10 (이번 달)</span>
+      <button onclick="reconcileStorageNow()" style="padding:6px 12px;font-size:12px;background:var(--teal);color:white;border:none;border-radius:6px;cursor:pointer;">🔄 Storage 점검</button>
+    </div>
     ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
     <table class="table" style="margin:0;font-size:12px;">
       <thead><tr>
@@ -2491,6 +2567,7 @@ async function _loadAcademyTop10() {
         <th class="td-center" title="Generator">✨</th>
         <th class="td-center" title="녹음숙제">🎤</th>
         <th class="td-center" title="성장 리포트">📈</th>
+        <th class="td-center" title="Storage 사용량 (수동 점검)">💾</th>
         <th class="td-center" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
       </tr></thead>
       <tbody>
@@ -2504,6 +2581,7 @@ async function _loadAcademyTop10() {
             <td class="td-center">${a.generator.toLocaleString()}</td>
             <td class="td-center">${a.recording.toLocaleString()}</td>
             <td class="td-center">${a.growth.toLocaleString()}</td>
+            <td class="td-center">${_fmtBytes(a.storageBytes)}</td>
             <td class="td-center" style="font-weight:700;color:${_thresholdColor(a.aiPct)};">
               ${a.aiLimit > 0 ? `${a.aiPct.toFixed(0)}%` : '∞'}
             </td>

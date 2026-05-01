@@ -1,10 +1,11 @@
-// super_admin 전용 — 4개 action 통합 단일 함수 (Vercel Hobby 12개 한도 우회).
+// super_admin 전용 — 5개 action 통합 단일 함수 (Vercel Hobby 12개 한도 우회).
 // POST body: { idToken, action, ...payload }
-//   action: 'updateAcademy' | 'updateAcademyAdmin' | 'getAcademyImpact' | 'deleteAcademy'
+//   action: 'updateAcademy' | 'updateAcademyAdmin' | 'getAcademyImpact' | 'deleteAcademy' | 'reconcileStorage'
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 
 function ensureApp() {
   if (getApps().length) return getApps()[0];
@@ -310,6 +311,88 @@ async function _deleteAcademy(auth, db, body) {
   return { status: 200, body: { success: true, academyId, academyName: academy.name, deleted } };
 }
 
+// ── action: reconcileStorage ──────────────────────────
+// Firebase Storage 전체 스캔 → 학원별 점유량 합산 → academies.usage.storageBytes 갱신.
+// scripts/diag/scan-storage-by-academy.js --apply 와 동일 로직 (서버 버전).
+// hook 미구현 단계의 수동 reconcile 도구.
+async function _reconcileStorage(db, body) {
+  const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'readaloud-51113.firebasestorage.app';
+  const bucket = getStorage().bucket(STORAGE_BUCKET);
+
+  // 1) 매핑 캐시
+  const genTestsSnap = await db.collection('genTests').get();
+  const testToAcademy = {};
+  genTestsSnap.docs.forEach(d => {
+    const data = d.data();
+    if (data.academyId) testToAcademy[d.id] = data.academyId;
+  });
+  const hwFilesSnap = await db.collection('hwFiles').get();
+  const hwPathToAcademy = {};
+  hwFilesSnap.docs.forEach(d => {
+    const data = d.data();
+    if (data.storagePath && data.academyId) hwPathToAcademy[data.storagePath] = data.academyId;
+  });
+
+  // 2) Storage 스캔 + 학원별 합산
+  const stats = {};   // academyId → bytes
+  let totalCount = 0, totalBytes = 0, unknownCount = 0, unknownBytes = 0;
+
+  let pageToken = null;
+  do {
+    const [files, , metadata] = await bucket.getFiles({ maxResults: 1000, pageToken });
+    for (const f of files) {
+      const size = parseInt(f.metadata.size || 0, 10);
+      totalCount++;
+      totalBytes += size;
+      const name = f.name;
+      let academyId = null;
+      if (name.startsWith('hwFiles/')) {
+        academyId = hwPathToAcademy[name] || null;
+      } else if (name.startsWith('recordings/genTests/')) {
+        const testId = name.split('/')[2];
+        academyId = testToAcademy[testId] || null;
+      }
+      if (academyId) {
+        stats[academyId] = (stats[academyId] || 0) + size;
+      } else {
+        unknownCount++;
+        unknownBytes += size;
+      }
+    }
+    pageToken = metadata?.pageToken || null;
+  } while (pageToken);
+
+  // 3) Firestore 갱신 — 사용 있는 학원 + 사용 없는 학원도 0 으로 명시
+  const acadSnap = await db.collection('academies').get();
+  const allAcademies = acadSnap.docs.map(d => d.id);
+  const updates = [];
+  for (const aid of allAcademies) {
+    const bytes = stats[aid] || 0;
+    updates.push({ aid, bytes });
+  }
+  for (const u of updates) {
+    try {
+      await db.doc(`academies/${u.aid}`).update({
+        'usage.storageBytes': u.bytes,
+        'usage.storageReconciledAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) { /* silent */ }
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      totalFiles: totalCount,
+      totalBytes,
+      academiesUpdated: updates.length,
+      perAcademy: stats,
+      unknownCount,
+      unknownBytes,
+    },
+  };
+}
+
 // ── 진입점 ────────────────────────────────────────────
 module.exports = async function (req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'POST only' });
@@ -328,6 +411,7 @@ module.exports = async function (req, res) {
     else if (action === 'updateAcademyAdmin') result = await _updateAcademyAdmin(auth, db, body);
     else if (action === 'getAcademyImpact') result = await _getAcademyImpact(db, body);
     else if (action === 'deleteAcademy') result = await _deleteAcademy(auth, db, body);
+    else if (action === 'reconcileStorage') result = await _reconcileStorage(db, body);
     else return res.status(400).json({ success: false, error: 'action 미지원: ' + action });
 
     return res.status(result.status).json(result.body);

@@ -331,6 +331,33 @@ async function loadApiUsage(){
         </div>`;
     };
 
+    // Storage 행 — bytes/GB 단위 + 마지막 점검 시각.
+    // 수동 reconcile (scripts/diag/scan-storage-by-academy.js --apply) 로 갱신.
+    const _fmtBytes = (n) => {
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+      return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    };
+    const renderStorageRow = () => {
+      const bytes = usage.storageBytes || 0;
+      const gb = bytes / 1024 / 1024 / 1024;
+      const limGB = cl.storageGB ?? tierLimits.storageGB ?? null;
+      const reconciledAt = usage.storageReconciledAt?.toDate?.();
+      const reconciledStr = reconciledAt
+        ? reconciledAt.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) + ' ' +
+          reconciledAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+        : '미측정';
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <span>💾 Storage <span style="color:#bbb;font-size:9px;">(${reconciledStr})</span></span>
+            <span style="color:var(--gray);font-size:10px;">사용 <b style="color:var(--text);">${_fmtBytes(bytes)}</b>/${limGB ? `${limGB} GB` : '∞'}</span>
+          </div>
+          ${limGB ? fracBar(gb, limGB) : ''}
+        </div>`;
+    };
+
     body.innerHTML = `
       <!-- 플랜 + 학원명 + 상세 링크 -->
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
@@ -339,7 +366,7 @@ async function loadApiUsage(){
         <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">📊 상세 →</a></span>
       </div>
 
-      <!-- 6줄: 학생 + 5분류 -->
+      <!-- 7줄: 학생 + 5분류 + Storage -->
       <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
         <div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
@@ -349,6 +376,7 @@ async function loadApiUsage(){
           ${fracBar(studentCur, studentLim)}
         </div>
         ${items.map(renderRow).join('')}
+        ${renderStorageRow()}
       </div>
 
       <div style="margin-top:8px;font-size:10px;color:#bbb;">총 오늘: ${t.total || 0}회 · 어제: ${y.total || 0}회</div>`;
@@ -391,6 +419,13 @@ async function loadQuotaUsage(){
     header.innerHTML = `<span class="badge badge-teal" style="font-size:11px;">${esc(planName)}</span>
       <span style="margin-left:8px;">${esc(acad.name || '')} · 학생 한도 ${esc(tier)}명</span>`;
 
+    const _fmtBytes = (n) => {
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+      return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    };
+
     grid.innerHTML = items.map(item => {
       const current = usage[item.counter] || 0;
       const limitRaw = customLimits[item.limitField] ?? tierLimits[item.limitField];
@@ -414,7 +449,32 @@ async function loadQuotaUsage(){
             : ''}
         </div>
       `;
-    }).join('');
+    }).join('') + (() => {
+      // Storage 추가 (수동 점검 결과 기반 — super 앱 [🔄 Storage 점검] 버튼으로 갱신)
+      const bytes = usage.storageBytes || 0;
+      const gb = bytes / 1024 / 1024 / 1024;
+      const limGB = customLimits.storageGB ?? tierLimits.storageGB ?? 0;
+      const isOverride = customLimits.storageGB !== undefined;
+      const percent = limGB > 0 ? Math.min(100, (gb / limGB) * 100) : 0;
+      const barColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : '#64748b';
+      const labelColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)';
+      const reconciledAt = usage.storageReconciledAt?.toDate?.();
+      const reconciledStr = reconciledAt
+        ? reconciledAt.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '미측정';
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
+            <span style="font-weight:600;">💾 Storage (파일 저장)${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
+            <span style="color:${labelColor};"><b>${_fmtBytes(bytes)}</b> / ${limGB} GB <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span></span>
+          </div>
+          <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
+            <div style="background:${barColor};height:100%;width:${percent}%;transition:width 0.3s;"></div>
+          </div>
+          <div style="font-size:11px;color:#bbb;margin-top:3px;">마지막 점검: ${reconciledStr} <span style="color:var(--gray);">— super 관리자 앱에서 수동 갱신</span></div>
+        </div>
+      `;
+    })();
   } catch (e) {
     grid.innerHTML = `<div style="color:#dc2626;padding:20px;">로드 실패: ${esc(e.message)}</div>`;
   }
