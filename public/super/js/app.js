@@ -2294,9 +2294,11 @@ window.exportBillingCsv = () => {
 // byEndpoint 키: ocr (Vision) / cleanup-ocr / generate-quiz / check-recording (Gemini)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const GEMINI_DAILY_LIMIT = 1000;        // gemini-3.1-flash-lite-preview RPD
-const GEMINI_ENDPOINTS = ['cleanup-ocr', 'generate-quiz', 'check-recording'];
-const VISION_ENDPOINTS = ['ocr'];
+const GEMINI_DAILY_LIMIT = 1000;        // (deprecated — 유료 전환 후 한도 없음, 글로벌 배너 비활성)
+// 비용 발생 5분류 endpoint — 학원장 대시보드·loadQuotaUsage 와 동일 정의
+const ALL_AI_ENDPOINTS = ['ocr', 'cleanup-ocr', 'generate-quiz', 'check-recording', 'growth-report'];
+const VISION_ENDPOINTS = ['ocr'];                                       // (참고용)
+const GEMINI_ENDPOINTS = ['cleanup-ocr', 'generate-quiz', 'check-recording', 'growth-report'];  // (참고용)
 
 // KST(UTC+9) 기준 — apiUsage doc ID 와 동일 기준 (api/_lib/quota.js / 학원장·학생 앱 _ymdKST)
 function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
@@ -2343,7 +2345,8 @@ async function _todayApiCalls() {
       byEndpoint[k] = (byEndpoint[k] || 0) + v;
     });
   });
-  return { total, byEndpoint, geminiTotal: GEMINI_ENDPOINTS.reduce((s, k) => s + (byEndpoint[k] || 0), 0) };
+  // geminiTotal: 명칭은 그대로 유지하되 의미는 '비용 발생 5분류 합 (Gemini+Vision)' — 호출처에서 'AI 사용량' 으로 표기
+  return { total, byEndpoint, geminiTotal: ALL_AI_ENDPOINTS.reduce((s, k) => s + (byEndpoint[k] || 0), 0) };
 }
 
 async function _thisMonthApiCalls() {
@@ -2385,7 +2388,7 @@ async function _loadUsageSummary() {
     _thisMonthRevenue(),
   ]);
   const geminiTotal = today.geminiTotal;
-  const monthGemini = GEMINI_ENDPOINTS.reduce((s, k) => s + (month.byEndpoint[k] || 0), 0);
+  const monthGemini = ALL_AI_ENDPOINTS.reduce((s, k) => s + (month.byEndpoint[k] || 0), 0);
 
   const card = (label, big, sub, color, bg) => `
     <div class="card" style="padding:12px 14px;text-align:center;${bg ? `background:${bg};` : ''}">
@@ -2395,8 +2398,8 @@ async function _loadUsageSummary() {
     </div>`;
   el.innerHTML = [
     card('🏢 활성 학원', `${active}`, `전체 ${_academiesCache.length}개`, 'var(--teal)'),
-    card('✨ 이번 달 AI', monthGemini.toLocaleString(), `전체 호출 ${month.total.toLocaleString()}`, '#0ea5e9'),
-    card('🤖 AI 사용량 (오늘)', `${geminiTotal.toLocaleString()}`, '전사 호출 (Gemini+Vision)', '#0ea5e9'),
+    card('🤖 AI 사용량 (이번 달)', monthGemini.toLocaleString(), '전사 호출 (Gemini+Vision)', '#0ea5e9'),
+    card('🤖 AI 사용량 (오늘)', geminiTotal.toLocaleString(), '전사 호출 (Gemini+Vision)', '#0ea5e9'),
     card('💰 이번 달 매출', revenue > 0 ? _amountKRW(revenue) : '0원', 'subscriptions approved', revenue > 0 ? '#059669' : '#999'),
     card('🆕 이번 달 신규', `${newThisMonth}`, '학원 가입', newThisMonth > 0 ? '#059669' : ''),
   ].join('');
