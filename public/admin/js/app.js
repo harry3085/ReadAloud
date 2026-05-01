@@ -2090,21 +2090,30 @@ window.grToggleHistory = () => {
 window.printGrowthReport = () => {
   const body = document.getElementById('grReportBody');
   if (!body) return;
-  // CSS variables 가 inline style 로 안 들어가 있어 명시 색 변수 X.
+  // 학생 정보 — _grHistoryCache 의 첫 항목(=최신) 또는 현재 표시 중인 항목에서 가져옴
+  const latest = (_grHistoryCache && _grHistoryCache[0]) || null;
+  const studentName = latest?.studentName || '학생';
+  const studentGroup = latest?.studentGroup || '';
+  const dateStr = _ymdKST();  // KST YYYY-MM-DD
+  const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '');
+  // PDF 저장 시 파일명 default = title (브라우저 동작)
+  const pdfTitle = `성장리포트_${studentName}_${dateStr}_${timeStr}`;
+
   // 인쇄 시 background 색이 빠지지 않도록 print-color-adjust: exact 강제.
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>AI 성장 리포트</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(pdfTitle)}</title>
     <style>
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       html, body { margin: 0; padding: 0; }
       body { font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; padding: 14mm; color: #222; line-height: 1.5; }
       @page { size: A4; margin: 0; }
-      h1 { font-size: 18px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #E8714A; color: #E8714A; }
+      h1 { font-size: 18px; margin: 0 0 6px; padding-bottom: 8px; border-bottom: 2px solid #E8714A; color: #E8714A; }
+      .student { font-size: 14px; font-weight: 700; color: #222; margin: 8px 0 4px; }
       .meta { font-size: 11px; color: #666; margin-bottom: 14px; }
       .badge { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px; }
-      /* 모달 내용을 그대로 받지만 backgrounds 가 모두 살아나도록 */
     </style></head><body>
       <h1>📈 AI 성장 리포트</h1>
-      <div class="meta">생성: ${new Date().toLocaleString('ko-KR')}</div>
+      <div class="student">${esc(studentName)}${studentGroup ? ` <span style="font-weight:400;color:#666;font-size:12px;">· ${esc(studentGroup)}</span>` : ''}</div>
+      <div class="meta">저장 일자: ${esc(dateStr)} ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
       ${body.innerHTML}
     </body></html>`;
   const win = window.open('', '_blank', 'width=900,height=1100');
@@ -2113,7 +2122,6 @@ window.printGrowthReport = () => {
   win.document.close();
   // 렌더링 후 인쇄 (이미지·폰트 로드 대기)
   win.addEventListener('load', () => setTimeout(() => win.print(), 200));
-  // load 이벤트가 안 오는 경우 폴백
   setTimeout(() => { try { win.print(); } catch(_){} }, 800);
 };
 
