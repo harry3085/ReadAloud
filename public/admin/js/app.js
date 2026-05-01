@@ -195,7 +195,7 @@ const pageLabels = {
   'student-active':'재원생 관리', 'student-pause':'휴원생 관리',
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
   'test-list':'시험 목록',
-  'score-report':'성적 리포트', 'score-personal':'개인별 분석',
+  'score-report':'성적 리포트', 'score-personal':'성장 리포트',
   message:'메시지 관리', notice:'공지 관리', hwfile:'숙제파일 관리', payment:'결제 관리',
   quotaUsage:'AI 사용량',
   generator:'AI OCR',
@@ -1804,19 +1804,87 @@ window.showScoreDetail = async(scoreId, testId) => {
     `);
   }catch(e){ showToast('상세 불러오기 실패: '+e.message); }
 };
+// 학생 목록 캐시 (검색·트리 재렌더 시 재사용)
+let _personalStudents = [];
+const _personalGroupOpen = new Set();   // 펼쳐진 반 이름들
+let _personalSelectedUid = null;
+
 async function loadPersonalStudentList(){
-  const el=document.getElementById('personalStudentList');
   try{
     const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-    const students=snap.docs.map(d=>({id:d.id,...d.data()}));
-    el.innerHTML=students.map(u=>`
-      <div onclick="loadPersonalScore('${u.id}')" style="padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${(u.name||'?').charAt(0)}</div>
-        <div><div style="font-weight:600;">${u.name}</div><div style="font-size:11px;color:var(--gray);">${esc(u.group)||'-'}</div></div>
-      </div>
-    `).join('');
+    _personalStudents = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 기본: 모든 반 펼침
+    _personalGroupOpen.clear();
+    new Set(_personalStudents.map(s => s.group || '(반 미지정)')).forEach(g => _personalGroupOpen.add(g));
+    renderPersonalStudentTree();
   }catch(e){console.warn(e);}
 }
+
+window.renderPersonalStudentTree = () => {
+  const el = document.getElementById('personalStudentList');
+  if (!el) return;
+  const kw = (document.getElementById('personalStudentSearch')?.value || '').trim().toLowerCase();
+
+  // 매칭 학생 필터
+  const matched = !kw ? _personalStudents : _personalStudents.filter(u => {
+    return (u.name||'').toLowerCase().includes(kw)
+        || (u.group||'').toLowerCase().includes(kw)
+        || (u.grade||'').toLowerCase().includes(kw)
+        || (u.username||'').toLowerCase().includes(kw);
+  });
+
+  // 반별 그룹화
+  const byGroup = {};
+  for (const u of matched) {
+    const g = u.group || '(반 미지정)';
+    (byGroup[g] = byGroup[g] || []).push(u);
+  }
+  const groups = Object.keys(byGroup).sort((a,b) => a.localeCompare(b, 'ko'));
+  // 검색 중이면 매칭된 반은 자동 펼침
+  if (kw) groups.forEach(g => _personalGroupOpen.add(g));
+
+  if (groups.length === 0) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">검색 결과 없음</div>';
+    return;
+  }
+
+  el.innerHTML = groups.map(g => {
+    const students = byGroup[g].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'));
+    const isOpen = _personalGroupOpen.has(g);
+    const arrow = isOpen ? '▾' : '▸';
+    const studentRows = isOpen ? students.map(u => {
+      const selected = _personalSelectedUid === u.id;
+      return `
+      <div onclick="loadPersonalScore('${esc(u.id)}')"
+           style="padding:8px 12px 8px 28px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;${selected ? 'background:var(--teal-light);' : ''}"
+           onmouseover="this.style.background='${selected ? 'var(--teal-light)' : '#f8f9fa'}'"
+           onmouseout="this.style.background='${selected ? 'var(--teal-light)' : ''}'">
+        <div style="width:24px;height:24px;border-radius:50%;background:${selected ? 'var(--teal-dark)' : 'var(--teal)'};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${esc((u.name||'?').charAt(0))}</div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-weight:${selected ? '700' : '600'};color:${selected ? 'var(--teal)' : 'var(--text)'};font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(u.name||'')}</div>
+          ${u.grade ? `<div style="font-size:10px;color:var(--gray);">${esc(u.grade)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('') : '';
+
+    return `
+      <div>
+        <div onclick="togglePersonalGroup('${esc(g)}')"
+             style="padding:9px 12px;background:#f8f9fa;border-bottom:1px solid #eee;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#475569;user-select:none;">
+          <span style="font-size:10px;width:10px;display:inline-block;">${arrow}</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g)}</span>
+          <span style="font-size:10px;color:var(--gray);font-weight:400;">${students.length}</span>
+        </div>
+        ${studentRows}
+      </div>`;
+  }).join('');
+};
+
+window.togglePersonalGroup = (groupName) => {
+  if (_personalGroupOpen.has(groupName)) _personalGroupOpen.delete(groupName);
+  else _personalGroupOpen.add(groupName);
+  renderPersonalStudentTree();
+};
 window.loadPersonalScore = async(uid) => {
   if(!uid)return;
   const detail=document.getElementById('personalDetail');
@@ -1833,10 +1901,66 @@ window.loadPersonalScore = async(uid) => {
     const scores=scoresSnap.docs.map(d=>d.data())
       .sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
     const avg=scores.length?Math.round(scores.reduce((s,r)=>s+r.score,0)/scores.length):0;
+
+    // 트리에서 활성 학생 마킹 + history 사전 로드
+    _personalSelectedUid = uid;
+    renderPersonalStudentTree();
+    let history = [];
+    try {
+      const histSnap = await getDocs(query(
+        collection(db, 'growthReports'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('studentUid', '==', uid),
+        orderBy('generatedAt', 'desc'),
+        limit(10),
+      ));
+      history = histSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) { console.warn('[history fetch]', e.message); }
+    _grHistoryCache = history;
+    _grStudentUid = uid;
+
+    // 이력 표 (또는 안내문)
+    const historyHtml = history.length === 0
+      ? `<div style="padding:14px 16px;text-align:center;color:var(--gray);font-size:12px;background:#f8fafc;border-radius:8px;">이전 성장 리포트가 없습니다. [📈 새 리포트 생성] 클릭 시 첫 리포트를 만들어요.</div>`
+      : `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <thead style="background:#f8fafc;">
+            <tr>
+              <th style="text-align:left;padding:8px 10px;font-weight:600;">생성일</th>
+              <th style="text-align:right;padding:8px 10px;font-weight:600;">평균</th>
+              <th style="text-align:right;padding:8px 10px;font-weight:600;">응시</th>
+              <th style="text-align:left;padding:8px 10px;font-weight:600;">요약</th>
+              <th style="text-align:center;padding:8px 6px;font-weight:600;width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+          ${history.map(h => {
+            const at = h.generatedAt?.toDate?.() ? h.generatedAt.toDate() : new Date();
+            const dateStr = at.toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+            const avgScore = h.report?.avgScore ?? '-';
+            const totalAtt = h.report?.totalAttempts ?? '-';
+            const summary = (h.report?.summary || '').slice(0, 60);
+            return `<tr style="cursor:pointer;border-bottom:1px solid #f0f0f0;"
+                       onclick="grShowFromList('${esc(h.id)}')"
+                       onmouseover="this.style.background='#fef2ec'" onmouseout="this.style.background=''">
+              <td class="td-sub" style="padding:8px 10px;">${esc(dateStr)}</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:600;">${avgScore}점</td>
+              <td style="padding:8px 10px;text-align:right;color:var(--gray);">${totalAtt}회</td>
+              <td style="padding:8px 10px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;max-width:0;white-space:nowrap;">${esc(summary)}${summary.length >= 60 ? '…' : ''}</td>
+              <td style="padding:8px 6px;text-align:center;">👁</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>`;
+
     detail.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <div class="card-title" style="margin:0;">${esc(u.name)} · ${esc(u.group)||'-'}</div>
-        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="openGrowthReport('${esc(uid)}')">📈 AI 성장 리포트</button>
+        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="openGrowthReport('${esc(uid)}')">📈 새 리포트 생성</button>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📚 이전 성장 리포트${history.length ? ` (${history.length}건)` : ''}</div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${historyHtml}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;text-align:center;">
@@ -1928,6 +2052,12 @@ window.openGrowthReport = async (uid) => {
     _grHistoryCache = history;
     _grStudentUid = uid;
     _grRenderModal(data.report, data.reportId, uid, history, data.reportId);
+
+    // 학생 detail 의 이력 표도 갱신 (모달 닫고 봤을 때 최신 반영)
+    if (typeof loadPersonalScore === 'function' && _personalSelectedUid === uid) {
+      // 백그라운드 갱신 — 모달은 그대로 유지
+      setTimeout(() => loadPersonalScore(uid), 100);
+    }
   } catch(e) {
     showToast('네트워크 에러: ' + e.message);
   }
@@ -1935,6 +2065,13 @@ window.openGrowthReport = async (uid) => {
 
 // 이력 항목 클릭 — 캐시에서 찾아서 본문만 교체 (재호출 X)
 window.grSelectHistory = (reportId) => {
+  const item = _grHistoryCache.find(h => h.id === reportId);
+  if (!item) { showToast('이력 데이터 없음'); return; }
+  _grRenderModal(item.report, item.id, _grStudentUid, _grHistoryCache, item.id);
+};
+
+// 학생 detail 의 이력 표 행 클릭 — 모달로 해당 리포트 표시 (생성 X)
+window.grShowFromList = (reportId) => {
   const item = _grHistoryCache.find(h => h.id === reportId);
   if (!item) { showToast('이력 데이터 없음'); return; }
   _grRenderModal(item.report, item.id, _grStudentUid, _grHistoryCache, item.id);
