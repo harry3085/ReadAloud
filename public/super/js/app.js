@@ -697,11 +697,42 @@ window.exportAcademyBackup = async (academyId) => {
   }
 };
 
+// plan 의 byTier 키들을 학생 한도 select option HTML 로 변환
+// (Free=['10'], Lite/Std/Pro=['30','60','100']) — selectedVal 매칭 + 폴백
+function _planTierOptions(planId, selectedVal) {
+  const plan = _plansCache[planId] || {};
+  const tiers = Object.keys(plan.byTier || {});
+  const opts = (tiers.length ? tiers : ['30','60','100']);
+  // selectedVal 이 옵션에 없으면 첫 옵션 강제 선택
+  let sel = String(selectedVal || '');
+  if (!opts.includes(sel)) sel = opts[0];
+  return opts.map(t => `<option value="${esc(t)}"${t === sel ? ' selected' : ''}>${esc(t)}명</option>`).join('');
+}
+
+// 학원 생성 모달의 plan 변경 시 학생 한도 select 옵션 갱신
+window._onNewAcPlanChange = () => {
+  const planId = document.getElementById('newAcPlan')?.value;
+  const limitEl = document.getElementById('newAcLimit');
+  if (!planId || !limitEl) return;
+  limitEl.innerHTML = _planTierOptions(planId, limitEl.value);
+};
+
+// 학원 편집 모달의 plan 변경 시 학생 한도 select 옵션 갱신
+window._onAcPlanChange = () => {
+  const planId = document.getElementById('acPlan')?.value;
+  const limitEl = document.getElementById('acLimit');
+  if (!planId || !limitEl) return;
+  limitEl.innerHTML = _planTierOptions(planId, limitEl.value);
+};
+
 // ── 신규 학원 추가 모달 ──────────────────────────────
 window.openAcademyCreateModal = () => {
   const planOpts = Object.keys(_plansCache).length
     ? Object.keys(_plansCache).map(pid => `<option value="${esc(pid)}">${esc(_plansCache[pid].displayName || pid)}</option>`).join('')
     : '<option value="lite">Lite</option><option value="standard">Standard</option><option value="pro">Pro</option>';
+  // 첫 plan 의 byTier 옵션을 학생 한도 select default 로
+  const firstPlanId = Object.keys(_plansCache)[0] || 'lite';
+  const initialLimitOpts = _planTierOptions(firstPlanId);
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
   box.innerHTML = `
@@ -716,11 +747,9 @@ window.openAcademyCreateModal = () => {
           <input id="newAcSubdomain" type="text" placeholder="영소문자/숫자/_/- (예: abc)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:monospace;"></div>
         <div style="display:flex;gap:12px;">
           <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
-            <select id="newAcPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+            <select id="newAcPlan" onchange="_onNewAcPlanChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
           <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
-            <select id="newAcLimit" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
-              <option value="30">30명</option><option value="60">60명</option><option value="100">100명</option>
-            </select></div>
+            <select id="newAcLimit" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${initialLimitOpts}</select></div>
           <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">가입 경로</div>
             <select id="newAcChannel" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
               <option value="">선택</option>
@@ -908,9 +937,9 @@ function _renderAcmBasic(a, adminUser) {
 
     <div style="display:flex;gap:12px;">
       <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">플랜</div>
-        <select id="acPlan" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
+        <select id="acPlan" onchange="_onAcPlanChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${planOpts}</select></div>
       <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">학생 한도</div>
-        <input id="acLimit" type="number" min="0" value="${a.studentLimit || 30}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+        <select id="acLimit" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${_planTierOptions(a.planId, a.studentLimit)}</select></div>
       <div style="flex:1;"><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">결제 상태</div>
         <select id="acStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
           <option value="active" ${a.billingStatus === 'active' ? 'selected' : ''}>active</option>
