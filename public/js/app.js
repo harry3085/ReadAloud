@@ -565,11 +565,17 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   const retakeBadge = (isCompleted && ui.showRetakeBadge)
     ? `<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">↻ 다시 풀기</span>`
     : '';
+  // 단어시험 + vocabOptions.format='speaking' 이면 🎤 말하기 배지 표시
+  const isSpeaking = type === 'vocab' && t.vocabOptions?.format === 'speaking';
+  const speakingBadge = isSpeaking
+    ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">🎤 말하기</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${esc(t.name||ui.defaultName)}</div>
+          ${speakingBadge}
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>${retakeBadge}`
             : `${latestBadge}<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
