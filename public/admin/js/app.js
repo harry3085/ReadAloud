@@ -1313,7 +1313,10 @@ async function loadMessages(){
     if(drafts.length) html += sectionHeader('💾 저장된 초안', drafts.length) + drafts.map(renderDraft).join('');
     if(sent.length)   html += sectionHeader('📤 발송 이력', sent.length) + sent.map(renderSent).join('');
     el.innerHTML = html;
-  }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
+  }catch(e){
+    console.error('[loadMessages]', e);
+    el.innerHTML=`<div style="color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+  }
 }
 
 // 초안 삭제 — userNotifications cascade 불필요 (안 보냈으니 자녀 doc 없음)
@@ -1333,15 +1336,22 @@ window.showMsgReadStatus = async(pushId, title) => {
   if(titleEl) titleEl.innerHTML = `👁 읽음 현황 <span style="font-size:13px;color:var(--text);font-weight:600;">${esc(title)}</span>`;
   listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
   try{
-    // 이 알림(pushId)에 해당하는 userNotifications 조회
-    const snap = await getDocs(query(collection(db,'userNotifications'),where('pushId','==',pushId)));
+    // 이 알림(pushId)에 해당하는 userNotifications 조회 — academyId 필터 필수
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('pushId','==',pushId),
+    ));
 
-    // pushId 없는 경우 (구버전 알림) - createdAt 기준으로 title+body 매칭
     let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
 
     if(!notifs.length){
-      // pushId 없는 구버전: title로 fallback
-      const fbSnap = await getDocs(query(collection(db,'userNotifications'),where('title','==',title)));
+      // pushId 없는 구버전: title 로 fallback (academyId 필터 동반)
+      const fbSnap = await getDocs(query(
+        collection(db,'userNotifications'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('title','==',title),
+      ));
       notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
     }
 
@@ -1399,16 +1409,20 @@ window.delMsg = async(id) => {
   // 발송 이력 삭제 + 학생 측 userNotifications 도 cascade 삭제 (학생 앱에서 사라짐)
   if(!(await showConfirm('삭제할까요?', '학생 알림함에서도 함께 사라집니다.'))) return;
   try {
-    // pushId 매칭으로 학생별 알림 doc 일괄 삭제
-    const userNotifSnap = await getDocs(query(collection(db,'userNotifications'),where('pushId','==',id)));
+    // pushId + academyId 매칭 (academyId 필터 없으면 Rules 거부)
+    const userNotifSnap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('pushId','==',id),
+    ));
     await Promise.all(userNotifSnap.docs.map(d => deleteDoc(d.ref)));
     // 발송 이력 본체 삭제
     await deleteDoc(doc(db,'pushNotifications',id));
     showToast(`삭제 완료 (학생 알림 ${userNotifSnap.size}건 포함)`);
     await loadMessages();
   } catch(e) {
-    console.warn(e);
-    showToast('삭제 실패: ' + e.message);
+    console.error('[delMsg]', e);
+    showToast('삭제 실패: ' + (e.message || e.code));
   }
 };
 
