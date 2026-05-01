@@ -1165,3 +1165,241 @@ admin/app.js 제거된 함수들 (216줄 ↓):
 - ✅ AI 프롬프트·클린업 프리셋 글로벌 default Firestore 이전 (Option A)
 - ✅ 클린업 프리셋 동기화 모델 (per-preset reset / 기본 삭제 불가)
 - ✅ firebase-admin 초기화 함정 작업 규칙 명문화
+
+---
+
+## 2026-05-01: 한도 재설계 (T1~T9) + 성장 리포트 + 말하기 시험 + 다수 청소
+
+당일 SW v209 → v245 (~50+ commit). 인프라·기능·UX 정비 종합 세션.
+
+### 1) 타임존 KST 통일 (`1154510`, `1a23ab6`)
+모든 날짜 처리 UTC → KST 통일. 5/1 새벽 KST 기준 자동 리셋 누락 버그 발견.
+- `api/_lib/quota.js _currentYearMonth`
+- `public/{admin,js,super}/js/app.js _ymdKST` 헬퍼
+- 학원·학생 앱 `_logApiCall`, `loadApiUsage`, super 앱 `_todayYMD`, `_thisMonthRange`, `_fmtDate`/`_fmtDateTime`
+- 5개 파일 (학생앱·학원장앱·super앱·서버·진단도구) — 19개 인스턴스 KST 변환
+- **새 작업 규칙**: KST 통일은 한 번에 — 부분 통일 시 doc ID/표시 어긋남
+
+### 2) 한도 재설계 T1~T9 (커밋 17개)
+HANDOFF `quota-redesign-tasks.md` 따라 **5분류 한도 + 학생 구간별 byTier 차등화**.
+
+#### T1 (`62a030e`) — plans-schema.js 5분류 + byTier
+- `aiQuotaPerMonth` 단일 → `ocrPerMonth` + `cleanupPerMonth` + `generatorPerMonth` 3분리
+- `perTypeQuota.recording.{check,feedback}` → `recordingPerMonth` 단일
+- `growthReportPerMonth` 신규
+- Free 5명→10명 확대, OCR 30/Cleanup 60/Generator 50
+- `STUDENT_TEST_TIERS` 상수 추가
+- `scripts/lib/quota-helper.js` 신규
+
+#### T2 (`61784a3`) — quota.js 5분류 분리 + 'ai' deprecated
+- `QUOTA_CONFIG` 상수: counterField·limitField·label
+- `'ai'` → `'generator'` 자동 매핑 + 콘솔 경고
+- `plan.byTier[tier]` 우선, customLimits override
+- `??` 사용 (0 함정 방지)
+
+#### T3 (`83689ce`) — API 호출부 quotaKind + growth-report placeholder
+- `ocr/cleanup-ocr/generate-quiz` 'ai' → 분류 이름
+- `api/growth-report.js` placeholder
+
+#### T4 (`b40f13b`) — academies 5분류 카운터 백필
+- 학원 6곳 모두 신 필드 4개 0으로 추가
+
+#### T5 (`5f654cd`) — 학원장 [📊 AI 사용량] 페이지
+- 5분류 진행 바 (80%/95% 색상 변경)
+- override 시 `(override)` 배지
+
+#### 월 리셋 버그 fix (`d0456ad`)
+- `incrementUsage` 의 `needsReset` 시 자기만 1 → 모든 카운터 0 + 자기 1
+- default 학원의 4월 잔존값 정리
+
+#### 대시보드 위젯 갱신 (`62f7ae9`)
+- AI 월 호출 = OCR + Cleanup + Generator 합산
+- `[📊 상세 →]` 링크 추가
+
+#### T6 (`dc6cdfd`, `f36fc94`, `78cb7f8`) — super_admin [⚙️ 한도 관리] 탭
+- 4 플랜 × 구간 한도 카드 + 편집 모달 (영향 학원 수 표시)
+- 학원별 customLimits 검색·편집
+- 한도 변경 이력 (adminLogs `update_plan_quota`/`update_custom_limits`)
+- composite index `adminLogs (action ASC + at DESC)` 배포
+
+#### override ● 표시 (`fd14310`, `33015e8`)
+- 학원 관리 행 플랜 옆 빨간 ●
+- 호버 툴팁 한국어 라벨 (📌 한도 Override\n· OCR: 300 ...)
+
+#### T7 (`c11bba9`) — 학원 모달 [⚙️ Override] 탭
+- 5탭 구조 (기본/타임라인/메모/사용량/Override)
+- 자체 [💾 Override 저장] 버튼 + 사유 필수
+- 저장 후 학원 행 ● 즉시 반영
+
+#### T8 (`581cd8b`) — 80%/95% 한도 토스트
+- `quota.js incrementUsage` 가 `res` 받으면 `X-Quota-Used/Limit/Percent/Kind` 응답 헤더
+- 5개 API 호출부에 `{ ...q, res }` 전파
+- `_geminiFetch` wrapper 가 `_checkQuotaWarning(res)` 자동 검사
+- `_quotaWarned[kind]` 메모리 캐시 — 같은 분류·임계 중복 회피
+
+#### 학원 관리 사용량 셀 5분류 (`2162836`)
+- AI 3종 + 운영 2종 그룹 (학생 / OCR·정리·생성 / 녹음·리포트)
+
+#### T9 (`e1f32cf`) — 진단 + 인수인계
+- `scripts/diag/check-quota-state.js` 신규
+- `docs/session-2026-05-01-quota-redesign.md`
+
+#### 옛 customLimits 입력 제거 (`b315d8e`)
+- 학원 모달 기본정보 탭의 acLimitAi/acLimitRec 제거
+- saveAcademy 충돌 위험 (T7 customLimits 통째 덮어쓰기) 차단
+
+#### deprecated `aiCallsThisMonth` 정리 (`0155b6b`)
+- `scripts/migrate/remove-deprecated-ai-counter.js` 신규 + 6학원 적용
+- super 앱 `_renderAcmUsage`/`_loadAcademyTop10` stale 5분류 합산 갱신
+- 학원 생성 3 파일 5분류 카운터로 대체
+
+#### 학생 한도 byTier 정합 (`d651e53`, `bf0e76a`)
+- 학원 생성/편집 모달 학생 한도 select 를 plan.byTier 키 동적
+- Free → `[10]` / Lite/Std/Pro → `[30/60/100]`
+- plan select 순서 Free→Lite→Standard→Pro (`order` 기준)
+- saloud (Free·30) → studentLimit 10 정정
+
+### 3) Claims 오염 진단·수정 (`dc3febc` 외)
+- moon3085@naver.com 의 Custom Claims `role='super_admin'` 잘못 박힘 발견
+- `auth.setCustomUserClaims` 으로 `academy_admin` 강제 교정
+- 학원장 앱 가드 추가:
+  ```js
+  if (tk.claims?.role === 'super_admin') { window.location.href='/super/'; return; }
+  ```
+- `sync-claims` 의 super_admin 보호 정책 한계 — 직접 setCustomUserClaims 필요
+
+### 4) AI OCR 안정화
+- 이미지 자동 압축 (`64dfd75`): Vercel 4.5MB 한도 → 1800px JPEG q=0.85
+  - 압축 임계 3MB / HEIC/HEIF 항상 압축
+  - 일괄 토스트 + 썸네일 📦 배지 + 413 명확 메시지
+- 파일명 자연 정렬 (`017fd0a`): `localeCompare(... { numeric: true })`
+- 다중 페이지 병합 모달 (`304fca7`, `2bf23f3`): 2개+ 선택 + [수정] → 병합 (원본 삭제 옵션)
+- Page 헤더 [해제] 버튼 (`80d72bd`): Chapter/Book 패턴 통일
+
+### 5) AI Generator 단순화 (`3214156`)
+- 난이도 학년 10단계 → 상/중/하 3단계
+  - 클라 `_qgMapDifficulty` + 서버 `_normalizeDifficulty` 매핑 헬퍼
+  - 프롬프트 'Target student grade level' → 'Target difficulty'
+- 통과점수 옵션 5곳 모두 제거 (시험 배정 모달이 표준)
+- 빈칸채우기 규칙 기반 ~120줄 dead code 제거 — 항상 AI 호출
+
+### 6) Growth Report MVP
+
+#### `0356664` — 서버 + Rules + Index + 모달 + PDF
+- `api/growth-report.js`: 학생 정보 + scores 30일 + Gemini JSON (responseSchema) + growthReports 저장
+- 폴백 체인 (2.5-flash-lite → 2.5-flash → 3.1-flash-lite-preview)
+- Firestore Rules: read=학원장+자기학생, create=서버만, update 차단
+- 학원장 앱 [개인별 분석] → [📈 AI 성장 리포트] 모달 (5섹션) + PDF 인쇄
+
+#### `0a390a5` — scores 쿼리 멀티테넌시 fix
+- `where('userId','==',uid)` → `where('uid','==',uid) + where('academyId','==',MY)` (Rules 통과)
+
+#### `ba85ee3` — 인쇄 색상 fix
+- `print-color-adjust: exact !important` 강제 — 배경 색·그라디언트 보존
+
+#### `4884461` — 이력 드롭다운 (옵션 A)
+- 모달 헤더 우측 [📚 이력 (N) ▾] — history 10건 사전 fetch
+- `grSelectHistory` — 캐시에서 본문만 교체 (재호출 X)
+
+#### `c9f666d` — PDF 파일명·헤더 학생 이름·날짜
+- title: `성장리포트_홍길동_2026-05-01_1430.pdf`
+
+#### `d7f7806` — 메뉴명 + 트리 + 이력 표시
+- '개인별 분석' → '성장 리포트'
+- 학생 트리 (반-학생 + 검색 + 펼치기/접기)
+- 학생 선택 시 detail 영역에 이전 리포트 표 (재호출 X)
+- [📈 새 리포트 생성] 버튼
+
+#### `c1defff` — 트리 기본 닫힘 + `f68c169` 삭제 버튼
+- 이력 표 행 끝 🗑 + 모달 풋터 [🗑 이 리포트 삭제]
+
+### 7) 단어 말하기 시험 (T1~T7)
+HANDOFF `HANDOFF-speaking.md` 의도 → 현 시스템(vocab v2) 의 한 형식으로 통합.
+
+#### T1 (`e64ab19`) — 채점 헬퍼
+- `_spkGradeAnswer` + `_spkLevenshteinSimilarity`
+- `SPK_STRICTNESS_CONFIG` (lenient 0.7 / normal 0.8 / strict 1.0)
+
+#### T2+T3 (`e726b17`) — 학생앱 마이크 UI + `_vqState` 분기
+- vocab format 종류에 'speaking' 추가
+- `vqSpeakArea` HTML (vocabQuiz 안 조건부)
+- `vqSpkStart`/`_vqSpkFinalize` — Web Speech API en-US 5 alternatives
+- 30초 타이머 그대로, 2회 재시도, 권한 거부 안전 처리
+- 결과 화면(`_vqBuildDetail`) 에 들린 단어 + 정답 표시
+
+#### T4 (`32ffc9c`) — 시험 배정 모달
+- `tpVocabFormat` 에 `🎤 말하기` 옵션
+- 노란 박스 — 엄격도 select (`tpSpeakingStrictness`)
+- speaking 선택 시 방향·비율 옵션 자동 무력화 (ko2en 강제)
+
+#### T7 (`dc5c686`, `9c70c6b`, `af5b7b6`) — 시험 목록 배지
+- 학원장: 시험명 옆 작은 🎤 말하기 배지 (유형은 단어시험 통일)
+- 학생앱: 시험 카드 시험명 옆 동일 배지
+
+### 8) 학생앱·학원장앱 메뉴 순서 통일
+- 사이드바 [빈칸채우기] [언스크램블] 위치 교체 (`0c4ab15`)
+- AI Generator `QG_TYPE_OPTIONS` 동일 (`c566948`)
+- 학생앱 홈 메뉴 (`2373cb2`, `116e0e4`):
+  단어 → 빈칸채우기 → 언스크램블 → 교재이해 → 녹음숙제 → 랭킹
+
+### 9) 자잘한 버그·UX fix
+- 메시지 cascade 삭제 academyId 필터 (`60f0d37`) — 권한 거부로 "불러오기 실패" 해결
+- 시험 진행 현황 미통과 점수 표시 (`93381b2`) — `c.latestScore` 폴백
+- 시험관리 체크박스 클릭 시 스크롤 보존 (`09ea9a2`) — `tpSetsScroll` id + scrollTop 저장/복원
+
+---
+
+## 작업 규칙 갱신 (2026-05-01)
+
+신규:
+- **타임존 KST 통일**: 모든 날짜 처리(`apiUsage` doc ID, `lastResetAt`, `scores.date`, `pushNotifications.date`, super 앱 표시 등)는 KST 기준. 부분 통일은 doc ID 와 표시 어긋남.
+- **Custom Claims sync 한계**: `sync-claims` 의 super_admin 보호 정책 — 잘못 박힌 super_admin claims 는 자동 안 풀어줌. 직접 `setCustomUserClaims` 호출 필요.
+- **응답 헤더로 사용량 통보**: API 가 `incrementUsage({ ...q, res })` 호출하면 `X-Quota-*` 헤더 자동 set. `_geminiFetch` wrapper 가 자동 검사 + 토스트.
+- **`needsReset` 모든 카운터 0 리셋**: `incrementUsage` 의 월 자동 리셋 시 ALL_MONTHLY_COUNTERS 모두 0 + 자기 카운터 1. 한 카운터만 리셋 시 다른 분류 잔존 버그.
+- **plans `byTier` 키 정합**: 학원 학생 한도 select 는 `plan.byTier` 키 기반 동적. Free=`['10']`, 나머지=`['30','60','100']`. 자유 입력은 `customLimits.maxStudents` 로만.
+- **모달 재렌더 시 스크롤 보존**: 체크박스 토글 등 부분 변경에 전체 `innerHTML=` 재렌더 시 스크롤 컨테이너에 id 부여 + scrollTop 저장/복원.
+- **`userCompleted` 표시 시 `latestScore` 폴백**: `c.score`/`c.passed`/`c.date` 는 최고점 통과 시에만 박힘. 미통과 학생 표시 시 `c.latestScore`/`c.latestPassed`/`c.latestAt` 폴백 필수.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-01)
+- `public/admin/js/app.js`: ~9100줄 (+200, 한도 재설계 + 성장 리포트 + 말하기 시험)
+- `public/super/js/app.js`: ~3000줄 (+300, T6 한도 관리 + T7 Override 탭)
+- `public/js/app.js`: ~4350줄 (+200, 말하기 시험 통합)
+- `api/_lib/quota.js`: 5분류 + X-Quota-* 헤더 (~170줄)
+- `api/growth-report.js`: ~250줄 (placeholder → 실 구현)
+- `firestore.rules`: +growthReports 규칙
+- `firestore.indexes.json`: +adminLogs(action+at) / growthReports / scores(uid+academyId+date) / userNotifications×2
+- 신규 스크립트: `check-quota-state` / `remove-deprecated-ai-counter` / `reset-monthly-counters`
+- SW 캐시: `kunsori-v245`
+
+## 진행률 (2026-05-01 종료 시점)
+- 멀티테넌시 인프라: **~95%**
+- **한도 재설계 (T1~T9): ~100%** (검증 도구 + 인수인계 완료)
+- super_admin 앱: **~95%** (한도 관리 + Override 탭 추가)
+- **성장 리포트 MVP: ~95%** (학원장 흐름 완료, 학생앱 진입점은 Phase B)
+- **말하기 시험: ~100%** (vocab format='speaking' 통합)
+- 알림 시스템: **~95%**
+- Phase 5 출시 준비: **0%**
+
+## 다음 세션 후보 (2026-05-01 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제
+2. **SuperAdmin T7 운영 가이드** — `docs/superadmin-operations-guide.md` 한국어 매뉴얼
+3. **학원장 대시보드 달력** ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
+4. **학원 설정 페이지 (화이트라벨)** ([project_academy_settings_page.md](memory/project_academy_settings_page.md))
+5. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+6. **Growth Report Phase B** — 학생 앱 진입점 / 기간 자유 선택 / 모드별 추세 차트
+
+**완료 (이 세션, 2026-05-01)**:
+- ✅ 타임존 KST 통일 (5 파일)
+- ✅ 한도 재설계 T1~T9 (5분류 분리·byTier 차등화)
+- ✅ super_admin 한도 관리 탭 + 학원 모달 Override 탭
+- ✅ 80%/95% 한도 토스트 (X-Quota-* 헤더)
+- ✅ 성장 리포트 MVP (서버 + 모달 + PDF + 이력 + 삭제)
+- ✅ 단어 말하기 시험 (vocab format='speaking' + Web Speech API)
+- ✅ AI OCR 자동 압축 + 파일명 자연 정렬 + 페이지 병합
+- ✅ AI Generator 옵션 단순화 (난이도 3단계 + 통과점수·규칙기반 제거)
+- ✅ deprecated aiCallsThisMonth 필드 제거 + super 앱 stale 갱신
+- ✅ 학생 한도 byTier 정합 + plan select 순서
+- ✅ Claims 오염 진단·수정 + 학원장 앱 가드
+- ✅ 메시지 cascade academyId / 시험 미통과 점수 / 시험관리 스크롤 보존
