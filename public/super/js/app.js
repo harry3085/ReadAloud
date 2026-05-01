@@ -1363,15 +1363,21 @@ async function loadAcademies() {
       const u = a.usage || {};
       const p = planMap[a.planId] || {};
       const cl = a.customLimits || {};
-      const aiLimit = cl.aiQuotaPerMonth || p.limits?.aiQuotaPerMonth || '∞';
-      const recLimit = cl.recordingPerMonth || p.limits?.perTypeQuota?.recording?.check || '∞';
-      const aiOver = !!cl.aiQuotaPerMonth;
-      const recOver = !!cl.recordingPerMonth;
-      const mark = (overridden) => overridden ? '<span title="override" style="color:#f59e0b;">*</span>' : '';
+      const tier = String(a.studentLimit || 30);
+      const byTier = p.byTier || {};
+      const tl = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+      const cell = (cur, key, label) => {
+        const lim = cl[key] ?? tl[key];
+        const limStr = (typeof lim === 'number' && isFinite(lim)) ? lim : '∞';
+        return `${label} <b>${cur}</b>/${limStr}`;
+      };
       return `<div style="font-size:11px;line-height:1.5;">
         학생 <b>${u.activeStudentsCount || 0}</b>/${a.studentLimit || '∞'}<br>
-        AI <b>${u.aiCallsThisMonth || 0}</b>/${aiLimit}${mark(aiOver)}<br>
-        녹음 <b>${u.recordingCallsThisMonth || 0}</b>/${recLimit}${mark(recOver)}
+        ${cell(u.ocrCallsThisMonth || 0,        'ocrPerMonth',          'OCR')} ·
+        ${cell(u.cleanupCallsThisMonth || 0,    'cleanupPerMonth',      '정리')} ·
+        ${cell(u.generatorCallsThisMonth || 0,  'generatorPerMonth',    '생성')}<br>
+        ${cell(u.recordingCallsThisMonth || 0,  'recordingPerMonth',    '녹음')} ·
+        ${cell(u.growthReportThisMonth || 0,    'growthReportPerMonth', '리포트')}
       </div>`;
     };
 
