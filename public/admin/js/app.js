@@ -530,7 +530,7 @@ async function loadDashScores(){
     el.innerHTML=snap.docs.map((d,i)=>{
       const s=d.data();
       const t={};  // 레거시 tests fallback 제거 (Phase 6F)
-      const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || 'vocab');
+      const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
       const pct=s.score||0;
       const badge=pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
       // 교재명: bookName 우선, 없으면 unitName
@@ -1613,10 +1613,10 @@ window.loadScoreReport = async() => {
     const cls=document.getElementById('scoreClassFilter').value;
     const modeFilter=document.getElementById('scoreModeFilter').value;
 
-    // mode 필터: s.mode / s.testMode 둘 다 검사, 표준 키 기준
+    // mode 필터 — 마이그레이션 완료 후 mode 만 사용 (testMode 폴백 제거 2026-05-02)
     const filtered=scores.filter(s=>{
       const d=s.date||'';
-      const m = s.mode || s.testMode || '';
+      const m = s.mode || '';
       if (modeFilter && m !== modeFilter) return false;
       return(!from||d>=from)&&(!to||d<=to)&&(!cls||s.group===cls);
     });
@@ -1627,7 +1627,7 @@ window.loadScoreReport = async() => {
 
     // 정렬용 필드 정규화 (레거시 tests fallback 제거 — Phase 6F)
     _srData = filtered.map(s=>{
-      const m = s.mode || s.testMode || 'vocab';
+      const m = s.mode || 'vocab';
       return {
         ...s,
         bookName: s.bookName||s.unitName||'-',
@@ -1797,7 +1797,7 @@ window.showScoreDetail = async(scoreId, testId) => {
     const scoreDoc = await getDoc(doc(db,'scores',scoreId));
     if (!scoreDoc.exists()) { showAlert('입력 확인', '데이터 없음'); return; }
     const s = scoreDoc.data();
-    const mode = s.mode || s.testMode || '';
+    const mode = s.mode || '';
 
     // genTests 기반 상세 시도
     let genTest=null, comp=null;
@@ -2091,7 +2091,7 @@ window.loadPersonalScore = async(uid) => {
         <table>
           <thead><tr><th>No</th><th>유형</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
           <tbody>${scores.map((s,i)=>{
-            const modeHtml = _unifiedTypeBadge(s.testMode || s.mode || 'vocab');
+            const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
             const bookName=s.bookName||s.unitName||'-';
             const testName=s.testName||'-';
             return `<tr>

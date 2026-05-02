@@ -112,7 +112,7 @@ module.exports = async function handler(req, res) {
     }
     let totalAttempts = 0, totalSum = 0;
     for (const s of scores) {
-      const mode = s.testMode || s.mode;
+      const mode = s.mode;
       if (!modeBreakdown[mode]) continue;  // 알 수 없는 모드 무시
       modeBreakdown[mode].count++;
       modeBreakdown[mode].sum += (s.score || 0);
