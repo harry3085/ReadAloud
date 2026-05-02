@@ -99,7 +99,9 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
     quotaKind = 'generator';
   }
 
-  // 5) 한도 체크 (customLimits 우선, 없으면 plan.byTier[tier])
+  // 5) 한도 체크 — getEffectiveLimits 헬퍼 단일화 (customLimits > byTier[tier] > Infinity)
+  const { getEffectiveLimits } = require('./quota-helper');
+  const effective = getEffectiveLimits(plan, academy);
   let counterField = null;  // usage 의 어느 필드를 increment 할지
   let currentCount = 0;
   let limit = Infinity;
@@ -108,19 +110,14 @@ async function verifyAndCheckQuota({ idToken, quotaKind }) {
   if (quotaKind === 'student') {
     counterField = null; // 별도 처리 — increment 가 아닌 추가 시점
     currentCount = usage.activeStudentsCount || 0;
-    limit = overrides.maxStudents ?? academy.studentLimit ?? Infinity;
+    // helper 의 maxStudents 가 0 이면 academy.studentLimit 폴백 (legacy free plan)
+    limit = effective.maxStudents > 0 ? effective.maxStudents : (academy.studentLimit ?? Infinity);
     kindLabel = '학생 수';
   } else if (QUOTA_CONFIG[quotaKind]) {
     const cfg = QUOTA_CONFIG[quotaKind];
     counterField = cfg.counterField;
     currentCount = needsReset ? 0 : (usage[cfg.counterField] || 0);
-
-    // plan.byTier[tier] 우선, 없으면 ['30'], 그것도 없으면 첫 키, 최종 Infinity
-    const tier = String(academy.studentLimit || 30);
-    const byTier = plan.byTier || {};
-    const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
-    limit = overrides[cfg.limitField] ?? tierLimits[cfg.limitField] ?? Infinity;
-
+    limit = effective[cfg.limitField] ?? Infinity;
     kindLabel = cfg.label;
   } else {
     return { error: 'quotaKind 미지원: ' + quotaKind, status: 500 };
