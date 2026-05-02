@@ -33,6 +33,59 @@ function showToast(msg) {
   setTimeout(() => t.style.opacity = '0', 2500);
 }
 
+// 학원장 앱과 동일한 패턴 (modalBox 가 없는 super 앱은 native fallback)
+// — 이전엔 reconcileStorageNow 가 showConfirm/showAlert 호출 시 ReferenceError 로 silent fail
+function showAlert(title, sub = '') {
+  const box = document.getElementById('modalBox');
+  if (!box) {
+    // native fallback
+    window.alert(sub ? `${title}\n\n${sub}` : title);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    box.style.padding = '';
+    box.innerHTML = `
+      <div style="width:min(480px,92vw);display:flex;flex-direction:column;">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:16px;font-weight:700;line-height:1.4;">${esc(title)}</div>
+          ${sub ? `<div style="font-size:12px;color:var(--gray);margin-top:6px;white-space:pre-line;line-height:1.5;">${esc(sub)}</div>` : ''}
+        </div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+          <button class="btn btn-primary" id="alertOk">확인</button>
+        </div>
+      </div>`;
+    document.getElementById('modalOverlay').style.display = 'flex';
+    setTimeout(() => {
+      document.getElementById('alertOk').onclick = () => { closeModal(); resolve(); };
+    }, 50);
+  });
+}
+function showConfirm(title, sub = '') {
+  const box = document.getElementById('modalBox');
+  if (!box) {
+    return Promise.resolve(window.confirm(sub ? `${title}\n\n${sub}` : title));
+  }
+  return new Promise((resolve) => {
+    box.style.padding = '';
+    box.innerHTML = `
+      <div style="width:min(480px,92vw);display:flex;flex-direction:column;">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:16px;font-weight:700;line-height:1.4;">${esc(title)}</div>
+          ${sub ? `<div style="font-size:12px;color:var(--gray);margin-top:6px;white-space:pre-line;line-height:1.5;">${esc(sub)}</div>` : ''}
+        </div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-secondary" id="confirmCancel">취소</button>
+          <button class="btn btn-primary" id="confirmOk">확인</button>
+        </div>
+      </div>`;
+    document.getElementById('modalOverlay').style.display = 'flex';
+    setTimeout(() => {
+      document.getElementById('confirmOk').onclick = () => { closeModal(); resolve(true); };
+      document.getElementById('confirmCancel').onclick = () => { closeModal(); resolve(false); };
+    }, 50);
+  });
+}
+
 // ── 작업 로그 기록 (T2) ──────────────────────────────
 // 슈퍼 어드민의 모든 쓰기 작업을 adminLogs 에 기록. 실패해도 메인 작업은 계속.
 // details 에는 비밀번호 등 민감 값을 절대 넣지 않는다 — changedFields 키 목록만.
