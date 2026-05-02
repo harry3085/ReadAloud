@@ -117,22 +117,54 @@ module.exports = async (req, res) => {
     }
     if (!callerAcademyId) callerAcademyId = DEFAULT_ACADEMY_ID;
 
-    // 학생 한도 체크 (Phase 3)
+    // 학생 한도 체크 — customLimits.maxStudents > plan.byTier[tier].maxStudents > academy.studentLimit > Infinity
+    // race 방지: Firestore 트랜잭션으로 read + 예약 increment 묶음.
+    // Auth 생성 후 실패 시 별도 -1 롤백.
+    let _studentCounterReserved = false;
+    const _acadRef = db.doc('academies/' + callerAcademyId);
     try {
-      const acadSnap = await db.doc('academies/' + callerAcademyId).get();
-      if (acadSnap.exists) {
+      await db.runTransaction(async (tx) => {
+        const acadSnap = await tx.get(_acadRef);
+        if (!acadSnap.exists) return;
         const ad = acadSnap.data();
         const cur = (ad.usage && ad.usage.activeStudentsCount) || 0;
-        const limit = ad.studentLimit || Infinity;
-        if (cur >= limit) {
-          return res.status(429).json({
-            success: false,
-            error: `학생 수 한도 초과 (${cur}/${limit}). 플랜 업그레이드 또는 학생 한도 증설 필요.`,
-            limit, currentCount: cur,
-          });
+        // 효과적 한도 계산
+        const cl = ad.customLimits || {};
+        const planId = ad.planId;
+        let planTierMax = null;
+        if (planId) {
+          const planSnap = await tx.get(db.doc('plans/' + planId));
+          if (planSnap.exists) {
+            const plan = planSnap.data();
+            const tier = String(ad.studentLimit || 30);
+            const byTier = plan.byTier || {};
+            const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
+            planTierMax = tierLimits.maxStudents ?? null;
+          }
         }
+        const effectiveLimit = cl.maxStudents ?? planTierMax ?? ad.studentLimit ?? Infinity;
+        if (cur >= effectiveLimit) {
+          const err = new Error(`학생 수 한도 초과 (${cur}/${effectiveLimit}).`);
+          err.statusCode = 429;
+          err.limit = effectiveLimit;
+          err.currentCount = cur;
+          throw err;
+        }
+        // 한도 통과 — 예약 increment (race 방지)
+        tx.update(_acadRef, { 'usage.activeStudentsCount': FieldValue.increment(1) });
+        _studentCounterReserved = true;
+      });
+    } catch (e) {
+      if (e.statusCode === 429) {
+        return res.status(429).json({
+          success: false,
+          error: e.message + ' 플랜 업그레이드 또는 학생 한도 증설 필요.',
+          limit: e.limit, currentCount: e.currentCount,
+        });
       }
-    } catch (e) { console.warn('[createStudent] 학원 조회 실패:', e.message); }
+      console.warn('[createStudent] 한도 체크 트랜잭션 실패:', e.message);
+      // 트랜잭션 자체 실패 — 보수적으로 진행 (예약 안 됐으면 후단에서 +1 처리)
+    }
 
     // 2. 입력 검증
     if (!username || !name || !password) {
@@ -152,6 +184,10 @@ module.exports = async (req, res) => {
     // 3. username 중복 체크 (usernameLookup 기반)
     const lookupSnap = await db.doc('usernameLookup/' + lookupKey).get();
     if (lookupSnap.exists) {
+      // 예약 카운터 롤백
+      if (_studentCounterReserved) {
+        try { await _acadRef.update({ 'usage.activeStudentsCount': FieldValue.increment(-1) }); } catch (_) {}
+      }
       return res.status(409).json({ success: false, error: '이미 사용 중인 아이디입니다.' });
     }
 
@@ -160,6 +196,10 @@ module.exports = async (req, res) => {
     try {
       userRecord = await auth.createUser({ email, password, displayName: name });
     } catch (e) {
+      // 예약 카운터 롤백
+      if (_studentCounterReserved) {
+        try { await _acadRef.update({ 'usage.activeStudentsCount': FieldValue.increment(-1) }); } catch (_) {}
+      }
       if (e.code === 'auth/email-already-exists' || e.code === 'auth/email-already-in-use') {
         return res.status(409).json({
           success: false,
@@ -212,15 +252,20 @@ module.exports = async (req, res) => {
       });
       await batch.commit();
 
-      // 학생 카운터 +1 (Phase 3)
-      try {
-        await db.doc('academies/' + callerAcademyId).update({
-          'usage.activeStudentsCount': FieldValue.increment(1),
-        });
-      } catch (e) { console.warn('[createStudent] activeStudentsCount 증가 실패:', e.message); }
+      // 학생 카운터 +1 (트랜잭션에서 이미 예약됐으면 skip)
+      if (!_studentCounterReserved) {
+        try {
+          await _acadRef.update({
+            'usage.activeStudentsCount': FieldValue.increment(1),
+          });
+        } catch (e) { console.warn('[createStudent] activeStudentsCount 증가 실패:', e.message); }
+      }
     } catch (e) {
-      // Firestore 실패 — Auth 롤백
+      // Firestore 실패 — Auth 롤백 + 예약 카운터 롤백
       try { await auth.deleteUser(uid); } catch (_) {}
+      if (_studentCounterReserved) {
+        try { await _acadRef.update({ 'usage.activeStudentsCount': FieldValue.increment(-1) }); } catch (_) {}
+      }
       return res.status(500).json({
         success: false,
         error: 'Firestore 쓰기 실패. Auth 계정은 롤백됐습니다.',

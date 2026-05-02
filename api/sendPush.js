@@ -55,14 +55,21 @@ module.exports = async (req, res) => {
     if (!callerAcademyId) callerAcademyId = 'default';
 
     // 대상 학생 목록 수집 (자기 학원 학생만)
-    let users = []; // [{uid, fcmToken}]
+    // 멀티 디바이스 지원 — fcmTokens 배열 + fcmToken 레거시 둘 다 수집
+    let users = []; // [{uid, fcmToken, fcmTokens}]
+
+    const _push = (id, d) => users.push({
+      uid: id,
+      fcmToken: d?.fcmToken,
+      fcmTokens: Array.isArray(d?.fcmTokens) ? d.fcmTokens : [],
+    });
 
     if (target === 'all') {
       const snap = await db.collection('users')
         .where('academyId', '==', callerAcademyId)
         .where('role', '==', 'student')
         .get();
-      snap.forEach(doc => users.push({ uid: doc.id, fcmToken: doc.data().fcmToken }));
+      snap.forEach(doc => _push(doc.id, doc.data()));
     } else if (target.startsWith('uid:')) {
       const uid = target.replace('uid:', '');
       const snap = await db.collection('users').doc(uid).get();
@@ -70,7 +77,7 @@ module.exports = async (req, res) => {
         const d = snap.data();
         // super_admin 이 아니면 자기 학원 학생만 발송 가능
         if (caller.role === 'super_admin' || d.academyId === callerAcademyId) {
-          users.push({ uid: snap.id, fcmToken: d?.fcmToken });
+          _push(snap.id, d);
         }
       }
     } else {
@@ -79,7 +86,7 @@ module.exports = async (req, res) => {
         .where('role', '==', 'student')
         .where('group', '==', target)
         .get();
-      snap.forEach(doc => users.push({ uid: doc.id, fcmToken: doc.data().fcmToken }));
+      snap.forEach(doc => _push(doc.id, doc.data()));
     }
 
     if (users.length === 0) {

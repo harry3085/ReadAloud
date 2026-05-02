@@ -1,14 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "recSubmissions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "hwId", "order": "ASCENDING" },
-        { "fieldPath": "uid", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "notices",
       "queryScope": "COLLECTION",
       "fields": [

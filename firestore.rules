@@ -56,13 +56,21 @@ service cloud.firestore {
     }
 
     // ── 사용자 ───────────────────────────────────────────────
-    // read: 로그인 사용자 (학생 랭킹·관리자 전체 조회용 — 클라가 academyId 로 필터링)
-    //       향후 자기 학원만 보도록 강화 가능 (단, 모든 클라이언트 쿼리에 academyId 필터 강제 필요)
+    // read: 본인 / 같은 학원 사용자 / super_admin (cross-tenant 차단)
+    // create/update/delete: 같은 학원 admin 또는 super_admin (super_admin 은 academy 무관)
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin();
-      allow update: if isAdmin() || isOwner(userId);
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        isOwner(userId) ||
+        (resource != null && resource.data.academyId == myAcademyId())
+      );
+      allow create: if isSuperAdmin() ||
+                    (isAdmin() && request.resource.data.academyId == myAcademyId());
+      allow update: if isSuperAdmin() ||
+                    isOwner(userId) ||
+                    (isAdmin() && resource.data.academyId == myAcademyId());
+      allow delete: if isSuperAdmin() ||
+                    (isAdmin() && resource.data.academyId == myAcademyId());
     }
 
     // ── 그룹 ────────────────────────────────────────────────
