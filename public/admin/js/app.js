@@ -804,16 +804,28 @@ window.searchStudents = () => {
 window.toggleCheckAll = (cb) => {
   document.querySelectorAll('#studentTableBody input[type=checkbox]').forEach(c=>c.checked=cb.checked);
 };
+// 학원 활성 학생 카운터 조정 헬퍼 (status active 토글 시)
+async function _adjustActiveStudentCount(delta) {
+  if (!delta) return;
+  try {
+    await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'), {
+      'usage.activeStudentsCount': increment(delta),
+    });
+  } catch (e) { console.warn('[activeStudentsCount adjust]', e.message); }
+}
+
 window.bulkAction = async(action) => {
   const checked=[...document.querySelectorAll('#studentTableBody input[type=checkbox]:checked')].map(c=>c.value);
   if (!checked.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(action==='pause'){
     if(!await showConfirm(`선택한 ${checked.length}명을 휴원처리 할까요?`))return;
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:_ymdKST()});
+    await _adjustActiveStudentCount(-checked.length);  // active → pause: -N
     showToast('휴원처리 완료!'); await loadStudents('active');
   } else if(action==='out'){
     if(!await showConfirm(`선택한 ${checked.length}명을 퇴원처리 할까요?`))return;
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
+    await _adjustActiveStudentCount(-checked.length);  // active → out: -N
     showToast('퇴원처리 완료!'); await loadStudents('active');
   } else if(action==='assign'){
     const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
@@ -843,6 +855,7 @@ window.doAssignClass = async(ids) => {
 window.restoreStudent = async(id) => {
   if(!await showConfirm('재원처리 할까요?'))return;
   await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
+  await _adjustActiveStudentCount(+1);  // pause/out → active: +1
   showToast('재원처리 완료!');
   if(currentPage==='student-pause') await loadStudents('pause');
   else await loadStudents('out');
@@ -2441,9 +2454,10 @@ document.getElementById('modalOverlay').addEventListener('click', e => {
 async function deleteUserFull(uid, name){
   if(!(await showConfirm(`"${name}" 학생을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`))) return false;
   try{
+    const idToken = await currentUser.getIdToken();
     const res = await fetch('/api/deleteUser',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({uid})
+      body: JSON.stringify({ uid, idToken })
     });
     const result = await res.json();
     if(result.success){ showToast('✅ 계정이 완전 삭제됐어요!'); return true; }
@@ -2457,9 +2471,10 @@ window.deleteSelectedStudent = async() => {
   if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`)))return;
   let ok=0;
+  const idToken = await currentUser.getIdToken();
   for(const id of ids){
     try{
-      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id})});
+      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id, idToken})});
       ok++;
     }catch(e){console.log('삭제실패:',e);}
   }
@@ -2470,9 +2485,10 @@ window.deleteSelectedOutStudent = async() => {
   if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?`))return;
   let ok=0;
+  const idToken = await currentUser.getIdToken();
   for(const id of ids){
     try{
-      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id})});
+      await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id, idToken})});
       ok++;
     }catch(e){console.log('삭제실패:',e);}
   }
@@ -2516,6 +2532,7 @@ window.restoreSelectedStudent = async(status) => {
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 재원처리 할까요?`))return;
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
+  await _adjustActiveStudentCount(+ids.length);  // pause/out → active: +N
   showToast('재원처리 완료!'); await loadStudents(status);
 };
 window.outSelectedStudent = async() => {
@@ -2523,6 +2540,7 @@ window.outSelectedStudent = async() => {
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
+  // pause → out: 카운터 변동 없음 (둘 다 비활성)
   showToast('퇴원처리 완료!'); await loadStudents('pause');
 };
 // (구버전 deleteSelectedOutStudent 제거 — 위쪽 line 1702 의 Auth+Firestore+lookup 통합 삭제 사용)

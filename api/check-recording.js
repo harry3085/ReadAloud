@@ -80,7 +80,7 @@ Scoring guide (entire recording vs full text):
 Feedback Korean: natural, encouraging, appropriate for middle/high school students.`;
 }
 
-const { verifyAndCheckQuota: _verifyQuota, incrementUsage: _incUsage } = require('./_lib/quota');
+const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -102,10 +102,10 @@ module.exports = async (req, res) => {
     const idToken = body.idToken;
 
     // 인증 + 녹음 월 쿼터 (Phase 3)
-    const q = await _verifyQuota({ idToken, quotaKind: 'recording' });
+    const q = await verifyAndCheckQuota({ idToken, quotaKind: 'recording' });
     if (q.error) { res.status(q.status).json({ success: false, error: q.error, limit: q.limit, currentCount: q.currentCount }); return; }
     // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
-    await _incUsage({ ...q, res, endpoint: 'check-recording' });
+    await incrementUsage({ ...q, res, endpoint: 'check-recording' });
     const rawMime = body.mimeType || 'audio/webm';
     // Gemini 공식 지원: wav/mp3/aiff/aac/ogg/flac
     // 브라우저가 주로 내보내는 webm/mp4 는 거부되므로 호환 포맷으로 리라벨

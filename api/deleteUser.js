@@ -1,7 +1,8 @@
 // Vercel Serverless Function - 학생 완전 삭제 (Auth + users + usernameLookup)
+// 인증: idToken 검증 + 호출자 admin 권한 + 대상 == 같은 학원 (super_admin 예외)
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 const DEFAULT_ACADEMY_ID = 'default';
 
@@ -35,11 +36,48 @@ module.exports = async (req, res) => {
 
   try {
     initAdmin();
-    const { uid } = req.body || {};
+    const { uid, idToken } = req.body || {};
     if (!uid) return res.status(400).json({ error: 'uid가 필요합니다.' });
+    if (!idToken) return res.status(401).json({ error: '인증 토큰이 필요합니다.' });
 
     const auth = getAuth();
     const db = getFirestore();
+
+    // 1) 호출자 토큰 검증
+    let caller;
+    try { caller = await auth.verifyIdToken(idToken); }
+    catch (e) { return res.status(401).json({ error: '유효하지 않은 토큰', code: e.code }); }
+
+    // 2) 호출자 권한 확인 — Custom Claims 우선, users.role 폴백
+    const claimsRole = caller.role;
+    let isAdminUser = (claimsRole === 'academy_admin' || claimsRole === 'super_admin');
+    let callerAcademyId = caller.academyId || null;
+    let callerDoc = null;
+    if (!isAdminUser || !callerAcademyId) {
+      try {
+        const cs = await db.doc('users/' + caller.uid).get();
+        callerDoc = cs.exists ? cs.data() : null;
+        if (callerDoc?.role === 'admin') isAdminUser = true;
+        if (!callerAcademyId) callerAcademyId = callerDoc?.academyId || null;
+      } catch (_) {}
+    }
+    if (!isAdminUser) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+
+    // 3) 대상 학생 doc 조회 + academyId 격리 검증 (super_admin 예외)
+    let targetData = null;
+    try {
+      const ts = await db.doc('users/' + uid).get();
+      if (ts.exists) targetData = ts.data();
+    } catch (_) {}
+    const isSuperAdmin = (claimsRole === 'super_admin');
+    if (!isSuperAdmin && targetData?.academyId && targetData.academyId !== callerAcademyId) {
+      return res.status(403).json({ error: '다른 학원의 사용자는 삭제할 수 없습니다.' });
+    }
+
+    // 4) 자기 자신 삭제 차단 (실수 방지)
+    if (uid === caller.uid) {
+      return res.status(400).json({ error: '본인 계정은 이 API 로 삭제할 수 없습니다.' });
+    }
 
     // 삭제 전 username 수집 (lookup 동반 삭제용)
     // 출처: (1) users 문서 (2) Auth email (3) usernameLookup 역조회
@@ -93,6 +131,15 @@ module.exports = async (req, res) => {
         await db.doc(`usernameLookup/${usernameLower}`).delete();
         lookupDeleted = true;
       } catch (_) {}
+    }
+
+    // 4. activeStudentsCount -1 (대상이 active student 였을 때만)
+    if (targetData?.role === 'student' && targetData?.status === 'active' && targetData?.academyId) {
+      try {
+        await db.doc('academies/' + targetData.academyId).update({
+          'usage.activeStudentsCount': FieldValue.increment(-1),
+        });
+      } catch (e) { console.warn('[deleteUser] activeStudentsCount 감소 실패:', e.message); }
     }
 
     return res.status(200).json({

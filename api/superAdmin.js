@@ -74,11 +74,23 @@ async function _updateAcademy(db, body) {
       }
     }
     if (k === 'customLimits' && v && typeof v === 'object') {
-      // 숫자만 받고 0/빈값은 필드 제거 (plan 기본 사용)
+      // T1 5분류 + maxStudents/storageGB. 0/빈값은 필드 제거 (plan 기본 사용)
+      // 옛 키 (aiQuotaPerMonth) 는 deprecated — silent ignore + 경고
+      const ALLOWED_CL_KEYS = [
+        'ocrPerMonth', 'cleanupPerMonth', 'generatorPerMonth',
+        'recordingPerMonth', 'growthReportPerMonth',
+        'maxStudents', 'storageGB',
+      ];
       const cl = {};
-      for (const ck of ['aiQuotaPerMonth', 'recordingPerMonth']) {
+      for (const ck of ALLOWED_CL_KEYS) {
         const cv = parseInt(v[ck]);
         if (!isNaN(cv) && cv > 0) cl[ck] = cv;
+      }
+      // 옛 키 들어오면 경고 (silent strip 대신)
+      for (const oldKey of Object.keys(v)) {
+        if (!ALLOWED_CL_KEYS.includes(oldKey)) {
+          console.warn(`[superAdmin updateAcademy] deprecated customLimits key ignored: ${oldKey}`);
+        }
       }
       v = Object.keys(cl).length > 0 ? cl : null;  // null 이면 override 해제
     }
