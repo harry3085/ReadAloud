@@ -8456,7 +8456,7 @@ window.tpOpenPublishModal = async () => {
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="margin-bottom:16px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📋 시험 정보</div>
-          <div style="display:grid;grid-template-columns:1fr 110px 140px;gap:8px;">
+          <div style="display:grid;grid-template-columns:1fr 100px 110px 140px;gap:8px;">
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명 *</label>
               <input type="text" id="tpName" value="${esc(defaultName)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
@@ -8464,6 +8464,11 @@ window.tpOpenPublishModal = async () => {
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">통과점수</label>
               <input type="number" id="tpPassScore" value="80" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--gray);">출제 문제수</label>
+              <input type="number" id="tpQuestionCount" value="${questions.length}" min="1" max="${questions.length}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+              <div style="font-size:10px;color:var(--gray);margin-top:2px;">전체 ${questions.length}문제 중 랜덤</div>
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">출제일</label>
@@ -8689,8 +8694,16 @@ window.tpPublish = async () => {
   if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '문제 세트가 비어있습니다'); return; }
 
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
-  const questions = selectedSets.flatMap(s => s.questions || []);
+  let questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
+
+  // 출제 문제수 — 입력값이 전체보다 작으면 랜덤 셔플 후 N개만 픽
+  const poolTotal = questions.length;
+  const qcRaw = parseInt(document.getElementById('tpQuestionCount')?.value);
+  const desiredCount = isFinite(qcRaw) ? Math.max(1, Math.min(poolTotal, qcRaw)) : poolTotal;
+  if (desiredCount < poolTotal) {
+    questions = questions.slice().sort(() => Math.random() - 0.5).slice(0, desiredCount);
+  }
 
   // 녹음숙제: 시험 배정 모달에서 5개 옵션 override (시험별·학년별 조정)
   if (cfg.testMode === 'recording' && questions.some(q => q.schemaV === 2)) {
@@ -8735,7 +8748,10 @@ window.tpPublish = async () => {
     }
   }
 
-  const summary = `${selectedSets.length}개 세트 · ${questions.length}문제\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
+  const qcLine = questions.length < poolTotal
+    ? `${selectedSets.length}개 세트 · ${questions.length}문제 (전체 ${poolTotal} 중 랜덤)`
+    : `${selectedSets.length}개 세트 · ${questions.length}문제`;
+  const summary = `${qcLine}\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
   if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
 
   const targetType = (targets.length===1 && targets[0].type==='class') ? 'class' : 'mixed';
