@@ -9958,6 +9958,10 @@ function _tpRender() {
                 <button class="btn ${cfg.actions.includes('assign')?'btn-secondary':'btn-primary'}" style="font-size:12px;padding:5px 14px;font-weight:700;" onclick="tpOpenPrintModal()" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
                   🖨 시험지 출력
                 </button>` : ''}
+              <button class="btn" style="font-size:12px;padding:5px 14px;font-weight:700;background:#dc2626;color:white;border:none;${!cfg.enabled||_tpSelectedSets.size===0?'opacity:0.4;cursor:not-allowed;':''}"
+                onclick="tpDeleteSelectedSets()" ${!cfg.enabled||_tpSelectedSets.size===0?'disabled':''}>
+                🗑 삭제
+              </button>
             </div>
           </div>
           <div id="tpSetsScroll" style="flex:1;overflow-y:auto;">
@@ -10304,6 +10308,35 @@ window.tpSelectAll = () => {
 window.tpClearSel = () => {
   _tpSelectedSets.clear();
   _tpRender();
+};
+
+window.tpDeleteSelectedSets = async () => {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg?.enabled) return;
+  if (_tpSelectedSets.size === 0) { showAlert('입력 확인', '삭제할 문제 세트를 선택하세요'); return; }
+
+  const ids = Array.from(_tpSelectedSets);
+  const names = _tpSets.filter(s => ids.includes(s.id)).map(s => s.name).filter(Boolean);
+  const preview = names.slice(0, 5).map(n => `• ${n}`).join('\n') + (names.length > 5 ? `\n... 외 ${names.length - 5}개` : '');
+
+  if (!(await showConfirm(
+    `${ids.length}개 문제 세트 삭제`,
+    `다음 세트를 삭제합니다:\n\n${preview}\n\n되돌릴 수 없습니다. 이 세트로 만든 시험(genTests)이 있다면 그대로 유지됩니다.`
+  ))) return;
+
+  let success = 0, fail = 0;
+  for (const id of ids) {
+    try {
+      await deleteDoc(doc(db, 'genQuestionSets', id));
+      success++;
+    } catch (e) {
+      console.warn('[tpDeleteSelectedSets]', id, e.message);
+      fail++;
+    }
+  }
+  _tpSelectedSets.clear();
+  showToast(fail === 0 ? `✓ ${success}개 세트 삭제됨` : `${success}개 삭제 / ${fail}개 실패`);
+  await _renderTestAssignDetail(_activeTestType);
 };
 
 window.tpOpenPublishModal = async () => {
