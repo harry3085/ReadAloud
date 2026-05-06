@@ -1392,6 +1392,7 @@ async function _renderBillingGrid(generated = 0) {
       </select>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         ${generated > 0 ? `<span style="padding:6px 12px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;">✓ ${generated}건 새로 생성</span>` : ''}
+        <button class="btn btn-secondary" onclick="_billingOpenTemplateEditor()" style="font-size:12px;padding:7px 12px;" title="모든 학생에 적용되는 메시지 템플릿 편집">⚙️ 메시지 템플릿</button>
         <button class="btn btn-primary" onclick="_billingOpenBulkMessage()" style="font-size:12px;padding:7px 12px;">📨 미납자 일괄 메시지</button>
       </div>
     </div>
@@ -1706,97 +1707,129 @@ window._billingDeleteItem = async (itemId) => {
 // 임시: showModal/closeModal 패턴 그대로 사용. 항목 변경하면 _billings 캐시 업데이트되어 다음 그리드 렌더 때 반영.
 // 명시적으로 갱신하려면 closeModal 후 _renderBillingGrid 호출 필요 — wrapper 추가.
 // ── Phase 2: 학원장 안내 메시지 ──────────────────────────
-// 메시지 빌더: 청구서 + 학원 settings → 카카오톡 본문 (복사 후 붙여넣기 흐름)
-function _billingBuildMessage(billing, settings, template, channels, academyName) {
-  // 1) 채널별 항목 그룹 (reminder 시 paid 제외)
+// 학원 단위 템플릿 + placeholder 치환 — 한 번 편집하면 모든 학생에 적용.
+// 학생별 데이터 ({학생명}/{월}/{청구내역}/{계좌정보}/{마감일}/{미납액}) 자동 치환.
+
+// 기본 템플릿 (학원장이 편집 안 하면 사용)
+const _BILLING_DEFAULT_TEMPLATES = {
+  polite: `{인사}
+{학생명} 학생의 {월}월 결제 안내드립니다.
+
+{청구내역}
+{계좌정보}
+납부일: {마감일}까지
+
+{서명}`,
+  brief: `[{학원명}]
+{학생명} {월}월 청구
+
+{청구내역}
+{계좌정보}
+{마감일}까지`,
+  reminder: `{인사}
+{학생명} 학생 {월}월 결제가 아직 확인되지 않아 다시 안내드립니다.
+
+{청구내역}
+{계좌정보}
+
+이미 입금 완료하셨다면 확인 부탁드립니다.
+입금 시점 알려주시면 감사하겠습니다.
+
+{서명}`,
+};
+
+// 청구서 + settings + 채널 → placeholder 별 dynamic 데이터 반환
+function _billingComputeVars(billing, settings, channels, academyName, template) {
+  const fmt = n => (n || 0).toLocaleString();
+  const monthNum = parseInt((billing.yearMonth || '').split('-')[1]);
+  const studentName = billing.studentName || '학생';
+
+  // 채널별 항목 그룹화 (reminder 시 paid 제외)
   const groups = {};
   for (const item of (billing.items || [])) {
     if (!channels.includes(item.channel)) continue;
     if (template === 'reminder' && item.paid) continue;
     (groups[item.channel] ??= []).push(item);
   }
-  if (Object.keys(groups).length === 0) {
-    return '_(선택된 항목이 없습니다)_';
-  }
   const channelCount = Object.keys(groups).length;
-  const monthNum = parseInt((billing.yearMonth || '').split('-')[1]);
-  const studentName = billing.studentName || '학생';
 
-  // 2) 인사
-  const greeting = settings?.messageSettings?.greeting || `안녕하세요, ${academyName}입니다 :)`;
-  const signature = settings?.messageSettings?.signature || '감사합니다.';
-
-  const lines = [];
-  if (template === 'brief') {
-    lines.push(`[${academyName}]`);
-    lines.push(`${studentName} ${monthNum}월 청구`);
-  } else if (template === 'reminder') {
-    lines.push(greeting);
-    lines.push(`${studentName} 학생 ${monthNum}월 결제가 아직 확인되지 않아 다시 안내드립니다.`);
-  } else {
-    lines.push(greeting);
-    lines.push(`${studentName} 학생의 ${monthNum}월 결제 안내드립니다.`);
-  }
-  lines.push('');
-
-  // 3) 채널별 섹션
-  const fmt = n => (n || 0).toLocaleString();
+  // 청구내역 블록 (다채널 시 구분선·소계 포함)
+  let itemsBlock = '';
   for (const [chKey, items] of Object.entries(groups)) {
     const ch = chKey === 'tuition' ? settings?.tuitionChannel : settings?.materialsChannel;
-    if (!ch) continue;
     const emoji = chKey === 'tuition' ? '💳' : '📚';
-
-    if (channelCount > 1 && template !== 'brief') {
-      lines.push('━━━━━━━━━━━━━━━━━━');
-      lines.push(`${emoji} ${ch.label || (chKey === 'tuition' ? '학원 결제' : '교재/시험비')}`);
-      lines.push('━━━━━━━━━━━━━━━━━━');
-    } else if (channelCount > 1) {
-      lines.push(`[${ch.label || ''}]`);
+    if (channelCount > 1) {
+      if (template === 'brief') {
+        itemsBlock += `[${ch?.label || ''}]\n`;
+      } else {
+        itemsBlock += '━━━━━━━━━━━━━━━━━━\n';
+        itemsBlock += `${emoji} ${ch?.label || (chKey === 'tuition' ? '학원 결제' : '교재/시험비')}\n`;
+        itemsBlock += '━━━━━━━━━━━━━━━━━━\n';
+      }
     }
-
     for (const item of items) {
-      lines.push(`• ${item.label}  ${fmt(item.amount)}원`);
+      itemsBlock += `• ${item.label}  ${fmt(item.amount)}원\n`;
     }
     if (channelCount > 1 && template !== 'brief') {
       const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-      lines.push(`   소계: ${fmt(subtotal)}원`);
+      itemsBlock += `   소계: ${fmt(subtotal)}원\n`;
     }
-    lines.push('');
-
-    // 결제 정보
-    if (ch.cardLink) lines.push(`💳 ${ch.cardLink}`);
-    lines.push(`🏦 ${ch.bankName} ${ch.bankAccount} ${ch.accountHolder}`);
-    if (ch.note && template !== 'brief') {
-      lines.push(`   ※ ${ch.note}`);
-    }
-    lines.push('');
+    itemsBlock += '\n';
   }
-
-  // 4) 합계 (다채널 + brief 아닐 때만)
   if (channelCount > 1 && template !== 'brief') {
-    lines.push('━━━━━━━━━━━━━━━━━━');
     const total = Object.values(groups).flat().reduce((s, i) => s + (i.amount || 0), 0);
-    lines.push(`합계: ${fmt(total)}원`);
-    lines.push('');
+    itemsBlock += '━━━━━━━━━━━━━━━━━━\n';
+    itemsBlock += `합계: ${fmt(total)}원\n`;
   }
 
-  // 5) 마감
+  // 계좌정보 블록 (채널별)
+  let chBlock = '';
+  for (const chKey of Object.keys(groups)) {
+    const ch = chKey === 'tuition' ? settings?.tuitionChannel : settings?.materialsChannel;
+    if (!ch) continue;
+    if (ch.cardLink) chBlock += `💳 ${ch.cardLink}\n`;
+    chBlock += `🏦 ${ch.bankName || ''} ${ch.bankAccount || ''} ${ch.accountHolder || ''}\n`;
+    if (ch.note && template !== 'brief') chBlock += `   ※ ${ch.note}\n`;
+    chBlock += '\n';
+  }
+
+  // 마감일
   const dueDate = billing.dueDate?.toDate?.();
   const dueStr = dueDate ? `${dueDate.getMonth() + 1}월 ${dueDate.getDate()}일` : '';
-  if (template === 'brief') {
-    if (dueStr) lines.push(`${dueStr}까지`);
-  } else if (template === 'reminder') {
-    lines.push('이미 입금 완료하셨다면 확인 부탁드립니다.');
-    lines.push('입금 시점 알려주시면 감사하겠습니다.');
-    lines.push('');
-    lines.push(signature);
-  } else {
-    if (dueStr) lines.push(`납부일: ${dueStr}까지`);
-    lines.push('');
-    lines.push(signature);
-  }
 
-  return lines.join('\n');
+  // 미납액
+  const remain = (billing.totalAmount || 0) - (billing.paidAmount || 0);
+
+  return {
+    '{인사}': settings?.messageSettings?.greeting || `안녕하세요, ${academyName}입니다.`,
+    '{서명}': settings?.messageSettings?.signature || '감사합니다.',
+    '{학원명}': academyName,
+    '{학생명}': studentName,
+    '{월}': String(monthNum),
+    '{청구내역}': itemsBlock.trimEnd(),
+    '{계좌정보}': chBlock.trimEnd(),
+    '{마감일}': dueStr,
+    '{미납액}': fmt(remain) + '원',
+    '_hasItems': Object.keys(groups).length > 0,
+  };
+}
+
+function _billingApplyTemplate(tpl, vars) {
+  let result = tpl;
+  for (const [key, val] of Object.entries(vars)) {
+    if (key.startsWith('_')) continue;  // 내부 메타 제외
+    result = result.split(key).join(val);  // global replace
+  }
+  return result;
+}
+
+// 메시지 빌더 — 학원 customTemplates 우선, 없으면 default
+function _billingBuildMessage(billing, settings, template, channels, academyName) {
+  const customTpl = settings?.messageSettings?.customTemplates?.[template];
+  const tpl = customTpl || _BILLING_DEFAULT_TEMPLATES[template] || _BILLING_DEFAULT_TEMPLATES.polite;
+  const vars = _billingComputeVars(billing, settings, channels, academyName, template);
+  if (!vars._hasItems) return '_(선택된 항목이 없습니다)_';
+  return _billingApplyTemplate(tpl, vars);
 }
 
 // 개별 메시지 모달
@@ -1808,20 +1841,11 @@ window._billingOpenMessage = (billingId, defaultTemplate = 'polite') => {
   if (!_billingSettings) { showAlert('입력 확인', '결제 설정이 필요합니다.'); return; }
   const availChannels = [...new Set((b.items || []).map(i => i.channel))];
   if (availChannels.length === 0) { showAlert('입력 확인', '청구 항목이 없습니다.'); return; }
-  // editedByTemplate: 템플릿별 편집본 — 탭 변경해도 각 편집본 유지
-  // 호환성: 옛 lastSentMessage 가 있으면 defaultTemplate 의 편집본으로 흡수
-  const stored = b.editedMessages || {};
-  const editedByTemplate = { polite: stored.polite || null, brief: stored.brief || null, reminder: stored.reminder || null };
-  if (!editedByTemplate[defaultTemplate] && b.lastSentMessage) {
-    editedByTemplate[defaultTemplate] = b.lastSentMessage;
-  }
   _billingMsgState = {
     billingId,
     template: defaultTemplate,
     channels: availChannels.slice(),
     availChannels,
-    editedByTemplate,
-    viewMode: editedByTemplate[defaultTemplate] ? 'edited' : 'default',  // 'edited' or 'default'
   };
   _billingRenderMessageModal();
 };
@@ -1832,12 +1856,8 @@ function _billingRenderMessageModal() {
   const b = _billings.find(x => x.id === s.billingId);
   if (!b) return;
   const academy = window.adminProfile?.academyName || (window.MY_ACADEMY_NAME || '학원');
-  const editedForCurrent = s.editedByTemplate[s.template];
-  const hasEdit = !!editedForCurrent;
-  // 표시할 메시지: viewMode 가 'edited' 이고 편집본 있으면 → 편집본. 그 외 → 기본 빌드
-  const msg = (s.viewMode === 'edited' && hasEdit)
-    ? editedForCurrent
-    : _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+  const msg = _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+  const hasCustom = !!_billingSettings?.messageSettings?.customTemplates?.[s.template];
 
   // 일괄 모드
   const isBulk = !!_billingBulkQueue;
@@ -1845,13 +1865,13 @@ function _billingRenderMessageModal() {
     ? `<div style="display:inline-block;padding:3px 10px;background:var(--teal-light);color:var(--teal-dark);border-radius:12px;font-size:11px;font-weight:700;margin-bottom:6px;">${_billingBulkCurrentIdx} / ${_billingBulkTotal}</div>`
     : '';
 
-  // 템플릿 탭 — 활성 + 편집본 있는 탭에 ✏️ 배지
+  // 템플릿 탭 — 학원 커스텀 적용된 탭에 ✏️ 배지
   const tabBtn = (key, icon, label) => {
     const isActive = s.template === key;
-    const tplHasEdit = !!s.editedByTemplate[key];
+    const tplHasCustom = !!_billingSettings?.messageSettings?.customTemplates?.[key];
     return `
-      <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;position:relative;">
-        ${icon} ${label}${tplHasEdit ? ' <span style="font-size:9px;opacity:0.85;">✏️</span>' : ''}
+      <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">
+        ${icon} ${label}${tplHasCustom ? ' <span style="font-size:9px;opacity:0.85;">✏️</span>' : ''}
       </button>`;
   };
 
@@ -1866,20 +1886,15 @@ function _billingRenderMessageModal() {
       </label>`;
   };
 
-  // 원본/편집본 토글 (편집본 있을 때만 노출)
-  const viewToggle = hasEdit
-    ? `<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;">
-         <span style="font-size:11px;color:var(--gray);font-weight:600;">보기:</span>
-         <button onclick="_billingMsgSetView('default')" style="padding:4px 10px;border:1px solid ${s.viewMode === 'default' ? 'var(--teal)' : 'var(--border)'};background:${s.viewMode === 'default' ? 'var(--teal-light)' : 'white'};color:${s.viewMode === 'default' ? 'var(--teal-dark)' : 'var(--gray)'};border-radius:5px;font-size:11px;font-weight:${s.viewMode === 'default' ? '700' : '500'};cursor:pointer;">📄 기본값</button>
-         <button onclick="_billingMsgSetView('edited')" style="padding:4px 10px;border:1px solid ${s.viewMode === 'edited' ? 'var(--teal)' : 'var(--border)'};background:${s.viewMode === 'edited' ? 'var(--teal-light)' : 'white'};color:${s.viewMode === 'edited' ? 'var(--teal-dark)' : 'var(--gray)'};border-radius:5px;font-size:11px;font-weight:${s.viewMode === 'edited' ? '700' : '500'};cursor:pointer;">✏️ 편집본</button>
-         ${s.viewMode === 'edited' ? `<button onclick="_billingMsgClearEdit()" style="margin-left:auto;padding:4px 10px;border:1px solid var(--border);background:white;color:#dc2626;border-radius:5px;font-size:11px;cursor:pointer;" title="이 템플릿의 편집본 삭제">🗑 편집본 삭제</button>` : ''}
-       </div>`
+  const customNotice = hasCustom
+    ? `<div style="padding:6px 10px;background:#ecfeff;border-radius:5px;font-size:11px;color:#0e7490;margin-bottom:8px;">✏️ 학원에서 편집한 템플릿이 적용됨 — 모든 학생에 동일.</div>`
     : '';
 
   const footerHtml = isBulk
     ? `<button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>`
-    : `<button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
+    : `<button class="btn btn-secondary" onclick="_billingOpenTemplateEditor('${s.template}')" style="font-size:12px;" title="모든 학생에게 적용되는 템플릿 편집">⚙️ 템플릿 편집</button>
+       <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>`;
 
   showModal(`
@@ -1898,15 +1913,14 @@ function _billingRenderMessageModal() {
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           ${chCheck('tuition', '💳', '학원 결제')}
           ${_billingSettings?.materialsChannel?.enabled ? chCheck('materials', '📚', '교재/시험비') : ''}
-          <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 채널 제외 (기본값에만 영향)</span>
+          <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 해당 채널 제외</span>
         </div>
-        ${viewToggle}
-        <textarea id="billingMsgPreview" rows="14"
-          style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;"
-          oninput="_billingMsgOnInput(this.value)">${esc(msg)}</textarea>
+        ${customNotice}
+        <textarea id="billingMsgPreview" rows="14" readonly
+          style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;background:#fafafa;">${esc(msg)}</textarea>
         <div style="margin-top:6px;font-size:11px;color:var(--gray);">
-          <span id="billingMsgChars">${msg.length}</span>자 ·
-          <span style="color:#bbb;">텍스트 편집 시 현재 템플릿의 편집본으로 자동 저장 (탭 변경해도 보존).</span>
+          <span>${msg.length}</span>자 ·
+          <span style="color:#bbb;">학생 데이터 자동 적용 · 인사말·문구 변경은 [⚙️ 템플릿 편집] 으로 학원 전체 통일.</span>
         </div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -1916,33 +1930,9 @@ function _billingRenderMessageModal() {
   `);
 }
 
-// 텍스트 편집 시 — 현재 템플릿의 편집본으로 저장 + viewMode='edited' 자동 전환
-window._billingMsgOnInput = (value) => {
-  if (!_billingMsgState) return;
-  _billingMsgState.editedByTemplate[_billingMsgState.template] = value;
-  _billingMsgState.viewMode = 'edited';
-  document.getElementById('billingMsgChars').textContent = value.length;
-};
-
 window._billingMsgChangeTpl = (tpl) => {
   if (!_billingMsgState) return;
   _billingMsgState.template = tpl;
-  // 새 템플릿에 편집본 있으면 그걸 보여주고, 없으면 기본값
-  _billingMsgState.viewMode = _billingMsgState.editedByTemplate[tpl] ? 'edited' : 'default';
-  _billingRenderMessageModal();
-};
-
-window._billingMsgSetView = (mode) => {
-  if (!_billingMsgState) return;
-  _billingMsgState.viewMode = mode;
-  _billingRenderMessageModal();
-};
-
-window._billingMsgClearEdit = async () => {
-  if (!_billingMsgState) return;
-  if (!await showConfirm('편집본 삭제', `현재 '${_billingMsgState.template}' 템플릿 편집본을 삭제하고 기본값으로 돌아갈까요?`)) return;
-  _billingMsgState.editedByTemplate[_billingMsgState.template] = null;
-  _billingMsgState.viewMode = 'default';
   _billingRenderMessageModal();
 };
 
@@ -1950,36 +1940,8 @@ window._billingMsgToggleCh = (ch, on) => {
   if (!_billingMsgState) return;
   if (on && !_billingMsgState.channels.includes(ch)) _billingMsgState.channels.push(ch);
   if (!on) _billingMsgState.channels = _billingMsgState.channels.filter(c => c !== ch);
-  // 편집본 보고 있으면 그대로 유지 (편집본은 채널 변경 영향 X). 기본값 보고 있으면 새 채널로 재빌드
-  if (_billingMsgState.viewMode === 'default') {
-    _billingRenderMessageModal();
-  } else {
-    // 편집본 모드 — 채널 체크박스 시각만 갱신 (텍스트 그대로)
-    _billingRenderMessageModal();
-  }
+  _billingRenderMessageModal();
 };
-
-// 편집본 영구 저장 — closeModal / bulk 종료 등에서 호출
-async function _billingMsgFlushEdits() {
-  if (!_billingMsgState?.billingId) return;
-  // 현재 표시 중인 textarea 값 반영 (oninput 이 이미 처리하지만 안전망)
-  const ta = document.getElementById('billingMsgPreview');
-  if (ta && _billingMsgState.viewMode === 'edited') {
-    _billingMsgState.editedByTemplate[_billingMsgState.template] = ta.value;
-  }
-  const b = _billings.find(x => x.id === _billingMsgState.billingId);
-  if (!b) return;
-  const stored = b.editedMessages || {};
-  const current = _billingMsgState.editedByTemplate;
-  const changed = ['polite','brief','reminder'].some(k => (stored[k] || null) !== (current[k] || null));
-  if (!changed) return;
-  try {
-    await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
-      editedMessages: current,
-    });
-    b.editedMessages = { ...current };
-  } catch (e) { console.warn('[billingMsgFlushEdits]', e.message); }
-}
 
 window._billingCopyMessage = async () => {
   const ta = document.getElementById('billingMsgPreview');
@@ -1987,26 +1949,13 @@ window._billingCopyMessage = async () => {
   try {
     await navigator.clipboard.writeText(ta.value);
     showToast('✅ 복사됐어요! 카톡에 붙여넣으세요.');
-    // 편집본 영구 저장 + 발송 이력 기록
+    // 발송 이력만 기록 (학생별 편집본 저장은 폐기 — 학원 templateEditor 로 일원화)
     if (_billingMsgState?.billingId) {
       try {
-        // viewMode 가 'edited' 면 현재 텍스트가 편집본임. 'default' 면 편집본 안 만듦.
-        if (_billingMsgState.viewMode === 'edited') {
-          _billingMsgState.editedByTemplate[_billingMsgState.template] = ta.value;
-        }
-        const update = {
-          editedMessages: _billingMsgState.editedByTemplate,
-          lastSentMessage: ta.value,  // 호환성 (옛 필드)
+        await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
           lastMessageSentAt: serverTimestamp(),
           messagesSentCount: increment(1),
-        };
-        await updateDoc(doc(db, 'billings', _billingMsgState.billingId), update);
-        // 로컬 캐시 갱신
-        const bRef = _billings.find(x => x.id === _billingMsgState.billingId);
-        if (bRef) {
-          bRef.editedMessages = { ..._billingMsgState.editedByTemplate };
-          bRef.lastSentMessage = ta.value;
-        }
+        });
       } catch (_) {}
     }
     if (_billingBulkQueue) {
@@ -2014,6 +1963,181 @@ window._billingCopyMessage = async () => {
     }
   } catch (e) {
     showAlert('복사 실패', '브라우저 권한 또는 https 환경 확인 — 직접 드래그해서 복사하세요.');
+  }
+};
+
+// ── 학원 단위 템플릿 편집기 (모든 학생에 적용) ──────────
+let _billingTplEditState = null;  // { template, drafts: {polite, brief, reminder} }
+
+window._billingOpenTemplateEditor = (initialTpl = 'polite') => {
+  if (!_billingSettings) { showAlert('입력 확인', '결제 설정이 필요합니다.'); return; }
+  const stored = _billingSettings.messageSettings?.customTemplates || {};
+  _billingTplEditState = {
+    template: initialTpl,
+    drafts: {
+      polite: stored.polite || _BILLING_DEFAULT_TEMPLATES.polite,
+      brief: stored.brief || _BILLING_DEFAULT_TEMPLATES.brief,
+      reminder: stored.reminder || _BILLING_DEFAULT_TEMPLATES.reminder,
+    },
+    isCustom: {
+      polite: !!stored.polite,
+      brief: !!stored.brief,
+      reminder: !!stored.reminder,
+    },
+  };
+  _billingRenderTemplateEditor();
+};
+
+function _billingRenderTemplateEditor() {
+  const s = _billingTplEditState;
+  if (!s) return;
+
+  // 미리보기 — 첫 번째 청구서로 placeholder 채워서
+  const sampleBilling = _billings[0] || {
+    studentName: '홍길동',
+    yearMonth: _ymdKST().slice(0,7),
+    items: [{ label: '월 수강료', amount: 200000, channel: 'tuition', paid: false }],
+    totalAmount: 200000, paidAmount: 0,
+    dueDate: { toDate: () => new Date() },
+  };
+  const academy = window.adminProfile?.academyName || '학원';
+  const channels = ['tuition'];
+  if (_billingSettings?.materialsChannel?.enabled) channels.push('materials');
+  const vars = _billingComputeVars(sampleBilling, _billingSettings, channels, academy, s.template);
+  const previewMsg = _billingApplyTemplate(s.drafts[s.template], vars);
+
+  const tabBtn = (key, icon, label) => {
+    const isActive = s.template === key;
+    const isCust = s.isCustom[key];
+    return `<button onclick="_billingTplChangeTab('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">${icon} ${label}${isCust ? ' <span style="font-size:9px;opacity:0.85;">✏️</span>' : ''}</button>`;
+  };
+
+  // placeholder 삽입 버튼
+  const PHS = ['{인사}', '{서명}', '{학원명}', '{학생명}', '{월}', '{청구내역}', '{계좌정보}', '{마감일}', '{미납액}'];
+  const phButtons = PHS.map(p =>
+    `<button onclick="_billingTplInsertPh('${p}')" style="padding:3px 8px;background:#f8fafc;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:monospace;">${p}</button>`
+  ).join(' ');
+
+  const isCustomCurrent = s.isCustom[s.template];
+
+  showModal(`
+    <div style="width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:15px;font-weight:700;line-height:1.3;">⚙️ 메시지 템플릿 편집 — 학원 전체 적용</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">한 번 저장하면 모든 학생의 메시지에 적용됩니다.</div>
+      </div>
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          ${tabBtn('polite', '🙏', '정중')}
+          ${tabBtn('brief', '📋', '간결')}
+          ${tabBtn('reminder', '⚠️', '미납 안내')}
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:6px;">📐 placeholder (자동 치환)</div>
+        <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:4px;">${phButtons}</div>
+        <div style="font-size:11px;color:#bbb;margin-bottom:8px;">위 버튼 클릭 또는 직접 입력. 청구서마다 학생 데이터로 자동 치환됨.</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <div style="font-size:12px;font-weight:600;margin-bottom:5px;">템플릿 본문 ${isCustomCurrent ? '<span style="color:#0d9488;">(편집됨)</span>' : '<span style="color:#bbb;">(기본값)</span>'}</div>
+            <textarea id="billingTplDraft" rows="18"
+              style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;"
+              oninput="_billingTplState_save(this.value)">${esc(s.drafts[s.template])}</textarea>
+            ${isCustomCurrent ? `<button onclick="_billingTplResetCurrent()" style="margin-top:6px;padding:4px 10px;background:white;color:#dc2626;border:1px solid var(--border);border-radius:5px;font-size:11px;cursor:pointer;">↺ 기본값으로 되돌리기</button>` : ''}
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:600;margin-bottom:5px;color:var(--gray);">📄 미리보기 (샘플 학생)</div>
+            <div id="billingTplPreview" style="padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;line-height:1.6;background:#f8fafc;white-space:pre-wrap;height:380px;overflow-y:auto;font-family:'Noto Sans KR','Pretendard',sans-serif;">${esc(previewMsg)}</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
+        <button class="btn btn-primary" onclick="_billingTplSaveAll()" style="font-size:13px;font-weight:700;">💾 모든 학생에 적용</button>
+      </div>
+    </div>
+  `);
+  // textarea 변경 시 미리보기 즉시 갱신 — oninput 이 _billingTplState_save 호출 후 미리보기 redraw
+}
+
+window._billingTplState_save = (value) => {
+  if (!_billingTplEditState) return;
+  _billingTplEditState.drafts[_billingTplEditState.template] = value;
+  _billingTplEditState.isCustom[_billingTplEditState.template] = (value !== _BILLING_DEFAULT_TEMPLATES[_billingTplEditState.template]);
+  // 미리보기 갱신
+  const sampleBilling = _billings[0] || {
+    studentName: '홍길동', yearMonth: _ymdKST().slice(0,7),
+    items: [{ label: '월 수강료', amount: 200000, channel: 'tuition', paid: false }],
+    totalAmount: 200000, paidAmount: 0, dueDate: { toDate: () => new Date() },
+  };
+  const academy = window.adminProfile?.academyName || '학원';
+  const channels = ['tuition'];
+  if (_billingSettings?.materialsChannel?.enabled) channels.push('materials');
+  const vars = _billingComputeVars(sampleBilling, _billingSettings, channels, academy, _billingTplEditState.template);
+  const preview = _billingApplyTemplate(value, vars);
+  const previewEl = document.getElementById('billingTplPreview');
+  if (previewEl) previewEl.textContent = preview;
+};
+
+window._billingTplChangeTab = (tpl) => {
+  if (!_billingTplEditState) return;
+  // 현재 textarea 의 최신 값을 drafts 에 저장
+  const ta = document.getElementById('billingTplDraft');
+  if (ta) {
+    _billingTplEditState.drafts[_billingTplEditState.template] = ta.value;
+    _billingTplEditState.isCustom[_billingTplEditState.template] =
+      (ta.value !== _BILLING_DEFAULT_TEMPLATES[_billingTplEditState.template]);
+  }
+  _billingTplEditState.template = tpl;
+  _billingRenderTemplateEditor();
+};
+
+window._billingTplInsertPh = (placeholder) => {
+  const ta = document.getElementById('billingTplDraft');
+  if (!ta) return;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const before = ta.value.substring(0, start);
+  const after = ta.value.substring(end);
+  ta.value = before + placeholder + after;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + placeholder.length;
+  _billingTplState_save(ta.value);
+};
+
+window._billingTplResetCurrent = async () => {
+  if (!_billingTplEditState) return;
+  if (!await showConfirm('기본값 복원', `'${_billingTplEditState.template}' 템플릿을 기본값으로 되돌릴까요?\n저장 시 학원 커스텀이 삭제됩니다.`)) return;
+  _billingTplEditState.drafts[_billingTplEditState.template] = _BILLING_DEFAULT_TEMPLATES[_billingTplEditState.template];
+  _billingTplEditState.isCustom[_billingTplEditState.template] = false;
+  _billingRenderTemplateEditor();
+};
+
+window._billingTplSaveAll = async () => {
+  if (!_billingTplEditState) return;
+  // 현재 textarea 값 한 번 더 sync
+  const ta = document.getElementById('billingTplDraft');
+  if (ta) {
+    _billingTplEditState.drafts[_billingTplEditState.template] = ta.value;
+    _billingTplEditState.isCustom[_billingTplEditState.template] =
+      (ta.value !== _BILLING_DEFAULT_TEMPLATES[_billingTplEditState.template]);
+  }
+  // customTemplates 만들기 — isCustom 인 것만 저장. 아니면 null (기본값 유지 의미)
+  const custom = {};
+  for (const k of ['polite', 'brief', 'reminder']) {
+    if (_billingTplEditState.isCustom[k]) custom[k] = _billingTplEditState.drafts[k];
+  }
+  try {
+    await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'), {
+      'paymentSettings.messageSettings.customTemplates': custom,
+    });
+    if (_billingSettings) {
+      _billingSettings.messageSettings = _billingSettings.messageSettings || {};
+      _billingSettings.messageSettings.customTemplates = custom;
+    }
+    closeModal();
+    showToast('✅ 모든 학생에 적용됐어요!');
+  } catch (e) {
+    showAlert('저장 실패', e.message);
   }
 };
 
@@ -2108,10 +2232,6 @@ const _origCloseModal = window.closeModal;
 window.closeModal = function() {
   const wasBillingPanel = _billingPanelId !== null;
   const wasBillingMsg = _billingMsgState !== null;
-  // 메시지 모달 닫기 — 편집본 자동 저장 (fire-and-forget, closeModal 지연 X)
-  if (wasBillingMsg) {
-    _billingMsgFlushEdits();
-  }
   if (typeof _origCloseModal === 'function') _origCloseModal();
   if (wasBillingPanel) {
     _billingPanelId = null;
@@ -2128,6 +2248,8 @@ window.closeModal = function() {
       if (currentPage === 'payment') _renderBillingGrid();
     }
   }
+  // 템플릿 편집기 state 클리어
+  if (_billingTplEditState) _billingTplEditState = null;
 };
 
 // 이번 달 청구서 자동 생성 (lazy) — active + tuitionPlan.amount > 0 학생 대상
