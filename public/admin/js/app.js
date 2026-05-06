@@ -1390,8 +1390,9 @@ async function _renderBillingGrid(generated = 0) {
         <option value="overdue"${_billingFilterStatus === 'overdue' ? ' selected' : ''}>연체</option>
         <option value="paid"${_billingFilterStatus === 'paid' ? ' selected' : ''}>입금 완료</option>
       </select>
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        ${generated > 0 ? `<span style="padding:6px 12px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;align-self:center;">✓ ${generated}건 새로 생성</span>` : ''}
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+        ${generated > 0 ? `<span style="padding:6px 12px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;">✓ ${generated}건 새로 생성</span>` : ''}
+        <button class="btn btn-primary" onclick="_billingOpenBulkMessage()" style="font-size:12px;padding:7px 12px;">📨 미납자 일괄 메시지</button>
       </div>
     </div>
 
@@ -1505,7 +1506,7 @@ function _billingRenderRow(b, matEnabled) {
         <span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:${statusInfo.bg};color:${statusInfo.color};">${statusInfo.label}</span>
       </td>
       <td style="padding:8px 12px;text-align:center;">
-        <button class="action-btn" onclick="event.stopPropagation();showAlert('준비 중','메시지 기능은 Phase 2 에서 추가됩니다')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
+        <button class="action-btn" onclick="event.stopPropagation();_billingOpenMessage('${b.id}')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
       </td>
     </tr>`;
 }
@@ -1704,6 +1705,314 @@ window._billingDeleteItem = async (itemId) => {
 // 모달 닫힐 때 그리드 갱신 — closeModal 직접 hook 못 하므로, 사이드 패널 hide 시에 처리
 // 임시: showModal/closeModal 패턴 그대로 사용. 항목 변경하면 _billings 캐시 업데이트되어 다음 그리드 렌더 때 반영.
 // 명시적으로 갱신하려면 closeModal 후 _renderBillingGrid 호출 필요 — wrapper 추가.
+// ── Phase 2: 학원장 안내 메시지 ──────────────────────────
+// 메시지 빌더: 청구서 + 학원 settings → 카카오톡 본문 (복사 후 붙여넣기 흐름)
+function _billingBuildMessage(billing, settings, template, channels, academyName) {
+  // 1) 채널별 항목 그룹 (reminder 시 paid 제외)
+  const groups = {};
+  for (const item of (billing.items || [])) {
+    if (!channels.includes(item.channel)) continue;
+    if (template === 'reminder' && item.paid) continue;
+    (groups[item.channel] ??= []).push(item);
+  }
+  if (Object.keys(groups).length === 0) {
+    return '_(선택된 항목이 없습니다)_';
+  }
+  const channelCount = Object.keys(groups).length;
+  const monthNum = parseInt((billing.yearMonth || '').split('-')[1]);
+  const studentName = billing.studentName || '학생';
+
+  // 2) 인사
+  const greeting = settings?.messageSettings?.greeting || `안녕하세요, ${academyName}입니다 :)`;
+  const signature = settings?.messageSettings?.signature || '감사합니다.';
+
+  const lines = [];
+  if (template === 'brief') {
+    lines.push(`[${academyName}]`);
+    lines.push(`${studentName} ${monthNum}월 청구`);
+  } else if (template === 'reminder') {
+    lines.push(greeting);
+    lines.push(`${studentName} 학생 ${monthNum}월 결제가 아직 확인되지 않아 다시 안내드립니다.`);
+  } else {
+    lines.push(greeting);
+    lines.push(`${studentName} 학생의 ${monthNum}월 결제 안내드립니다.`);
+  }
+  lines.push('');
+
+  // 3) 채널별 섹션
+  const fmt = n => (n || 0).toLocaleString();
+  for (const [chKey, items] of Object.entries(groups)) {
+    const ch = chKey === 'tuition' ? settings?.tuitionChannel : settings?.materialsChannel;
+    if (!ch) continue;
+    const emoji = chKey === 'tuition' ? '💳' : '📚';
+
+    if (channelCount > 1 && template !== 'brief') {
+      lines.push('━━━━━━━━━━━━━━━━━━');
+      lines.push(`${emoji} ${ch.label || (chKey === 'tuition' ? '학원 결제' : '교재/시험비')}`);
+      lines.push('━━━━━━━━━━━━━━━━━━');
+    } else if (channelCount > 1) {
+      lines.push(`[${ch.label || ''}]`);
+    }
+
+    for (const item of items) {
+      lines.push(`• ${item.label}  ${fmt(item.amount)}원`);
+    }
+    if (channelCount > 1 && template !== 'brief') {
+      const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
+      lines.push(`   소계: ${fmt(subtotal)}원`);
+    }
+    lines.push('');
+
+    // 결제 정보
+    if (ch.cardLink) lines.push(`💳 ${ch.cardLink}`);
+    lines.push(`🏦 ${ch.bankName} ${ch.bankAccount} ${ch.accountHolder}`);
+    if (ch.note && template !== 'brief') {
+      lines.push(`   ※ ${ch.note}`);
+    }
+    lines.push('');
+  }
+
+  // 4) 합계 (다채널 + brief 아닐 때만)
+  if (channelCount > 1 && template !== 'brief') {
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    const total = Object.values(groups).flat().reduce((s, i) => s + (i.amount || 0), 0);
+    lines.push(`합계: ${fmt(total)}원`);
+    lines.push('');
+  }
+
+  // 5) 마감
+  const dueDate = billing.dueDate?.toDate?.();
+  const dueStr = dueDate ? `${dueDate.getMonth() + 1}월 ${dueDate.getDate()}일` : '';
+  if (template === 'brief') {
+    if (dueStr) lines.push(`${dueStr}까지`);
+  } else if (template === 'reminder') {
+    lines.push('이미 입금 완료하셨다면 확인 부탁드립니다.');
+    lines.push('입금 시점 알려주시면 감사하겠습니다.');
+    lines.push('');
+    lines.push(signature);
+  } else {
+    if (dueStr) lines.push(`납부일: ${dueStr}까지`);
+    lines.push('');
+    lines.push(signature);
+  }
+
+  return lines.join('\n');
+}
+
+// 개별 메시지 모달
+let _billingMsgState = null;  // { billingId, template, channels }
+
+window._billingOpenMessage = (billingId, defaultTemplate = 'polite') => {
+  const b = _billings.find(x => x.id === billingId);
+  if (!b) { showAlert('입력 확인', '청구서를 찾을 수 없습니다.'); return; }
+  if (!_billingSettings) { showAlert('입력 확인', '결제 설정이 필요합니다.'); return; }
+
+  // 사용 가능한 채널 자동 감지
+  const availChannels = [...new Set((b.items || []).map(i => i.channel))];
+  if (availChannels.length === 0) { showAlert('입력 확인', '청구 항목이 없습니다.'); return; }
+
+  _billingMsgState = {
+    billingId,
+    template: defaultTemplate,
+    channels: availChannels.slice(),
+    availChannels,
+  };
+  _billingRenderMessageModal();
+};
+
+function _billingRenderMessageModal() {
+  const s = _billingMsgState;
+  if (!s) return;
+  const b = _billings.find(x => x.id === s.billingId);
+  if (!b) return;
+  const academyName = (document.getElementById('superName')?.textContent || '학원').trim();
+  const academy = window.adminProfile?.academyName || academyName;
+  const msg = _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+
+  const tabBtn = (key, icon, label) => `
+    <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${s.template === key ? 'var(--teal)' : 'white'};color:${s.template === key ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${s.template === key ? '700' : '500'};cursor:pointer;">${icon} ${label}</button>
+  `;
+
+  const chCheck = (key, icon, label) => {
+    const avail = s.availChannels.includes(key);
+    const checked = s.channels.includes(key);
+    return `
+      <label style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#f8fafc;border-radius:6px;cursor:${avail ? 'pointer' : 'not-allowed'};opacity:${avail ? 1 : 0.4};font-size:12px;">
+        <input type="checkbox" ${checked ? 'checked' : ''} ${avail ? '' : 'disabled'}
+          onchange="_billingMsgToggleCh('${key}',this.checked)" style="width:14px;height:14px;">
+        ${icon} ${label}
+      </label>`;
+  };
+
+  showModal(`
+    <div style="width:min(560px,92vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:15px;font-weight:700;line-height:1.3;">📨 학원장 안내 메시지</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(b.studentName)} · ${b.yearMonth}</div>
+      </div>
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          ${tabBtn('polite', '🙏', '정중')}
+          ${tabBtn('brief', '📋', '간결')}
+          ${tabBtn('reminder', '⚠️', '미납 안내')}
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          ${chCheck('tuition', '💳', '학원 결제')}
+          ${_billingSettings?.materialsChannel?.enabled ? chCheck('materials', '📚', '교재/시험비') : ''}
+          <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 해당 채널 제외</span>
+        </div>
+        <textarea id="billingMsgPreview" rows="14"
+          style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;"
+          oninput="document.getElementById('billingMsgChars').textContent=this.value.length">${esc(msg)}</textarea>
+        <div style="margin-top:6px;font-size:11px;color:var(--gray);">
+          <span id="billingMsgChars">${msg.length}</span>자 ·
+          <span style="color:#bbb;">카톡 1메시지 ~1000자 권장. 직접 편집 가능.</span>
+        </div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
+        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>
+      </div>
+    </div>
+  `);
+}
+
+window._billingMsgChangeTpl = (tpl) => {
+  if (!_billingMsgState) return;
+  _billingMsgState.template = tpl;
+  _billingRenderMessageModal();
+};
+
+window._billingMsgToggleCh = (ch, on) => {
+  if (!_billingMsgState) return;
+  if (on && !_billingMsgState.channels.includes(ch)) _billingMsgState.channels.push(ch);
+  if (!on) _billingMsgState.channels = _billingMsgState.channels.filter(c => c !== ch);
+  _billingRenderMessageModal();
+};
+
+window._billingCopyMessage = async () => {
+  const ta = document.getElementById('billingMsgPreview');
+  if (!ta) return;
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    showToast('✅ 복사됐어요! 카톡에 붙여넣으세요.');
+    // 발송 이력 기록
+    if (_billingMsgState?.billingId) {
+      try {
+        await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
+          lastMessageSentAt: serverTimestamp(),
+          messagesSentCount: increment(1),
+        });
+      } catch (_) {}
+    }
+    // 일괄 모드면 다음 자동 진행
+    if (_billingBulkQueue && _billingBulkQueue.length > 0) {
+      setTimeout(() => _billingBulkNext(), 400);
+    }
+  } catch (e) {
+    showAlert('복사 실패', '브라우저 권한 또는 https 환경 확인 — 직접 드래그해서 복사하세요.');
+  }
+};
+
+// 미납자 일괄 메시지 — 카드 슬라이드 흐름
+let _billingBulkQueue = null;  // [billingId, ...]
+let _billingBulkTotal = 0;
+
+window._billingOpenBulkMessage = () => {
+  // 미납·부분·연체 학생 추출
+  const targets = _billings.filter(b => {
+    const st = _billingComputeStatus(b);
+    return st === 'unpaid' || st === 'partial' || st === 'overdue';
+  });
+  if (targets.length === 0) {
+    showAlert('입력 확인', '미납·연체 청구서가 없습니다.');
+    return;
+  }
+
+  const list = targets.map(b => {
+    const st = _billingComputeStatus(b);
+    const remain = (b.totalAmount || 0) - (b.paidAmount || 0);
+    const stLabel = st === 'overdue' ? '⚠️ 연체' : st === 'partial' ? '◐ 부분' : '○ 미납';
+    const stColor = st === 'overdue' ? '#b91c1c' : st === 'partial' ? '#ca8a04' : '#475569';
+    const lastSent = b.lastMessageSentAt?.toDate?.();
+    const lastStr = lastSent ? `최근 발송 ${Math.round((Date.now() - lastSent.getTime()) / 86400000)}일 전` : '미발송';
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:white;margin-bottom:6px;">
+        <input type="checkbox" data-id="${b.id}" checked style="width:16px;height:16px;">
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:13px;">${esc(b.studentName)} <span style="color:var(--gray);font-size:11px;font-weight:400;">${esc(b.groupName || '')}</span></div>
+          <div style="font-size:11px;color:var(--gray);margin-top:2px;">${remain.toLocaleString()}원 미입금 · ${lastStr}</div>
+        </div>
+        <span style="font-size:11px;font-weight:600;color:${stColor};">${stLabel}</span>
+      </label>`;
+  }).join('');
+
+  showModal(`
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:15px;font-weight:700;">📨 미납자 일괄 메시지</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">대상 ${targets.length}명 — 체크 해제로 제외</div>
+      </div>
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;background:#f8fafc;">
+        <div style="margin-bottom:8px;display:flex;gap:6px;">
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="document.querySelectorAll('#bulkList input[type=checkbox]').forEach(c=>c.checked=true)">전체 선택</button>
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="document.querySelectorAll('#bulkList input[type=checkbox]').forEach(c=>c.checked=false)">전체 해제</button>
+        </div>
+        <div id="bulkList">${list}</div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
+        <button class="btn btn-primary" onclick="_billingBulkStart()" style="font-size:13px;font-weight:700;">📨 선택한 학생 메시지 만들기 →</button>
+      </div>
+    </div>
+  `);
+};
+
+window._billingBulkStart = () => {
+  const ids = Array.from(document.querySelectorAll('#bulkList input[type=checkbox]:checked'))
+    .map(cb => cb.getAttribute('data-id'));
+  if (ids.length === 0) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
+  _billingBulkQueue = ids.slice();
+  _billingBulkTotal = ids.length;
+  closeModal();
+  setTimeout(() => _billingBulkNext(), 200);
+};
+
+window._billingBulkNext = () => {
+  if (!_billingBulkQueue) return;
+  if (_billingBulkQueue.length === 0) {
+    _billingBulkQueue = null;
+    showAlert('완료', `${_billingBulkTotal}명에게 메시지 복사를 마쳤어요.`);
+    if (currentPage === 'payment') _renderBillingGrid();
+    return;
+  }
+  const id = _billingBulkQueue.shift();
+  const idx = _billingBulkTotal - _billingBulkQueue.length;
+  // 미납 안내 템플릿 자동 적용
+  _billingOpenMessage(id, 'reminder');
+  // 헤더에 진행 표시 + 푸터에 [건너뛰기] [복사 후 다음 →] 교체
+  setTimeout(() => {
+    const header = document.querySelector('#modalBox > div > div');  // 첫 번째 헤더 div
+    if (header) {
+      header.insertAdjacentHTML('afterbegin',
+        `<div style="display:inline-block;padding:3px 10px;background:var(--teal-light);color:var(--teal-dark);border-radius:12px;font-size:11px;font-weight:700;margin-bottom:6px;">${idx} / ${_billingBulkTotal}</div>`
+      );
+    }
+    const footer = document.querySelector('#modalBox > div > div:last-child');
+    if (footer) {
+      footer.innerHTML = `
+        <button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
+        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>
+      `;
+    }
+  }, 50);
+};
+
+window._billingBulkSkip = () => {
+  closeModal();
+  setTimeout(() => _billingBulkNext(), 200);
+};
+
 const _origCloseModal = window.closeModal;
 window.closeModal = function() {
   const wasBillingPanel = _billingPanelId !== null;
