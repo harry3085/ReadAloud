@@ -238,6 +238,13 @@ module.exports = async (req, res) => {
         phone: String(body.phone || ''),
         parentName: String(body.parentName || ''),
         parentPhone: String(body.parentPhone || ''),
+        // 결제 v2 (2026-05-02) — 월별 자동 청구서 생성용. 학원장이 입력한 값이 있으면 저장.
+        tuitionPlan: (body.tuitionPlan && typeof body.tuitionPlan === 'object') ? {
+          amount: parseInt(body.tuitionPlan.amount) || 0,
+          dueDay: parseInt(body.tuitionPlan.dueDay) || 0,  // 0=학원 default, -1=말일, 1~31=해당일
+          startMonth: String(body.tuitionPlan.startMonth || ''),
+          active: !!body.tuitionPlan.active,
+        } : null,
         createdAt: FieldValue.serverTimestamp(),
       });
       batch.set(db.doc('usernameLookup/' + lookupKey), {

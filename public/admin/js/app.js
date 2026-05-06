@@ -819,12 +819,13 @@ window.bulkAction = async(action) => {
   if (!checked.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(action==='pause'){
     if(!await showConfirm(`선택한 ${checked.length}명을 휴원처리 할까요?`))return;
-    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:_ymdKST()});
+    // 휴원/퇴원 시 tuitionPlan.active 도 false 로 → 자동 청구서 생성 skip
+    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:_ymdKST(),'tuitionPlan.active':false});
     await _adjustActiveStudentCount(-checked.length);  // active → pause: -N
     showToast('휴원처리 완료!'); await loadStudents('active');
   } else if(action==='out'){
     if(!await showConfirm(`선택한 ${checked.length}명을 퇴원처리 할까요?`))return;
-    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
+    for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST(),'tuitionPlan.active':false});
     await _adjustActiveStudentCount(-checked.length);  // active → out: -N
     showToast('퇴원처리 완료!'); await loadStudents('active');
   } else if(action==='assign'){
@@ -854,7 +855,12 @@ window.doAssignClass = async(ids) => {
 };
 window.restoreStudent = async(id) => {
   if(!await showConfirm('재원처리 할까요?'))return;
-  await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
+  // 재원 시 기존 tuitionPlan.amount > 0 면 active 자동 복원
+  const snap = await getDoc(doc(db,'users',id));
+  const hasAmt = (snap.data()?.tuitionPlan?.amount || 0) > 0;
+  const update = { status:'active', statusDate:_ymdKST() };
+  if (hasAmt) update['tuitionPlan.active'] = true;
+  await updateDoc(doc(db,'users',id), update);
   await _adjustActiveStudentCount(+1);  // pause/out → active: +1
   showToast('재원처리 완료!');
   if(currentPage==='student-pause') await loadStudents('pause');
@@ -882,6 +888,14 @@ window.openStudentModal = async() => {
           <div><div style="color:var(--gray);margin-bottom:5px;">부모님 성함</div><input id="sParentName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">부모님 연락처</div><input id="sParentPhone" type="tel" placeholder="010-0000-0000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
         </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">💰 수강료 (월별 자동 청구)</div>
+          <div style="display:grid;grid-template-columns:1fr 140px;gap:12px;font-size:13px;">
+            <div><div style="color:var(--gray);margin-bottom:5px;">월 수강료</div><input id="sTuitionAmount" type="number" placeholder="200000" min="0" step="10000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+            <div><div style="color:var(--gray);margin-bottom:5px;">납부일</div><select id="sDueDay" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"><option value="0">학원 기본값</option>${Array.from({length:31},(_,i)=>i+1).map(n=>`<option value="${n}">${n}일</option>`).join('')}<option value="-1">말일</option></select></div>
+          </div>
+          <div style="font-size:11px;color:#bbb;margin-top:5px;">미입력 시 자동 청구서 생성 안 됨. 학생 정보 수정에서 추후 입력 가능.</div>
+        </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
@@ -900,6 +914,8 @@ window.saveStudent = async() => {
   try{
     // 서버 API 로 일원화 — Auth+Firestore+usernameLookup 트랜잭션적 처리 (orphan 방지)
     const idToken = await currentUser.getIdToken();
+    const tuitionAmount = parseInt(document.getElementById('sTuitionAmount')?.value) || 0;
+    const dueDayRaw = parseInt(document.getElementById('sDueDay')?.value);  // 0=학원 기본값, -1=말일, 1~31
     const payload = {
       idToken, username, password: pw, name, group,
       birth: document.getElementById('sBirth').value,
@@ -908,6 +924,12 @@ window.saveStudent = async() => {
       phone: document.getElementById('sPhone').value.trim(),
       parentName: document.getElementById('sParentName').value.trim(),
       parentPhone: document.getElementById('sParentPhone').value.trim(),
+      tuitionPlan: {
+        amount: tuitionAmount,
+        dueDay: isFinite(dueDayRaw) ? dueDayRaw : 0,  // 0 이면 학원 default 사용
+        startMonth: new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),  // KST YYYY-MM
+        active: tuitionAmount > 0,
+      },
     };
     const res = await fetch('/api/createStudent', {
       method: 'POST',
@@ -1283,25 +1305,52 @@ async function loadPayments(){
       return;
     }
 
-    // 설정 완료 — P1-3 부터 작업 예정
+    // 설정 완료 — 이번 달 청구서 자동 생성 (lazy) + 미니멀 표시
+    const generated = await _ensureCurrentMonthBillings();
+    const ym = _ymdKST().slice(0, 7);
+    const billingSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', window.MY_ACADEMY_ID || 'default'),
+      where('yearMonth', '==', ym),
+    ));
+    const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const total = billings.reduce((s, b) => s + (b.totalAmount || 0), 0);
+    const paid = billings.reduce((s, b) => s + (b.paidAmount || 0), 0);
+    const unpaid = total - paid;
+
     const t = _billingSettings.tuitionChannel || {};
     const m = _billingSettings.materialsChannel || {};
     main.innerHTML = `
-      <div class="card" style="padding:24px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
-          <div>
-            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">✅ 결제 설정 완료</div>
-            <div style="font-size:12px;color:var(--gray);">기본 납부일: 매월 ${_billingSettings.defaultDueDay}일</div>
-          </div>
-          <button class="btn btn-secondary" onclick="openPaymentSettingsWizard()" style="font-size:12px;">설정 수정</button>
+      <div class="card" style="padding:18px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div style="font-size:15px;font-weight:700;">📋 ${ym} 청구서 (${billings.length}건)</div>
+          <button class="btn btn-secondary" onclick="openPaymentSettingsWizard()" style="font-size:12px;">⚙️ 설정 수정</button>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div style="padding:14px;background:#f8fafc;border-radius:8px;text-align:center;">
+            <div style="font-size:11px;color:var(--gray);">총 청구</div>
+            <div style="font-size:20px;font-weight:800;margin-top:2px;">${total.toLocaleString()}원</div>
+          </div>
+          <div style="padding:14px;background:#f0fdf4;border-radius:8px;text-align:center;">
+            <div style="font-size:11px;color:#15803d;">입금 완료</div>
+            <div style="font-size:20px;font-weight:800;margin-top:2px;color:#15803d;">${paid.toLocaleString()}원</div>
+          </div>
+          <div style="padding:14px;background:#fef2f2;border-radius:8px;text-align:center;">
+            <div style="font-size:11px;color:#b91c1c;">미입금</div>
+            <div style="font-size:20px;font-weight:800;margin-top:2px;color:#b91c1c;">${unpaid.toLocaleString()}원</div>
+          </div>
+        </div>
+        ${generated > 0 ? `<div style="margin-top:12px;padding:10px 14px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;">✓ ${generated}건의 청구서를 새로 생성했어요.</div>` : ''}
+      </div>
+
+      <div class="card" style="padding:18px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:10px;">결제 채널</div>
         <div style="display:grid;grid-template-columns:${m.enabled ? '1fr 1fr' : '1fr'};gap:14px;">
           <div style="padding:14px;background:#f0fdfa;border-radius:8px;border:1px solid #ccfbf1;">
             <div style="font-size:12px;color:#0d9488;font-weight:700;margin-bottom:8px;">💳 ${esc(t.label || '학원 결제')}</div>
             <div style="font-size:13px;line-height:1.7;">
               ${t.cardLink ? `🔗 ${esc(t.cardLink)}<br>` : ''}
-              🏦 ${esc(t.bankName)} ${esc(t.bankAccount)}<br>
-              ${esc(t.accountHolder)}
+              🏦 ${esc(t.bankName)} ${esc(t.bankAccount)}<br>${esc(t.accountHolder)}
             </div>
           </div>
           ${m.enabled ? `
@@ -1309,18 +1358,122 @@ async function loadPayments(){
             <div style="font-size:12px;color:#c2410c;font-weight:700;margin-bottom:8px;">📚 ${esc(m.label || '교재/시험비')}</div>
             <div style="font-size:13px;line-height:1.7;">
               ${m.cardLink ? `🔗 ${esc(m.cardLink)}<br>` : ''}
-              🏦 ${esc(m.bankName)} ${esc(m.bankAccount)}<br>
-              ${esc(m.accountHolder)}
+              🏦 ${esc(m.bankName)} ${esc(m.bankAccount)}<br>${esc(m.accountHolder)}
               ${m.note ? `<div style="font-size:11px;color:#9a3412;margin-top:6px;">※ ${esc(m.note)}</div>` : ''}
             </div>
           </div>` : ''}
         </div>
-        <div style="margin-top:24px;padding:14px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#854d0e;">
-          🚧 청구서 그리드와 메시지 기능은 다음 작업(P1-3 ~ P2)에서 추가됩니다.
-        </div>
+      </div>
+
+      <div class="card" style="padding:18px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:10px;">학생별 청구서</div>
+        ${billings.length === 0
+          ? `<div style="padding:30px;text-align:center;color:#bbb;font-size:13px;">
+              아직 청구서가 없습니다.<br>
+              <span style="font-size:11px;">학생 정보 수정에서 [💰 월 수강료] 를 입력하면 자동 생성됩니다.</span>
+            </div>`
+          : `<div style="font-size:13px;color:var(--gray);line-height:1.8;">${billings.map(b => {
+              const dueStr = b.dueDate?.toDate ? b.dueDate.toDate().toLocaleDateString('ko-KR') : '-';
+              const statusBadge = b.status === 'paid' ? '<span style="color:#15803d;">✅ 완료</span>'
+                : b.status === 'partial' ? '<span style="color:#ca8a04;">◐ 부분</span>'
+                : '<span style="color:#b91c1c;">○ 미납</span>';
+              return `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;">
+                <span><b>${esc(b.studentName || '?')}</b> · ${(b.totalAmount || 0).toLocaleString()}원 · 납부기한 ${esc(dueStr)}</span>
+                <span>${statusBadge}</span>
+              </div>`;
+            }).join('')}</div>
+            <div style="margin-top:14px;padding:10px 14px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;">
+              🚧 그리드 UI · 항목 추가/수정 · 메시지 발송은 다음 작업(P1-5~P2)에서 추가됩니다.
+            </div>`
+        }
       </div>`;
   } catch(e) {
     main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+// 이번 달 청구서 자동 생성 (lazy) — active + tuitionPlan.amount > 0 학생 대상
+// 이미 생성된 학생은 skip (idempotent)
+// 반환: 새로 생성된 건수
+async function _ensureCurrentMonthBillings() {
+  try {
+    const academyId = window.MY_ACADEMY_ID || 'default';
+    const ym = _ymdKST().slice(0, 7);  // KST YYYY-MM
+
+    // 1) active 학생 조회
+    const studentsSnap = await getDocs(query(
+      collection(db, 'users'),
+      where('academyId', '==', academyId),
+      where('role', '==', 'student'),
+      where('status', '==', 'active'),
+    ));
+
+    // 2) 이번 달 이미 생성된 청구서 조회
+    const existingSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', academyId),
+      where('yearMonth', '==', ym),
+    ));
+    const existingUids = new Set(existingSnap.docs.map(d => d.data().studentUid));
+
+    // 3) 누락된 학생만 생성
+    let created = 0;
+    const defaultDueDay = _billingSettings?.defaultDueDay || 15;
+    const monthNum = parseInt(ym.split('-')[1]);
+
+    for (const sDoc of studentsSnap.docs) {
+      const s = sDoc.data();
+      const uid = sDoc.id;
+      if (existingUids.has(uid)) continue;
+      if (!s.tuitionPlan?.active) continue;
+      const amount = parseInt(s.tuitionPlan.amount) || 0;
+      if (amount <= 0) continue;
+
+      // 납부일 결정 — 학생 dueDay > 학원 default. -1 = 말일
+      let dueDay = parseInt(s.tuitionPlan.dueDay);
+      if (!isFinite(dueDay) || dueDay === 0) dueDay = defaultDueDay;
+      const [y, mm] = ym.split('-').map(Number);
+      const lastDay = new Date(y, mm, 0).getDate();
+      const actualDay = (dueDay === -1) ? lastDay : Math.min(Math.max(1, dueDay), lastDay);
+      const dueDate = new Date(y, mm - 1, actualDay);
+
+      await addDoc(collection(db, 'billings'), {
+        academyId,
+        studentUid: uid,
+        studentName: s.name || '',
+        groupId: '',
+        groupName: s.group || '',
+        yearMonth: ym,
+        dueDate,
+        items: [{
+          itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+          type: 'tuition',
+          label: `${monthNum}월 수강료`,
+          amount,
+          channel: 'tuition',
+          paid: false,
+          paidAt: null,
+          paidVia: '',
+          memo: '',
+          addedAt: Date.now(),  // serverTimestamp 는 array 안에서 작동 X
+          addedBy: 'system',
+        }],
+        totalAmount: amount,
+        paidAmount: 0,
+        status: 'unpaid',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        generatedBy: 'auto',
+        lastMessageSentAt: null,
+        messagesSentCount: 0,
+        memo: '',
+      });
+      created++;
+    }
+    return created;
+  } catch (e) {
+    console.warn('[ensureCurrentMonthBillings]', e.message);
+    return 0;
   }
 }
 
@@ -2768,7 +2921,13 @@ window.restoreSelectedStudent = async(status) => {
   const ids = getCheckedIds(tbodyId);
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 재원처리 할까요?`))return;
-  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'active',statusDate:_ymdKST()});
+  for(const id of ids) {
+    const snap = await getDoc(doc(db,'users',id));
+    const hasAmt = (snap.data()?.tuitionPlan?.amount || 0) > 0;
+    const update = { status:'active', statusDate:_ymdKST() };
+    if (hasAmt) update['tuitionPlan.active'] = true;
+    await updateDoc(doc(db,'users',id), update);
+  }
   await _adjustActiveStudentCount(+ids.length);  // pause/out → active: +N
   showToast('재원처리 완료!'); await loadStudents(status);
 };
@@ -2776,8 +2935,8 @@ window.outSelectedStudent = async() => {
   const ids = getCheckedIds('pauseTableBody');
   if (!ids.length) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
-  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST()});
-  // pause → out: 카운터 변동 없음 (둘 다 비활성)
+  for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST(),'tuitionPlan.active':false});
+  // pause → out: active 카운터 변동 없음 (둘 다 비활성). tuitionPlan.active 는 false 유지
   showToast('퇴원처리 완료!'); await loadStudents('pause');
 };
 // (구버전 deleteSelectedOutStudent 제거 — 위쪽 line 1702 의 Auth+Firestore+lookup 통합 삭제 사용)
@@ -3324,6 +3483,23 @@ window.editStudent = async(id) => {
           <div><div style="color:var(--gray);margin-bottom:5px;">부모님 연락처</div>
             <input id="euParentPhone" type="tel" value="${u.parentPhone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
         </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">💰 수강료 (월별 자동 청구)</div>
+          <div style="display:grid;grid-template-columns:1fr 140px;gap:12px;font-size:13px;">
+            <div><div style="color:var(--gray);margin-bottom:5px;">월 수강료</div>
+              <input id="euTuitionAmount" type="number" value="${u.tuitionPlan?.amount || 0}" min="0" step="10000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+            <div><div style="color:var(--gray);margin-bottom:5px;">납부일</div>
+              <select id="euDueDay" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+                <option value="0"${(u.tuitionPlan?.dueDay ?? 0) === 0 ? ' selected' : ''}>학원 기본값</option>
+                ${Array.from({length:31},(_,i)=>i+1).map(n=>`<option value="${n}"${u.tuitionPlan?.dueDay === n ? ' selected' : ''}>${n}일</option>`).join('')}
+                <option value="-1"${u.tuitionPlan?.dueDay === -1 ? ' selected' : ''}>말일</option>
+              </select></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);margin-top:8px;">
+            <input id="euTuitionActive" type="checkbox" ${(u.tuitionPlan?.active ?? true) ? 'checked' : ''}>
+            매월 자동 청구서 생성 (해지 시 체크 해제 — 휴원/퇴원 처리 시 자동으로 해제됨)
+          </label>
+        </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
@@ -3337,6 +3513,12 @@ window.updateStudent = async(id) => {
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   const newPw = (document.getElementById('euPw')?.value || '').trim();
   if (newPw && newPw.length < 6) { showAlert('비밀번호 확인', '비밀번호는 6자 이상이어야 합니다.'); return; }
+  const tuitionAmount = parseInt(document.getElementById('euTuitionAmount')?.value) || 0;
+  const dueDayRaw = parseInt(document.getElementById('euDueDay')?.value);
+  const tuitionActive = !!document.getElementById('euTuitionActive')?.checked;
+  // 기존 tuitionPlan.startMonth 보존 (없으면 이번 달)
+  const existSnap = await getDoc(doc(db,'users',id));
+  const existPlan = existSnap.data()?.tuitionPlan || {};
   const data = {
     name, group:document.getElementById('euGroup').value,
     birth:document.getElementById('euBirth').value,
@@ -3345,6 +3527,12 @@ window.updateStudent = async(id) => {
     phone:document.getElementById('euPhone').value.trim(),
     parentName:document.getElementById('euParentName').value.trim(),
     parentPhone:document.getElementById('euParentPhone').value.trim(),
+    tuitionPlan: {
+      amount: tuitionAmount,
+      dueDay: isFinite(dueDayRaw) ? dueDayRaw : 0,
+      startMonth: existPlan.startMonth || new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
+      active: tuitionActive && tuitionAmount > 0,
+    },
   };
   try {
     await updateDoc(doc(db,'users',id), data);
