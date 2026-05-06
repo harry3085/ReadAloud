@@ -1242,76 +1242,313 @@ window.deleteSelectedHwFile = async() => {
   showToast('삭제됐어요.'); await loadHwFileAdmin();
 };
 
-// ── 결제 관리 ────────────────────────────────────────
+// ── 결제 관리 v2 (2026-05-02) — billings 컬렉션 기반 ───────
+// P1-1: 데이터 모델 + Rules + 인덱스 (배포 완료)
+// P1-2: 결제 설정 마법사 — 첫 진입 시 자동 노출
+// P1-3+: 학생 tuitionPlan + 자동 청구서 + 그리드 UI (다음 작업)
+
+// 한국 시중 은행 목록 (마법사 select 용)
+const _BILLING_BANKS = [
+  '농협', '국민', '신한', '우리', '하나', '기업', '카카오뱅크', '토스뱅크',
+  '새마을금고', '우체국', 'SC제일', '씨티', '대구', '부산', '경남', '광주',
+  '전북', '제주', '수협', 'KDB산업', '케이뱅크',
+];
+
+let _billingSettings = null;  // academies/{id}.paymentSettings 캐시
+let _billingWizardStep = 1;
+let _billingWizardData = {};  // 마법사 진행 중 임시 데이터
+
+// 결제 페이지 진입점
 async function loadPayments(){
-  const el=document.getElementById('paymentTableBody');
-  try{
-    const snap=await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-    const pays=snap.docs.map(d=>({id:d.id,...d.data()}));
-    let total=0,paid=0,unpaid=0;
-    pays.forEach(p=>{total+=p.amount||0;if(p.status==='paid')paid+=p.amount||0;else unpaid+=p.amount||0;});
-    document.getElementById('payTotal').textContent=(total/10000).toFixed(0)+'만원';
-    document.getElementById('payPaid').textContent=(paid/10000).toFixed(0)+'만원';
-    document.getElementById('payUnpaid').textContent=(unpaid/10000).toFixed(0)+'만원';
-    if(!pays.length){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">결제 내역이 없습니다</td></tr>';return;}
-    const slabel={paid:'납부완료',unpaid:'미납',pending:'확인중'};
-    const sbadge={paid:'badge-green',unpaid:'badge-red',pending:'badge-amber'};
-    initPagination('paymentTableBody', pays, (p,i)=>`<tr>
-      <td><input type="checkbox" value="${p.id}"></td>
-      <td>${i+1}</td>
-      <td style="font-weight:600;">${esc(p.userName)||'-'}</td>
-      <td>${esc(p.group)||'-'}</td>
-      <td>${esc(p.title)||'-'}</td>
-      <td style="font-weight:600;">${(p.amount||0).toLocaleString()}원</td>
-      <td class="td-sm">${p.due||'-'}</td>
-      <td><span class="badge ${sbadge[p.status]||'badge-gray'}">${slabel[p.status]||'미납'}</span></td>
-      <td class="td-sub">${p.memo||'-'}</td>
-    </tr>`, 'paymentPagination', 9);
-  }catch(e){el.innerHTML='<tr><td colspan="9" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+  const main = document.getElementById('billingMain');
+  if (!main) return;
+  try {
+    const acadSnap = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'));
+    _billingSettings = acadSnap.exists() ? (acadSnap.data().paymentSettings || null) : null;
+
+    if (!_billingSettings || !_billingSettings.tuitionChannel?.bankAccount) {
+      // 미설정 — 결제 설정 마법사 자동 노출
+      main.innerHTML = `
+        <div class="card" style="padding:48px 24px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">💳</div>
+          <div style="font-size:18px;font-weight:700;margin-bottom:8px;">결제 관리를 시작해 보세요</div>
+          <div style="color:var(--gray);font-size:13px;line-height:1.6;margin-bottom:24px;">
+            매월 학생별 청구서를 자동 생성하고 학원장 안내 메시지를 만듭니다.<br>
+            먼저 수강료를 받을 계좌 정보를 등록해주세요.
+          </div>
+          <button class="btn btn-primary" onclick="openPaymentSettingsWizard()">⚙️ 결제 설정 시작</button>
+        </div>`;
+      // 첫 진입 자동 마법사 (사용자 친화)
+      setTimeout(() => openPaymentSettingsWizard(), 100);
+      return;
+    }
+
+    // 설정 완료 — P1-3 부터 작업 예정
+    const t = _billingSettings.tuitionChannel || {};
+    const m = _billingSettings.materialsChannel || {};
+    main.innerHTML = `
+      <div class="card" style="padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+          <div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">✅ 결제 설정 완료</div>
+            <div style="font-size:12px;color:var(--gray);">기본 납부일: 매월 ${_billingSettings.defaultDueDay}일</div>
+          </div>
+          <button class="btn btn-secondary" onclick="openPaymentSettingsWizard()" style="font-size:12px;">설정 수정</button>
+        </div>
+        <div style="display:grid;grid-template-columns:${m.enabled ? '1fr 1fr' : '1fr'};gap:14px;">
+          <div style="padding:14px;background:#f0fdfa;border-radius:8px;border:1px solid #ccfbf1;">
+            <div style="font-size:12px;color:#0d9488;font-weight:700;margin-bottom:8px;">💳 ${esc(t.label || '학원 결제')}</div>
+            <div style="font-size:13px;line-height:1.7;">
+              ${t.cardLink ? `🔗 ${esc(t.cardLink)}<br>` : ''}
+              🏦 ${esc(t.bankName)} ${esc(t.bankAccount)}<br>
+              ${esc(t.accountHolder)}
+            </div>
+          </div>
+          ${m.enabled ? `
+          <div style="padding:14px;background:#fff7ed;border-radius:8px;border:1px solid #fed7aa;">
+            <div style="font-size:12px;color:#c2410c;font-weight:700;margin-bottom:8px;">📚 ${esc(m.label || '교재/시험비')}</div>
+            <div style="font-size:13px;line-height:1.7;">
+              ${m.cardLink ? `🔗 ${esc(m.cardLink)}<br>` : ''}
+              🏦 ${esc(m.bankName)} ${esc(m.bankAccount)}<br>
+              ${esc(m.accountHolder)}
+              ${m.note ? `<div style="font-size:11px;color:#9a3412;margin-top:6px;">※ ${esc(m.note)}</div>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
+        <div style="margin-top:24px;padding:14px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#854d0e;">
+          🚧 청구서 그리드와 메시지 기능은 다음 작업(P1-3 ~ P2)에서 추가됩니다.
+        </div>
+      </div>`;
+  } catch(e) {
+    main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${esc(e.message)}</div>`;
+  }
 }
-window.updatePayStatus = async(id,status) => {
-  await updateDoc(doc(db,'payments',id),{status});
-  showToast('상태가 변경됐어요.'); await loadPayments();
+
+// ── 결제 설정 마법사 (2 step) ──────────────────────────
+window.openPaymentSettingsWizard = () => {
+  _billingWizardStep = 1;
+  _billingWizardData = {};
+  // 기존 설정 prefill
+  const existing = _billingSettings || {};
+  _billingWizardData = {
+    defaultDueDay: existing.defaultDueDay || 15,
+    tuition: { ...(existing.tuitionChannel || {}) },
+    materialsEnabled: existing.materialsChannel?.enabled || false,
+    materials: { ...(existing.materialsChannel || {}) },
+  };
+  _renderBillingWizard();
 };
-window.delPayment = async(id) => {
-  if(!await showConfirm('삭제할까요?'))return;
-  await deleteDoc(doc(db,'payments',id));
-  showToast('삭제됐어요.'); await loadPayments();
-};
-window.openPaymentModal = async() => {
-  const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-  const opts=usersSnap.docs.map(d=>{const u=d.data();return `<option value="${d.id}|${u.name}|${u.group||''}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
+
+function _renderBillingWizard() {
+  if (_billingWizardStep === 1) {
+    _renderWizardStep1();
+  } else {
+    _renderWizardStep2();
+  }
+}
+
+function _renderWizardStep1() {
+  const d = _billingWizardData;
+  const t = d.tuition || {};
+  const bankOpts = ['<option value="">선택</option>',
+    ..._BILLING_BANKS.map(b => `<option value="${b}"${t.bankName === b ? ' selected' : ''}>${b}</option>`)
+  ].join('');
+  const dueDayOpts = ['<option value="0">말일</option>',
+    ...Array.from({length: 31}, (_, i) => i + 1).map(n =>
+      `<option value="${n}"${d.defaultDueDay === n ? ' selected' : ''}>${n}일</option>`
+    )
+  ].join('');
+
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">결제 등록</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">결제 설정 (1/2)</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">💳 수강료를 받을 계좌를 알려주세요</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
-          <div><div style="color:var(--gray);margin-bottom:5px;">학생 *</div><select id="payStudent" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
-          <div><div style="color:var(--gray);margin-bottom:5px;">항목 *</div><input id="payTitle" type="text" placeholder="예: 4월 수강료" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div><div style="color:var(--gray);margin-bottom:5px;">금액 *</div><input id="payAmount" type="number" placeholder="150000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div><div style="color:var(--gray);margin-bottom:5px;">납부 기한</div><input id="payDue" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div><div style="color:var(--gray);margin-bottom:5px;">상태</div><select id="payStatus" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"><option value="unpaid">미납</option><option value="paid">납부완료</option></select></div>
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">카드 결제 링크 <span style="color:#bbb;font-weight:400;">(선택)</span></label>
+            <input id="wizCardLink" type="text" value="${esc(t.cardLink || '')}" placeholder="https://gyul.com/p/..." style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+            <div style="font-size:10px;color:#bbb;margin-top:3px;">결제선생, 토스 결제링크 등 사용 중이면 입력</div>
+          </div>
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;">
+            <div>
+              <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">은행 *</label>
+              <select id="wizBankName" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${bankOpts}</select>
+            </div>
+            <div>
+              <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">계좌번호 *</label>
+              <input id="wizBankAccount" type="text" value="${esc(t.bankAccount || '')}" placeholder="123-4567-8901" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+            </div>
+          </div>
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">예금주 *</label>
+            <input id="wizAccountHolder" type="text" value="${esc(t.accountHolder || '')}" placeholder="○○영어학원" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">매월 기본 납부일 *</label>
+            <select id="wizDueDay" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${dueDayOpts}</select>
+            <div style="font-size:10px;color:#bbb;margin-top:3px;">학생별 다른 날짜로 변경 가능 (다음 단계에서 학생 등록 시)</div>
+          </div>
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-        <button class="btn btn-primary" onclick="savePayment()">등록</button>
+        <button class="btn btn-secondary" onclick="closeModal()">나중에</button>
+        <button class="btn btn-primary" onclick="_billingWizardNext()">다음 →</button>
       </div>
     </div>
   `);
+}
+
+window._billingWizardNext = () => {
+  // Step 1 검증 + 임시 저장
+  const bankName = document.getElementById('wizBankName').value;
+  const bankAccount = document.getElementById('wizBankAccount').value.trim();
+  const accountHolder = document.getElementById('wizAccountHolder').value.trim();
+  const dueDay = parseInt(document.getElementById('wizDueDay').value);
+  const cardLink = document.getElementById('wizCardLink').value.trim();
+
+  if (!bankName || !bankAccount || !accountHolder) {
+    showAlert('입력 확인', '은행·계좌번호·예금주를 모두 입력하세요.');
+    return;
+  }
+  _billingWizardData.tuition = { cardLink, bankName, bankAccount, accountHolder };
+  _billingWizardData.defaultDueDay = isFinite(dueDay) ? dueDay : 15;
+  _billingWizardStep = 2;
+  _renderWizardStep2();
 };
-window.savePayment = async() => {
-  const sel=document.getElementById('payStudent').value.split('|');
-  const uid=sel[0],userName=sel[1],group=sel[2];
-  const title=document.getElementById('payTitle').value.trim();
-  const amount=parseInt(document.getElementById('payAmount').value)||0;
-  const due=document.getElementById('payDue').value;
-  const status=document.getElementById('payStatus').value;
-  if (!title||!amount) { showAlert('입력 확인', '항목과 금액을 입력하세요.'); return; }
-  await addDoc(collection(db,'payments'),{uid,userName,group,title,amount,due,status,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
-  closeModal(); showToast('✅ 등록됐어요!'); await loadPayments();
+
+window._billingWizardBack = () => {
+  _billingWizardStep = 1;
+  _renderWizardStep1();
+};
+
+function _renderWizardStep2() {
+  const d = _billingWizardData;
+  const m = d.materials || {};
+  const enabled = !!d.materialsEnabled;
+  const bankOpts = ['<option value="">선택</option>',
+    ..._BILLING_BANKS.map(b => `<option value="${b}"${m.bankName === b ? ' selected' : ''}>${b}</option>`)
+  ].join('');
+
+  showModal(`
+    <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">결제 설정 (2/2)</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">📚 교재비·시험비는 별도 계좌로 받으시나요?</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <div style="padding:12px 14px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082;font-size:12px;color:#7a5a00;line-height:1.6;margin-bottom:18px;">
+          💡 한국 학원에서는 교재 판매가 제한되어 원장 개인 계좌로 별도 받는 경우가 많습니다.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+          <label style="display:flex;gap:10px;padding:14px;border:2px solid ${!enabled ? 'var(--teal)' : 'var(--border)'};border-radius:10px;cursor:pointer;background:${!enabled ? 'var(--teal-light)' : 'white'};">
+            <input type="radio" name="wizUseMat" value="no" ${!enabled ? 'checked' : ''} onchange="_billingWizardToggleMat(false)" style="margin-top:2px;">
+            <div>
+              <div style="font-weight:700;">같은 계좌로 받음</div>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;">모든 비용을 학원 계좌 하나로</div>
+            </div>
+          </label>
+          <label style="display:flex;gap:10px;padding:14px;border:2px solid ${enabled ? 'var(--teal)' : 'var(--border)'};border-radius:10px;cursor:pointer;background:${enabled ? 'var(--teal-light)' : 'white'};">
+            <input type="radio" name="wizUseMat" value="yes" ${enabled ? 'checked' : ''} onchange="_billingWizardToggleMat(true)" style="margin-top:2px;">
+            <div>
+              <div style="font-weight:700;">별도 계좌로 받음</div>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;">원장 개인 계좌 등으로 분리</div>
+            </div>
+          </label>
+        </div>
+        <div id="wizMatFields" style="display:${enabled ? 'flex' : 'none'};flex-direction:column;gap:14px;margin-top:18px;padding-top:18px;border-top:1px solid var(--border);font-size:13px;">
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">카드 결제 링크 <span style="color:#bbb;font-weight:400;">(선택)</span></label>
+            <input id="wizMatCardLink" type="text" value="${esc(m.cardLink || '')}" placeholder="https://..." style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;">
+            <div>
+              <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">은행 *</label>
+              <select id="wizMatBankName" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${bankOpts}</select>
+            </div>
+            <div>
+              <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">계좌번호 *</label>
+              <input id="wizMatBankAccount" type="text" value="${esc(m.bankAccount || '')}" placeholder="123-456-789012" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+            </div>
+          </div>
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">예금주 *</label>
+            <input id="wizMatAccountHolder" type="text" value="${esc(m.accountHolder || '')}" placeholder="홍길동 (원장 개인)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">안내 문구 <span style="color:#bbb;font-weight:400;">(선택)</span></label>
+            <input id="wizMatNote" type="text" value="${esc(m.note || '입금자명에 학생 이름 기재 부탁드립니다')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="_billingWizardBack()">← 이전</button>
+        <button class="btn btn-primary" onclick="_billingWizardComplete()">완료</button>
+      </div>
+    </div>
+  `);
+}
+
+window._billingWizardToggleMat = (enabled) => {
+  _billingWizardData.materialsEnabled = enabled;
+  document.getElementById('wizMatFields').style.display = enabled ? 'flex' : 'none';
+  // 라디오 카드 시각 갱신을 위해 다시 렌더 (선택 상태 유지)
+  _renderWizardStep2();
+};
+
+window._billingWizardComplete = async () => {
+  const d = _billingWizardData;
+  const enabled = !!d.materialsEnabled;
+  let materialsChannel = { enabled: false };
+
+  if (enabled) {
+    const bankName = document.getElementById('wizMatBankName').value;
+    const bankAccount = document.getElementById('wizMatBankAccount').value.trim();
+    const accountHolder = document.getElementById('wizMatAccountHolder').value.trim();
+    const cardLink = document.getElementById('wizMatCardLink').value.trim();
+    const note = document.getElementById('wizMatNote').value.trim();
+    if (!bankName || !bankAccount || !accountHolder) {
+      showAlert('입력 확인', '별도 계좌의 은행·계좌번호·예금주를 모두 입력하세요.');
+      return;
+    }
+    materialsChannel = {
+      enabled: true,
+      label: '교재/시험비',
+      cardLink, bankName, bankAccount, accountHolder, note,
+    };
+  }
+
+  // academies/{id}.paymentSettings 저장
+  const academyName = (await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID))).data()?.name || '';
+  const settings = {
+    defaultDueDay: d.defaultDueDay || 15,
+    tuitionChannel: {
+      label: '학원 결제',
+      cardLink: d.tuition.cardLink || '',
+      bankName: d.tuition.bankName,
+      bankAccount: d.tuition.bankAccount,
+      accountHolder: d.tuition.accountHolder,
+      note: '',
+    },
+    materialsChannel,
+    messageSettings: {
+      greeting: `안녕하세요, ${academyName}입니다 :)`,
+      signature: '감사합니다.',
+      customTemplates: {},
+    },
+  };
+
+  try {
+    await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), { paymentSettings: settings });
+    closeModal();
+    showToast('✅ 결제 설정이 완료됐어요!');
+    _billingSettings = settings;
+    await loadPayments();  // 메인 화면 갱신
+  } catch (e) {
+    showAlert('저장 실패', e.message);
+  }
 };
 
 // ── 메시지 관리 ──────────────────────────────────────

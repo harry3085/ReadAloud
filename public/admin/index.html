@@ -606,35 +606,16 @@
     </div>
   </div>
 
-  <!-- 결제 관리 -->
+  <!-- 결제 관리 v2 (2026-05-02) — billings 컬렉션 기반 -->
   <div class="page" id="page-payment">
     <div class="page-header">
-      <div><div class="page-title">결제 관리</div></div>
-      <button class="btn btn-primary" onclick="openPaymentModal()">+ 결제 등록</button>
-    </div>
-    <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;gap:16px;">
-        <div class="stat-card" style="flex:1;"><div class="stat-icon teal">💰</div><div><div class="stat-num" id="payTotal">-</div><div class="stat-label">총 수강료</div></div></div>
-        <div class="stat-card" style="flex:1;"><div class="stat-icon green">✅</div><div><div class="stat-num" id="payPaid">-</div><div class="stat-label">납부완료</div></div></div>
-        <div class="stat-card" style="flex:1;"><div class="stat-icon red">❌</div><div><div class="stat-num" id="payUnpaid">-</div><div class="stat-label">미납</div></div></div>
+      <div><div class="page-title">결제 관리</div><div class="page-sub" id="paymentSub">월별 청구서 + 학원장 안내 메시지</div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="openPaymentSettingsWizard()" id="btnPaymentSettings">⚙️ 결제 설정</button>
       </div>
     </div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="payCheckAll" onchange="toggleCheck('paymentTableBody',this)"></th><th onclick="sortTable('paymentTableBody',0)" class="sortable">No</th><th onclick="sortTable('paymentTableBody',1)" class="sortable">학생</th><th onclick="sortTable('paymentTableBody',2)" class="sortable">반</th><th onclick="sortTable('paymentTableBody',3)" class="sortable">항목</th><th onclick="sortTable('paymentTableBody',4)" class="sortable">금액</th><th onclick="sortTable('paymentTableBody',5)" class="sortable">납부기한</th><th onclick="sortTable('paymentTableBody',6)" class="sortable">상태</th><th>메모</th></tr></thead>
-          <tbody id="paymentTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
-        </table>
-        <div class="tbl-toolbar">
-          <div class="tbl-actions">
-            <button class="action-btn primary" onclick="openPaymentModal()">+ 결제 등록</button>
-            <button class="action-btn" onclick="markSelectedPaid()">✅ 납부완료</button>
-            <button class="action-btn danger" onclick="deleteSelectedPayment()">🗑 삭제</button>
-          </div>
-          <div class="tbl-page" id="paymentPagination"></div>
-        </div>
-      </div>
-    </div>
+    <div id="billingMain"><div style="padding:60px;text-align:center;color:#bbb;">로딩 중...</div></div>
+  </div>
   </div>
 
   <!-- AI 사용량 (T5) -->

@@ -125,10 +125,27 @@ service cloud.firestore {
       allow write: if isOwner(userId);
     }
 
-    // ── 결제 (관리자 전용) ───────────────────────────────────
+    // ── 결제 v1 (deprecated 2026-05-02, billings 로 교체. 컬렉션 비어있음) ─
+    // 기존 코드 호환 + 혹시 실수로 쓰면 admin 만 차단 — 사실상 dead
     match /payments/{paymentId} {
       allow read, update, delete: if isAdminOfMyAcademy();
       allow create: if isAdminCreatingForMyAcademy();
+    }
+
+    // ── 결제 v2: 월별 청구서 (billings) ─────────────────────────
+    // - 학원장 admin: 자기 학원 read/write 전체
+    // - 학생 본인: 자기 청구서 read 가능 (Phase 3 학생앱 청구 화면 대비)
+    // - super_admin: 전체 권한
+    match /billings/{billingId} {
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        (resource != null && resource.data.academyId == myAcademyId() && isAdmin()) ||
+        (resource != null && resource.data.studentUid == request.auth.uid)
+      );
+      allow create: if isSuperAdmin() ||
+                    (isAdmin() && request.resource.data.academyId == myAcademyId());
+      allow update, delete: if isSuperAdmin() ||
+                            (isAdmin() && resource.data.academyId == myAcademyId());
     }
 
     // ── 레거시 컬렉션 제거됨 (Phase 6F):
