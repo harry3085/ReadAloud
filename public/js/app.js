@@ -95,20 +95,59 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
 
-  // 녹음 무결성 폴백 — 시험 단위 (q.minDurationSec 등) 우선, 없을 때만 사용.
-  // 시험 배정 시 학원장이 모달에서 모든 값 정하므로 보통 q 에 있음.
-  // 옛 시험 (학원 setting 만 갖는 케이스) 호환을 위해 academies doc 도 한 번 시도.
+  // 녹음 무결성 폴백 + 학원 브랜딩 동시 로드 (academies doc 1회 fetch 통합)
   try {
     const adoc = await getDoc(doc(db, 'academies', academyId));
-    const integ = adoc.exists() ? (adoc.data()?.settings?.recordingIntegrity || {}) : {};
+    const adata = adoc.exists() ? adoc.data() : null;
+    const integ = adata?.settings?.recordingIntegrity || {};
     window.MY_ACADEMY_RECORDING_CFG = {
       minVoiceActivity: typeof integ.minVoiceActivity === 'number' ? integ.minVoiceActivity : 0.4,
       minDurationSec:   typeof integ.minDurationSec   === 'number' ? integ.minDurationSec   : 60,
       maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,
     };
+    window.MY_ACADEMY_NAME = (adata && adata.name) || '';
+    // 화이트라벨 브랜딩 적용 — Free 플랜은 LexiAI 기본 고정
+    _applyAcademyBranding(adata);
   } catch (_) {
     window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 };
+    window.MY_ACADEMY_NAME = '';
   }
+}
+
+// 화이트라벨 적용 — academies doc 데이터 기반
+function _applyAcademyBranding(academy) {
+  if (!academy) return;
+  const planId = academy.planId || 'free';
+  const branding = academy.branding || {};
+  const presets = window.BRANDING_PRESETS || {};
+  const presetId = (planId === 'free') ? 'coral' : (branding.presetId || 'coral');
+  const preset = presets[presetId] || presets.coral;
+  if (!preset) return;
+  // CSS 변수 + theme-color 주입
+  if (typeof window.applyPresetToCss === 'function') window.applyPresetToCss(preset);
+  // 로고 (Free 는 무시, LexiAI 기본 유지)
+  const logoUrl = (planId !== 'free') ? (branding.logo192Url || '') : '';
+  if (logoUrl) {
+    document.querySelectorAll('.app-icon, .loading-icon, .header-icon').forEach(img => {
+      if (img.tagName === 'IMG') {
+        img.src = logoUrl;
+        img.onerror = () => { img.src = '/icons/icon-192.png'; img.onerror = null; };
+      }
+    });
+  }
+  // 학원명 (로그인·로딩·홈 헤더·페이지 타이틀)
+  const acadName = academy.name || '';
+  if (acadName) {
+    document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
+    document.title = acadName;
+  }
+  // 캐치프레이즈 (Free 무시)
+  const cp = (planId !== 'free') ? (branding.catchphrase || '') : '';
+  const sub = document.querySelector('.logo-sub');
+  if (sub && cp) sub.textContent = cp;
+  // PWA manifest 갱신
+  if (typeof window.updateManifest === 'function') window.updateManifest(window.MY_ACADEMY_ID);
+  window.CURRENT_BRANDING = { academyName: acadName, preset, logoUrl, catchphrase: cp, planId };
 }
 
 async function _lookupUserByUsername(usernameRaw) {

@@ -134,12 +134,48 @@ async function _loadMyAcademyContext(user, userDocData) {
   if (!academyId) academyId = 'default';
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
-  // 학원명 — 결제 메시지 등에서 {학원명} 치환에 사용
+  // 학원명 + 화이트라벨 브랜딩 — academies doc 1회 fetch 통합
   try {
     const acSnap = await getDoc(doc(db, 'academies', academyId));
-    window.MY_ACADEMY_NAME = (acSnap.exists() && acSnap.data().name) || '';
+    const acData = acSnap.exists() ? acSnap.data() : null;
+    window.MY_ACADEMY_NAME = (acData && acData.name) || '';
+    // 학원장 앱에도 자기 학원 색·로고 즉시 적용
+    _applyAdminBranding(acData);
   } catch(_) { window.MY_ACADEMY_NAME = ''; }
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
+}
+
+// 학원장 앱 — 자기 학원 색·로고 적용. branding-presets.js 가 --teal alias 도 set 해서
+// 기존 admin/style.css 의 32곳 var(--teal) 가 자동 따라옴.
+function _applyAdminBranding(acData) {
+  if (!acData) return;
+  const planId = acData.planId || 'free';
+  const branding = acData.branding || {};
+  const presets = window.BRANDING_PRESETS || {};
+  const presetId = (planId === 'free') ? 'coral' : (branding.presetId || 'coral');
+  const preset = presets[presetId] || presets.coral;
+  if (preset && typeof window.applyPresetToCss === 'function') window.applyPresetToCss(preset);
+  // 헤더 로고 (학원이 자기 로고 업로드 + Lite 이상)
+  const logoUrl = (planId !== 'free') ? (branding.logo192Url || '') : '';
+  if (logoUrl) {
+    document.querySelectorAll('.header-logo img, .sidebar-logo').forEach(img => {
+      if (img.tagName === 'IMG') {
+        img.src = logoUrl;
+        img.onerror = () => { img.src = '/icons/icon-192.png'; img.onerror = null; };
+      }
+    });
+  }
+  // 헤더 학원명 (옆에 표시되는 텍스트)
+  const acadName = acData.name || '';
+  if (acadName) {
+    const headerLogo = document.querySelector('.header-logo');
+    if (headerLogo) {
+      // 첫 번째 텍스트 노드(학원명) 만 교체 — 이미지는 보존
+      const textNode = Array.from(headerLogo.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+      if (textNode) textNode.textContent = ' ' + acadName;
+    }
+    document.title = acadName + ' 관리자';
+  }
 }
 
 onAuthStateChanged(auth, async user => {
@@ -187,6 +223,7 @@ const pageLabels = {
   'score-report':'성적 리포트', 'score-personal':'성장 리포트',
   message:'메시지 관리', notice:'공지 관리', hwfile:'자료실', payment:'결제 관리',
   quotaUsage:'AI 사용량',
+  branding:'학원 브랜딩',
   generator:'AI OCR',
   'quiz-generate':'AI Generator', 'quiz-sets':'문제 세트 목록',
   'test-word':'단어시험',
@@ -213,6 +250,7 @@ window.goPage = async(id) => {
   else if(id==='hwfile') await loadHwFileAdmin();
   else if(id==='payment') await loadPayments();
   else if(id==='quotaUsage') await loadQuotaUsage();
+  else if(id==='branding') await loadBranding();
   else if(id==='message') await loadMessages();
   else if(id==='test-list') await loadTestList();
   else if(id==='score-report') initScoreReport();
@@ -11739,3 +11777,245 @@ window.qgResetPrompt = async () => {
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
 };
 
+// ── 학원 브랜딩 (화이트라벨) ────────────────────────────────
+let _brandingState = null;  // { presetId, catchphrase, logoUrl, logo192Url, logo512Url, planId, academyName }
+
+async function loadBranding() {
+  const main = document.getElementById('brandingMain');
+  if (!main) return;
+  try {
+    const acadSnap = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'));
+    if (!acadSnap.exists()) {
+      main.innerHTML = '<div style="padding:24px;color:#e05050;">학원 정보 로드 실패</div>';
+      return;
+    }
+    const a = acadSnap.data();
+    const planId = a.planId || 'free';
+    const branding = a.branding || {};
+    _brandingState = {
+      presetId: branding.presetId || 'coral',
+      catchphrase: branding.catchphrase || '',
+      logoUrl: branding.logoUrl || '',
+      logo192Url: branding.logo192Url || '',
+      logo512Url: branding.logo512Url || '',
+      planId,
+      academyName: a.name || '',
+    };
+    _renderBrandingPage();
+  } catch (e) {
+    main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+function _isBrandingLocked() {
+  return _brandingState && _brandingState.planId === 'free';
+}
+
+function _renderBrandingPage() {
+  const s = _brandingState;
+  if (!s) return;
+  const main = document.getElementById('brandingMain');
+  const presets = window.BRANDING_PRESETS || {};
+  const locked = _isBrandingLocked();
+
+  // 플랜 정보 갱신
+  const planInfo = document.getElementById('brandingPlanInfo');
+  if (planInfo) {
+    const planLabel = (s.planId || 'free').toUpperCase();
+    planInfo.textContent = `현재 플랜: ${planLabel}${locked ? ' — 브랜딩 변경은 Lite 이상 플랜에서 가능' : ' — 변경 즉시 학생 앱에 반영'}`;
+  }
+
+  const presetCards = Object.values(presets).map(p => `
+    <div onclick="${locked ? 'showAlert(\\'Free 플랜\\', \\'색상 변경은 Lite 이상 플랜에서 가능합니다.\\')' : `_brandingSelectPreset('${p.id}')`}"
+         style="border:2px solid ${s.presetId === p.id ? p.primary : 'var(--border)'};border-radius:10px;padding:12px;cursor:${locked ? 'not-allowed' : 'pointer'};text-align:center;background:white;${locked ? 'opacity:0.5;' : ''}transition:.15s;position:relative;">
+      <div style="height:60px;border-radius:8px;background:${p.loginGradient};display:flex;align-items:center;justify-content:center;margin-bottom:8px;">
+        <span style="font-size:28px;">${p.emoji}</span>
+      </div>
+      <div style="font-size:13px;font-weight:${s.presetId === p.id ? 700 : 500};color:var(--text);">${p.name}</div>
+      ${p.isDefault ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:white;font-size:9px;padding:2px 6px;border-radius:8px;">기본</div>' : ''}
+      ${s.presetId === p.id ? `<div style="position:absolute;top:6px;left:6px;background:${p.primary};color:white;font-size:10px;padding:2px 6px;border-radius:8px;">✓ 선택</div>` : ''}
+    </div>
+  `).join('');
+
+  const currentPreset = presets[s.presetId] || presets.coral;
+  const previewLogo = s.logo192Url || '/icons/icon-192.png';
+  const previewSub = s.catchphrase || '큰소리로 말하는 영어 학습';
+
+  main.innerHTML = `
+    ${locked ? `
+      <div class="card" style="padding:14px 18px;margin-bottom:14px;background:#fff7ed;border:1px solid #fed7aa;display:flex;align-items:center;gap:12px;">
+        <div style="font-size:28px;">🔒</div>
+        <div style="flex:1;">
+          <div style="font-weight:700;color:#9a3412;">Free 플랜에서는 LexiAI 기본 디자인이 적용됩니다.</div>
+          <div style="font-size:12px;color:#9a3412;margin-top:3px;">학원 로고·색상·캐치프레이즈 변경은 Lite 이상 플랜에서 가능합니다.</div>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- 미리보기 + 색상 + 로고 + 캐치프레이즈 그리드 레이아웃 -->
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;">
+      <!-- 좌측: 학생 앱 로그인 화면 미리보기 -->
+      <div class="card" style="padding:0;overflow:hidden;position:sticky;top:12px;align-self:start;">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">📱 학생 앱 미리보기</div>
+        <div id="brandingPreview" style="background:${currentPreset.loginGradient};color:white;padding:36px 20px;text-align:center;">
+          <img id="brandingPreviewLogo" src="${previewLogo}" alt="" style="width:80px;height:80px;border-radius:18px;background:rgba(255,255,255,0.2);padding:6px;object-fit:contain;margin-bottom:10px;">
+          <div id="brandingPreviewTitle" style="font-size:24px;font-weight:800;margin-bottom:4px;">${esc(s.academyName || '학원명')}</div>
+          <div id="brandingPreviewSub" style="font-size:13px;opacity:0.92;">${esc(previewSub)}</div>
+        </div>
+        <div style="padding:18px;background:white;">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:#999;margin-bottom:8px;">아이디</div>
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:#999;margin-bottom:10px;">비밀번호</div>
+          <div id="brandingPreviewBtn" style="background:${currentPreset.loginGradient};color:white;text-align:center;padding:12px;border-radius:12px;font-weight:700;font-size:14px;">로그인</div>
+          <div style="text-align:center;font-size:10px;color:#999;margin-top:10px;letter-spacing:0.3px;">
+            Powered by <strong style="color:#666;">LexiAI</strong> 🤖
+          </div>
+        </div>
+      </div>
+
+      <!-- 우측: 설정 입력 -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <!-- 색상 팔레트 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:10px;">🎨 색상 팔레트 ${locked ? '<span style="font-weight:400;color:#999;font-size:12px;">(잠김)</span>' : ''}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
+            ${presetCards}
+          </div>
+        </div>
+
+        <!-- 로고 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:10px;">🖼️ 학원 로고</div>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:80px;height:80px;border:1px solid var(--border);border-radius:10px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+              <img id="brandingCurrentLogo" src="${s.logo192Url || '/icons/icon-192.png'}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">
+            </div>
+            <div style="flex:1;">
+              <input type="file" id="brandingLogoInput" accept="image/png" style="display:none;" onchange="_brandingOnLogoFile(event)">
+              <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <button class="btn btn-primary" ${locked ? 'disabled' : ''} onclick="document.getElementById('brandingLogoInput').click()" style="font-size:12px;padding:7px 12px;">📤 PNG 업로드</button>
+                ${s.logo192Url ? `<button class="btn btn-secondary" ${locked ? 'disabled' : ''} onclick="_brandingRemoveLogo()" style="font-size:12px;padding:7px 12px;">🗑️ 로고 제거</button>` : ''}
+              </div>
+              <div style="font-size:11px;color:var(--gray);line-height:1.5;">
+                • PNG 만 (최대 5MB) · 정사각형 권장<br>
+                • 192/512 자동 생성 → 학생 앱 + PWA 아이콘 반영
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 캐치프레이즈 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:6px;">✨ 캐치프레이즈 <span style="font-weight:400;color:#999;font-size:12px;">(학생 로그인 화면 부제, 최대 40자)</span></div>
+          <input type="text" id="brandingCatchphrase" maxlength="40" value="${esc(s.catchphrase || '')}"
+            ${locked ? 'disabled' : ''}
+            placeholder="예: 소리내어 읽으면 영어가 들립니다"
+            oninput="_brandingOnCatchphraseInput(this.value)"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
+          <div style="font-size:11px;color:#999;text-align:right;margin-top:4px;"><span id="brandingCpCount">${(s.catchphrase || '').length}</span> / 40</div>
+        </div>
+
+        <!-- 저장 -->
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" ${locked ? 'disabled' : ''} onclick="_brandingResetDefaults()" style="font-size:13px;">↺ 기본값 복원</button>
+          <button class="btn btn-primary" ${locked ? 'disabled' : ''} onclick="_brandingSave()" style="font-size:13px;font-weight:700;">💾 색상·문구 저장</button>
+        </div>
+        <div style="font-size:11px;color:#999;text-align:right;">로고 업로드는 즉시 저장됩니다. 색상·문구는 [💾 저장] 클릭 후 반영.</div>
+      </div>
+    </div>`;
+}
+
+window._brandingSelectPreset = (id) => {
+  if (_isBrandingLocked()) return;
+  if (!_brandingState) return;
+  _brandingState.presetId = id;
+  _renderBrandingPage();
+};
+
+window._brandingOnCatchphraseInput = (val) => {
+  if (_isBrandingLocked()) return;
+  if (!_brandingState) return;
+  _brandingState.catchphrase = val;
+  const cnt = document.getElementById('brandingCpCount');
+  if (cnt) cnt.textContent = val.length;
+  const sub = document.getElementById('brandingPreviewSub');
+  if (sub) sub.textContent = val || '큰소리로 말하는 영어 학습';
+};
+
+window._brandingOnLogoFile = async (event) => {
+  if (_isBrandingLocked()) return;
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (file.type !== 'image/png') { showAlert('파일 형식', 'PNG 파일만 업로드 가능합니다.'); event.target.value = ''; return; }
+  if (file.size > 5 * 1024 * 1024) { showAlert('파일 크기', '5MB 이하 PNG 만 업로드 가능합니다.'); event.target.value = ''; return; }
+
+  showToast('🚀 업로드 중...');
+  try {
+    const reader = new FileReader();
+    const base64 = await new Promise((resolve, reject) => {
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const idToken = await currentUser.getIdToken();
+    const r = await fetch('/api/uploadLogo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, imageBase64: base64 }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || '업로드 실패');
+    _brandingState.logoUrl = j.urls.original;
+    _brandingState.logo192Url = j.urls['192'];
+    _brandingState.logo512Url = j.urls['512'];
+    _renderBrandingPage();
+    showToast('✅ 로고 업로드 완료 — 학생 앱 새로고침 시 반영');
+  } catch (e) {
+    showAlert('업로드 실패', e.message);
+  }
+  event.target.value = '';
+};
+
+window._brandingRemoveLogo = async () => {
+  if (_isBrandingLocked()) return;
+  if (!await showConfirm('로고 제거', '학원 로고를 제거하면 LexiAI 기본 아이콘이 표시됩니다.')) return;
+  try {
+    await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), {
+      'branding.logoUrl': '',
+      'branding.logo192Url': '',
+      'branding.logo512Url': '',
+      'branding.updatedAt': serverTimestamp(),
+      'branding.updatedBy': currentUser.uid,
+    });
+    _brandingState.logoUrl = '';
+    _brandingState.logo192Url = '';
+    _brandingState.logo512Url = '';
+    _renderBrandingPage();
+    showToast('🗑️ 로고가 제거됐어요');
+  } catch (e) { showAlert('저장 실패', e.message); }
+};
+
+window._brandingResetDefaults = async () => {
+  if (_isBrandingLocked()) return;
+  if (!await showConfirm('기본값 복원', '색상은 코랄 핑크(LexiAI 기본), 캐치프레이즈는 빈 값으로 되돌립니다. (로고는 별도 [로고 제거])')) return;
+  _brandingState.presetId = 'coral';
+  _brandingState.catchphrase = '';
+  _renderBrandingPage();
+};
+
+window._brandingSave = async () => {
+  if (_isBrandingLocked()) return;
+  if (!_brandingState) return;
+  try {
+    await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), {
+      'branding.presetId': _brandingState.presetId,
+      'branding.catchphrase': _brandingState.catchphrase,
+      'branding.updatedAt': serverTimestamp(),
+      'branding.updatedBy': currentUser.uid,
+    });
+    showToast('✅ 브랜딩 저장 — 학생 앱 새로고침 시 반영');
+    // 학원장 앱에도 즉시 반영
+    if (typeof window.applyPresetToCss === 'function' && window.BRANDING_PRESETS) {
+      window.applyPresetToCss(window.BRANDING_PRESETS[_brandingState.presetId]);
+    }
+  } catch (e) { showAlert('저장 실패', e.message); }
+};

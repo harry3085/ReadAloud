@@ -1,7 +1,7 @@
 // 큰소리 영어 Service Worker — 앱 쉘 캐시 + 일반 fetch 만
 // FCM 백그라운드 알림은 firebase-messaging-sw.js (Firebase 자동 등록 SW) 가 전담.
 
-const CACHE_NAME = 'kunsori-v277';
+const CACHE_NAME = 'kunsori-v278';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -37,8 +37,8 @@ self.addEventListener('fetch', e => {
 
   const url = e.request.url;
 
-  // Firebase / API 요청은 항상 네트워크
-  if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/')) return;
+  // Firebase / API / Storage(로고) 요청은 항상 네트워크 (로고는 학원장 변경 즉시 반영 필요)
+  if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/') || url.includes('storage.googleapis.com')) return;
 
   // 앱 쉘(HTML, CSS, JS, 아이콘): 네트워크 우선, 실패 시 캐시 (배포 즉시 반영)
   const isAppShell = APP_SHELL.some(path => url.endsWith(path) || url === self.location.origin + path);

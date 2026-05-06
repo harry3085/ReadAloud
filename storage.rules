@@ -32,6 +32,15 @@ service firebase.storage {
                    );
     }
 
+    // ── 학원 브랜딩 로고 (academies/{id}/logos/) ───────────────
+    // 화이트라벨 — 학원장이 자기 학원 PNG 로고 업로드 (192/512 자동 리사이즈는 서버에서)
+    // 읽기: 모두 (학생 앱·학원장 앱·super 앱·PWA manifest fetch)
+    // 쓰기: server admin SDK 만 (uploadLogo.js — 클라 직접 쓰기 차단)
+    match /academies/{academyId}/logos/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // ── 공지 첨부 (현재 미사용이지만 미래 보강) ──────────────
     match /notices/{allPaths=**} {
       allow read: if request.auth != null;

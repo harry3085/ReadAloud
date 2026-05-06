@@ -1,6 +1,12 @@
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;}
 :root{
-  --teal:#E8714A;--teal-dark:#D85A30;--teal-light:#FEF2EC;
+  /* 화이트라벨 브랜드 색 — JS applyPresetToCss() 가 동적 주입. 미주입 시 코랄(LexiAI 기본) */
+  --brand-primary:#E8714A;--brand-primary-dark:#D85A30;--brand-primary-light:#FFB89A;
+  --brand-primary-bg:#FEF2EC;--brand-primary-text:#FFFFFF;--brand-accent-secondary:#EF9F27;
+  --brand-login-gradient:linear-gradient(160deg,#E8714A,#D85A30);
+  --brand-header-gradient:linear-gradient(150deg,#E8714A,#D85A30);
+  /* 레거시 alias — 32곳 호환 (점진 제거) */
+  --teal:var(--brand-primary);--teal-dark:var(--brand-primary-dark);--teal-light:var(--brand-primary-bg);
   --sidebar-w:200px;--header-h:52px;
   --bg:#f4f6f8;--white:#fff;--text:#222;--gray:#888;--border:#e0e0e0;
   --red:#e05050;--green:#4bc27d;--amber:#f59e0b;--blue:#3b82f6;
