@@ -1710,23 +1710,24 @@ window._billingDeleteItem = async (itemId) => {
 // 학원 단위 템플릿 + placeholder 치환 — 한 번 편집하면 모든 학생에 적용.
 // 학생별 데이터 ({학생명}/{월}/{청구내역}/{계좌정보}/{마감일}/{미납액}) 자동 치환.
 
-// 기본 템플릿 — {청구내역} 안에 채널별 items+계좌 inline 묶음 (학원비/교재비 명확 구분)
+// 기본 템플릿 — 인사말·서명은 일반 텍스트(자유 편집), 학생/금액/학원명만 chip
+// 옛 customTemplates 의 {인사}/{서명} placeholder 도 호환 — vars 에서 빈 문자열로 무력화 X, 학원명만 inline
 const _BILLING_DEFAULT_TEMPLATES = {
-  polite: `{인사}
+  polite: `안녕하세요, {학원명}입니다 :)
 {학생명} 학생의 {월}월 결제 안내드립니다.
 
 {청구내역}
 
 납부일: {마감일}까지
 
-{서명}`,
+감사합니다.`,
   brief: `[{학원명}]
 {학생명} {월}월 청구
 
 {청구내역}
 
 {마감일}까지`,
-  reminder: `{인사}
+  reminder: `안녕하세요, {학원명}입니다.
 {학생명} 학생 {월}월 결제가 아직 확인되지 않아 다시 안내드립니다.
 
 {청구내역}
@@ -1734,7 +1735,7 @@ const _BILLING_DEFAULT_TEMPLATES = {
 이미 입금 완료하셨다면 확인 부탁드립니다.
 입금 시점 알려주시면 감사하겠습니다.
 
-{서명}`,
+감사합니다.`,
 };
 
 // 청구서 + settings + 채널 → placeholder 별 dynamic 데이터 반환
