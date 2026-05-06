@@ -1310,20 +1310,41 @@ async function loadPayments(){
       return;
     }
 
-    // 설정 완료 — 이번 달 청구서 자동 생성 (lazy) + 그리드 표시
+    // 설정 완료 — 이번 달 청구서 자동 생성 (lazy) + 탭 디스패치
     if (!_billingMonth) _billingMonth = _ymdKST().slice(0, 7);  // 기본: 이번 달
-    const generated = (_billingMonth === _ymdKST().slice(0, 7)) ? await _ensureCurrentMonthBillings() : 0;
-    await _renderBillingGrid(generated);
+    const generated = (_billingMonth === _ymdKST().slice(0, 7) && _billingTab === 'grid') ? await _ensureCurrentMonthBillings() : 0;
+    if (_billingTab === 'summary') await _renderBillingSummary();
+    else if (_billingTab === 'timeline') await _renderBillingTimeline();
+    else await _renderBillingGrid(generated);
   } catch(e) {
     main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${esc(e.message)}</div>`;
   }
 }
 
 // ── 그리드 UI (P1-5) ────────────────────────────────────
+let _billingTab = 'grid';       // 'grid' | 'summary' | 'timeline'
 let _billingMonth = null;       // 'YYYY-MM' 현재 보고있는 월
 let _billings = [];             // 현재 월 청구서
 let _billingFilterGroup = '';   // 반 필터
 let _billingFilterStatus = '';  // 상태 필터
+
+// 탭 네비게이션 (P3) — 모든 결제 페이지 뷰 상단에 공통 표시
+function _billingTabsHtml() {
+  const tab = (key, icon, label) => {
+    const active = _billingTab === key;
+    return `<button onclick="_billingChangeTab('${key}')" style="padding:8px 16px;border:none;background:${active?'white':'transparent'};color:${active?'var(--teal)':'var(--gray)'};font-size:13px;font-weight:${active?'700':'500'};border-bottom:2px solid ${active?'var(--teal)':'transparent'};cursor:pointer;">${icon} ${label}</button>`;
+  };
+  return `<div style="display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:12px;background:#f8f9fa;border-radius:8px 8px 0 0;padding:0 8px;">
+    ${tab('grid', '📋', '청구 그리드')}
+    ${tab('summary', '📊', '월간 결산')}
+    ${tab('timeline', '📅', '타임라인 (3개월)')}
+  </div>`;
+}
+
+window._billingChangeTab = async (t) => {
+  _billingTab = t;
+  await loadPayments();
+};
 
 // 월 셀렉트 옵션 (이번 달 KST 기준 -6 ~ 0). 문자열 산술로 타임존 안전.
 function _billingMonthOptions(selected) {
@@ -1380,6 +1401,7 @@ async function _renderBillingGrid(generated = 0) {
   const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
 
   main.innerHTML = `
+    ${_billingTabsHtml()}
     <!-- 컨트롤 바 -->
     <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <select onchange="_billingChangeMonth(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
@@ -1467,9 +1489,7 @@ async function _renderBillingGrid(generated = 0) {
       </table>
     </div>
 
-    <div style="margin-top:14px;padding:10px 14px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;">
-      🚧 메시지 발송 (📨 버튼) 은 다음 작업 (Phase 2) 에서 추가됩니다. 현재는 항목 관리만 가능.
-    </div>`;
+    `;
 }
 
 function _billingRenderRow(b, matEnabled) {
@@ -1537,6 +1557,264 @@ function _billingComputeStatus(b) {
 
 window._billingChangeMonth = async (ym) => {
   _billingMonth = ym;
+  await loadPayments();
+};
+
+// ── P3-1: 월간 결산 — 채널별 청구·수금·미수 + CSV ─────────────
+async function _renderBillingSummary() {
+  const main = document.getElementById('billingMain');
+  if (!main) return;
+  const academyId = window.MY_ACADEMY_ID || 'default';
+  const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
+
+  const billingSnap = await getDocs(query(
+    collection(db, 'billings'),
+    where('academyId', '==', academyId),
+    where('yearMonth', '==', _billingMonth),
+  ));
+  const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // 채널별 합산
+  const sumChannel = (key) => {
+    let charged = 0, paid = 0;
+    for (const b of billings) {
+      for (const i of (b.items || [])) {
+        if (i.channel !== key) continue;
+        charged += (i.amount || 0);
+        if (i.paid) paid += (i.amount || 0);
+      }
+    }
+    return { charged, paid, unpaid: charged - paid, count: billings.filter(b => (b.items||[]).some(i => i.channel===key)).length };
+  };
+  const sTuition = sumChannel('tuition');
+  const sMat = sumChannel('materials');
+  const total = { charged: sTuition.charged + sMat.charged, paid: sTuition.paid + sMat.paid };
+  total.unpaid = total.charged - total.paid;
+  total.pct = total.charged > 0 ? Math.round((total.paid / total.charged) * 100) : 0;
+
+  // 학생 수 / 상태 분포
+  const stCount = { paid: 0, partial: 0, unpaid: 0, overdue: 0 };
+  for (const b of billings) stCount[_billingComputeStatus(b)]++;
+
+  const channelCard = (label, emoji, s, color) => `
+    <div class="card" style="padding:18px;border-left:4px solid ${color};">
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px;">${emoji} ${label}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-variant-numeric:tabular-nums;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--gray);">청구</span><strong>${s.charged.toLocaleString()}원</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#15803d;">입금</span><strong style="color:#15803d;">${s.paid.toLocaleString()}원</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;border-top:1px solid var(--border);padding-top:6px;"><span style="color:#c2410c;">미수금</span><strong style="color:#c2410c;">${s.unpaid.toLocaleString()}원</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray);"><span>수금률</span><span>${s.charged>0 ? Math.round(s.paid/s.charged*100) : 0}%</span></div>
+      </div>
+    </div>`;
+
+  main.innerHTML = `
+    ${_billingTabsHtml()}
+    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select onchange="_billingChangeMonth(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
+        ${_billingMonthOptions(_billingMonth)}
+      </select>
+      <span style="margin-left:auto;font-size:12px;color:var(--gray);">${billings.length}건 청구서</span>
+      <button class="btn btn-primary" onclick="_billingExportSummaryCSV()" style="font-size:12px;padding:7px 12px;">📥 CSV 다운로드</button>
+    </div>
+
+    <!-- 합계 요약 -->
+    <div class="card" style="padding:20px;margin-bottom:12px;background:linear-gradient(135deg,#fefefe 0%,#f0fdf4 100%);border:1px solid #bbf7d0;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;text-align:center;">
+        <div>
+          <div style="font-size:11px;color:var(--gray);">총 청구</div>
+          <div style="font-size:22px;font-weight:800;margin-top:3px;">${total.charged.toLocaleString()}원</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:2px;">${billings.length}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#15803d;">총 입금</div>
+          <div style="font-size:22px;font-weight:800;margin-top:3px;color:#15803d;">${total.paid.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#15803d;margin-top:2px;">${total.pct}%</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#c2410c;">총 미수금</div>
+          <div style="font-size:22px;font-weight:800;margin-top:3px;color:#c2410c;">${total.unpaid.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#c2410c;margin-top:2px;">${stCount.unpaid + stCount.partial + stCount.overdue}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#b91c1c;">연체</div>
+          <div style="font-size:22px;font-weight:800;margin-top:3px;color:#b91c1c;">${stCount.overdue}건</div>
+          <div style="font-size:11px;color:#b91c1c;margin-top:2px;">즉시 안내 필요</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 채널별 결산 (세무 분리용) -->
+    <div style="display:grid;grid-template-columns:${matEnabled?'repeat(2,1fr)':'1fr'};gap:12px;margin-bottom:12px;">
+      ${channelCard('학원 결제 (수강료)', '💳', sTuition, '#0d9488')}
+      ${matEnabled ? channelCard('교재/시험비 (별도 채널)', '📚', sMat, '#f59e0b') : ''}
+    </div>
+
+    <div class="card" style="padding:14px 18px;font-size:11px;color:var(--gray);line-height:1.6;">
+      💡 <b>세무 처리</b>: 학원 매출(수강료)과 개인 매출(교재/시험비)이 채널로 분리됩니다. CSV 다운로드 시 채널별 컬럼이 분리되어 사업자 신고와 개인 신고에 활용 가능합니다.
+    </div>`;
+}
+
+window._billingExportSummaryCSV = async () => {
+  const academyId = window.MY_ACADEMY_ID || 'default';
+  const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
+  const snap = await getDocs(query(
+    collection(db, 'billings'),
+    where('academyId', '==', academyId),
+    where('yearMonth', '==', _billingMonth),
+  ));
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  rows.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
+
+  const ch = (b, key) => {
+    const items = (b.items || []).filter(i => i.channel === key);
+    const charged = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const paid = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+    return { charged, paid, unpaid: charged - paid };
+  };
+  const dueStr = (b) => {
+    const d = b.dueDate?.toDate?.();
+    return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+  };
+  const statusLabel = (s) => ({ paid: '완료', partial: '부분', overdue: '연체', unpaid: '미납' }[s] || s);
+
+  const headers = ['학생', '반', '납부기한', '학원 결제 청구', '학원 결제 입금', '학원 결제 미수'];
+  if (matEnabled) headers.push('교재시험비 청구', '교재시험비 입금', '교재시험비 미수');
+  headers.push('총 청구', '총 입금', '총 미수', '상태');
+
+  const lines = [headers.join(',')];
+  for (const b of rows) {
+    const t = ch(b, 'tuition');
+    const m = ch(b, 'materials');
+    const totalCharged = (b.totalAmount || 0);
+    const totalPaid = (b.paidAmount || 0);
+    const csvCell = (v) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const cells = [b.studentName || '', b.groupName || '', dueStr(b), t.charged, t.paid, t.unpaid];
+    if (matEnabled) cells.push(m.charged, m.paid, m.unpaid);
+    cells.push(totalCharged, totalPaid, totalCharged - totalPaid, statusLabel(_billingComputeStatus(b)));
+    lines.push(cells.map(csvCell).join(','));
+  }
+
+  // BOM + UTF-8 (Excel 한글 호환)
+  const csv = '﻿' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `결산_${_billingMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`✅ ${_billingMonth} 결산 CSV 다운로드`);
+};
+
+// ── P3-2: 타임라인 뷰 — 학생 × 최근 3개월 ────────────────────
+async function _renderBillingTimeline() {
+  const main = document.getElementById('billingMain');
+  if (!main) return;
+  const academyId = window.MY_ACADEMY_ID || 'default';
+  const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
+
+  // 최근 3개월 (현재 _billingMonth 기준 -2 ~ 0)
+  const months = [];
+  let [y, m] = _billingMonth.split('-').map(Number);
+  for (let off = 2; off >= 0; off--) {
+    let mm = m - off, yy = y;
+    while (mm <= 0) { mm += 12; yy--; }
+    months.push(`${yy}-${String(mm).padStart(2,'0')}`);
+  }
+
+  // 3개월 청구서 일괄 fetch (in 쿼리)
+  const billingSnap = await getDocs(query(
+    collection(db, 'billings'),
+    where('academyId', '==', academyId),
+    where('yearMonth', 'in', months),
+  ));
+  const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // 학생별 그룹화: { studentUid: { studentName, groupName, byMonth: { ym: billing } } }
+  const byStudent = {};
+  for (const b of billings) {
+    const uid = b.studentUid;
+    if (!byStudent[uid]) byStudent[uid] = { studentName: b.studentName, groupName: b.groupName, byMonth: {}, totalUnpaid: 0 };
+    byStudent[uid].byMonth[b.yearMonth] = b;
+    byStudent[uid].totalUnpaid += ((b.totalAmount || 0) - (b.paidAmount || 0));
+  }
+
+  // 정렬: 미수금 많은 순 → 이름순
+  const studentRows = Object.entries(byStudent).map(([uid, s]) => ({ uid, ...s }));
+  studentRows.sort((a, b) => (b.totalUnpaid - a.totalUnpaid) || (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
+
+  const monthShort = ym => parseInt(ym.split('-')[1]) + '월';
+
+  // 채널 상태 아이콘: 항목 없으면 '-', 모두 paid '✅', 일부 paid '◐', 미납 '○'
+  const channelIcon = (b, key) => {
+    const items = (b?.items || []).filter(i => i.channel === key);
+    if (items.length === 0) return '<span style="color:#ddd;">-</span>';
+    const allPaid = items.every(i => i.paid);
+    const somePaid = items.some(i => i.paid);
+    if (allPaid) return '<span style="color:#15803d;font-weight:700;" title="입금 완료">✅</span>';
+    if (somePaid) return '<span style="color:#ca8a04;font-weight:700;" title="부분 입금">◐</span>';
+    return '<span style="color:#b91c1c;font-weight:700;" title="미납">○</span>';
+  };
+
+  const cellMonth = (b) => {
+    if (!b) return `<td style="padding:8px;text-align:center;color:#ddd;font-size:12px;">-</td>`;
+    const status = _billingComputeStatus(b);
+    const bg = status === 'paid' ? 'rgba(34,197,94,0.05)' : status === 'overdue' ? 'rgba(220,38,38,0.06)' : status === 'partial' ? 'rgba(234,179,8,0.05)' : 'transparent';
+    const remain = (b.totalAmount || 0) - (b.paidAmount || 0);
+    return `<td style="padding:6px 8px;text-align:center;background:${bg};border-right:1px solid #f1f5f9;cursor:pointer;" onclick="_billingTimelineJump('${b.yearMonth}')" title="${b.yearMonth} 그리드로 이동">
+      <div style="font-size:14px;line-height:1.2;">${channelIcon(b, 'tuition')}${matEnabled ? ' ' + channelIcon(b, 'materials') : ''}</div>
+      <div style="font-size:10px;color:${remain>0?'#c2410c':'#15803d'};margin-top:2px;font-variant-numeric:tabular-nums;">${remain > 0 ? remain.toLocaleString() : '✓'}</div>
+    </td>`;
+  };
+
+  main.innerHTML = `
+    ${_billingTabsHtml()}
+    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select onchange="_billingChangeMonth(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
+        ${_billingMonthOptions(_billingMonth)}
+      </select>
+      <span style="font-size:12px;color:var(--gray);">기준 월의 직전 3개월 표시 · 미수금 많은 순 정렬</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--gray);">
+        ✅ 완료 ◐ 부분 ○ 미납 ${matEnabled ? '· 학원비 / 교재비 순' : ''}
+      </span>
+    </div>
+
+    <div class="card" style="padding:0;overflow:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="position:sticky;top:0;background:#f8f9fa;z-index:5;">
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;min-width:100px;">학생</th>
+            <th style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;min-width:80px;">반</th>
+            ${months.map(ym => `<th style="padding:10px 8px;text-align:center;border-right:1px solid #e9ecef;min-width:90px;${ym === _billingMonth?'background:rgba(13,148,136,0.06);':''}">${monthShort(ym)}${ym === _billingMonth?' <small style="font-weight:400;color:var(--gray);">(기준)</small>':''}</th>`).join('')}
+            <th style="padding:10px 12px;text-align:right;min-width:100px;">3개월 미수</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${studentRows.length === 0
+            ? `<tr><td colspan="${3 + months.length}" style="padding:40px;text-align:center;color:#bbb;">최근 3개월 청구서가 없습니다.</td></tr>`
+            : studentRows.map(s => `
+              <tr style="border-bottom:1px solid #f1f5f9;${s.totalUnpaid > 0 ? 'background:rgba(255,165,100,0.03);' : ''}">
+                <td style="padding:8px 12px;font-weight:600;border-right:1px solid #e9ecef;">${esc(s.studentName || '-')}</td>
+                <td style="padding:8px 12px;color:var(--gray);font-size:12px;border-right:1px solid #e9ecef;">${esc(s.groupName || '-')}</td>
+                ${months.map(ym => cellMonth(s.byMonth[ym])).join('')}
+                <td style="padding:8px 12px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:${s.totalUnpaid>0?'#c2410c':'#15803d'};">${s.totalUnpaid > 0 ? s.totalUnpaid.toLocaleString() + '원' : '✓ 정상'}</td>
+              </tr>`).join('')
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="padding:12px 16px;margin-top:12px;font-size:11px;color:var(--gray);line-height:1.6;">
+      💡 <b>학생별 미납 패턴</b> 한눈에 파악 — 매월 반복 미납인지, 일시적인지 판단 가능. 셀 클릭 시 해당 월 그리드로 이동.
+    </div>`;
+}
+
+window._billingTimelineJump = async (ym) => {
+  _billingMonth = ym;
+  _billingTab = 'grid';
   await loadPayments();
 };
 
@@ -4413,10 +4691,148 @@ window.editStudent = async(id) => {
             매월 자동 청구서 생성 (해지 시 체크 해제 — 휴원/퇴원 처리 시 자동으로 해제됨)
           </label>
         </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+          <button class="btn btn-secondary" onclick="_billingOpenStuHistory('${id}','${esc(u.name||'').replace(/'/g,"\\'")}')" style="width:100%;font-size:13px;">💳 최근 12개월 결제 이력 보기</button>
+        </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
         <button class="btn btn-primary" onclick="updateStudent('${id}')">저장</button>
+      </div>
+    </div>
+  `);
+};
+
+// ── P3-3: 학생별 12개월 결제 이력 ─────────────────────────
+window._billingOpenStuHistory = async (studentUid, studentName) => {
+  const academyId = window.MY_ACADEMY_ID || 'default';
+  // 최근 12개월 (KST 기준)
+  let [y, m] = _ymdKST().slice(0, 7).split('-').map(Number);
+  const months = [];
+  for (let off = 0; off < 12; off++) {
+    let mm = m - off, yy = y;
+    while (mm <= 0) { mm += 12; yy--; }
+    months.push(`${yy}-${String(mm).padStart(2,'0')}`);
+  }
+
+  // Firestore 'in' 은 최대 30개 — 12개월은 안전
+  const snap = await getDocs(query(
+    collection(db, 'billings'),
+    where('academyId', '==', academyId),
+    where('studentUid', '==', studentUid),
+    where('yearMonth', 'in', months),
+  ));
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  rows.sort((a, b) => (b.yearMonth || '').localeCompare(a.yearMonth || ''));  // 최신순
+
+  // 통계
+  const totalCharged = rows.reduce((s, b) => s + (b.totalAmount || 0), 0);
+  const totalPaid = rows.reduce((s, b) => s + (b.paidAmount || 0), 0);
+  const totalUnpaid = totalCharged - totalPaid;
+  const paidPct = totalCharged > 0 ? Math.round((totalPaid / totalCharged) * 100) : 0;
+
+  // 평균 납부 지연 일수 — paid 항목의 paidAt - dueDate 평균 (millis)
+  let delaySum = 0, delayCount = 0;
+  for (const b of rows) {
+    const due = b.dueDate?.toDate?.();
+    if (!due) continue;
+    for (const item of (b.items || [])) {
+      if (!item.paid) continue;
+      const paidAt = item.paidAt?.toDate?.() || (typeof item.paidAt === 'number' ? new Date(item.paidAt) : null);
+      if (!paidAt) continue;
+      const days = Math.round((paidAt.getTime() - due.getTime()) / 86400000);
+      delaySum += days;
+      delayCount++;
+    }
+  }
+  const avgDelay = delayCount > 0 ? Math.round(delaySum / delayCount) : null;
+
+  const monthRow = (b) => {
+    const status = _billingComputeStatus(b);
+    const remain = (b.totalAmount || 0) - (b.paidAmount || 0);
+    const stColor = { paid:'#15803d', partial:'#ca8a04', overdue:'#b91c1c', unpaid:'#475569' }[status];
+    const stLabel = { paid:'완료', partial:'부분', overdue:'연체', unpaid:'미납' }[status];
+    const due = b.dueDate?.toDate?.();
+    const dueStr = due ? `${due.getMonth()+1}/${due.getDate()}` : '-';
+    // 가장 마지막 paid 항목의 paidAt 으로 납부일 표시
+    let lastPaidStr = '-';
+    let delayStr = '';
+    if (status === 'paid' || status === 'partial') {
+      const paidItems = (b.items || []).filter(i => i.paid && i.paidAt);
+      if (paidItems.length > 0) {
+        const dates = paidItems.map(i => i.paidAt?.toDate?.() || (typeof i.paidAt === 'number' ? new Date(i.paidAt) : null)).filter(Boolean);
+        if (dates.length > 0) {
+          const last = new Date(Math.max(...dates.map(d => d.getTime())));
+          lastPaidStr = `${last.getMonth()+1}/${last.getDate()}`;
+          if (due) {
+            const days = Math.round((last.getTime() - due.getTime()) / 86400000);
+            delayStr = days > 0 ? `<span style="color:#c2410c;font-size:11px;">+${days}일</span>` : days < 0 ? `<span style="color:#15803d;font-size:11px;">${days}일</span>` : '<span style="color:#15803d;font-size:11px;">정시</span>';
+          }
+        }
+      }
+    }
+    return `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 12px;font-weight:600;">${b.yearMonth}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">${(b.totalAmount||0).toLocaleString()}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#15803d;">${(b.paidAmount||0).toLocaleString()}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${remain>0?'#c2410c':'#15803d'};">${remain.toLocaleString()}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:12px;color:var(--gray);">${dueStr}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:12px;">${lastPaidStr} ${delayStr}</td>
+        <td style="padding:8px 12px;text-align:center;"><span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${stColor}20;color:${stColor};">${stLabel}</span></td>
+      </tr>`;
+  };
+
+  showModal(`
+    <div style="width:min(820px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">💳 ${esc(studentName)} 결제 이력</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:3px;">최근 12개월 — ${rows.length}건 청구서</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        <!-- 누적 통계 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+          <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:var(--gray);">누적 청구</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px;">${totalCharged.toLocaleString()}원</div>
+          </div>
+          <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:#15803d;">누적 입금</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px;color:#15803d;">${totalPaid.toLocaleString()}원</div>
+            <div style="font-size:10px;color:#15803d;margin-top:1px;">${paidPct}%</div>
+          </div>
+          <div style="padding:12px;background:#fff7ed;border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:#c2410c;">미수금</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px;color:#c2410c;">${totalUnpaid.toLocaleString()}원</div>
+          </div>
+          <div style="padding:12px;background:${avgDelay !== null && avgDelay > 7 ? '#fef2f2' : '#f8fafc'};border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:var(--gray);">평균 납부 지연</div>
+            <div style="font-size:16px;font-weight:800;margin-top:3px;color:${avgDelay !== null && avgDelay > 7 ? '#b91c1c' : avgDelay !== null && avgDelay <= 0 ? '#15803d' : 'var(--text)'};">${avgDelay === null ? '-' : (avgDelay > 0 ? `+${avgDelay}일` : `${avgDelay}일`)}</div>
+            <div style="font-size:10px;color:var(--gray);margin-top:1px;">${delayCount}회 입금 기준</div>
+          </div>
+        </div>
+
+        ${rows.length === 0 ? `
+          <div style="padding:40px;text-align:center;color:#bbb;font-size:13px;">결제 이력이 없습니다.</div>
+        ` : `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8f9fa;border-bottom:2px solid var(--border);">
+              <th style="padding:8px 12px;text-align:left;">월</th>
+              <th style="padding:8px 12px;text-align:right;">청구</th>
+              <th style="padding:8px 12px;text-align:right;">입금</th>
+              <th style="padding:8px 12px;text-align:right;">미수</th>
+              <th style="padding:8px 12px;text-align:center;">납부기한</th>
+              <th style="padding:8px 12px;text-align:center;">납부일</th>
+              <th style="padding:8px 12px;text-align:center;">상태</th>
+            </tr>
+          </thead>
+          <tbody>${rows.map(monthRow).join('')}</tbody>
+        </table>
+        `}
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
       </div>
     </div>
   `);
