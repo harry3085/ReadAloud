@@ -134,7 +134,12 @@ async function _loadMyAcademyContext(user, userDocData) {
   if (!academyId) academyId = 'default';
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
-  console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
+  // 학원명 — 결제 메시지 등에서 {학원명} 치환에 사용
+  try {
+    const acSnap = await getDoc(doc(db, 'academies', academyId));
+    window.MY_ACADEMY_NAME = (acSnap.exists() && acSnap.data().name) || '';
+  } catch(_) { window.MY_ACADEMY_NAME = ''; }
+  console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
 }
 
 onAuthStateChanged(auth, async user => {
@@ -1857,7 +1862,7 @@ function _billingRenderMessageModal() {
   if (!s) return;
   const b = _billings.find(x => x.id === s.billingId);
   if (!b) return;
-  const academy = window.adminProfile?.academyName || (window.MY_ACADEMY_NAME || '학원');
+  const academy = window.MY_ACADEMY_NAME || window.adminProfile?.academyName || '학원';
   const msg = _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
   const hasCustom = !!_billingSettings?.messageSettings?.customTemplates?.[s.template];
 
@@ -2012,7 +2017,7 @@ function _billingTplCurrentTemplate(tplKey) {
 
 function _billingTplSampleVars(tplKey) {
   const sample = _billingSampleData();
-  const academy = window.adminProfile?.academyName || '○○ 영어학원';
+  const academy = window.MY_ACADEMY_NAME || window.adminProfile?.academyName || '○○ 영어학원';
   const channels = sample.items.map(i => i.channel).filter((v,i,a) => a.indexOf(v) === i);
   return _billingComputeVars(sample, _billingSettings, channels, academy, tplKey);
 }
