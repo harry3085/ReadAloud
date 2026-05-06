@@ -157,6 +157,7 @@ function _applyAdminBranding(acData) {
   if (preset && typeof window.applyPresetToCss === 'function') window.applyPresetToCss(preset);
   // 헤더 로고 (학원이 자기 로고 업로드 + Lite 이상)
   const logoUrl = (planId !== 'free') ? (branding.logo192Url || '') : '';
+  window.MY_ACADEMY_LOGO = logoUrl;  // 시험지 인쇄·기타 위치에서 참조
   if (logoUrl) {
     document.querySelectorAll('.header-logo img, .sidebar-logo').forEach(img => {
       if (img.tagName === 'IMG') {
@@ -11028,8 +11029,13 @@ function _tpBuildPrintHtml(questions, meta) {
   const renderer = renderers[sourceType] || _printRenderSubj;
   const body = renderer(qs, { showAnswers, typeOpts: typeOpts || {} });
 
-  // 절대 경로로 로고 — 프리뷰와 팝업(인쇄창) 양쪽에서 로드되도록
-  const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + '/icons/icon-192.png';
+  // 절대 경로로 로고 — 학원 업로드 로고 우선, 없으면 LexiAI 기본
+  // 학원 로고는 storage.googleapis.com (절대 URL) — 그대로 사용
+  // 기본 아이콘은 location.origin 붙여 팝업(about:blank) 에서도 로드
+  const _origin = (typeof window !== 'undefined' ? window.location.origin : '');
+  const logoUrl = (typeof window !== 'undefined' && window.MY_ACADEMY_LOGO)
+    ? window.MY_ACADEMY_LOGO
+    : (_origin + '/icons/icon-192.png');
   const headerHtml = `
     <div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:10px;position:relative;z-index:1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
