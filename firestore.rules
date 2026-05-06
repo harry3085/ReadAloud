@@ -229,13 +229,20 @@ service cloud.firestore {
     // 학원 문서
     // read: 자기 학원만 (Phase 4-5 강화 — 자기 학원 정보만 노출)
     // create / delete: super_admin 전용
-    // update: super_admin 전용 + 학원장이 자기 학원의 lastAdminLoginAt 만 갱신 가능 (T1)
+    // update: super_admin 전용 + 학원장(admin)이 자기 학원의 화이트리스트 필드만 갱신 가능
+    //   - lastAdminLoginAt (T1)
+    //   - paymentSettings (2026-05-02 결제 v2 마법사 — academy 자체 결제 채널 등록)
+    //   - usage (학생 카운터 ±, hwFiles upload 영향 등 — 학원장 앱이 직접 갱신)
     match /academies/{academyId} {
       allow read: if isSuperAdmin() || (isSignedIn() && academyId == myAcademyId());
       allow create, delete: if isSuperAdmin();
       allow update: if isSuperAdmin() || (
-        isSignedIn() && academyId == myAcademyId()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastAdminLoginAt'])
+        isAdmin() && academyId == myAcademyId()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastAdminLoginAt',
+            'paymentSettings',
+            'usage',
+          ])
       );
     }
 
