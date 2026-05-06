@@ -2002,38 +2002,90 @@ function _billingSampleData() {
   };
 }
 
-function _billingTplCurrentText(tplKey) {
-  // 우선: 사용자 편집 중인 draft. 다음: 학원 customTemplate 의 rendered. 다음: 기본값 rendered.
+// drafts[k] 는 템플릿(placeholder 그대로). 렌더 시점에 chip HTML 로 변환.
+function _billingTplCurrentTemplate(tplKey) {
   if (_billingTplEditState?.drafts[tplKey] != null) return _billingTplEditState.drafts[tplKey];
   const stored = _billingSettings?.messageSettings?.customTemplates?.[tplKey];
-  const tpl = stored || _BILLING_DEFAULT_TEMPLATES[tplKey];
-  return _billingTplRender(tpl, tplKey);
+  return stored || _BILLING_DEFAULT_TEMPLATES[tplKey];
 }
 
-function _billingTplRender(template, tplKey) {
+function _billingTplSampleVars(tplKey) {
   const sample = _billingSampleData();
   const academy = window.adminProfile?.academyName || '○○ 영어학원';
   const channels = sample.items.map(i => i.channel).filter((v,i,a) => a.indexOf(v) === i);
-  const vars = _billingComputeVars(sample, _billingSettings, channels, academy, tplKey);
-  return _billingApplyTemplate(template, vars);
+  return _billingComputeVars(sample, _billingSettings, channels, academy, tplKey);
 }
 
-function _billingTplDefaultText(tplKey) {
-  return _billingTplRender(_BILLING_DEFAULT_TEMPLATES[tplKey], tplKey);
+// template + sampleVars → chip 이 박힌 HTML
+const _BILLING_BLOCK_PLACEHOLDERS = ['{청구내역}', '{계좌정보}'];
+function _billingTplApplyAsChips(template, vars) {
+  const re = /\{[^}]+\}/g;
+  let out = '';
+  let lastIdx = 0;
+  let m;
+  const baseStyle = 'background:#fef3c7;color:#92400e;border:1px dashed #f59e0b;border-radius:3px;padding:1px 5px;font-weight:500;cursor:not-allowed;user-select:none;';
+  while ((m = re.exec(template)) !== null) {
+    const ph = m[0];
+    if (m.index > lastIdx) {
+      out += esc(template.slice(lastIdx, m.index)).replace(/\n/g, '<br>');
+    }
+    if (Object.prototype.hasOwnProperty.call(vars, ph) && vars[ph] != null) {
+      const value = String(vars[ph]);
+      const isBlock = _BILLING_BLOCK_PLACEHOLDERS.includes(ph);
+      const safeValue = esc(value).replace(/\n/g, '<br>');
+      const style = isBlock
+        ? baseStyle + 'display:block;margin:4px 0;padding:6px 8px;white-space:pre-wrap;'
+        : baseStyle + 'display:inline-block;';
+      out += `<span class="data-chip" contenteditable="false" data-ph="${esc(ph)}" style="${style}">${safeValue}</span>`;
+    } else {
+      out += esc(ph);
+    }
+    lastIdx = m.index + ph.length;
+  }
+  if (lastIdx < template.length) {
+    out += esc(template.slice(lastIdx)).replace(/\n/g, '<br>');
+  }
+  return out;
+}
+
+// contenteditable DOM → 템플릿 (chip 은 data-ph 로 환원)
+function _billingTplExtractTemplate(rootEl) {
+  let out = '';
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent;
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName;
+    if (tag === 'BR') { out += '\n'; return; }
+    if (node.classList && node.classList.contains('data-chip')) {
+      out += node.getAttribute('data-ph') || '';
+      return;
+    }
+    const isBlock = (tag === 'DIV' || tag === 'P');
+    if (isBlock && out.length > 0 && !out.endsWith('\n')) out += '\n';
+    for (const child of node.childNodes) walk(child);
+  };
+  for (const child of rootEl.childNodes) walk(child);
+  return out;
 }
 
 function _billingRenderTemplateEditor() {
   const s = _billingTplEditState;
   if (!s) return;
-  const currentText = _billingTplCurrentText(s.template);
-  const defaultText = _billingTplDefaultText(s.template);
+  const currentTpl = _billingTplCurrentTemplate(s.template);
+  const defaultTpl = _BILLING_DEFAULT_TEMPLATES[s.template];
+  const vars = _billingTplSampleVars(s.template);
+  const currentHtml = _billingTplApplyAsChips(currentTpl, vars);
+  const defaultHtml = _billingTplApplyAsChips(defaultTpl, vars);
   const stored = _billingSettings?.messageSettings?.customTemplates?.[s.template];
-  const isCust = !!stored;
+  const isCust = !!stored || (s.drafts[s.template] != null && s.drafts[s.template] !== defaultTpl);
 
   const tabBtn = (key, icon, label) => {
     const isActive = s.template === key;
     const tplCust = !!_billingSettings?.messageSettings?.customTemplates?.[key];
-    const draftDirty = s.drafts[key] != null && s.drafts[key] !== _billingTplDefaultText(key);
+    const draftDirty = s.drafts[key] != null && s.drafts[key] !== _BILLING_DEFAULT_TEMPLATES[key];
     return `<button onclick="_billingTplChangeTab('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">${icon} ${label}${(tplCust || draftDirty) ? ' <span style="font-size:9px;opacity:0.85;">✏️</span>' : ''}</button>`;
   };
 
@@ -2041,7 +2093,7 @@ function _billingRenderTemplateEditor() {
     <div style="width:min(880px,96vw);max-height:92vh;display:flex;flex-direction:column;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
         <div style="font-size:15px;font-weight:700;line-height:1.3;">⚙️ 메시지 템플릿 편집 — 학원 전체 적용</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:2px;">왼쪽에서 자유롭게 편집 → [저장] 시 모든 학생 메시지에 적용 (학생 데이터는 자동 치환).</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">노란색 영역(데이터)은 학생별로 자동 교체됩니다. 그 외 인사말·문구만 자유롭게 수정하세요.</div>
       </div>
       <div style="padding:14px 20px;overflow-y:auto;flex:1;">
         <div style="display:flex;gap:6px;margin-bottom:14px;">
@@ -2056,17 +2108,18 @@ function _billingRenderTemplateEditor() {
               <span style="font-size:12px;font-weight:600;">✏️ 내가 쓸 메시지 ${isCust ? '<span style="color:#0d9488;font-weight:400;">(편집됨)</span>' : '<span style="color:#bbb;font-weight:400;">(기본값)</span>'}</span>
               ${isCust ? `<button onclick="_billingTplResetCurrent()" style="padding:3px 8px;background:white;color:#dc2626;border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:pointer;">↺ 기본값으로</button>` : ''}
             </div>
-            <textarea id="billingTplDraft" rows="20"
-              style="width:100%;padding:10px 12px;border:2px solid var(--teal);border-radius:6px;font-size:12px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;background:#fefefe;"
-              oninput="_billingTplOnInput(this.value)">${esc(currentText)}</textarea>
+            <div id="billingTplDraft" contenteditable="true"
+              oninput="_billingTplOnEditorInput()"
+              onpaste="_billingTplOnPaste(event)"
+              style="width:100%;min-height:430px;max-height:60vh;padding:10px 12px;border:2px solid var(--teal);border-radius:6px;font-size:12px;line-height:1.7;font-family:'Noto Sans KR','Pretendard',sans-serif;box-sizing:border-box;background:#fefefe;overflow-y:auto;outline:none;">${currentHtml}</div>
             <div style="font-size:11px;color:var(--gray);margin-top:5px;line-height:1.5;">
-              💡 <b>학생명 / 금액 / 계좌 / 마감일</b> 부분은 다른 학생 메시지 만들 때 자동 교체됨. 그 외 인사말·문구만 바꾸면 됨.
+              💡 <span style="background:#fef3c7;color:#92400e;border:1px dashed #f59e0b;border-radius:3px;padding:0 4px;">노란색 데이터</span> 영역은 클릭/수정 불가 — 학생별 정보가 자동 들어갑니다.
             </div>
           </div>
           <div>
             <div style="font-size:12px;font-weight:600;margin-bottom:5px;color:var(--gray);">📄 기본값 (참고)</div>
-            <div style="padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;line-height:1.6;background:#f8fafc;white-space:pre-wrap;height:430px;overflow-y:auto;font-family:'Noto Sans KR','Pretendard',sans-serif;">${esc(defaultText)}</div>
-            <div style="font-size:11px;color:#bbb;margin-top:5px;">↻ 기본값을 그대로 쓰고 싶으면 왼쪽도 동일.</div>
+            <div style="padding:10px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;line-height:1.7;background:#f8fafc;min-height:430px;max-height:60vh;overflow-y:auto;font-family:'Noto Sans KR','Pretendard',sans-serif;">${defaultHtml}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:5px;">↻ 기본값을 그대로 쓰고 싶으면 왼쪽도 동일하게.</div>
           </div>
         </div>
       </div>
@@ -2078,16 +2131,24 @@ function _billingRenderTemplateEditor() {
   `);
 }
 
-window._billingTplOnInput = (value) => {
+window._billingTplOnEditorInput = () => {
   if (!_billingTplEditState) return;
-  _billingTplEditState.drafts[_billingTplEditState.template] = value;
+  const editor = document.getElementById('billingTplDraft');
+  if (!editor) return;
+  _billingTplEditState.drafts[_billingTplEditState.template] = _billingTplExtractTemplate(editor);
+};
+
+window._billingTplOnPaste = (e) => {
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (text) document.execCommand('insertText', false, text);
 };
 
 window._billingTplChangeTab = (tpl) => {
   if (!_billingTplEditState) return;
-  // 현재 textarea 값 한 번 더 sync
-  const ta = document.getElementById('billingTplDraft');
-  if (ta) _billingTplEditState.drafts[_billingTplEditState.template] = ta.value;
+  // 현재 에디터 상태 한 번 더 sync
+  const editor = document.getElementById('billingTplDraft');
+  if (editor) _billingTplEditState.drafts[_billingTplEditState.template] = _billingTplExtractTemplate(editor);
   _billingTplEditState.template = tpl;
   _billingRenderTemplateEditor();
 };
@@ -2095,63 +2156,21 @@ window._billingTplChangeTab = (tpl) => {
 window._billingTplResetCurrent = async () => {
   if (!_billingTplEditState) return;
   if (!await showConfirm('기본값 복원', `'${_billingTplEditState.template}' 템플릿을 기본값으로 되돌릴까요?\n저장 시 학원 커스텀이 삭제됩니다.`)) return;
-  _billingTplEditState.drafts[_billingTplEditState.template] = _billingTplDefaultText(_billingTplEditState.template);
-  // 즉시 학원에서도 customTemplate 제거 (저장 안 누르고 닫아도 적용)
-  // 단, 사용자가 [저장] 눌러야 확정 — 여기선 draft 만 변경
+  _billingTplEditState.drafts[_billingTplEditState.template] = _BILLING_DEFAULT_TEMPLATES[_billingTplEditState.template];
   _billingRenderTemplateEditor();
 };
 
-// rendered 텍스트 → placeholder 가 박힌 템플릿으로 reverse mapping
-function _billingTplReverseMap(renderedText, sampleVars) {
-  // 길이 긴 값부터 치환 (multi-line block 우선, 그 다음 짧은 값)
-  const orderedKeys = Object.keys(sampleVars)
-    .filter(k => !k.startsWith('_') && typeof sampleVars[k] === 'string' && sampleVars[k].length > 0)
-    .sort((a, b) => sampleVars[b].length - sampleVars[a].length);
-  let template = renderedText;
-  const replaced = {};
-  for (const ph of orderedKeys) {
-    const value = sampleVars[ph];
-    if (template.includes(value)) {
-      template = template.split(value).join(ph);
-      replaced[ph] = true;
-    } else {
-      replaced[ph] = false;
-    }
-  }
-  return { template, replaced };
-}
-
 window._billingTplSaveAll = async () => {
   if (!_billingTplEditState) return;
-  const ta = document.getElementById('billingTplDraft');
-  if (ta) _billingTplEditState.drafts[_billingTplEditState.template] = ta.value;
-
-  // 각 탭의 draft 를 reverse-map 해서 저장
-  const sample = _billingSampleData();
-  const academy = window.adminProfile?.academyName || '○○ 영어학원';
-  const channels = sample.items.map(i => i.channel).filter((v,i,a) => a.indexOf(v) === i);
+  const editor = document.getElementById('billingTplDraft');
+  if (editor) _billingTplEditState.drafts[_billingTplEditState.template] = _billingTplExtractTemplate(editor);
 
   const custom = {};
-  const warnings = [];
   for (const k of ['polite', 'brief', 'reminder']) {
     const draft = _billingTplEditState.drafts[k];
-    if (draft == null) continue;  // 사용자가 편집 안 한 탭은 그대로
-    const defaultRendered = _billingTplDefaultText(k);
-    if (draft === defaultRendered) {
-      // 기본값과 동일 → 커스텀 안 만듦
-      continue;
-    }
-    const vars = _billingComputeVars(sample, _billingSettings, channels, academy, k);
-    const { template, replaced } = _billingTplReverseMap(draft, vars);
-    custom[k] = template;
-    // 중요 placeholder 미치환 경고
-    const lost = ['{청구내역}', '{학생명}', '{월}'].filter(p => !replaced[p]);
-    if (lost.length > 0) warnings.push(`${k}: ${lost.join(', ')} 자동 치환 안 됨`);
-  }
-
-  if (warnings.length > 0) {
-    const msg = '데이터 영역(학생명/청구내역 등)을 직접 수정한 것 같아요.\n자동 치환이 안 될 수 있습니다:\n' + warnings.join('\n') + '\n\n그대로 저장할까요?';
-    if (!await showConfirm('주의', msg)) return;
+    if (draft == null) continue;
+    if (draft === _BILLING_DEFAULT_TEMPLATES[k]) continue; // 기본값과 동일 → 커스텀 X
+    custom[k] = draft;
   }
 
   try {
