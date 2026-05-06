@@ -8875,7 +8875,7 @@ window.tpOpenPrintModal = () => {
       </div>
 
       <div style="padding:12px 20px;border-bottom:1px solid var(--border);background:#f8f9fa;flex-shrink:0;">
-        <div style="display:grid;grid-template-columns:1fr 120px 130px;gap:10px;margin-bottom:${typeOptionsHtml?'10px':'0'};">
+        <div style="display:grid;grid-template-columns:1fr 120px 130px 110px;gap:10px;margin-bottom:${typeOptionsHtml?'10px':'0'};">
           <div>
             <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명</label>
             <input type="text" id="tpPrintTitle" value="${esc(defaultTitle)}"
@@ -8893,6 +8893,13 @@ window.tpOpenPrintModal = () => {
             <input type="date" id="tpPrintDate" value="${_ymdKST()}"
               onchange="tpPrintRefreshPreview()"
               style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--gray);">출제 문제수</label>
+            <input type="number" id="tpPrintQuestionCount" value="${questions.length}" min="1" max="${questions.length}"
+              oninput="tpPrintRefreshPreview()"
+              style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+            <div style="font-size:9px;color:var(--gray);margin-top:1px;">전체 ${questions.length}문제 중 랜덤</div>
           </div>
         </div>
         ${typeOptionsHtml}
@@ -8993,6 +9000,7 @@ const _TP_OPT_INPUTS = {
   tpPrintFitToPage:      { type: 'check', key: 'fitToPage' },
   tpPrintOrientation:    { type: 'value', key: 'orientation' },
   tpPrintAcademy:        { type: 'value', key: 'academy' },
+  tpPrintQuestionCount:  { type: 'value', key: 'questionCount' },
   tpOptFontSize:         { type: 'value', key: 'fontSize' },
   tpOptLineHeight:       { type: 'value', key: 'lineHeight' },
   tpOptQGap:             { type: 'value', key: 'qGap' },
@@ -9443,7 +9451,14 @@ window.tpPrintRefreshPreview = () => {
   const lineHeight = clamp(document.getElementById('tpOptLineHeight')?.value, 1.0, 2.5, _TP_PRINT_DEFAULTS.lineHeight);
   const qGap = clamp(document.getElementById('tpOptQGap')?.value, 0, 60, _TP_PRINT_DEFAULTS.qGap);
 
-  area.innerHTML = _tpBuildPrintHtml(ctx.questions, {
+  // 출제 문제수 — 입력값이 전체보다 작으면 앞 N개만 픽 (questions 는 이미 랜덤 셔플 가능 상태)
+  const totalQ = ctx.questions.length;
+  let pickCount = parseInt(document.getElementById('tpPrintQuestionCount')?.value);
+  if (!isFinite(pickCount) || pickCount < 1) pickCount = totalQ;
+  if (pickCount > totalQ) pickCount = totalQ;
+  const pickedQuestions = pickCount < totalQ ? ctx.questions.slice(0, pickCount) : ctx.questions;
+
+  area.innerHTML = _tpBuildPrintHtml(pickedQuestions, {
     title: titleEl?.value || '시험',
     academy: academyEl?.value || '',
     date: dateStr,
