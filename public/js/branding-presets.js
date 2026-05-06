@@ -133,7 +133,9 @@ function applyPresetToCss(preset) {
   window.CURRENT_PRESET = preset;
 }
 
-// 글로벌 노출 (스크립트 태그로 로드 시)
+// 글로벌 노출 — 일반 <script> 로 로드. window.* 만 사용.
+// ES Module 로 쓰려면 동적 import('./branding-presets.js') 또는 별도 미러 파일.
+// (export 키워드는 일반 script context 에서 syntax error 라 dual-mode 불가)
 if (typeof window !== 'undefined') {
   window.BRANDING_PRESETS = BRANDING_PRESETS;
   window.DEFAULT_PRESET_ID = DEFAULT_PRESET_ID;
@@ -141,6 +143,3 @@ if (typeof window !== 'undefined') {
   window.getAllPresets = getAllPresets;
   window.applyPresetToCss = applyPresetToCss;
 }
-
-// ES Module export
-export { BRANDING_PRESETS, DEFAULT_PRESET_ID, getPresetById, getAllPresets, applyPresetToCss };
