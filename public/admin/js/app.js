@@ -1320,14 +1320,18 @@ let _billings = [];             // 현재 월 청구서
 let _billingFilterGroup = '';   // 반 필터
 let _billingFilterStatus = '';  // 상태 필터
 
-// 월 셀렉트 옵션 (이번 달 기준 -6 ~ 0)
+// 월 셀렉트 옵션 (이번 달 KST 기준 -6 ~ 0). 문자열 산술로 타임존 안전.
 function _billingMonthOptions(selected) {
-  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const curYm = _ymdKST().slice(0, 7);  // 'YYYY-MM' KST
+  let [y, m] = curYm.split('-').map(Number);
   const opts = [];
   for (let off = 0; off >= -6; off--) {
-    const d = new Date(now.getFullYear(), now.getMonth() + off, 1);
-    const ym = d.toISOString().slice(0, 7);
-    const label = `${d.getMonth() + 1}월 (${ym})${off === 0 ? ' · 이번 달' : ''}`;
+    let mm = m + off;
+    let yy = y;
+    while (mm <= 0) { mm += 12; yy--; }
+    while (mm > 12) { mm -= 12; yy++; }
+    const ym = `${yy}-${String(mm).padStart(2, '0')}`;
+    const label = `${mm}월 (${ym})${off === 0 ? ' · 이번 달' : ''}`;
     opts.push(`<option value="${ym}"${selected === ym ? ' selected' : ''}>${label}</option>`);
   }
   return opts.join('');
