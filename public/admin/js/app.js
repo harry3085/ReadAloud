@@ -1305,92 +1305,394 @@ async function loadPayments(){
       return;
     }
 
-    // 설정 완료 — 이번 달 청구서 자동 생성 (lazy) + 미니멀 표시
-    const generated = await _ensureCurrentMonthBillings();
-    const ym = _ymdKST().slice(0, 7);
-    const billingSnap = await getDocs(query(
-      collection(db, 'billings'),
-      where('academyId', '==', window.MY_ACADEMY_ID || 'default'),
-      where('yearMonth', '==', ym),
-    ));
-    const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const total = billings.reduce((s, b) => s + (b.totalAmount || 0), 0);
-    const paid = billings.reduce((s, b) => s + (b.paidAmount || 0), 0);
-    const unpaid = total - paid;
-
-    const t = _billingSettings.tuitionChannel || {};
-    const m = _billingSettings.materialsChannel || {};
-    main.innerHTML = `
-      <div class="card" style="padding:18px;margin-bottom:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-          <div style="font-size:15px;font-weight:700;">📋 ${ym} 청구서 (${billings.length}건)</div>
-          <button class="btn btn-secondary" onclick="openPaymentSettingsWizard()" style="font-size:12px;">⚙️ 설정 수정</button>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <div style="padding:14px;background:#f8fafc;border-radius:8px;text-align:center;">
-            <div style="font-size:11px;color:var(--gray);">총 청구</div>
-            <div style="font-size:20px;font-weight:800;margin-top:2px;">${total.toLocaleString()}원</div>
-          </div>
-          <div style="padding:14px;background:#f0fdf4;border-radius:8px;text-align:center;">
-            <div style="font-size:11px;color:#15803d;">입금 완료</div>
-            <div style="font-size:20px;font-weight:800;margin-top:2px;color:#15803d;">${paid.toLocaleString()}원</div>
-          </div>
-          <div style="padding:14px;background:#fef2f2;border-radius:8px;text-align:center;">
-            <div style="font-size:11px;color:#b91c1c;">미입금</div>
-            <div style="font-size:20px;font-weight:800;margin-top:2px;color:#b91c1c;">${unpaid.toLocaleString()}원</div>
-          </div>
-        </div>
-        ${generated > 0 ? `<div style="margin-top:12px;padding:10px 14px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;">✓ ${generated}건의 청구서를 새로 생성했어요.</div>` : ''}
-      </div>
-
-      <div class="card" style="padding:18px;margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:10px;">결제 채널</div>
-        <div style="display:grid;grid-template-columns:${m.enabled ? '1fr 1fr' : '1fr'};gap:14px;">
-          <div style="padding:14px;background:#f0fdfa;border-radius:8px;border:1px solid #ccfbf1;">
-            <div style="font-size:12px;color:#0d9488;font-weight:700;margin-bottom:8px;">💳 ${esc(t.label || '학원 결제')}</div>
-            <div style="font-size:13px;line-height:1.7;">
-              ${t.cardLink ? `🔗 ${esc(t.cardLink)}<br>` : ''}
-              🏦 ${esc(t.bankName)} ${esc(t.bankAccount)}<br>${esc(t.accountHolder)}
-            </div>
-          </div>
-          ${m.enabled ? `
-          <div style="padding:14px;background:#fff7ed;border-radius:8px;border:1px solid #fed7aa;">
-            <div style="font-size:12px;color:#c2410c;font-weight:700;margin-bottom:8px;">📚 ${esc(m.label || '교재/시험비')}</div>
-            <div style="font-size:13px;line-height:1.7;">
-              ${m.cardLink ? `🔗 ${esc(m.cardLink)}<br>` : ''}
-              🏦 ${esc(m.bankName)} ${esc(m.bankAccount)}<br>${esc(m.accountHolder)}
-              ${m.note ? `<div style="font-size:11px;color:#9a3412;margin-top:6px;">※ ${esc(m.note)}</div>` : ''}
-            </div>
-          </div>` : ''}
-        </div>
-      </div>
-
-      <div class="card" style="padding:18px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:10px;">학생별 청구서</div>
-        ${billings.length === 0
-          ? `<div style="padding:30px;text-align:center;color:#bbb;font-size:13px;">
-              아직 청구서가 없습니다.<br>
-              <span style="font-size:11px;">학생 정보 수정에서 [💰 월 수강료] 를 입력하면 자동 생성됩니다.</span>
-            </div>`
-          : `<div style="font-size:13px;color:var(--gray);line-height:1.8;">${billings.map(b => {
-              const dueStr = b.dueDate?.toDate ? b.dueDate.toDate().toLocaleDateString('ko-KR') : '-';
-              const statusBadge = b.status === 'paid' ? '<span style="color:#15803d;">✅ 완료</span>'
-                : b.status === 'partial' ? '<span style="color:#ca8a04;">◐ 부분</span>'
-                : '<span style="color:#b91c1c;">○ 미납</span>';
-              return `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;">
-                <span><b>${esc(b.studentName || '?')}</b> · ${(b.totalAmount || 0).toLocaleString()}원 · 납부기한 ${esc(dueStr)}</span>
-                <span>${statusBadge}</span>
-              </div>`;
-            }).join('')}</div>
-            <div style="margin-top:14px;padding:10px 14px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;">
-              🚧 그리드 UI · 항목 추가/수정 · 메시지 발송은 다음 작업(P1-5~P2)에서 추가됩니다.
-            </div>`
-        }
-      </div>`;
+    // 설정 완료 — 이번 달 청구서 자동 생성 (lazy) + 그리드 표시
+    if (!_billingMonth) _billingMonth = _ymdKST().slice(0, 7);  // 기본: 이번 달
+    const generated = (_billingMonth === _ymdKST().slice(0, 7)) ? await _ensureCurrentMonthBillings() : 0;
+    await _renderBillingGrid(generated);
   } catch(e) {
     main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${esc(e.message)}</div>`;
   }
 }
+
+// ── 그리드 UI (P1-5) ────────────────────────────────────
+let _billingMonth = null;       // 'YYYY-MM' 현재 보고있는 월
+let _billings = [];             // 현재 월 청구서
+let _billingFilterGroup = '';   // 반 필터
+let _billingFilterStatus = '';  // 상태 필터
+
+// 월 셀렉트 옵션 (이번 달 기준 -6 ~ 0)
+function _billingMonthOptions(selected) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const opts = [];
+  for (let off = 0; off >= -6; off--) {
+    const d = new Date(now.getFullYear(), now.getMonth() + off, 1);
+    const ym = d.toISOString().slice(0, 7);
+    const label = `${d.getMonth() + 1}월 (${ym})${off === 0 ? ' · 이번 달' : ''}`;
+    opts.push(`<option value="${ym}"${selected === ym ? ' selected' : ''}>${label}</option>`);
+  }
+  return opts.join('');
+}
+
+async function _renderBillingGrid(generated = 0) {
+  const main = document.getElementById('billingMain');
+  if (!main) return;
+  const academyId = window.MY_ACADEMY_ID || 'default';
+
+  // 청구서 로드
+  const billingSnap = await getDocs(query(
+    collection(db, 'billings'),
+    where('academyId', '==', academyId),
+    where('yearMonth', '==', _billingMonth),
+  ));
+  _billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  _billings.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
+
+  // 반 목록 (필터용)
+  const groupsSet = new Set(_billings.map(b => b.groupName).filter(Boolean));
+  const groupOpts = ['<option value="">전체 반</option>',
+    ...Array.from(groupsSet).sort().map(g => `<option value="${esc(g)}"${_billingFilterGroup === g ? ' selected' : ''}>${esc(g)}</option>`)
+  ].join('');
+
+  // 필터 적용
+  let filtered = _billings;
+  if (_billingFilterGroup) filtered = filtered.filter(b => b.groupName === _billingFilterGroup);
+  if (_billingFilterStatus) filtered = filtered.filter(b => _billingComputeStatus(b) === _billingFilterStatus);
+
+  // 통계
+  const total = filtered.reduce((s, b) => s + (b.totalAmount || 0), 0);
+  const paid = filtered.reduce((s, b) => s + (b.paidAmount || 0), 0);
+  const unpaid = total - paid;
+  const paidPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+  const overdueCount = filtered.filter(b => _billingComputeStatus(b) === 'overdue').length;
+  const overdueAmt = filtered.filter(b => _billingComputeStatus(b) === 'overdue')
+    .reduce((s, b) => s + ((b.totalAmount || 0) - (b.paidAmount || 0)), 0);
+
+  // materials 채널 사용 여부
+  const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
+
+  main.innerHTML = `
+    <!-- 컨트롤 바 -->
+    <div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select onchange="_billingChangeMonth(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
+        ${_billingMonthOptions(_billingMonth)}
+      </select>
+      <select onchange="_billingFilterGroup=this.value;_renderBillingGrid()" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        ${groupOpts}
+      </select>
+      <select onchange="_billingFilterStatus=this.value;_renderBillingGrid()" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <option value="">전체 상태</option>
+        <option value="unpaid"${_billingFilterStatus === 'unpaid' ? ' selected' : ''}>미입금</option>
+        <option value="partial"${_billingFilterStatus === 'partial' ? ' selected' : ''}>부분 입금</option>
+        <option value="overdue"${_billingFilterStatus === 'overdue' ? ' selected' : ''}>연체</option>
+        <option value="paid"${_billingFilterStatus === 'paid' ? ' selected' : ''}>입금 완료</option>
+      </select>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        ${generated > 0 ? `<span style="padding:6px 12px;background:#dbeafe;border-radius:6px;font-size:12px;color:#1e40af;align-self:center;">✓ ${generated}건 새로 생성</span>` : ''}
+      </div>
+    </div>
+
+    <!-- 통계 카드 4개 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;">
+      <div class="card" style="padding:14px;text-align:center;">
+        <div style="font-size:11px;color:var(--gray);">이번 달 청구</div>
+        <div style="font-size:20px;font-weight:800;margin-top:3px;">${total.toLocaleString()}원</div>
+      </div>
+      <div class="card" style="padding:14px;text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;">
+        <div style="font-size:11px;color:#15803d;">입금 완료</div>
+        <div style="font-size:20px;font-weight:800;margin-top:3px;color:#15803d;">${paid.toLocaleString()}원</div>
+        <div style="font-size:10px;color:#15803d;margin-top:2px;">${paidPct}%</div>
+      </div>
+      <div class="card" style="padding:14px;text-align:center;background:#fff7ed;border:1px solid #fed7aa;">
+        <div style="font-size:11px;color:#c2410c;">미입금</div>
+        <div style="font-size:20px;font-weight:800;margin-top:3px;color:#c2410c;">${unpaid.toLocaleString()}원</div>
+      </div>
+      <div class="card" style="padding:14px;text-align:center;background:${overdueCount>0?'#fef2f2':'white'};border:1px solid ${overdueCount>0?'#fecaca':'var(--border)'};">
+        <div style="font-size:11px;color:#b91c1c;">연체</div>
+        <div style="font-size:20px;font-weight:800;margin-top:3px;color:#b91c1c;">${overdueAmt.toLocaleString()}원</div>
+        <div style="font-size:10px;color:#b91c1c;margin-top:2px;">${overdueCount}명</div>
+      </div>
+    </div>
+
+    <!-- 그리드 -->
+    <div class="card" style="padding:0;overflow:auto;">
+      <table class="billing-grid" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="position:sticky;top:0;background:#f8f9fa;z-index:5;">
+          <tr style="border-bottom:2px solid var(--border);">
+            <th rowspan="2" style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;">학생</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;">반</th>
+            <th colspan="2" style="padding:8px 12px;text-align:center;background:rgba(13,148,136,0.08);border-right:1px solid #e9ecef;border-bottom:1px solid #e9ecef;">💳 학원 결제</th>
+            ${matEnabled ? '<th colspan="2" style="padding:8px 12px;text-align:center;background:rgba(255,165,100,0.08);border-right:1px solid #e9ecef;border-bottom:1px solid #e9ecef;">📚 교재/시험비</th>' : ''}
+            <th rowspan="2" style="padding:10px 12px;text-align:right;border-right:1px solid #e9ecef;">합계</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">납부기한</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">상태</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:center;">메시지</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);background:#f8f9fa;">
+            <th style="padding:6px 12px;text-align:right;font-size:11px;color:var(--gray);background:rgba(13,148,136,0.04);">금액</th>
+            <th style="padding:6px 12px;text-align:center;font-size:11px;color:var(--gray);background:rgba(13,148,136,0.04);border-right:1px solid #e9ecef;width:80px;">입금</th>
+            ${matEnabled ? '<th style="padding:6px 12px;text-align:right;font-size:11px;color:var(--gray);background:rgba(255,165,100,0.04);">금액</th><th style="padding:6px 12px;text-align:center;font-size:11px;color:var(--gray);background:rgba(255,165,100,0.04);border-right:1px solid #e9ecef;width:80px;">입금</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${filtered.length === 0
+            ? `<tr><td colspan="${matEnabled ? 10 : 8}" style="padding:40px;text-align:center;color:#bbb;font-size:13px;">청구서가 없습니다. 학생 정보에서 [💰 월 수강료] 를 등록하세요.</td></tr>`
+            : filtered.map(b => _billingRenderRow(b, matEnabled)).join('')
+          }
+        </tbody>
+        ${filtered.length > 0 ? `
+        <tfoot>
+          <tr style="background:#f8f9fa;border-top:2px solid var(--border);font-weight:700;">
+            <td colspan="2" style="padding:10px 12px;border-right:1px solid #e9ecef;">합계 (${filtered.length}건)</td>
+            <td style="padding:10px 12px;text-align:right;background:rgba(13,148,136,0.04);">${_billingChannelTotal(filtered, 'tuition').toLocaleString()}</td>
+            <td style="padding:10px 12px;text-align:center;background:rgba(13,148,136,0.04);border-right:1px solid #e9ecef;font-size:11px;color:var(--gray);">-</td>
+            ${matEnabled ? `
+              <td style="padding:10px 12px;text-align:right;background:rgba(255,165,100,0.04);">${_billingChannelTotal(filtered, 'materials').toLocaleString()}</td>
+              <td style="padding:10px 12px;text-align:center;background:rgba(255,165,100,0.04);border-right:1px solid #e9ecef;font-size:11px;color:var(--gray);">-</td>
+            ` : ''}
+            <td style="padding:10px 12px;text-align:right;border-right:1px solid #e9ecef;">${total.toLocaleString()}원</td>
+            <td colspan="3" style="padding:10px 12px;"></td>
+          </tr>
+        </tfoot>` : ''}
+      </table>
+    </div>
+
+    <div style="margin-top:14px;padding:10px 14px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;">
+      🚧 메시지 발송 (📨 버튼) 은 다음 작업 (Phase 2) 에서 추가됩니다. 현재는 항목 관리만 가능.
+    </div>`;
+}
+
+function _billingRenderRow(b, matEnabled) {
+  const tuitionItems = (b.items || []).filter(i => i.channel === 'tuition');
+  const matItems = (b.items || []).filter(i => i.channel === 'materials');
+  const status = _billingComputeStatus(b);
+
+  const cellChannel = (items, channelKey, color) => {
+    const total = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const allPaid = items.length > 0 && items.every(i => i.paid);
+    const partialPaid = items.some(i => i.paid) && !allPaid;
+    const cb = items.length === 0 ? '-' : `
+      <input type="checkbox" ${allPaid ? 'checked' : ''} ${partialPaid ? 'class="partial-paid"' : ''}
+        onclick="event.stopPropagation();_billingToggleChannel('${b.id}','${channelKey}',this.checked)"
+        style="width:18px;height:18px;cursor:pointer;${partialPaid ? 'accent-color:#f59e0b;' : ''}">`;
+    return `
+      <td onclick="_billingOpenItemPanel('${b.id}','${channelKey}')" style="padding:8px 12px;text-align:right;cursor:cell;background:${color};font-variant-numeric:tabular-nums;" title="클릭하여 항목 편집">
+        ${items.length === 0 ? '<span style="color:#bbb;font-size:18px;">+</span>' : `${total.toLocaleString()}${items.length > 1 ? `<small style="color:#999;font-size:10px;"> (${items.length})</small>` : ''}`}
+      </td>
+      <td style="padding:8px 12px;text-align:center;background:${color};border-right:1px solid #e9ecef;">${cb}</td>`;
+  };
+
+  const dueStr = b.dueDate?.toDate ? `${b.dueDate.toDate().getMonth() + 1}/${b.dueDate.toDate().getDate()}` : '-';
+  const statusInfo = {
+    paid: { label: '✅ 완료', color: '#15803d', bg: '#f0fdf4' },
+    partial: { label: '◐ 부분', color: '#ca8a04', bg: '#fffbeb' },
+    overdue: { label: '⚠️ 연체', color: '#b91c1c', bg: '#fef2f2' },
+    unpaid: { label: '○ 미납', color: '#475569', bg: '#f8fafc' },
+  }[status];
+
+  return `
+    <tr style="border-bottom:1px solid #f1f5f9;${status === 'overdue' ? 'background:rgba(220,38,38,0.04);' : ''}">
+      <td style="padding:8px 12px;font-weight:600;border-right:1px solid #e9ecef;">${esc(b.studentName || '-')}</td>
+      <td style="padding:8px 12px;color:var(--gray);font-size:12px;border-right:1px solid #e9ecef;">${esc(b.groupName || '-')}</td>
+      ${cellChannel(tuitionItems, 'tuition', 'rgba(13,148,136,0.02)')}
+      ${matEnabled ? cellChannel(matItems, 'materials', 'rgba(255,165,100,0.02)') : ''}
+      <td style="padding:8px 12px;text-align:right;font-weight:700;border-right:1px solid #e9ecef;font-variant-numeric:tabular-nums;">${(b.totalAmount || 0).toLocaleString()}</td>
+      <td style="padding:8px 12px;text-align:center;font-size:12px;color:var(--gray);border-right:1px solid #e9ecef;">${dueStr}</td>
+      <td style="padding:8px 12px;text-align:center;border-right:1px solid #e9ecef;">
+        <span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:${statusInfo.bg};color:${statusInfo.color};">${statusInfo.label}</span>
+      </td>
+      <td style="padding:8px 12px;text-align:center;">
+        <button class="action-btn" onclick="event.stopPropagation();showAlert('준비 중','메시지 기능은 Phase 2 에서 추가됩니다')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
+      </td>
+    </tr>`;
+}
+
+function _billingChannelTotal(billings, channel) {
+  return billings.reduce((s, b) => s + (b.items || [])
+    .filter(i => i.channel === channel)
+    .reduce((s2, i) => s2 + (i.amount || 0), 0), 0);
+}
+
+function _billingComputeStatus(b) {
+  const total = b.totalAmount || 0;
+  const paid = b.paidAmount || 0;
+  if (total === 0) return 'paid';
+  if (paid >= total) return 'paid';
+  if (paid > 0) return 'partial';
+  // 미입금 — 납부기한 지났으면 overdue
+  const due = b.dueDate?.toDate?.();
+  if (due && due < new Date()) return 'overdue';
+  return 'unpaid';
+}
+
+window._billingChangeMonth = async (ym) => {
+  _billingMonth = ym;
+  await loadPayments();
+};
+
+// 채널 입금 일괄 토글 — 해당 채널 모든 항목 paid 변경
+window._billingToggleChannel = async (billingId, channel, paid) => {
+  try {
+    const b = _billings.find(x => x.id === billingId);
+    if (!b) return;
+    const items = (b.items || []).map(i => {
+      if (i.channel !== channel) return i;
+      return { ...i, paid, paidAt: paid ? Date.now() : null };
+    });
+    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+    const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+    await updateDoc(doc(db, 'billings', billingId), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+    await _renderBillingGrid();
+  } catch (e) { showAlert('저장 실패', e.message); }
+};
+
+// ── 항목 사이드 패널 (P1-6) ────────────────────────────
+let _billingPanelId = null;
+let _billingPanelChannel = null;
+
+window._billingOpenItemPanel = async (billingId, channel) => {
+  _billingPanelId = billingId;
+  _billingPanelChannel = channel;
+  _billingRenderItemPanel();
+};
+
+function _billingRenderItemPanel() {
+  const b = _billings.find(x => x.id === _billingPanelId);
+  if (!b) return;
+  const items = (b.items || []).filter(i => i.channel === _billingPanelChannel);
+  const channelLabel = _billingPanelChannel === 'tuition' ? '💳 학원 결제 (수강료 등)' : '📚 교재/시험비';
+  const channelTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
+
+  const TYPE_OPTS = [
+    ['tuition', '수강료'], ['book', '교재비'], ['test', '시험비'],
+    ['uniform', '교복·체육복'], ['extra', '기타'],
+  ];
+
+  const itemHtml = items.length === 0
+    ? `<div style="padding:40px;text-align:center;color:#bbb;font-size:13px;">항목이 없습니다.<br><span style="font-size:11px;">아래 [+ 항목 추가] 클릭</span></div>`
+    : items.map((it, idx) => `
+      <div style="padding:12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <select onchange="_billingUpdateItem('${it.itemId}','type',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;width:90px;">
+            ${TYPE_OPTS.map(([v, l]) => `<option value="${v}"${it.type === v ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <input type="text" value="${esc(it.label || '')}" placeholder="항목명"
+            onblur="_billingUpdateItem('${it.itemId}','label',this.value)"
+            style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;">
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="number" value="${it.amount || 0}" min="0" step="1000"
+            onblur="_billingUpdateItem('${it.itemId}','amount',parseInt(this.value)||0)"
+            style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right;">
+          <span style="font-size:11px;color:var(--gray);">원</span>
+          <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;">
+            <input type="checkbox" ${it.paid ? 'checked' : ''}
+              onchange="_billingUpdateItem('${it.itemId}','paid',this.checked)" style="width:14px;height:14px;">
+            입금
+          </label>
+          <button class="action-btn danger" onclick="_billingDeleteItem('${it.itemId}')" style="padding:3px 7px;font-size:11px;">🗑</button>
+        </div>
+        <input type="text" value="${esc(it.memo || '')}" placeholder="메모 (선택)"
+          onblur="_billingUpdateItem('${it.itemId}','memo',this.value)"
+          style="width:100%;margin-top:6px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--gray);">
+        ${it.paid && it.paidAt ? `<div style="font-size:10px;color:#15803d;margin-top:4px;">✓ ${new Date(it.paidAt).toLocaleDateString('ko-KR')} 입금</div>` : ''}
+        ${it.addedBy === 'system' ? `<div style="font-size:10px;color:#bbb;margin-top:4px;">자동 생성 항목</div>` : ''}
+      </div>`).join('');
+
+  showModal(`
+    <div style="width:min(440px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:15px;font-weight:700;line-height:1.3;">${channelLabel}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(b.studentName)} · ${b.yearMonth}</div>
+      </div>
+      <div style="padding:14px 20px;overflow-y:auto;flex:1;">
+        ${itemHtml}
+        <button class="btn btn-secondary" onclick="_billingAddItem()" style="width:100%;font-size:12px;padding:8px;">+ 항목 추가</button>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
+        <span style="font-size:12px;color:var(--gray);">합계</span>
+        <strong style="font-size:15px;">${channelTotal.toLocaleString()}원</strong>
+      </div>
+    </div>
+  `);
+}
+
+window._billingAddItem = async () => {
+  const b = _billings.find(x => x.id === _billingPanelId);
+  if (!b) return;
+  try {
+    const ch = _billingPanelChannel;
+    const monthNum = parseInt((b.yearMonth || '').split('-')[1]);
+    const newItem = {
+      itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+      type: ch === 'tuition' ? 'tuition' : 'book',
+      label: ch === 'tuition' ? `${monthNum}월 수강료` : '교재비',
+      amount: 0,
+      channel: ch,
+      paid: false,
+      paidAt: null,
+      paidVia: '',
+      memo: '',
+      addedAt: Date.now(),
+      addedBy: currentUser?.uid || 'manual',
+    };
+    const items = [...(b.items || []), newItem];
+    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, updatedAt: serverTimestamp() });
+    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount;
+    _billingRenderItemPanel();
+  } catch (e) { showAlert('추가 실패', e.message); }
+};
+
+window._billingUpdateItem = async (itemId, field, value) => {
+  const b = _billings.find(x => x.id === _billingPanelId);
+  if (!b) return;
+  try {
+    const items = (b.items || []).map(i => {
+      if (i.itemId !== itemId) return i;
+      const updated = { ...i, [field]: value };
+      if (field === 'paid') updated.paidAt = value ? Date.now() : null;
+      return updated;
+    });
+    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+    const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
+    _billingRenderItemPanel();
+    // 그리드도 백그라운드 갱신 (모달 닫을 때 보일 수 있도록)
+  } catch (e) { showAlert('저장 실패', e.message); }
+};
+
+window._billingDeleteItem = async (itemId) => {
+  if (!await showConfirm('항목 삭제', '이 항목을 삭제할까요?')) return;
+  const b = _billings.find(x => x.id === _billingPanelId);
+  if (!b) return;
+  try {
+    const items = (b.items || []).filter(i => i.itemId !== itemId);
+    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+    const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
+    _billingRenderItemPanel();
+  } catch (e) { showAlert('삭제 실패', e.message); }
+};
+
+// 모달 닫힐 때 그리드 갱신 — closeModal 직접 hook 못 하므로, 사이드 패널 hide 시에 처리
+// 임시: showModal/closeModal 패턴 그대로 사용. 항목 변경하면 _billings 캐시 업데이트되어 다음 그리드 렌더 때 반영.
+// 명시적으로 갱신하려면 closeModal 후 _renderBillingGrid 호출 필요 — wrapper 추가.
+const _origCloseModal = window.closeModal;
+window.closeModal = function() {
+  const wasBillingPanel = _billingPanelId !== null;
+  if (typeof _origCloseModal === 'function') _origCloseModal();
+  if (wasBillingPanel) {
+    _billingPanelId = null;
+    _billingPanelChannel = null;
+    if (currentPage === 'payment') _renderBillingGrid();
+  }
+};
 
 // 이번 달 청구서 자동 생성 (lazy) — active + tuitionPlan.amount > 0 학생 대상
 // 이미 생성된 학생은 skip (idempotent)
