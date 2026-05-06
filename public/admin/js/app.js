@@ -10220,6 +10220,7 @@ function _tpRenderTestsTable() {
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;" title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">평균</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">출제일</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">작업</th>
         </tr>
       </thead>
       <tbody>
@@ -10238,9 +10239,12 @@ function _tpRenderTestRow(t) {
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="padding:10px 12px;font-size:11px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.date||'')}</td>
+      <td style="padding:10px 12px;text-align:center;border-bottom:1px solid #f5f5f5;">
+        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:3px 8px;font-size:11px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-weight:600;" title="시험 삭제">🗑 삭제</button>
+      </td>
     </tr>
     <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">
-      <td colspan="6" style="padding:0;">
+      <td colspan="7" style="padding:0;">
         <div id="tp-progress-content-${t.id}" style="padding:10px 16px;font-size:12px;color:var(--gray);">로딩 중...</div>
       </td>
     </tr>`;
@@ -10308,6 +10312,28 @@ window.tpSelectAll = () => {
 window.tpClearSel = () => {
   _tpSelectedSets.clear();
   _tpRender();
+};
+
+// 시험(genTests) 단건 삭제 — 하위 userCompleted 도 cascade 삭제. scores 는 보존(이력 가치).
+window.tpDeleteGenTest = async (testId) => {
+  const t = _tpGenTests.find(x => x.id === testId);
+  if (!t) return;
+  if (!(await showConfirm(
+    `"${t.name || '시험'}" 삭제`,
+    `시험과 응시 기록(userCompleted)을 모두 삭제합니다.\n학생 성적(scores)은 보존됩니다.\n되돌릴 수 없습니다.`
+  ))) return;
+  try {
+    // 하위 userCompleted 먼저 삭제 (소량이라 순차)
+    const ucSnap = await getDocs(collection(db, 'genTests', testId, 'userCompleted'));
+    for (const ud of ucSnap.docs) {
+      try { await deleteDoc(ud.ref); } catch(_) {}
+    }
+    await deleteDoc(doc(db, 'genTests', testId));
+    showToast('✓ 시험 삭제됨');
+    await _renderTestAssignDetail(_activeTestType);
+  } catch(e) {
+    showAlert('삭제 실패', e.message);
+  }
 };
 
 window.tpDeleteSelectedSets = async () => {
