@@ -1612,10 +1612,16 @@ function _billingRenderItemPanel() {
       <div style="padding:14px 20px;overflow-y:auto;flex:1;">
         ${itemHtml}
         <button class="btn btn-secondary" onclick="_billingAddItem()" style="width:100%;font-size:12px;padding:8px;">+ 항목 추가</button>
+        <div style="margin-top:10px;padding:8px 12px;background:#f0fdfa;border-radius:6px;font-size:11px;color:#0d9488;line-height:1.5;">
+          💡 <b>입력 후 다른 곳 클릭</b>하면 자동으로 저장됩니다. 항목 추가/금액/입금 체크는 모두 즉시 반영되어요.
+        </div>
       </div>
-      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
-        <span style="font-size:12px;color:var(--gray);">합계</span>
-        <strong style="font-size:15px;">${channelTotal.toLocaleString()}원</strong>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;background:#f8fafc;">
+        <div style="display:flex;flex-direction:column;">
+          <span style="font-size:11px;color:var(--gray);">합계</span>
+          <strong style="font-size:15px;">${channelTotal.toLocaleString()}원</strong>
+        </div>
+        <button class="btn btn-primary" onclick="_billingPanelDone()" style="font-size:13px;padding:8px 18px;">✓ 완료</button>
       </div>
     </div>
   `);
@@ -1667,6 +1673,17 @@ window._billingUpdateItem = async (itemId, field, value) => {
     _billingRenderItemPanel();
     // 그리드도 백그라운드 갱신 (모달 닫을 때 보일 수 있도록)
   } catch (e) { showAlert('저장 실패', e.message); }
+};
+
+// 완료 버튼 — 활성 input blur 강제 → 진행 중 저장 완료 대기 → 모달 닫기
+window._billingPanelDone = async () => {
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) {
+    active.blur();  // pending blur 핸들러 fire (async updateDoc 시작)
+  }
+  // 짧은 대기로 updateDoc 완료 보장 (Firestore 보통 100~300ms)
+  await new Promise(r => setTimeout(r, 350));
+  closeModal();  // closeModal hook 이 그리드 자동 갱신
 };
 
 window._billingDeleteItem = async (itemId) => {
