@@ -10220,7 +10220,7 @@ function _tpRenderTestsTable() {
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;" title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">평균</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">출제일</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">작업</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;">작업</th>
         </tr>
       </thead>
       <tbody>
@@ -10240,7 +10240,7 @@ function _tpRenderTestRow(t) {
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="padding:10px 12px;font-size:11px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.date||'')}</td>
       <td style="padding:10px 12px;text-align:center;border-bottom:1px solid #f5f5f5;">
-        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:3px 8px;font-size:11px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-weight:600;" title="시험 삭제">🗑 삭제</button>
+        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:15px;line-height:1;">🗑</span>삭제</button>
       </td>
     </tr>
     <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">
