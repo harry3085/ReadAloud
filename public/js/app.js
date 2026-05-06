@@ -95,9 +95,12 @@ async function _loadMyAcademyContext(user, userDocData) {
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE);
 
-  // 녹음 무결성 폴백 + 학원 브랜딩 동시 로드 (academies doc 1회 fetch 통합)
+  // 녹음 무결성 폴백 + 학원/LexiAI 기본 브랜딩 동시 로드
   try {
-    const adoc = await getDoc(doc(db, 'academies', academyId));
+    const [adoc, lexiDoc] = await Promise.all([
+      getDoc(doc(db, 'academies', academyId)),
+      getDoc(doc(db, 'appConfig', 'branding')).catch(() => null),
+    ]);
     const adata = adoc.exists() ? adoc.data() : null;
     const integ = adata?.settings?.recordingIntegrity || {};
     window.MY_ACADEMY_RECORDING_CFG = {
@@ -106,7 +109,8 @@ async function _loadMyAcademyContext(user, userDocData) {
       maxDurationSec:   typeof integ.maxDurationSec   === 'number' ? integ.maxDurationSec   : 600,
     };
     window.MY_ACADEMY_NAME = (adata && adata.name) || '';
-    // 화이트라벨 브랜딩 적용 — Free 플랜은 LexiAI 기본 고정
+    window.LEXIAI_BRANDING = (lexiDoc && lexiDoc.exists?.()) ? lexiDoc.data() : null;
+    // 화이트라벨 브랜딩 적용 — Free 플랜은 LexiAI 기본 적용
     _applyAcademyBranding(adata);
   } catch (_) {
     window.MY_ACADEMY_RECORDING_CFG = { minVoiceActivity: 0.4, minDurationSec: 60, maxDurationSec: 600 };
@@ -114,19 +118,30 @@ async function _loadMyAcademyContext(user, userDocData) {
   }
 }
 
-// 화이트라벨 적용 — academies doc 데이터 기반
+// 화이트라벨 적용 — academy.planId 별 fallback 체인:
+//   Free 학원 → super_admin LexiAI 기본 (appConfig/branding) 만 사용
+//   Lite+ 학원 → 학원 자체 branding 우선, 비어있으면 LexiAI 기본
+//   둘 다 없으면 코랄 + /icons/icon-192.png (코드 default)
 function _applyAcademyBranding(academy) {
   if (!academy) return;
   const planId = academy.planId || 'free';
   const branding = academy.branding || {};
+  const lexi = window.LEXIAI_BRANDING || {};
   const presets = window.BRANDING_PRESETS || {};
-  const presetId = (planId === 'free') ? 'coral' : (branding.presetId || 'coral');
+
+  // 색상 프리셋
+  const isFree = (planId === 'free');
+  const presetId = isFree
+    ? (lexi.defaultPresetId || 'coral')
+    : (branding.presetId || lexi.defaultPresetId || 'coral');
   const preset = presets[presetId] || presets.coral;
   if (!preset) return;
-  // CSS 변수 + theme-color 주입
   if (typeof window.applyPresetToCss === 'function') window.applyPresetToCss(preset);
-  // 로고 (Free 는 무시, LexiAI 기본 유지)
-  const logoUrl = (planId !== 'free') ? (branding.logo192Url || '') : '';
+
+  // 로고 (Free 는 학원 자체 무시, LexiAI 기본 사용)
+  const logoUrl = isFree
+    ? (lexi.defaultLogo192Url || '')
+    : (branding.logo192Url || lexi.defaultLogo192Url || '');
   if (logoUrl) {
     document.querySelectorAll('.app-icon, .loading-icon, .header-icon').forEach(img => {
       if (img.tagName === 'IMG') {
@@ -134,20 +149,24 @@ function _applyAcademyBranding(academy) {
         img.onerror = () => { img.src = '/icons/icon-192.png'; img.onerror = null; };
       }
     });
-    // iOS PWA — apple-touch-icon 동적 갱신 (manifest 보다 우선시)
     const appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
     if (appleIcon) appleIcon.href = logoUrl;
   }
-  // 학원명 (로그인·로딩·홈 헤더·페이지 타이틀)
+
+  // 학원명 (Free 도 자기 학원 이름 표시 — 학원명은 브랜딩과 무관한 식별자)
   const acadName = academy.name || '';
   if (acadName) {
     document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
     document.title = acadName;
   }
-  // 캐치프레이즈 (Free 무시)
-  const cp = (planId !== 'free') ? (branding.catchphrase || '') : '';
+
+  // 캐치프레이즈 (Free 는 LexiAI 기본 / Lite+ 는 학원 자체 우선 → LexiAI fallback)
+  const cp = isFree
+    ? (lexi.defaultCatchphrase || '')
+    : (branding.catchphrase || lexi.defaultCatchphrase || '');
   const sub = document.querySelector('.logo-sub');
   if (sub && cp) sub.textContent = cp;
+
   // PWA manifest 갱신
   if (typeof window.updateManifest === 'function') window.updateManifest(window.MY_ACADEMY_ID);
   window.CURRENT_BRANDING = { academyName: acadName, preset, logoUrl, catchphrase: cp, planId };

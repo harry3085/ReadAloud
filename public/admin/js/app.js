@@ -134,29 +134,37 @@ async function _loadMyAcademyContext(user, userDocData) {
   if (!academyId) academyId = 'default';
   window.MY_ACADEMY_ID = academyId;
   window.MY_ROLE = role || (userDocData && userDocData.role) || null;
-  // 학원명 + 화이트라벨 브랜딩 — academies doc 1회 fetch 통합
+  // 학원명 + 화이트라벨 브랜딩 + LexiAI 기본 — 한 번에 fetch
   try {
-    const acSnap = await getDoc(doc(db, 'academies', academyId));
+    const [acSnap, lexiSnap] = await Promise.all([
+      getDoc(doc(db, 'academies', academyId)),
+      getDoc(doc(db, 'appConfig', 'branding')).catch(() => null),
+    ]);
     const acData = acSnap.exists() ? acSnap.data() : null;
     window.MY_ACADEMY_NAME = (acData && acData.name) || '';
-    // 학원장 앱에도 자기 학원 색·로고 즉시 적용
+    window.LEXIAI_BRANDING = (lexiSnap && lexiSnap.exists?.()) ? lexiSnap.data() : null;
     _applyAdminBranding(acData);
   } catch(_) { window.MY_ACADEMY_NAME = ''; }
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
 }
 
-// 학원장 앱 — 자기 학원 색·로고 적용. branding-presets.js 가 --teal alias 도 set 해서
-// 기존 admin/style.css 의 32곳 var(--teal) 가 자동 따라옴.
+// 학원장 앱 — 자기 학원 색·로고 적용. Free 는 LexiAI 기본, Lite+ 는 학원 자체 후 LexiAI fallback
 function _applyAdminBranding(acData) {
   if (!acData) return;
   const planId = acData.planId || 'free';
   const branding = acData.branding || {};
+  const lexi = window.LEXIAI_BRANDING || {};
   const presets = window.BRANDING_PRESETS || {};
-  const presetId = (planId === 'free') ? 'coral' : (branding.presetId || 'coral');
+  const isFree = (planId === 'free');
+  const presetId = isFree
+    ? (lexi.defaultPresetId || 'coral')
+    : (branding.presetId || lexi.defaultPresetId || 'coral');
   const preset = presets[presetId] || presets.coral;
   if (preset && typeof window.applyPresetToCss === 'function') window.applyPresetToCss(preset);
-  // 헤더 로고 (학원이 자기 로고 업로드 + Lite 이상)
-  const logoUrl = (planId !== 'free') ? (branding.logo192Url || '') : '';
+  // 로고 — Free 는 학원 자체 무시, LexiAI 기본 사용
+  const logoUrl = isFree
+    ? (lexi.defaultLogo192Url || '')
+    : (branding.logo192Url || lexi.defaultLogo192Url || '');
   window.MY_ACADEMY_LOGO = logoUrl;  // 시험지 인쇄·기타 위치에서 참조
   if (logoUrl) {
     document.querySelectorAll('.header-logo img, .sidebar-logo').forEach(img => {

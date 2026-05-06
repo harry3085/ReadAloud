@@ -48,6 +48,7 @@ module.exports = async (req, res) => {
     const body = req.body || {};
     const idToken = String(body.idToken || '').trim();
     const imageBase64 = String(body.imageBase64 || '');
+    const target = String(body.target || '').trim();  // 'lexiai' | '' (학원 기본)
 
     if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
     if (!imageBase64) return res.status(400).json({ error: '이미지 데이터 누락' });
@@ -64,18 +65,23 @@ module.exports = async (req, res) => {
     const isSuper = role === 'super_admin';
     const isAcademyAdmin = (role === 'academy_admin' || role === 'admin');
 
-    // 학원 admin 인데 academyId 가 토큰에 없으면 users 폴백
-    if (!academyId && isAcademyAdmin) {
-      try {
-        const us = await db.doc('users/' + caller.uid).get();
-        academyId = us.exists && us.data().academyId;
-      } catch (_) {}
-    }
-    // super 가 다른 학원 작업하려면 body.academyId 명시 가능
-    if (isSuper && body.academyId) academyId = String(body.academyId).trim();
-    if (!academyId) return res.status(400).json({ error: 'academyId 결정 불가' });
+    // target='lexiai' — super_admin 전용. appConfig/branding 경로에 저장
+    const isLexiAI = (target === 'lexiai');
+    if (isLexiAI && !isSuper) return res.status(403).json({ error: 'LexiAI 기본 로고는 super_admin 만 갱신 가능' });
 
-    if (!isSuper && !isAcademyAdmin) return res.status(403).json({ error: '권한 부족' });
+    if (!isLexiAI) {
+      // 학원 admin 인데 academyId 가 토큰에 없으면 users 폴백
+      if (!academyId && isAcademyAdmin) {
+        try {
+          const us = await db.doc('users/' + caller.uid).get();
+          academyId = us.exists && us.data().academyId;
+        } catch (_) {}
+      }
+      // super 가 다른 학원 작업하려면 body.academyId 명시 가능
+      if (isSuper && body.academyId) academyId = String(body.academyId).trim();
+      if (!academyId) return res.status(400).json({ error: 'academyId 결정 불가' });
+      if (!isSuper && !isAcademyAdmin) return res.status(403).json({ error: '권한 부족' });
+    }
 
     // 3. base64 → buffer
     const base64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
@@ -88,17 +94,19 @@ module.exports = async (req, res) => {
     catch (e) { return res.status(400).json({ error: '이미지 파싱 실패: ' + e.message }); }
     if (meta.format !== 'png') return res.status(400).json({ error: 'PNG 형식만 허용' });
 
-    // 5. 플랜 체크 — Free 는 차단 (super 만 우회)
-    const acadDoc = await db.doc('academies/' + academyId).get();
-    if (!acadDoc.exists) return res.status(404).json({ error: '학원 없음: ' + academyId });
-    const planId = acadDoc.data().planId || 'free';
-    if (planId === 'free' && !isSuper) {
-      return res.status(403).json({ error: 'Free 플랜은 로고 업로드 불가. Lite 이상 플랜으로 업그레이드 필요.' });
+    // 5. 플랜 체크 — Free 는 차단 (super / lexiai 모드는 우회)
+    if (!isLexiAI) {
+      const acadDoc = await db.doc('academies/' + academyId).get();
+      if (!acadDoc.exists) return res.status(404).json({ error: '학원 없음: ' + academyId });
+      const planId = acadDoc.data().planId || 'free';
+      if (planId === 'free' && !isSuper) {
+        return res.status(403).json({ error: 'Free 플랜은 로고 업로드 불가. Lite 이상 플랜으로 업그레이드 필요.' });
+      }
     }
 
     // 6. 리사이즈 + 저장 (3개 사이즈, 정사각 contain + 투명 배경)
     const bucket = getStorage().bucket(STORAGE_BUCKET);
-    const basePath = `academies/${academyId}/logos`;
+    const basePath = isLexiAI ? `appConfig/branding/logos` : `academies/${academyId}/logos`;
     const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
 
     const buf192 = await sharp(buffer)
@@ -128,15 +136,26 @@ module.exports = async (req, res) => {
       urls[name] = `https://storage.googleapis.com/${bucket.name}/${basePath}/${name}.png?v=${ts}`;
     }
 
-    // 7. Firestore branding 갱신
-    await db.doc('academies/' + academyId).update({
-      'branding.logoUrl': urls.original,
-      'branding.logo192Url': urls['192'],
-      'branding.logo512Url': urls['512'],
-      'branding.logoUploadedAt': FieldValue.serverTimestamp(),
-      'branding.updatedAt': FieldValue.serverTimestamp(),
-      'branding.updatedBy': caller.uid,
-    });
+    // 7. Firestore 갱신
+    if (isLexiAI) {
+      await db.doc('appConfig/branding').set({
+        defaultLogoUrl: urls.original,
+        defaultLogo192Url: urls['192'],
+        defaultLogo512Url: urls['512'],
+        logoUploadedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: caller.uid,
+      }, { merge: true });
+    } else {
+      await db.doc('academies/' + academyId).update({
+        'branding.logoUrl': urls.original,
+        'branding.logo192Url': urls['192'],
+        'branding.logo512Url': urls['512'],
+        'branding.logoUploadedAt': FieldValue.serverTimestamp(),
+        'branding.updatedAt': FieldValue.serverTimestamp(),
+        'branding.updatedBy': caller.uid,
+      });
+    }
 
     // 8. adminLogs (best-effort)
     try {
@@ -144,9 +163,9 @@ module.exports = async (req, res) => {
         at: FieldValue.serverTimestamp(),
         actor: caller.uid,
         actorEmail: caller.email || null,
-        action: 'upload_logo',
-        targetType: 'academy',
-        targetId: academyId,
+        action: isLexiAI ? 'upload_lexiai_logo' : 'upload_logo',
+        targetType: isLexiAI ? 'appConfig' : 'academy',
+        targetId: isLexiAI ? 'branding' : academyId,
         details: { sizes: ['original', '192', '512'], origBytes: buffer.length },
       });
     } catch (_) {}

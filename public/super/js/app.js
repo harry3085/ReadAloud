@@ -212,6 +212,7 @@ window.goTab = (id) => {
   else if (id === 'quotaAdmin') loadQuotaAdmin();
   else if (id === 'prompts') loadPromptsConfig();
   else if (id === 'presets') loadPresetsConfig();
+  else if (id === 'branding') loadLexiAIBranding();
 };
 
 // ── 사용자 검색 ──────────────────────────────────────
@@ -3200,4 +3201,220 @@ window.saveAcmOverride = async (academyId) => {
   } catch (e) {
     await showSuperConfirm({ title: '저장 실패', message: e.message, confirmText: '확인', cancelText: '닫기' });
   }
+};
+
+// ────────────────────────────────────────────────────────
+// LexiAI 기본 브랜딩 — Free 플랜 + 미설정 학원의 fallback
+// appConfig/branding 도큐먼트와 한 쌍.
+// ────────────────────────────────────────────────────────
+let _lexiBranding = null;  // { defaultLogoUrl, defaultLogo192Url, defaultLogo512Url, defaultPresetId, defaultCatchphrase }
+let _lexiBrandingDirty = false;
+
+window.loadLexiAIBranding = async () => {
+  const main = document.getElementById('brandingMain');
+  if (!main) return;
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'branding'));
+    const d = snap.exists() ? snap.data() : {};
+    _lexiBranding = {
+      defaultLogoUrl: d.defaultLogoUrl || '',
+      defaultLogo192Url: d.defaultLogo192Url || '',
+      defaultLogo512Url: d.defaultLogo512Url || '',
+      defaultPresetId: d.defaultPresetId || 'coral',
+      defaultCatchphrase: d.defaultCatchphrase || '',
+    };
+    _lexiBrandingDirty = false;
+    _renderLexiAIBranding();
+  } catch (e) {
+    main.innerHTML = `<div style="padding:24px;color:#e05050;">로드 실패: ${e.message}</div>`;
+  }
+};
+
+function _renderLexiAIBranding() {
+  const main = document.getElementById('brandingMain');
+  if (!main || !_lexiBranding) return;
+  const presets = window.BRANDING_PRESETS || {};
+  const s = _lexiBranding;
+  const currentPreset = presets[s.defaultPresetId] || presets.coral;
+  const previewLogo = s.defaultLogo192Url || '/icons/icon-192.png';
+  const previewSub = s.defaultCatchphrase || '큰소리로 말하는 영어 학습';
+
+  const presetCards = Object.values(presets).map(p => `
+    <div onclick="_lexiSelectPreset('${p.id}')"
+         style="border:2px solid ${s.defaultPresetId === p.id ? p.primary : 'var(--border)'};border-radius:10px;padding:12px;cursor:pointer;text-align:center;background:white;transition:.15s;position:relative;">
+      <div style="height:60px;border-radius:8px;background:${p.loginGradient};display:flex;align-items:center;justify-content:center;margin-bottom:8px;">
+        <span style="font-size:28px;">${p.emoji}</span>
+      </div>
+      <div style="font-size:13px;font-weight:${s.defaultPresetId === p.id ? 700 : 500};color:var(--text);">${p.name}</div>
+      ${p.isDefault ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:white;font-size:9px;padding:2px 6px;border-radius:8px;">기본</div>' : ''}
+      ${s.defaultPresetId === p.id ? `<div style="position:absolute;top:6px;left:6px;background:${p.primary};color:white;font-size:10px;padding:2px 6px;border-radius:8px;">✓ 선택</div>` : ''}
+    </div>
+  `).join('');
+
+  main.innerHTML = `
+    <div class="card" style="padding:14px 18px;margin-bottom:14px;background:#fef3c7;border:1px solid #fbbf24;">
+      <div style="display:flex;align-items:start;gap:12px;">
+        <div style="font-size:28px;">⚠️</div>
+        <div style="flex:1;font-size:12px;color:#78350f;line-height:1.6;">
+          <b>여기서 변경한 값은 모든 Free 플랜 학원과 미설정 학원에 즉시 반영됩니다.</b><br>
+          학원장 앱 [학원 브랜딩] 페이지의 디폴트 fallback 도 동일하게 영향. 신중히 갱신.
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;">
+      <!-- 좌측: 학생 앱 미리보기 -->
+      <div class="card" style="padding:0;overflow:hidden;position:sticky;top:0;align-self:start;">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">📱 미리보기 (학생 로그인 화면)</div>
+        <div style="background:${currentPreset.loginGradient};color:white;padding:36px 20px;text-align:center;">
+          <img src="${previewLogo}" alt="" style="width:80px;height:80px;border-radius:18px;background:rgba(255,255,255,0.2);padding:6px;object-fit:contain;margin-bottom:10px;">
+          <div style="font-size:24px;font-weight:800;margin-bottom:4px;">큰소리 영어</div>
+          <div style="font-size:13px;opacity:0.92;">${esc(previewSub)}</div>
+        </div>
+        <div style="padding:18px;background:white;">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:#999;margin-bottom:8px;">아이디</div>
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:#999;margin-bottom:10px;">비밀번호</div>
+          <div style="background:${currentPreset.loginGradient};color:white;text-align:center;padding:12px;border-radius:12px;font-weight:700;font-size:14px;">로그인</div>
+          <div style="text-align:center;font-size:10px;color:#999;margin-top:10px;letter-spacing:0.3px;">
+            Powered by <strong style="color:#666;">LexiAI</strong> 🤖
+          </div>
+        </div>
+      </div>
+
+      <!-- 우측: 설정 입력 -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <!-- 색상 팔레트 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:10px;">🎨 LexiAI 기본 색상</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
+            ${presetCards}
+          </div>
+        </div>
+
+        <!-- 로고 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:10px;">🖼️ LexiAI 기본 로고</div>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:80px;height:80px;border:1px solid var(--border);border-radius:10px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+              <img src="${s.defaultLogo192Url || '/icons/icon-192.png'}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">
+            </div>
+            <div style="flex:1;">
+              <input type="file" id="lexiLogoInput" accept="image/png" style="display:none;" onchange="_lexiOnLogoFile(event)">
+              <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <button class="btn btn-primary" onclick="document.getElementById('lexiLogoInput').click()" style="font-size:12px;padding:7px 12px;">📤 PNG 업로드</button>
+                ${s.defaultLogo192Url ? `<button class="btn btn-secondary" onclick="_lexiRemoveLogo()" style="font-size:12px;padding:7px 12px;">🗑️ 로고 제거</button>` : ''}
+              </div>
+              <div style="font-size:11px;color:var(--gray);line-height:1.5;">
+                • PNG 만 (최대 5MB) · 정사각형 권장<br>
+                • 192/512 자동 생성 → Free 학원 + 미설정 학원에 즉시 반영
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 캐치프레이즈 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:6px;">✨ LexiAI 기본 캐치프레이즈 <span style="font-weight:400;color:#999;font-size:12px;">(최대 40자)</span></div>
+          <input type="text" id="lexiCatchphrase" maxlength="40" value="${esc(s.defaultCatchphrase || '')}"
+            placeholder="예: 큰소리로 말하는 영어 학습"
+            oninput="_lexiOnCatchphraseInput(this.value)"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
+          <div style="font-size:11px;color:#999;text-align:right;margin-top:4px;"><span id="lexiCpCount">${(s.defaultCatchphrase || '').length}</span> / 40</div>
+        </div>
+
+        <!-- 저장 -->
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="loadLexiAIBranding()" style="font-size:13px;">↺ 다시 로드</button>
+          <button class="btn btn-primary" onclick="_lexiSave()" style="font-size:13px;font-weight:700;${!_lexiBrandingDirty?'opacity:0.5;':''}" ${!_lexiBrandingDirty?'disabled':''}>💾 색상·문구 저장</button>
+        </div>
+        <div style="font-size:11px;color:#999;text-align:right;">로고 업로드는 즉시 저장됩니다. 색상·문구는 [💾 저장] 클릭 후 반영.</div>
+      </div>
+    </div>`;
+}
+
+window._lexiSelectPreset = (id) => {
+  if (!_lexiBranding) return;
+  _lexiBranding.defaultPresetId = id;
+  _lexiBrandingDirty = true;
+  _renderLexiAIBranding();
+};
+
+window._lexiOnCatchphraseInput = (val) => {
+  if (!_lexiBranding) return;
+  _lexiBranding.defaultCatchphrase = val;
+  _lexiBrandingDirty = true;
+  const cnt = document.getElementById('lexiCpCount');
+  if (cnt) cnt.textContent = val.length;
+};
+
+window._lexiOnLogoFile = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (file.type !== 'image/png') { showAlert('파일 형식', 'PNG 파일만 업로드 가능합니다.'); event.target.value = ''; return; }
+  if (file.size > 5 * 1024 * 1024) { showAlert('파일 크기', '5MB 이하 PNG 만 업로드 가능합니다.'); event.target.value = ''; return; }
+
+  showToast?.('🚀 LexiAI 기본 로고 업로드 중...');
+  try {
+    const reader = new FileReader();
+    const base64 = await new Promise((resolve, reject) => {
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const idToken = await _currentUser.getIdToken();
+    const r = await fetch('/api/uploadLogo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, target: 'lexiai', imageBase64: base64 }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || '업로드 실패');
+    _lexiBranding.defaultLogoUrl = j.urls.original;
+    _lexiBranding.defaultLogo192Url = j.urls['192'];
+    _lexiBranding.defaultLogo512Url = j.urls['512'];
+    _renderLexiAIBranding();
+    showToast?.('✅ LexiAI 기본 로고 업로드 완료');
+  } catch (e) {
+    showAlert('업로드 실패', e.message);
+  }
+  event.target.value = '';
+};
+
+window._lexiRemoveLogo = async () => {
+  const ok = await showSuperConfirm({
+    title: 'LexiAI 기본 로고 제거',
+    message: '제거하면 모든 Free 학원·미설정 학원에 정적 /icons/icon-192.png 가 표시됩니다. 진행할까요?',
+    confirmText: '제거', cancelText: '취소',
+  });
+  if (!ok) return;
+  try {
+    await setDoc(doc(db, 'appConfig', 'branding'), {
+      defaultLogoUrl: '',
+      defaultLogo192Url: '',
+      defaultLogo512Url: '',
+      logoRemovedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      updatedBy: _currentUser.uid,
+    }, { merge: true });
+    _lexiBranding.defaultLogoUrl = '';
+    _lexiBranding.defaultLogo192Url = '';
+    _lexiBranding.defaultLogo512Url = '';
+    _renderLexiAIBranding();
+    showToast?.('🗑️ 로고 제거됨');
+  } catch (e) { showAlert('저장 실패', e.message); }
+};
+
+window._lexiSave = async () => {
+  if (!_lexiBranding || !_lexiBrandingDirty) return;
+  try {
+    await setDoc(doc(db, 'appConfig', 'branding'), {
+      defaultPresetId: _lexiBranding.defaultPresetId,
+      defaultCatchphrase: _lexiBranding.defaultCatchphrase,
+      updatedAt: serverTimestamp(),
+      updatedBy: _currentUser.uid,
+    }, { merge: true });
+    _lexiBrandingDirty = false;
+    showToast?.('✅ LexiAI 기본 브랜딩 저장 — Free 학원에 즉시 반영');
+    _renderLexiAIBranding();
+  } catch (e) { showAlert('저장 실패', e.message); }
 };

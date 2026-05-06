@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>큰소리 영어 — 슈퍼 관리자</title>
 <link rel="stylesheet" href="/admin/style.css">
+<script src="/js/branding-presets.js"></script>
 <style>
   /* viewport 전체 고정 — 페이지 자체는 스크롤 안 함. 표 안만 스크롤 */
   html, body { overflow: hidden !important; height: 100% !important; }
@@ -54,6 +55,7 @@
     <button id="tab-quotaAdmin" onclick="goTab('quotaAdmin')">⚙️ 한도 관리</button>
     <button id="tab-prompts" onclick="goTab('prompts')">🤖 AI 프롬프트</button>
     <button id="tab-presets" onclick="goTab('presets')">🧹 클린업 프리셋</button>
+    <button id="tab-branding" onclick="goTab('branding')">🎨 LexiAI 브랜딩</button>
     <button id="tab-tools" onclick="goTab('tools')">🛠 도구</button>
   </div>
 
@@ -192,6 +194,13 @@
       <div id="presetsList" style="flex:1;overflow-y:auto;min-height:0;">
         <!-- JS 가 채움: 프리셋 카드들 -->
       </div>
+    </div>
+  </div>
+
+  <!-- LexiAI 기본 브랜딩 — Free 플랜 + 미설정 학원의 fallback -->
+  <div class="page" id="page-branding">
+    <div id="brandingMain" style="flex:1;overflow-y:auto;min-height:0;padding-right:4px;">
+      <div style="padding:60px;text-align:center;color:#bbb;">로딩 중...</div>
     </div>
   </div>
 

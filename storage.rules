@@ -41,6 +41,13 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // ── LexiAI 기본 브랜딩 로고 (super_admin 만 갱신) ────────────
+    // appConfig/branding 도큐먼트와 한 쌍. Free 플랜 학원·미설정 상태의 fallback.
+    match /appConfig/branding/logos/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // ── 공지 첨부 (현재 미사용이지만 미래 보강) ──────────────
     match /notices/{allPaths=**} {
       allow read: if request.auth != null;

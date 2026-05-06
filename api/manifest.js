@@ -47,9 +47,21 @@ module.exports = async (req, res) => {
     let logo192 = '/icons/icon-192.png';
     let logo512 = '/icons/icon-512.png';
 
+    // LexiAI 기본 (super_admin 갱신값) 1회 fetch — 모든 학원의 fallback
+    let lexi = {};
+    try {
+      initAdmin();
+      const lexiDoc = await getFirestore().doc('appConfig/branding').get();
+      if (lexiDoc.exists) lexi = lexiDoc.data();
+    } catch (_) {}
+
+    // LexiAI 기본 적용 (학원 미지정·Free·Lite+ 미설정 fallback)
+    if (lexi.defaultPresetId && BRANDING_PRESETS[lexi.defaultPresetId]) preset = BRANDING_PRESETS[lexi.defaultPresetId];
+    if (lexi.defaultLogo192Url) logo192 = lexi.defaultLogo192Url;
+    if (lexi.defaultLogo512Url) logo512 = lexi.defaultLogo512Url;
+
     if (academyId) {
       try {
-        initAdmin();
         const acadDoc = await getFirestore().doc('academies/' + academyId).get();
         if (acadDoc.exists) {
           const a = acadDoc.data();
@@ -59,7 +71,7 @@ module.exports = async (req, res) => {
           name = a.name || name;
           shortName = name.length > 12 ? name.slice(0, 12) : name;
 
-          // Free 플랜은 LexiAI 기본 고정
+          // Lite+ 만 학원 자체 brand 우선. Free 는 LexiAI 기본 (위에서 이미 설정됨).
           if (planId !== 'free') {
             const pid = branding.presetId;
             if (pid && BRANDING_PRESETS[pid]) preset = BRANDING_PRESETS[pid];
@@ -69,7 +81,6 @@ module.exports = async (req, res) => {
         }
       } catch (e) {
         console.warn('[manifest] academy lookup failed:', e.message);
-        // fall back to defaults
       }
     }
 
