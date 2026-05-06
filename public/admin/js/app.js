@@ -1446,10 +1446,10 @@ async function _renderBillingGrid(generated = 0) {
       <select onchange="_billingChangeMonth(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
         ${_billingMonthOptions(_billingMonth)}
       </select>
-      <select onchange="_billingFilterGroup=this.value;_renderBillingGrid()" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <select onchange="_billingChangeFilterGroup(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         ${groupOpts}
       </select>
-      <select onchange="_billingFilterStatus=this.value;_renderBillingGrid()" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <select onchange="_billingChangeFilterStatus(this.value)" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         <option value="">전체 상태</option>
         <option value="unpaid"${_billingFilterStatus === 'unpaid' ? ' selected' : ''}>미입금</option>
         <option value="partial"${_billingFilterStatus === 'partial' ? ' selected' : ''}>부분 입금</option>
@@ -1597,6 +1597,16 @@ function _billingComputeStatus(b) {
 window._billingChangeMonth = async (ym) => {
   _billingMonth = ym;
   await loadPayments();
+};
+
+// ES module let 변수에 inline onchange 로 직접 할당 안 되어 (글로벌 스코프) 필터 무동작이던 버그 수정
+window._billingChangeFilterGroup = async (val) => {
+  _billingFilterGroup = val || '';
+  await _renderBillingGrid();
+};
+window._billingChangeFilterStatus = async (val) => {
+  _billingFilterStatus = val || '';
+  await _renderBillingGrid();
 };
 
 // ── P3-1: 월간 결산 — 채널별 청구·수금·미수 + CSV ─────────────
