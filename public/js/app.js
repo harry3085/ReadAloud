@@ -134,6 +134,9 @@ function _applyAcademyBranding(academy) {
         img.onerror = () => { img.src = '/icons/icon-192.png'; img.onerror = null; };
       }
     });
+    // iOS PWA — apple-touch-icon 동적 갱신 (manifest 보다 우선시)
+    const appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+    if (appleIcon) appleIcon.href = logoUrl;
   }
   // 학원명 (로그인·로딩·홈 헤더·페이지 타이틀)
   const acadName = academy.name || '';
