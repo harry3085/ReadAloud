@@ -3242,7 +3242,7 @@ function renderScoreReportRows(){
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
       <td>${_unifiedTypeBadge(s.mode)}</td>
       <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
-      <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}</td>
+      <td style="font-size:12px;max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
       <td class="td-sub">${s._dateTime||s.date||''}</td>
@@ -3285,6 +3285,18 @@ window.loadScoreReport = async() => {
       _srData=[]; return;
     }
 
+    // testId → speaking 여부 맵 (말하기 시험 배지 표시용 — vocab + vocabOptions.format='speaking')
+    const speakingMap = {};
+    try {
+      const gtSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID)));
+      gtSnap.docs.forEach(d => {
+        const t = d.data();
+        if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
+          speakingMap[d.id] = true;
+        }
+      });
+    } catch(e) { console.warn('speaking map fetch:', e.message); }
+
     // 정렬용 필드 정규화 (레거시 tests fallback 제거 — Phase 6F)
     _srData = filtered.map(s=>{
       const m = s.mode || 'vocab';
@@ -3295,6 +3307,7 @@ window.loadScoreReport = async() => {
         mode: m,  // 표준 키 유지 (vocab/fill_blank/mcq/unscramble/recording/subjective)
         score: s.score||0,
         correct: s.correct||0,
+        _isSpeaking: !!speakingMap[s.testId],
         _dateTime: s.createdAt?.toDate
           ? s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
           : s.date||'',
@@ -10285,7 +10298,7 @@ function _tpRenderTestRow(t) {
   const qCount = t.questionCount || t.questions?.length || 0;
   return `
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}')" id="tp-row-${t.id}">
-      <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}</td>
+      <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.targetName||'-')}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;">${qCount}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
