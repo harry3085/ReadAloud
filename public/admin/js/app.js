@@ -1808,12 +1808,20 @@ window._billingOpenMessage = (billingId, defaultTemplate = 'polite') => {
   if (!_billingSettings) { showAlert('입력 확인', '결제 설정이 필요합니다.'); return; }
   const availChannels = [...new Set((b.items || []).map(i => i.channel))];
   if (availChannels.length === 0) { showAlert('입력 확인', '청구 항목이 없습니다.'); return; }
+  // editedByTemplate: 템플릿별 편집본 — 탭 변경해도 각 편집본 유지
+  // 호환성: 옛 lastSentMessage 가 있으면 defaultTemplate 의 편집본으로 흡수
+  const stored = b.editedMessages || {};
+  const editedByTemplate = { polite: stored.polite || null, brief: stored.brief || null, reminder: stored.reminder || null };
+  if (!editedByTemplate[defaultTemplate] && b.lastSentMessage) {
+    editedByTemplate[defaultTemplate] = b.lastSentMessage;
+  }
   _billingMsgState = {
     billingId,
     template: defaultTemplate,
     channels: availChannels.slice(),
     availChannels,
-    customMessage: b.lastSentMessage || null,  // 이전 편집 메시지 prefill
+    editedByTemplate,
+    viewMode: editedByTemplate[defaultTemplate] ? 'edited' : 'default',  // 'edited' or 'default'
   };
   _billingRenderMessageModal();
 };
@@ -1824,18 +1832,28 @@ function _billingRenderMessageModal() {
   const b = _billings.find(x => x.id === s.billingId);
   if (!b) return;
   const academy = window.adminProfile?.academyName || (window.MY_ACADEMY_NAME || '학원');
-  // customMessage 가 있으면 그걸 보여주고, 없으면 템플릿으로 빌드
-  const msg = s.customMessage || _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+  const editedForCurrent = s.editedByTemplate[s.template];
+  const hasEdit = !!editedForCurrent;
+  // 표시할 메시지: viewMode 가 'edited' 이고 편집본 있으면 → 편집본. 그 외 → 기본 빌드
+  const msg = (s.viewMode === 'edited' && hasEdit)
+    ? editedForCurrent
+    : _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
 
-  // 일괄 모드 — 헤더 진행 배지 + 푸터 다른 버튼
+  // 일괄 모드
   const isBulk = !!_billingBulkQueue;
   const bulkProgress = isBulk
     ? `<div style="display:inline-block;padding:3px 10px;background:var(--teal-light);color:var(--teal-dark);border-radius:12px;font-size:11px;font-weight:700;margin-bottom:6px;">${_billingBulkCurrentIdx} / ${_billingBulkTotal}</div>`
     : '';
 
-  const tabBtn = (key, icon, label) => `
-    <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${s.template === key && !s.customMessage ? 'var(--teal)' : 'white'};color:${s.template === key && !s.customMessage ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${s.template === key && !s.customMessage ? '700' : '500'};cursor:pointer;">${icon} ${label}</button>
-  `;
+  // 템플릿 탭 — 활성 + 편집본 있는 탭에 ✏️ 배지
+  const tabBtn = (key, icon, label) => {
+    const isActive = s.template === key;
+    const tplHasEdit = !!s.editedByTemplate[key];
+    return `
+      <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;position:relative;">
+        ${icon} ${label}${tplHasEdit ? ' <span style="font-size:9px;opacity:0.85;">✏️</span>' : ''}
+      </button>`;
+  };
 
   const chCheck = (key, icon, label) => {
     const avail = s.availChannels.includes(key);
@@ -1848,17 +1866,21 @@ function _billingRenderMessageModal() {
       </label>`;
   };
 
+  // 원본/편집본 토글 (편집본 있을 때만 노출)
+  const viewToggle = hasEdit
+    ? `<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;">
+         <span style="font-size:11px;color:var(--gray);font-weight:600;">보기:</span>
+         <button onclick="_billingMsgSetView('default')" style="padding:4px 10px;border:1px solid ${s.viewMode === 'default' ? 'var(--teal)' : 'var(--border)'};background:${s.viewMode === 'default' ? 'var(--teal-light)' : 'white'};color:${s.viewMode === 'default' ? 'var(--teal-dark)' : 'var(--gray)'};border-radius:5px;font-size:11px;font-weight:${s.viewMode === 'default' ? '700' : '500'};cursor:pointer;">📄 기본값</button>
+         <button onclick="_billingMsgSetView('edited')" style="padding:4px 10px;border:1px solid ${s.viewMode === 'edited' ? 'var(--teal)' : 'var(--border)'};background:${s.viewMode === 'edited' ? 'var(--teal-light)' : 'white'};color:${s.viewMode === 'edited' ? 'var(--teal-dark)' : 'var(--gray)'};border-radius:5px;font-size:11px;font-weight:${s.viewMode === 'edited' ? '700' : '500'};cursor:pointer;">✏️ 편집본</button>
+         ${s.viewMode === 'edited' ? `<button onclick="_billingMsgClearEdit()" style="margin-left:auto;padding:4px 10px;border:1px solid var(--border);background:white;color:#dc2626;border-radius:5px;font-size:11px;cursor:pointer;" title="이 템플릿의 편집본 삭제">🗑 편집본 삭제</button>` : ''}
+       </div>`
+    : '';
+
   const footerHtml = isBulk
     ? `<button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>`
     : `<button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>`;
-
-  const customNotice = s.customMessage
-    ? `<div style="padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;margin-bottom:10px;">
-         ✏️ 이전에 직접 편집한 메시지가 표시됩니다. 템플릿 탭 클릭 시 새로 생성.
-       </div>`
-    : '';
 
   showModal(`
     <div style="width:min(560px,92vw);max-height:90vh;display:flex;flex-direction:column;">
@@ -1868,23 +1890,23 @@ function _billingRenderMessageModal() {
         <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(b.studentName)} · ${b.yearMonth}</div>
       </div>
       <div style="padding:14px 20px;overflow-y:auto;flex:1;">
-        <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
           ${tabBtn('polite', '🙏', '정중')}
           ${tabBtn('brief', '📋', '간결')}
           ${tabBtn('reminder', '⚠️', '미납 안내')}
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           ${chCheck('tuition', '💳', '학원 결제')}
           ${_billingSettings?.materialsChannel?.enabled ? chCheck('materials', '📚', '교재/시험비') : ''}
-          <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 해당 채널 제외</span>
+          <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 채널 제외 (기본값에만 영향)</span>
         </div>
-        ${customNotice}
+        ${viewToggle}
         <textarea id="billingMsgPreview" rows="14"
           style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;"
-          oninput="if(_billingMsgState){_billingMsgState.customMessage=this.value;}document.getElementById('billingMsgChars').textContent=this.value.length">${esc(msg)}</textarea>
+          oninput="_billingMsgOnInput(this.value)">${esc(msg)}</textarea>
         <div style="margin-top:6px;font-size:11px;color:var(--gray);">
           <span id="billingMsgChars">${msg.length}</span>자 ·
-          <span style="color:#bbb;">카톡 1메시지 ~1000자 권장. 직접 편집한 내용은 복사 시 자동 저장됨.</span>
+          <span style="color:#bbb;">텍스트 편집 시 현재 템플릿의 편집본으로 자동 저장 (탭 변경해도 보존).</span>
         </div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -1894,10 +1916,33 @@ function _billingRenderMessageModal() {
   `);
 }
 
+// 텍스트 편집 시 — 현재 템플릿의 편집본으로 저장 + viewMode='edited' 자동 전환
+window._billingMsgOnInput = (value) => {
+  if (!_billingMsgState) return;
+  _billingMsgState.editedByTemplate[_billingMsgState.template] = value;
+  _billingMsgState.viewMode = 'edited';
+  document.getElementById('billingMsgChars').textContent = value.length;
+};
+
 window._billingMsgChangeTpl = (tpl) => {
   if (!_billingMsgState) return;
   _billingMsgState.template = tpl;
-  _billingMsgState.customMessage = null;  // 템플릿 탭 클릭 → 새로 생성
+  // 새 템플릿에 편집본 있으면 그걸 보여주고, 없으면 기본값
+  _billingMsgState.viewMode = _billingMsgState.editedByTemplate[tpl] ? 'edited' : 'default';
+  _billingRenderMessageModal();
+};
+
+window._billingMsgSetView = (mode) => {
+  if (!_billingMsgState) return;
+  _billingMsgState.viewMode = mode;
+  _billingRenderMessageModal();
+};
+
+window._billingMsgClearEdit = async () => {
+  if (!_billingMsgState) return;
+  if (!await showConfirm('편집본 삭제', `현재 '${_billingMsgState.template}' 템플릿 편집본을 삭제하고 기본값으로 돌아갈까요?`)) return;
+  _billingMsgState.editedByTemplate[_billingMsgState.template] = null;
+  _billingMsgState.viewMode = 'default';
   _billingRenderMessageModal();
 };
 
@@ -1905,8 +1950,13 @@ window._billingMsgToggleCh = (ch, on) => {
   if (!_billingMsgState) return;
   if (on && !_billingMsgState.channels.includes(ch)) _billingMsgState.channels.push(ch);
   if (!on) _billingMsgState.channels = _billingMsgState.channels.filter(c => c !== ch);
-  _billingMsgState.customMessage = null;  // 채널 변경 → 새로 생성
-  _billingRenderMessageModal();
+  // 편집본 보고 있으면 그대로 유지 (편집본은 채널 변경 영향 X). 기본값 보고 있으면 새 채널로 재빌드
+  if (_billingMsgState.viewMode === 'default') {
+    _billingRenderMessageModal();
+  } else {
+    // 편집본 모드 — 채널 체크박스 시각만 갱신 (텍스트 그대로)
+    _billingRenderMessageModal();
+  }
 };
 
 window._billingCopyMessage = async () => {
@@ -1915,20 +1965,28 @@ window._billingCopyMessage = async () => {
   try {
     await navigator.clipboard.writeText(ta.value);
     showToast('✅ 복사됐어요! 카톡에 붙여넣으세요.');
-    // 편집된 메시지 + 발송 이력 기록 (다음번 prefill 용)
+    // 편집본 영구 저장 + 발송 이력 기록
     if (_billingMsgState?.billingId) {
       try {
-        await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
-          lastSentMessage: ta.value,
+        // viewMode 가 'edited' 면 현재 텍스트가 편집본임. 'default' 면 편집본 안 만듦.
+        if (_billingMsgState.viewMode === 'edited') {
+          _billingMsgState.editedByTemplate[_billingMsgState.template] = ta.value;
+        }
+        const update = {
+          editedMessages: _billingMsgState.editedByTemplate,
+          lastSentMessage: ta.value,  // 호환성 (옛 필드)
           lastMessageSentAt: serverTimestamp(),
           messagesSentCount: increment(1),
-        });
-        // 로컬 캐시 갱신 (재진입 시 prefill 위해)
+        };
+        await updateDoc(doc(db, 'billings', _billingMsgState.billingId), update);
+        // 로컬 캐시 갱신
         const bRef = _billings.find(x => x.id === _billingMsgState.billingId);
-        if (bRef) bRef.lastSentMessage = ta.value;
+        if (bRef) {
+          bRef.editedMessages = { ..._billingMsgState.editedByTemplate };
+          bRef.lastSentMessage = ta.value;
+        }
       } catch (_) {}
     }
-    // 일괄 모드면 다음 자동 진행
     if (_billingBulkQueue) {
       setTimeout(() => _billingBulkNext(), 400);
     }
