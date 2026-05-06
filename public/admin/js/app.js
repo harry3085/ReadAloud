@@ -1800,22 +1800,20 @@ function _billingBuildMessage(billing, settings, template, channels, academyName
 }
 
 // 개별 메시지 모달
-let _billingMsgState = null;  // { billingId, template, channels }
+let _billingMsgState = null;  // { billingId, template, channels, customMessage }
 
 window._billingOpenMessage = (billingId, defaultTemplate = 'polite') => {
   const b = _billings.find(x => x.id === billingId);
   if (!b) { showAlert('입력 확인', '청구서를 찾을 수 없습니다.'); return; }
   if (!_billingSettings) { showAlert('입력 확인', '결제 설정이 필요합니다.'); return; }
-
-  // 사용 가능한 채널 자동 감지
   const availChannels = [...new Set((b.items || []).map(i => i.channel))];
   if (availChannels.length === 0) { showAlert('입력 확인', '청구 항목이 없습니다.'); return; }
-
   _billingMsgState = {
     billingId,
     template: defaultTemplate,
     channels: availChannels.slice(),
     availChannels,
+    customMessage: b.lastSentMessage || null,  // 이전 편집 메시지 prefill
   };
   _billingRenderMessageModal();
 };
@@ -1825,12 +1823,18 @@ function _billingRenderMessageModal() {
   if (!s) return;
   const b = _billings.find(x => x.id === s.billingId);
   if (!b) return;
-  const academyName = (document.getElementById('superName')?.textContent || '학원').trim();
-  const academy = window.adminProfile?.academyName || academyName;
-  const msg = _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+  const academy = window.adminProfile?.academyName || (window.MY_ACADEMY_NAME || '학원');
+  // customMessage 가 있으면 그걸 보여주고, 없으면 템플릿으로 빌드
+  const msg = s.customMessage || _billingBuildMessage(b, _billingSettings, s.template, s.channels, academy);
+
+  // 일괄 모드 — 헤더 진행 배지 + 푸터 다른 버튼
+  const isBulk = !!_billingBulkQueue;
+  const bulkProgress = isBulk
+    ? `<div style="display:inline-block;padding:3px 10px;background:var(--teal-light);color:var(--teal-dark);border-radius:12px;font-size:11px;font-weight:700;margin-bottom:6px;">${_billingBulkCurrentIdx} / ${_billingBulkTotal}</div>`
+    : '';
 
   const tabBtn = (key, icon, label) => `
-    <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${s.template === key ? 'var(--teal)' : 'white'};color:${s.template === key ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${s.template === key ? '700' : '500'};cursor:pointer;">${icon} ${label}</button>
+    <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${s.template === key && !s.customMessage ? 'var(--teal)' : 'white'};color:${s.template === key && !s.customMessage ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${s.template === key && !s.customMessage ? '700' : '500'};cursor:pointer;">${icon} ${label}</button>
   `;
 
   const chCheck = (key, icon, label) => {
@@ -1844,9 +1848,22 @@ function _billingRenderMessageModal() {
       </label>`;
   };
 
+  const footerHtml = isBulk
+    ? `<button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
+       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
+       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>`;
+
+  const customNotice = s.customMessage
+    ? `<div style="padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:11px;color:#854d0e;margin-bottom:10px;">
+         ✏️ 이전에 직접 편집한 메시지가 표시됩니다. 템플릿 탭 클릭 시 새로 생성.
+       </div>`
+    : '';
+
   showModal(`
     <div style="width:min(560px,92vw);max-height:90vh;display:flex;flex-direction:column;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        ${bulkProgress}
         <div style="font-size:15px;font-weight:700;line-height:1.3;">📨 학원장 안내 메시지</div>
         <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(b.studentName)} · ${b.yearMonth}</div>
       </div>
@@ -1861,17 +1878,17 @@ function _billingRenderMessageModal() {
           ${_billingSettings?.materialsChannel?.enabled ? chCheck('materials', '📚', '교재/시험비') : ''}
           <span style="font-size:10px;color:#bbb;align-self:center;">체크 해제 시 해당 채널 제외</span>
         </div>
+        ${customNotice}
         <textarea id="billingMsgPreview" rows="14"
           style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.6;font-family:'Noto Sans KR','Pretendard',sans-serif;resize:vertical;box-sizing:border-box;"
-          oninput="document.getElementById('billingMsgChars').textContent=this.value.length">${esc(msg)}</textarea>
+          oninput="if(_billingMsgState){_billingMsgState.customMessage=this.value;}document.getElementById('billingMsgChars').textContent=this.value.length">${esc(msg)}</textarea>
         <div style="margin-top:6px;font-size:11px;color:var(--gray);">
           <span id="billingMsgChars">${msg.length}</span>자 ·
-          <span style="color:#bbb;">카톡 1메시지 ~1000자 권장. 직접 편집 가능.</span>
+          <span style="color:#bbb;">카톡 1메시지 ~1000자 권장. 직접 편집한 내용은 복사 시 자동 저장됨.</span>
         </div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
-        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>
+        ${footerHtml}
       </div>
     </div>
   `);
@@ -1880,6 +1897,7 @@ function _billingRenderMessageModal() {
 window._billingMsgChangeTpl = (tpl) => {
   if (!_billingMsgState) return;
   _billingMsgState.template = tpl;
+  _billingMsgState.customMessage = null;  // 템플릿 탭 클릭 → 새로 생성
   _billingRenderMessageModal();
 };
 
@@ -1887,6 +1905,7 @@ window._billingMsgToggleCh = (ch, on) => {
   if (!_billingMsgState) return;
   if (on && !_billingMsgState.channels.includes(ch)) _billingMsgState.channels.push(ch);
   if (!on) _billingMsgState.channels = _billingMsgState.channels.filter(c => c !== ch);
+  _billingMsgState.customMessage = null;  // 채널 변경 → 새로 생성
   _billingRenderMessageModal();
 };
 
@@ -1896,17 +1915,21 @@ window._billingCopyMessage = async () => {
   try {
     await navigator.clipboard.writeText(ta.value);
     showToast('✅ 복사됐어요! 카톡에 붙여넣으세요.');
-    // 발송 이력 기록
+    // 편집된 메시지 + 발송 이력 기록 (다음번 prefill 용)
     if (_billingMsgState?.billingId) {
       try {
         await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
+          lastSentMessage: ta.value,
           lastMessageSentAt: serverTimestamp(),
           messagesSentCount: increment(1),
         });
+        // 로컬 캐시 갱신 (재진입 시 prefill 위해)
+        const bRef = _billings.find(x => x.id === _billingMsgState.billingId);
+        if (bRef) bRef.lastSentMessage = ta.value;
       } catch (_) {}
     }
     // 일괄 모드면 다음 자동 진행
-    if (_billingBulkQueue && _billingBulkQueue.length > 0) {
+    if (_billingBulkQueue) {
       setTimeout(() => _billingBulkNext(), 400);
     }
   } catch (e) {
@@ -1915,8 +1938,9 @@ window._billingCopyMessage = async () => {
 };
 
 // 미납자 일괄 메시지 — 카드 슬라이드 흐름
-let _billingBulkQueue = null;  // [billingId, ...]
+let _billingBulkQueue = null;       // [billingId, ...]
 let _billingBulkTotal = 0;
+let _billingBulkCurrentIdx = 0;     // 현재 진행 인덱스 (1부터)
 
 window._billingOpenBulkMessage = () => {
   // 미납·부분·연체 학생 추출
@@ -1974,6 +1998,7 @@ window._billingBulkStart = () => {
   if (ids.length === 0) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
   _billingBulkQueue = ids.slice();
   _billingBulkTotal = ids.length;
+  _billingBulkCurrentIdx = 0;
   closeModal();
   setTimeout(() => _billingBulkNext(), 200);
 };
@@ -1982,35 +2007,21 @@ window._billingBulkNext = () => {
   if (!_billingBulkQueue) return;
   if (_billingBulkQueue.length === 0) {
     _billingBulkQueue = null;
-    showAlert('완료', `${_billingBulkTotal}명에게 메시지 복사를 마쳤어요.`);
+    _billingBulkTotal = 0;
+    _billingBulkCurrentIdx = 0;
+    showAlert('완료', `메시지 복사를 마쳤어요.`);
     if (currentPage === 'payment') _renderBillingGrid();
     return;
   }
   const id = _billingBulkQueue.shift();
-  const idx = _billingBulkTotal - _billingBulkQueue.length;
-  // 미납 안내 템플릿 자동 적용
+  _billingBulkCurrentIdx = _billingBulkTotal - _billingBulkQueue.length;
+  // 미납 안내 템플릿 자동 적용. _billingRenderMessageModal 가 _billingBulkQueue 감지해서 진행 배지·푸터 자동 처리
   _billingOpenMessage(id, 'reminder');
-  // 헤더에 진행 표시 + 푸터에 [건너뛰기] [복사 후 다음 →] 교체
-  setTimeout(() => {
-    const header = document.querySelector('#modalBox > div > div');  // 첫 번째 헤더 div
-    if (header) {
-      header.insertAdjacentHTML('afterbegin',
-        `<div style="display:inline-block;padding:3px 10px;background:var(--teal-light);color:var(--teal-dark);border-radius:12px;font-size:11px;font-weight:700;margin-bottom:6px;">${idx} / ${_billingBulkTotal}</div>`
-      );
-    }
-    const footer = document.querySelector('#modalBox > div > div:last-child');
-    if (footer) {
-      footer.innerHTML = `
-        <button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
-        <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>
-      `;
-    }
-  }, 50);
 };
 
 window._billingBulkSkip = () => {
-  closeModal();
-  setTimeout(() => _billingBulkNext(), 200);
+  // 현재 모달 안 닫고 바로 다음 학생으로 (showModal 이 내용 교체)
+  setTimeout(() => _billingBulkNext(), 100);
 };
 
 const _origCloseModal = window.closeModal;
