@@ -7033,21 +7033,33 @@ const QG_TYPE_OPTIONS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 window.loadQuizGenerate = async () => {
-  // Generator 데이터가 없으면 먼저 로드
-  if (!_genPages.length && !_genBooks.length) {
-    try {
-      const [pSnap, cSnap, bSnap] = await Promise.all([
-        getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc'))),
-        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc'))),
-        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
-      ]);
-      _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
-      _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
-      _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
-    } catch(e) {
-      showToast('AI OCR 데이터 로드 실패: '+e.message);
-      return;
+  // Generator 데이터 부분 fetch — 시험관리(books/chapters만 채움) 등 다른 경로로
+  // 일부만 캐시된 상태에서 AI Generator 진입 시 0개로 표시되던 race 수정.
+  // 각 컬렉션 비어있을 때만 fetch.
+  try {
+    const tasks = [];
+    if (!_genPages.length) {
+      tasks.push(
+        getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc')))
+          .then(s => { _genPages = s.docs.map(d=>({id:d.id,...d.data()})); })
+      );
     }
+    if (!_genChapters.length) {
+      tasks.push(
+        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc')))
+          .then(s => { _genChapters = s.docs.map(d=>({id:d.id,...d.data()})); })
+      );
+    }
+    if (!_genBooks.length) {
+      tasks.push(
+        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc')))
+          .then(s => { _genBooks = s.docs.map(d=>({id:d.id,...d.data()})); })
+      );
+    }
+    if (tasks.length) await Promise.all(tasks);
+  } catch(e) {
+    showToast('AI OCR 데이터 로드 실패: '+e.message);
+    return;
   }
 
   _qgSelectedPageIds.clear();
