@@ -638,6 +638,8 @@ function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*100
 function filterMyTests(allTests, myGroup, myUid){
   return allTests.filter(t=>{
     if(!t.active && t.active !== undefined) return false;
+    // 학원장이 이 시험에서 명시적으로 제외한 학생 — 시험 목록에서 숨김
+    if (Array.isArray(t.excludedUids) && t.excludedUids.includes(myUid)) return false;
     const targets = t.targets||[];
     if(!targets.length){
       return (t.targetType==='class'&&t.targetId===myGroup)

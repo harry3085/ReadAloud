@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -10314,6 +10314,43 @@ window.tpClearSel = () => {
   _tpRender();
 };
 
+// 시험에서 특정 학생 제외 — excludedUids 추가 + userCompleted 삭제 + scores 매칭 삭제
+// 잘못 배정된 학생의 응시 기록이 성장 리포트에 영향 주지 않도록 완전 제거
+// 복구 UI 없음 — 다시 보게 하려면 시험 새로 배정
+window.tpExcludeStudent = async (testId, uid, studentName) => {
+  if (!testId || !uid) return;
+  if (!(await showConfirm(
+    `"${studentName || '학생'}" 시험 제외`,
+    `이 학생을 시험에서 제외하고 응시 기록(점수·완료 스냅샷)도 모두 삭제합니다.\n학생 앱 시험 목록에서 사라지며, 성장 리포트에서도 제외됩니다.\n\n되돌릴 수 없습니다. 다시 보게 하려면 시험을 새로 배정해야 합니다.`
+  ))) return;
+  try {
+    // 1. excludedUids 에 추가 (학생 앱 시험 목록 차단)
+    await updateDoc(doc(db, 'genTests', testId), {
+      excludedUids: arrayUnion(uid),
+    });
+    // 2. userCompleted 스냅샷 삭제 (있으면)
+    try { await deleteDoc(doc(db, 'genTests', testId, 'userCompleted', uid)); } catch(_) {}
+    // 3. scores 에서 testId+uid 매칭 일괄 삭제
+    try {
+      const sSnap = await getDocs(query(
+        collection(db, 'scores'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('testId', '==', testId),
+        where('uid', '==', uid),
+      ));
+      for (const sd of sSnap.docs) {
+        try { await deleteDoc(sd.ref); } catch(_) {}
+      }
+    } catch(e) { console.warn('[tpExcludeStudent] scores cleanup:', e.message); }
+    showToast('✓ 학생 제외 완료');
+    // 펼침 화면 다시 그리기 — 같은 행 다시 클릭하면 갱신된 상태 표시
+    await tpToggleTestProgress(testId);
+    await tpToggleTestProgress(testId);
+  } catch(e) {
+    showAlert('제외 실패', e.message);
+  }
+};
+
 // 시험(genTests) 단건 삭제 — 하위 userCompleted 도 cascade 삭제. scores 는 보존(이력 가치).
 window.tpDeleteGenTest = async (testId) => {
   const t = _tpGenTests.find(x => x.id === testId);
@@ -11577,6 +11614,10 @@ window.tpToggleTestProgress = async (testId) => {
       return true;
     });
 
+    // 제외된 학생은 화면에서 숨김 (복구 UI 없음 — 시험 새 배정만)
+    const excluded = new Set(t.excludedUids || []);
+    studentList = studentList.filter(s => !excluded.has(s.uid));
+
     const completed = new Map();
     await Promise.all(studentList.map(async s => {
       try {
@@ -11610,8 +11651,9 @@ window.tpToggleTestProgress = async (testId) => {
                 const passScore = c.passScore || 80;
                 const isPassed = last.score >= passScore;
                 return `
-                  <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;">
+                    <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-right:24px;">
                       <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
                       <span style="color:${isPassed ? '#059669' : '#CA8A04'};font-weight:700;">${last.score}점</span>
                     </div>
@@ -11640,18 +11682,23 @@ window.tpToggleTestProgress = async (testId) => {
               const dateStr = c.date
                 || (c.latestAt?.toDate?.() ? _ymdKST(c.latestAt.toDate()) : '');
               const passScore = c.passScore || t.passScore || 80;
+              const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
               if (passed) {
-                return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 9px;font-size:11px;">
+                return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                  ${xBtn}
                   <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                   <div style="color:#2e7d32;">✓ ${score}점 · ${esc(dateStr)}</div>
                 </div>`;
               }
-              return `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:5px 9px;font-size:11px;">
+              return `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                ${xBtn}
                 <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                 <div style="color:#92400e;">⚠ ${score}점 (통과 ${passScore})</div>
               </div>`;
             }
-            return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 9px;font-size:11px;">
+            const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+            return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+              ${xBtn}
               <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
               <div style="color:#e65100;">⏳ 대기</div>
             </div>`;
