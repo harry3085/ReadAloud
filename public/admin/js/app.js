@@ -3546,6 +3546,8 @@ window.updateStudent = async(id) => {
       const j = await r.json();
       if (!j.success) { showAlert('비밀번호 변경 실패', j.error || '서버 오류'); return; }
     }
+    // 학생 수강료/납부일 변경 시 이번 달 미입금 청구서 동기화 (자동 생성된 수강료 항목만)
+    await _syncCurrentMonthBilling(id, data.tuitionPlan, data.name);
     closeModal();
     showToast(newPw ? '✅ 학생 정보 + 비밀번호 변경 완료' : '✅ 학생 정보가 수정됐어요!');
     await loadStudents(currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active');
@@ -3553,6 +3555,86 @@ window.updateStudent = async(id) => {
     showAlert('저장 실패', e.message);
   }
 };
+
+// 학생 수강료/납부일 변경 시 이번 달 청구서 자동 동기화.
+// 안전 조건: paid=false 인 system 자동 생성 수강료 항목만 갱신. 사용자 추가 항목 보존.
+async function _syncCurrentMonthBilling(studentUid, newPlan, newName) {
+  if (!newPlan) return;
+  try {
+    const academyId = window.MY_ACADEMY_ID || 'default';
+    const ym = _ymdKST().slice(0, 7);
+    const snap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', academyId),
+      where('yearMonth', '==', ym),
+      where('studentUid', '==', studentUid),
+    ));
+    if (snap.empty) return;  // 청구서 없음 — 다음 달 새로 생성될 때 새 plan 적용
+
+    // 학원 default + 학생 dueDay 로 새 dueDate 계산
+    if (!_billingSettings) {
+      const acad = await getDoc(doc(db, 'academies', academyId));
+      _billingSettings = acad.exists() ? (acad.data().paymentSettings || {}) : {};
+    }
+    const defaultDueDay = _billingSettings?.defaultDueDay || 15;
+    let dueDay = parseInt(newPlan.dueDay);
+    if (!isFinite(dueDay) || dueDay === 0) dueDay = defaultDueDay;
+    const [y, mm] = ym.split('-').map(Number);
+    const lastDay = new Date(y, mm, 0).getDate();
+    const actualDay = (dueDay === -1) ? lastDay : Math.min(Math.max(1, dueDay), lastDay);
+    const newDueDate = new Date(y, mm - 1, actualDay);
+
+    const newAmount = parseInt(newPlan.amount) || 0;
+
+    for (const billingDoc of snap.docs) {
+      const b = billingDoc.data();
+      const items = (b.items || []).slice();
+      let changed = false;
+
+      // system 자동 생성 + 미입금 + tuition 항목만 동기화
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type !== 'tuition' || it.addedBy !== 'system' || it.paid) continue;
+        if (it.amount !== newAmount) {
+          items[i] = { ...it, amount: newAmount };
+          changed = true;
+        }
+      }
+
+      // 비활성/금액 0 → 자동 항목 제거 (다른 항목 있으면 그것만 남김)
+      if (!newPlan.active || newAmount <= 0) {
+        const before = items.length;
+        const filtered = items.filter(it => !(it.type === 'tuition' && it.addedBy === 'system' && !it.paid));
+        if (filtered.length !== before) {
+          items.splice(0, items.length, ...filtered);
+          changed = true;
+        }
+      }
+
+      // 합계 재계산
+      const totalAmount = items.reduce((s, it) => s + (it.amount || 0), 0);
+      const paidAmount = items.filter(it => it.paid).reduce((s, it) => s + (it.amount || 0), 0);
+      const status = totalAmount === 0 ? 'paid'
+        : paidAmount >= totalAmount ? 'paid'
+        : paidAmount > 0 ? 'partial'
+        : (b.dueDate?.toDate && b.dueDate.toDate() < new Date()) ? 'overdue' : 'unpaid';
+
+      const update = { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() };
+      // dueDate 도 변경됐으면 갱신 (기존과 다를 때만)
+      const oldDueDate = b.dueDate?.toDate?.()?.getTime() || 0;
+      if (Math.abs(oldDueDate - newDueDate.getTime()) > 1000) {
+        update.dueDate = newDueDate;
+        changed = true;
+      }
+      if (newName && b.studentName !== newName) {
+        update.studentName = newName;
+        changed = true;
+      }
+
+      if (changed) await updateDoc(billingDoc.ref, update);
+    }
+  } catch (e) { console.warn('[syncCurrentMonthBilling]', e.message); }
+}
 
 // ── 공지 수정 ────────────────────────────────────────────
 window.editNotice = async(id) => {
