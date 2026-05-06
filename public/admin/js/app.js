@@ -9055,8 +9055,16 @@ window.qsDeleteSet = async (setId) => {
 // 문제 세트 내용 수정
 // ═══════════════════════════════════════════════════════════════════════════
 
-window.qsEditSet = (setId) => {
-  const s = _qsList.find(x => x.id === setId);
+window.qsEditSet = async (setId) => {
+  // qsViewDetail 과 동일 폴백 체인: _qsList → _tpSets → Firestore
+  let s = _qsList.find(x => x.id === setId)
+       || (typeof _tpSets !== 'undefined' && _tpSets.find(x => x.id === setId));
+  if (!s) {
+    try {
+      const snap = await getDoc(doc(db,'genQuestionSets',setId));
+      if (snap.exists()) s = { id: snap.id, ...snap.data() };
+    } catch(e) {}
+  }
   if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
 
   _qsEditState = {
