@@ -11826,7 +11826,7 @@ function _renderBrandingPage() {
   }
 
   const presetCards = Object.values(presets).map(p => `
-    <div onclick="${locked ? 'showAlert(\\'Free 플랜\\', \\'색상 변경은 Lite 이상 플랜에서 가능합니다.\\')' : `_brandingSelectPreset('${p.id}')`}"
+    <div onclick="${locked ? '_brandingShowLockMsg()' : `_brandingSelectPreset('${p.id}')`}"
          style="border:2px solid ${s.presetId === p.id ? p.primary : 'var(--border)'};border-radius:10px;padding:12px;cursor:${locked ? 'not-allowed' : 'pointer'};text-align:center;background:white;${locked ? 'opacity:0.5;' : ''}transition:.15s;position:relative;">
       <div style="height:60px;border-radius:8px;background:${p.loginGradient};display:flex;align-items:center;justify-content:center;margin-bottom:8px;">
         <span style="font-size:28px;">${p.emoji}</span>
@@ -11923,6 +11923,10 @@ function _renderBrandingPage() {
       </div>
     </div>`;
 }
+
+window._brandingShowLockMsg = () => {
+  showAlert('Free 플랜', '색상 변경은 Lite 이상 플랜에서 가능합니다.');
+};
 
 window._brandingSelectPreset = (id) => {
   if (_isBrandingLocked()) return;
