@@ -1959,6 +1959,28 @@ window._billingMsgToggleCh = (ch, on) => {
   }
 };
 
+// 편집본 영구 저장 — closeModal / bulk 종료 등에서 호출
+async function _billingMsgFlushEdits() {
+  if (!_billingMsgState?.billingId) return;
+  // 현재 표시 중인 textarea 값 반영 (oninput 이 이미 처리하지만 안전망)
+  const ta = document.getElementById('billingMsgPreview');
+  if (ta && _billingMsgState.viewMode === 'edited') {
+    _billingMsgState.editedByTemplate[_billingMsgState.template] = ta.value;
+  }
+  const b = _billings.find(x => x.id === _billingMsgState.billingId);
+  if (!b) return;
+  const stored = b.editedMessages || {};
+  const current = _billingMsgState.editedByTemplate;
+  const changed = ['polite','brief','reminder'].some(k => (stored[k] || null) !== (current[k] || null));
+  if (!changed) return;
+  try {
+    await updateDoc(doc(db, 'billings', _billingMsgState.billingId), {
+      editedMessages: current,
+    });
+    b.editedMessages = { ...current };
+  } catch (e) { console.warn('[billingMsgFlushEdits]', e.message); }
+}
+
 window._billingCopyMessage = async () => {
   const ta = document.getElementById('billingMsgPreview');
   if (!ta) return;
@@ -2085,11 +2107,26 @@ window._billingBulkSkip = () => {
 const _origCloseModal = window.closeModal;
 window.closeModal = function() {
   const wasBillingPanel = _billingPanelId !== null;
+  const wasBillingMsg = _billingMsgState !== null;
+  // 메시지 모달 닫기 — 편집본 자동 저장 (fire-and-forget, closeModal 지연 X)
+  if (wasBillingMsg) {
+    _billingMsgFlushEdits();
+  }
   if (typeof _origCloseModal === 'function') _origCloseModal();
   if (wasBillingPanel) {
     _billingPanelId = null;
     _billingPanelChannel = null;
     if (currentPage === 'payment') _renderBillingGrid();
+  }
+  if (wasBillingMsg) {
+    _billingMsgState = null;
+    // 모달 닫음 = bulk 도 중단
+    if (_billingBulkQueue) {
+      _billingBulkQueue = null;
+      _billingBulkTotal = 0;
+      _billingBulkCurrentIdx = 0;
+      if (currentPage === 'payment') _renderBillingGrid();
+    }
   }
 };
 
