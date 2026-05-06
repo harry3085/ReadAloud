@@ -1716,3 +1716,177 @@ LLM 생성 코드 리뷰 지시서 (`CLAUDE_CODE_지시서코드안정화_2026-0
 - AI 사용량: **~100%** (변동 없음)
 - Storage: **~80%** (변동 없음)
 - Phase 5 출시 준비: **0%**
+
+---
+
+## 2026-05-03 ~ 2026-05-07: 결제 v2 Phase 1·2·3 + 화이트라벨 브랜딩 + 다수 UX/버그 정리
+
+당일 SW v260 → v293 (~33 commit). 결제 시스템 v2 전체 구축 + 학원별 화이트라벨 도입 + 시험관리 학생 제외 등 운영 기능 보강.
+
+### 1) 결제 v2 시스템 — Phase 1·2·3 전 단계 완료
+
+**Phase 1 — 데이터 모델 + 그리드** (이전 세션 진행, 마무리 정리만):
+- `billings/{id}` 컬렉션 (academyId/yearMonth/items[]/totalAmount/status)
+- `academies.paymentSettings` (tuitionChannel + materialsChannel + messageSettings)
+- `users.tuitionPlan` (amount/dueDay/active)
+- 결제 설정 마법사 (2단계) + 자동 청구서 lazy 생성 (`_ensureCurrentMonthBillings`)
+- Excel 스타일 그리드 (학원비/교재비 채널 분리) + 항목 사이드 패널
+
+**Phase 2 — 학원장 안내 메시지**:
+- `_billingBuildMessage` 빌더 (3 템플릿 polite/brief/reminder × 2 채널)
+- 채널 정보 인라인 (각 채널 옆에 계좌 묶음 — 스택 형태 아님)
+- 미납자 일괄 메시지 (카드 슬라이드 흐름)
+- **학원-wide 템플릿 편집기** (`_billingOpenTemplateEditor`):
+  - 학생별 편집본 폐기 → 학원 단위 customTemplates 단일화
+  - 데이터 placeholder를 **노란 배경 chip (contenteditable=false)** 으로 표시 — 수정 불가
+  - 일반 텍스트(인사말·서명)는 자유 편집
+  - 페이스트 시 plain text only (`onpaste` 핸들러)
+  - DOM walker `_billingTplExtractTemplate` 로 chip → placeholder 환원해 저장
+
+**Phase 3 — 결산·타임라인·이력 (3 탭 추가)**:
+- 📋 청구 그리드 (기존 default)
+- 📊 **월간 결산** ([_renderBillingSummary](public/admin/js/app.js)) — 채널별 청구·입금·미수 + CSV 다운로드 (UTF-8 BOM, Excel 한글)
+- 📅 **타임라인 (3개월)** ([_renderBillingTimeline](public/admin/js/app.js)) — 학생 × 최근 3개월. ✅◐○ 아이콘 + 미수금 표시. 미수금 많은 순 정렬
+- **학생 12개월 결제 이력** — 학생 수정 모달 하단 [💳 12개월 결제 이력 보기] 버튼. 누적 청구·입금·미수 + 평균 납부 지연 일수
+
+**결제 v2 후속 fix**:
+- 인사말/서명을 default 템플릿에 일반 텍스트로 인라인 (chip 외라 자유 편집)
+- `{학원명}` placeholder 빈 치환 버그 — `_loadMyAcademyContext` 에서 academies/{id}.name fetch 추가 (`window.MY_ACADEMY_NAME`)
+- 결제관리 반/상태 **필터 무동작** — ES module `let` 변수에 inline onchange `_billingFilterGroup=this.value` 직접 할당이 글로벌 스코프에 잡혀 module 변수 갱신 안 됨. `window._billingChangeFilterGroup(val)` 별도 함수로 분리
+- 결제관리 행별 [🗑 삭제] — 청구서 삭제 + `users.tuitionPlan.active=false` 동시 (자동 청구 영구 OFF, 다음 진입 시 재생성 차단)
+
+### 2) 화이트라벨 브랜딩 시스템 — Phase A·B·C 전 단계 완료
+
+**Phase A — 핵심 인프라**:
+- [public/js/branding-presets.js](public/js/branding-presets.js): 7색 프리셋 (코랄/블루/그린/퍼플/오렌지/핑크/네이비)
+  - `applyPresetToCss(preset)` 가 `--brand-*` 변수 + `--teal`/`--c-brand` 별칭 동시 set
+  - 학원장 앱 32곳 `var(--teal)` / 학생 앱 4곳 `var(--c-brand)` 자동 따라옴 (CSS 토큰화 이미 완료된 점 활용)
+  - `bgGradient` 7스톱 fade — 학생 앱 홈 배경 색별 변경
+- [api/_lib/branding-presets-cjs.js](api/_lib/branding-presets-cjs.js): 서버용 CJS 미러 (manifest API 사용)
+- [api/uploadLogo.js](api/uploadLogo.js): PNG 5MB → sharp `192/512` 자동 리사이즈 → Storage. Free 플랜 차단
+- [api/manifest.js](api/manifest.js): `?academy=xxx` 쿼리로 학원별 PWA manifest 동적 생성 (5분 캐시)
+- 학생 앱 `_loadMyAcademyContext` 에서 academies doc 1회 fetch 통합 → `_applyAcademyBranding` 호출
+- 로그인 화면 푸터 **Powered by LexiAI 🤖** (모든 플랜)
+
+**Phase B — 학원장 [🎨 학원 브랜딩] 페이지**:
+- 사이드바 신규 메뉴 + `goPage('branding')` 라우팅
+- 좌측 학생 앱 미리보기 (sticky) + 우측 색상 팔레트 7개 + 로고 업로드 + 캐치프레이즈 (40자)
+- Free 플랜 잠금 — 노란 안내 카드 + 모든 입력 disabled
+- 학원장 앱 자체 브랜딩 적용 — `_applyAdminBranding` 가 헤더 로고·학원명·CSS 변수 일괄 갱신
+
+**Phase C — 인프라 정리**:
+- `firestore.rules` academies update 화이트리스트에 `branding` 추가
+- `storage.rules` `academies/{id}/logos/` — read 모두, write 차단 (server admin SDK 만)
+- [scripts/migrate/backfill-branding.js](scripts/migrate/backfill-branding.js) — 6학원 기본값 백필 완료
+- SW: `storage.googleapis.com` 항상 네트워크 (로고 변경 즉시 반영)
+
+**브랜딩 후속 fix**:
+- `branding-presets.js` 의 `export {...}` 구문이 일반 `<script>` 로 로드 시 SyntaxError → 파일 전체 미실행 → `window.BRANDING_PRESETS` 미등록 → `_applyAdminBranding` throw → 학원장 무한 로딩. export 제거하고 `window.*` 글로벌만 사용
+- `_renderBrandingPage` onclick 핸들러 escape 실수 — 백틱 템플릿 안 `\\'` 가 `\` (escaped backslash) + `'` (string 종료) 로 파싱 → `Free` identifier 노출 → `Unexpected identifier 'Free'`. `_brandingShowLockMsg()` 별도 함수로 분리
+- iOS apple-touch-icon 동적 갱신 (manifest 보다 우선시되는 메타) — `_applyAcademyBranding` 에서 `link[rel="apple-touch-icon"].href` 도 갱신
+- 학원장 앱 `theme-color` meta 부재로 모바일 주소창 색 미반영 — admin/index.html 에 추가
+- 시험지 인쇄 워터마크 + 헤더 로고 학원 로고 반영 — `_tpBuildPrintHtml` 의 `logoUrl` 변수가 `window.MY_ACADEMY_LOGO` 우선 (헤더 42×42 + 워터마크 32% 둘 다 자동)
+- `{학원명}` placeholder 빈 치환 버그 (위 결제 섹션과 동일 — 같은 fetch 추가로 해결)
+
+### 3) 시험관리 운영 기능
+
+**문제 세트 다중 삭제** (시험관리 6개 유형 페이지):
+- 패널 헤더 [🗑 삭제] 빨간 버튼 (체크 1개 이상 활성)
+- `tpDeleteSelectedSets` — 이름 5개 미리보기 + 확인 모달 + 일괄 deleteDoc
+- `qsEditSet` 폴백 체인 누락 fix (`_qsList → _tpSets → Firestore`) — 시험관리에서 [수정] 시 "세트 못 찾음" 에러
+
+**시험(genTests) 단건 삭제**:
+- 최근 시험 테이블 행별 [🗑 삭제] 버튼 (작업 컬럼 신규)
+- `tpDeleteGenTest` — `genTests/{id}` + 하위 `userCompleted/{uid}` cascade 삭제. `scores`는 보존 (이력 가치)
+- 버튼 폭/이모지 크기 후속 조정 (12px 텍스트 + 15px 이모지, white-space:nowrap)
+
+**시험에서 학생 제외** ([tpExcludeStudent](public/admin/js/app.js)):
+- 응시 현황 펼침 학생 카드 우상단 [✕] 버튼 (4가지 카드 변형 모두 적용)
+- 4단계 처리:
+  1) `genTests/{id}.excludedUids` 에 `arrayUnion(uid)`
+  2) `genTests/{id}/userCompleted/{uid}` 삭제
+  3) `scores` 에서 testId+uid 매칭 일괄 삭제 (성장 리포트 자동 제외)
+  4) 펼침 화면 자동 갱신
+- 학생 앱 `filterMyTests` 에 `excludedUids` 체크 추가 → 시험 목록에서 숨김
+- **복구 UI 없음** (단순·명확) — 다시 보게 하려면 시험 새로 배정. 확인 모달에 명시
+- `arrayUnion` import 추가 (admin app)
+
+**🎤 말하기 배지 일관 표시**:
+- 시험관리 최근 시험 테이블 시험명 셀에 `_testNameSpeakingBadge(t)` 호출
+- 성적 리포트 testName 컬럼에 작은 🎤 배지 — `loadScoreReport` 가 genTests 1회 fetch 해서 `testId → speaking` 맵 생성, `_srData[i]._isSpeaking` 첨부
+- 시험목록 메뉴 + 시험관리 + 성적 리포트 3곳 일관 표시
+
+### 4) AI Generator 부분 캐시 race fix
+- `loadQuizGenerate` 의 `if (!_genPages.length && !_genBooks.length)` — 둘 다 비어야 fetch
+- 시험관리 메뉴는 books/chapters 만 fetch (pages 안 함) → `_genBooks.length > 0` 상태에서 AI Generator 진입 시 if 블록 skip → pages 비어있어 카운트 0
+- AI OCR 다녀오면 정상화 (사용자 우회로)
+- 수정: 3개 컬렉션 각각 비어있을 때만 개별 fetch (Promise.all 부분 병렬)
+
+### 5) 운영 진단 도구
+
+**학생 정보 placeholder 진단** ([scripts/diag/check-student-fields.js](scripts/diag/check-student-fields.js)):
+- 의심 패턴 (Admin/학원장/test/홍길동/010-0000-0000 등) 일괄 검출
+- 다수 학생 동일값 (default 의심) + phone/parentPhone 비숫자 값 검사
+- 진단 결과: default 학원 6명 phone='admin' 발견 → [reset-admin-phone.js](scripts/migrate/reset-admin-phone.js) 로 빈 문자열 reset 적용
+
+**blurt 단어 진단** ([scripts/diag/check-blurt-word.js](scripts/diag/check-blurt-word.js)):
+- 학원장 보고: blurt 입력했는데 오답 처리 + 정답 표시가 "Blurt"
+- genQuestionSets + genTests 광범위 검색 (vocab/fill_blank 등 sourceType 무관) + 문자 코드 dump
+- 결과: 데이터 정상 (소문자 5자, hidden char 없음). 채점 시뮬레이션 정답 처리됨
+- 의심: 입력 시 hidden char/공백 또는 CSS text-transform:capitalize 표시 이슈
+- **채점 정규화 변경 보류** — 다음 사례 시 ans.input raw 값 진단 후 결정
+
+### 6) 그 외 fix
+- `qsEditSet` 폴백 체인 (위 § 3 참조)
+- 결제관리 [🗑 삭제] 버튼 폭 확대 + 이모지 크기 강조
+
+---
+
+## 작업 규칙 추가 (2026-05-06)
+
+신규:
+- **ES module `let` 변수에 inline onchange/onclick 으로 직접 할당 X** — 글로벌 스코프에 잡혀 module 변수 미갱신. `window.X(val)` 별도 함수로 분리해서 호출.
+- **백틱 템플릿 안 `\\'` 함정** — JS parser 가 `\\` (escaped backslash) + `'` (string 종료) 로 해석해 이후 토큰이 raw identifier 노출 (SyntaxError). 핸들러 안 alert 메시지에 따옴표 필요하면 별도 함수로 분리.
+- **`<script>` 로 로드되는 파일에 `export` 키워드 X** — module 컨텍스트 외에선 항상 SyntaxError, try-catch 로 감쌀 수 없음. `window.*` 글로벌 노출만 사용 또는 type="module" 통일.
+- **`_genPages`/`_genChapters`/`_genBooks` 캐시 갱신은 컬렉션별 개별 조건** — 어떤 메뉴를 거쳤는지에 따라 일부만 채워질 수 있어 `(!A && !B)` 같은 일괄 가드 X.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-07)
+- `public/admin/js/app.js`: ~12000줄 (+~3000, 결제 v2 + 브랜딩 페이지 + 시험관리 운영)
+- `public/js/app.js`: ~4400줄 (+~50, FCM/브랜딩/excludedUids)
+- `public/super/js/app.js`: 변동 없음
+- `public/js/branding-presets.js`: 신규 ~120줄 (7 프리셋 + applyPresetToCss)
+- `api/_lib/branding-presets-cjs.js`: 신규 ~17줄 (서버 미러)
+- `api/uploadLogo.js`: 신규 ~155줄 (sharp 192/512)
+- `api/manifest.js`: 신규 ~95줄 (PWA 동적)
+- `firestore.rules`: academies update 화이트리스트 +`branding`
+- `storage.rules`: +`academies/{id}/logos/`
+- 신규 진단/마이그레이션: backfill-branding / check-student-fields / reset-admin-phone / check-blurt-word
+- 의존성 추가: `sharp ^0.34.5`
+- SW 캐시: `kunsori-v293`
+
+## 진행률 (2026-05-07)
+- 결제 v2: **~95%** (Phase 1·2·3 완료. 자동화 cron / PG 결제 연동은 Phase 5 묶음)
+- 화이트라벨 브랜딩: **~95%** (Phase A·B·C 완료. 도메인/서브도메인 라우팅은 출시 직전 별도)
+- 시험관리 운영: **~95%** (다중 삭제 + 학생 제외 + 말하기 배지 일관)
+- 멀티테넌시 인프라: **~98%** (변동 없음)
+- 한도 재설계: **~100%** (변동 없음)
+- 보안: **~95%** (변동 없음)
+- AI 사용량: **~100%** (변동 없음)
+- Storage: **~80%** (변동 없음)
+- Phase 5 출시 준비: **0%**
+
+## 다음 세션 후보 (2026-05-07 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **학원장 대시보드 달력** ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
+3. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **AI 평가 실패율** (Phase B Cloud Function — 베타 운영 후)
+
+**완료 (이 세션, 2026-05-03~05-07)**:
+- ✅ 결제 v2 Phase 1·2·3 (그리드·메시지·결산·타임라인·이력)
+- ✅ 화이트라벨 브랜딩 Phase A·B·C (7색·로고·캐치프레이즈·PWA manifest)
+- ✅ 시험관리 다중 삭제 + 학생 제외 + 말하기 배지 일관
+- ✅ AI Generator 부분 캐시 race + 결제관리 필터 + qsEditSet 폴백 다수 버그 fix
+- ✅ 학생 phone='admin' 6명 정리 + blurt 진단 도구
+- ✅ ES module / 백틱 escape / export 함정 작업 규칙 명문화
