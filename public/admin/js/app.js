@@ -1497,7 +1497,8 @@ async function _renderBillingGrid(generated = 0) {
             <th rowspan="2" style="padding:10px 12px;text-align:right;border-right:1px solid #e9ecef;">합계</th>
             <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">납부기한</th>
             <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">상태</th>
-            <th rowspan="2" style="padding:10px 12px;text-align:center;">메시지</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">메시지</th>
+            <th rowspan="2" style="padding:10px 12px;text-align:center;width:90px;">작업</th>
           </tr>
           <tr style="border-bottom:1px solid var(--border);background:#f8f9fa;">
             <th style="padding:6px 12px;text-align:right;font-size:11px;color:var(--gray);background:rgba(13,148,136,0.04);">금액</th>
@@ -1507,7 +1508,7 @@ async function _renderBillingGrid(generated = 0) {
         </thead>
         <tbody>
           ${filtered.length === 0
-            ? `<tr><td colspan="${matEnabled ? 10 : 8}" style="padding:40px;text-align:center;color:#bbb;font-size:13px;">청구서가 없습니다. 학생 정보에서 [💰 월 수강료] 를 등록하세요.</td></tr>`
+            ? `<tr><td colspan="${matEnabled ? 11 : 9}" style="padding:40px;text-align:center;color:#bbb;font-size:13px;">청구서가 없습니다. 학생 정보에서 [💰 월 수강료] 를 등록하세요.</td></tr>`
             : filtered.map(b => _billingRenderRow(b, matEnabled)).join('')
           }
         </tbody>
@@ -1522,7 +1523,7 @@ async function _renderBillingGrid(generated = 0) {
               <td style="padding:10px 12px;text-align:center;background:rgba(255,165,100,0.04);border-right:1px solid #e9ecef;font-size:11px;color:var(--gray);">-</td>
             ` : ''}
             <td style="padding:10px 12px;text-align:right;border-right:1px solid #e9ecef;">${total.toLocaleString()}원</td>
-            <td colspan="3" style="padding:10px 12px;"></td>
+            <td colspan="4" style="padding:10px 12px;"></td>
           </tr>
         </tfoot>` : ''}
       </table>
@@ -1570,8 +1571,11 @@ function _billingRenderRow(b, matEnabled) {
       <td style="padding:8px 12px;text-align:center;border-right:1px solid #e9ecef;">
         <span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:${statusInfo.bg};color:${statusInfo.color};">${statusInfo.label}</span>
       </td>
-      <td style="padding:8px 12px;text-align:center;">
+      <td style="padding:8px 12px;text-align:center;border-right:1px solid #e9ecef;">
         <button class="action-btn" onclick="event.stopPropagation();_billingOpenMessage('${b.id}')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
+      </td>
+      <td style="padding:8px 12px;text-align:center;">
+        <button onclick="event.stopPropagation();_billingDeleteRow('${b.id}','${esc(b.studentName||'').replace(/'/g,"&#39;")}','${esc(b.studentUid||'')}')" title="이 청구서 삭제 + 자동 청구 영구 OFF" style="padding:5px 10px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:14px;line-height:1;">🗑</span>삭제</button>
       </td>
     </tr>`;
 }
@@ -1607,6 +1611,32 @@ window._billingChangeFilterGroup = async (val) => {
 window._billingChangeFilterStatus = async (val) => {
   _billingFilterStatus = val || '';
   await _renderBillingGrid();
+};
+
+// 청구서 행 삭제 + 자동 청구 영구 OFF (A1 정책)
+// 다음 진입 시 _ensureCurrentMonthBillings 가 재생성하지 않도록 tuitionPlan.active=false
+window._billingDeleteRow = async (billingId, studentName, studentUid) => {
+  if (!billingId) return;
+  if (!(await showConfirm(
+    `"${studentName || '학생'}" 청구서 삭제`,
+    `이번 달 청구서를 삭제하고 자동 청구를 영구 OFF 합니다.\n\n다시 청구하려면 학생관리 → 학생 수정 → [매월 자동 청구서 생성] 체크.\n\n되돌릴 수 없습니다.`
+  ))) return;
+  try {
+    // 1. 학생 자동 청구 OFF (재생성 차단)
+    if (studentUid) {
+      try {
+        await updateDoc(doc(db, 'users', studentUid), {
+          'tuitionPlan.active': false,
+        });
+      } catch (e) { console.warn('[billingDeleteRow] tuitionPlan.active OFF 실패:', e.message); }
+    }
+    // 2. 청구서 삭제
+    await deleteDoc(doc(db, 'billings', billingId));
+    showToast('✓ 청구서 삭제 + 자동 청구 OFF');
+    await _renderBillingGrid();
+  } catch (e) {
+    showAlert('삭제 실패', e.message);
+  }
 };
 
 // ── P3-1: 월간 결산 — 채널별 청구·수금·미수 + CSV ─────────────
