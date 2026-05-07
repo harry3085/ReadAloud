@@ -4465,7 +4465,11 @@ window.loadPersonalScore = async(uid) => {
     ));
     const scores=scoresSnap.docs.map(d=>d.data())
       .sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
-    const avg=scores.length?Math.round(scores.reduce((s,r)=>s+r.score,0)/scores.length):0;
+    // 통계 카드는 최근 30일 (AI 리포트 분석 기준과 일치)
+    const _from30d = _ymdKST(new Date(Date.now() - 30*24*3600*1000));
+    const scores30d = scores.filter(s => (s.date || '') >= _from30d);
+    const avg30d = scores30d.length ? Math.round(scores30d.reduce((s,r)=>s+(r.score||0),0)/scores30d.length) : 0;
+    const passed30d = scores30d.filter(s => (s.score||0) >= 80).length;
 
     // 트리에서 활성 학생 마킹 + history 사전 로드
     _personalSelectedUid = uid;
@@ -4533,17 +4537,21 @@ window.loadPersonalScore = async(uid) => {
         <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📚 이전 성장 리포트${history.length ? ` (${history.length}건)` : ''}</div>
         <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">${historyHtml}</div>
       </div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        📊 최근 30일 통계
+        <span style="font-size:11px;color:var(--gray);font-weight:400;">${esc(_from30d)} ~ ${esc(_ymdKST())}</span>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:24px;font-weight:800;color:var(--teal);">${scores.length}</div>
+          <div style="font-size:24px;font-weight:800;color:var(--teal);">${scores30d.length}</div>
           <div style="font-size:12px;color:var(--gray);margin-top:2px;">응시 횟수</div>
         </div>
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:24px;font-weight:800;color:var(--teal);">${avg}점</div>
+          <div style="font-size:24px;font-weight:800;color:var(--teal);">${avg30d}점</div>
           <div style="font-size:12px;color:var(--gray);margin-top:2px;">평균 점수</div>
         </div>
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:24px;font-weight:800;color:var(--teal);">${scores.filter(s=>s.score>=80).length}</div>
+          <div style="font-size:24px;font-weight:800;color:var(--teal);">${passed30d}</div>
           <div style="font-size:12px;color:var(--gray);margin-top:2px;">80점 이상</div>
         </div>
       </div>
