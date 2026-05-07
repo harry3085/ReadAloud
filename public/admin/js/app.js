@@ -4852,6 +4852,31 @@ function _testNameSpeakingBadge(t) {
 }
 
 // ─── 시험 통계 공용 계산 (시험 목록 + 시험 유형별 최근 시험 공유) ───
+// 대상 표기 — "1반 전체 / 2반 3명 / 미배정 1명" 식 반별 구분
+// targets: [{type:'class'|'student', id, name, groupName}]
+function _buildTargetName(targets) {
+  if (!Array.isArray(targets) || targets.length === 0) return '';
+  // 단일 — 기존 동작 유지 ('1반 전체' 또는 '홍길동')
+  if (targets.length === 1) return targets[0].name || '';
+
+  // 다중 — 반별 분류
+  const classGroups = new Set(
+    targets.filter(t => t.type === 'class').map(t => t.groupName || (t.name||'').replace(/\s*전체\s*$/, '').trim())
+  );
+  const studentByGroup = {};
+  targets.filter(t => t.type === 'student').forEach(s => {
+    const g = s.groupName || '미배정';
+    studentByGroup[g] = (studentByGroup[g] || 0) + 1;
+  });
+
+  const parts = [];
+  [...classGroups].forEach(g => parts.push(`${g} 전체`));
+  Object.entries(studentByGroup)
+    .filter(([g]) => !classGroups.has(g))
+    .forEach(([g, n]) => parts.push(`${g} ${n}명`));
+  return parts.join(' / ') || '-';
+}
+
 function _resolveTestTargetUids(targets, students) {
   const set = new Set();
   (targets || []).forEach(tg => {
@@ -4944,7 +4969,7 @@ window.loadTestList = async() => {
         <td>${i+1}</td>
         <td class="td-main">${esc(t.name)||'-'}${_testNameSpeakingBadge(t)}</td>
         <td>${_testModeLabel(t)}</td>
-        <td><span class="badge badge-teal">${esc(t.targetName)||'-'}</span></td>
+        <td><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName) || '-'}</span></td>
         <td class="td-sm">${esc(bookName)}</td>
         <td class="td-center">${count}문제</td>
         <td class="td-sub" style="white-space:nowrap;">${_fmtTestDateTime(t)}</td>
@@ -10204,9 +10229,7 @@ window.mcqPublish = async () => {
 
     const targetType = (_mcqTargets.length===1 && _mcqTargets[0].type==='class') ? 'class' : 'mixed';
     const targetId = _mcqTargets.map(t => t.id).join(',');
-    const targetName = _mcqTargets.length===1
-      ? _mcqTargets[0].name
-      : `${_mcqTargets.length}명/반 선택`;
+    const targetName = _buildTargetName(_mcqTargets);
 
     const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
 
@@ -10725,7 +10748,7 @@ function _tpRenderTestRow(t) {
   return `
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
       <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.targetName||'-')}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;">${qCount}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
@@ -11244,7 +11267,7 @@ window.tpPublish = async () => {
 
   const targetType = (targets.length===1 && targets[0].type==='class') ? 'class' : 'mixed';
   const targetId = targets.map(t => t.id).join(',');
-  const targetName = targets.length===1 ? targets[0].name : `${targets.length}명/반 선택`;
+  const targetName = _buildTargetName(targets);
   // 교재: 첫 세트의 sourcePages[0] 에서 Book · Chapter 이름 조회
   const sp = selectedSets[0]?.sourcePages?.[0];
   const book = sp ? (_genBooks||[]).find(b => b.id === sp.bookId) : null;
