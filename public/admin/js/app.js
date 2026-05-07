@@ -4545,17 +4545,27 @@ window.loadPersonalScore = async(uid) => {
         </div>
       </div>
       <div class="table-wrap">
-        <table>
+        <table style="table-layout:fixed;width:100%;">
+          <colgroup>
+            <col style="width:40px;">
+            <col style="width:90px;">
+            <col style="width:90px;">
+            <col>
+            <col style="width:64px;">
+            <col style="width:70px;">
+            <col style="width:90px;">
+          </colgroup>
           <thead><tr><th>No</th><th>유형</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
           <tbody>${scores.map((s,i)=>{
             const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
             const bookName=s.bookName||s.unitName||'-';
             const testName=s.testName||'-';
+            const ellipsis='overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
             return `<tr>
               <td>${i+1}</td>
               <td>${modeHtml}</td>
-              <td class="td-sm">${esc(bookName)}</td>
-              <td style="font-size:12px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${testName}</td>
+              <td class="td-sm" style="${ellipsis}" title="${esc(bookName)}">${esc(bookName)}</td>
+              <td style="font-size:12px;${ellipsis}" title="${esc(testName)}">${esc(testName)}</td>
               <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
               <td>${s.correct||0}/${s.total||0}</td>
               <td class="td-sub">${s.date||''}</td>
