@@ -3204,7 +3204,15 @@ onAuthStateChanged(auth, async (user)=>{
     try {
       const lexiSnap = await getDoc(doc(db, 'appConfig', 'branding'));
       if (lexiSnap.exists()) {
-        window.LEXIAI_BRANDING = lexiSnap.data();
+        const lexi = lexiSnap.data();
+        window.LEXIAI_BRANDING = lexi;
+        // FOUC 방지용 localStorage 캐시 — 다음 새로고침 시 첫 페인트에 즉시 적용
+        try {
+          if (lexi.defaultLogo192Url) localStorage.setItem('lexiLogo192', lexi.defaultLogo192Url);
+          else localStorage.removeItem('lexiLogo192');
+          if (lexi.defaultAppName) localStorage.setItem('lexiAppName', lexi.defaultAppName);
+          else localStorage.removeItem('lexiAppName');
+        } catch (_) {}
         if (!user) _applyAcademyBranding({ name: '' });
       }
     } catch (e) { console.warn('[LexiAI branding]', e.message); }

@@ -27,6 +27,29 @@
       const link = document.getElementById('manifest-link');
       if (link) link.href = `/api/manifest?academy=${encodeURIComponent(academyId)}`;
     };
+    // FOUC 방지 — DOMContentLoaded 전에 localStorage 캐시된 LexiAI 로고/이름 즉시 적용
+    // (Firestore fetch 는 onAuthStateChanged 안에서 진행되어 지연됨 → 첫 페인트엔 큰소리 영어 로고 보임)
+    (function () {
+      try {
+        const cachedLogo = localStorage.getItem('lexiLogo192');
+        const cachedName = localStorage.getItem('lexiAppName');
+        if (cachedLogo || cachedName) {
+          document.addEventListener('DOMContentLoaded', () => {
+            if (cachedLogo) {
+              document.querySelectorAll('.app-icon, .loading-icon, .header-icon').forEach(img => {
+                if (img.tagName === 'IMG') img.src = cachedLogo;
+              });
+              const apple = document.querySelector('link[rel="apple-touch-icon"]');
+              if (apple) apple.href = cachedLogo;
+            }
+            if (cachedName) {
+              document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = cachedName; });
+              document.title = cachedName;
+            }
+          });
+        }
+      } catch (_) {}
+    })();
   </script>
 </head>
 <body>
