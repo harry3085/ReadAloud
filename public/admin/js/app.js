@@ -968,8 +968,9 @@ async function loadDashStats(){
     billSnap.forEach(d => { if ((d.data().status || 'unpaid') !== 'paid') unpaidCnt++; });
     document.getElementById('statUnpaid').textContent = unpaidCnt;
 
+    // 오늘 출제된 시험 = genTests where date == today
     const today = _ymdKST();
-    const testSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
+    const testSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
     document.getElementById('statTests').textContent = testSnap.size;
   } catch(e){ console.log(e); }
 }
