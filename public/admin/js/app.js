@@ -3696,17 +3696,20 @@ async function loadMessages(){
       return `<div style="font-size:12px;color:var(--gray);margin-top:2px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s}</div>`;
     };
 
+    // 한 줄로 잘라내는 공통 스타일 (제목·메타용)
+    const _oneLine = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
     const renderDraft=d=>{
       const n=d.data();
       const targetLabel = labelOf(n);
-      return `<div style="border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;"
+      return `<div style="width:100%;box-sizing:border-box;border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;overflow:hidden;"
         onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
         onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
+          <div style="flex:1;min-width:0;overflow:hidden;">
+            <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
             ${_bodyPreview(n.body)}
-            <div style="font-size:11px;color:#bbb;margin-top:4px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
           </div>
           <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
         </div>
@@ -3718,14 +3721,14 @@ async function loadMessages(){
       const targetLabel = labelOf(n);
       const isOpen = _msgExpandedSentId === d.id;
       return `<div id="msgSentWrap-${d.id}">
-        <div id="msgSentRow-${d.id}" style="border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};"
+        <div id="msgSentRow-${d.id}" style="width:100%;box-sizing:border-box;border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};overflow:hidden;"
           onclick="toggleSentDetail('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
           onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
+            <div style="flex:1;min-width:0;overflow:hidden;">
+              <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
               ${_bodyPreview(n.body)}
-              <div style="font-size:11px;color:#bbb;margin-top:4px;">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
+              <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0;">
               <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
