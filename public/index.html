@@ -79,9 +79,6 @@
       <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
         <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
       </div>
-      <button id="installBtn" onclick="installApp()" style="margin-top:14px;width:100%;background:var(--brand-primary-bg);color:var(--brand-primary);border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:600;cursor:pointer;">
-        📱 홈화면에 추가
-      </button>
       <div class="version">version : 3.0.0</div>
       <div class="powered-by" style="text-align:center;font-size:11px;color:#999;padding:14px 0 4px;letter-spacing:0.3px;">
         Powered by <strong style="color:#666;">LexiAI</strong>
@@ -115,6 +112,10 @@
         <div class="dropdown-item" onclick="goMyInfo()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           내 정보 변경
+        </div>
+        <div class="dropdown-item" id="ddInstallItem" onclick="installApp()" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 16l-4-4M12 16l4-4M5 20h14"/></svg>
+          홈화면에 추가
         </div>
         <div class="dropdown-item danger" onclick="confirmLogout()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>

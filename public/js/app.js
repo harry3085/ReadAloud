@@ -3054,6 +3054,16 @@ window.addEventListener('beforeinstallprompt',e=>{
   _deferredPrompt=e;
 });
 
+// 학생 메인 화면 점3개 메뉴의 [홈화면에 추가] 항목 — standalone 아니면 노출
+function _refreshInstallMenuItem() {
+  const item = document.getElementById('ddInstallItem');
+  if (!item) return;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  item.style.display = isStandalone ? 'none' : 'flex';
+}
+document.addEventListener('DOMContentLoaded', _refreshInstallMenuItem);
+window.addEventListener('beforeinstallprompt', _refreshInstallMenuItem);
+
 window.installApp=async()=>{
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
   const isAndroid=/android/i.test(navigator.userAgent);
