@@ -434,7 +434,7 @@ function _bigcalRender(){
       return `<div class="bigcal-event evt-test" title="${esc(t.name)}">${icon} ${esc(t.name)}</div>`;
     });
     const all = [...billItems, ...testItems];
-    const MAX_SHOW = 3;
+    const MAX_SHOW = 5;
     const shown = all.slice(0, MAX_SHOW).join('');
     const moreCount = all.length - MAX_SHOW;
     const more = moreCount > 0 ? `<div class="bigcal-event-more">+${moreCount}건</div>` : '';
