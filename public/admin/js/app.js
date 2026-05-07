@@ -343,15 +343,14 @@ async function _bigcalLoadEvents(year, month){
       if (!due) return;
       const key = _bigcalDateKey(due.getFullYear(), due.getMonth(), due.getDate());
       if (!events[key]) events[key] = { billings:[], tests:[] };
-      (b.items || []).forEach(it => {
-        events[key].billings.push({
-          billingId: docSnap.id,
-          userId: it.userId || it.uid || '',
-          userName: it.userName || it.studentName || it.name || '-',
-          amount: it.amount || 0,
-          paid: !!it.paid,
-          channel: it.channel || '',
-        });
+      events[key].billings.push({
+        billingId: docSnap.id,
+        userId: b.studentUid || '',
+        userName: b.studentName || '-',
+        groupName: b.groupName || '',
+        amount: b.totalAmount || 0,
+        paidAmount: b.paidAmount || 0,
+        status: b.status || 'unpaid',  // 'paid' | 'partial' | 'unpaid'
       });
     });
 
@@ -425,9 +424,12 @@ function _bigcalRender(){
     ].filter(Boolean).join(' ');
 
     const billItems = ev.billings.map(b => {
-      const cls = b.paid ? 'evt-billing-paid' : 'evt-billing-unpaid';
-      const icon = b.paid ? '✅' : '💳';
-      return `<div class="bigcal-event ${cls}" title="${esc(b.userName)} ${b.amount.toLocaleString()}원 (${b.paid?'납부':'미납'})">${icon} ${esc(b.userName)}</div>`;
+      const cls = b.status === 'paid' ? 'evt-billing-paid'
+              : b.status === 'partial' ? 'evt-billing-partial'
+              : 'evt-billing-unpaid';
+      const icon = b.status === 'paid' ? '✅' : b.status === 'partial' ? '⏳' : '💳';
+      const statusLabel = b.status === 'paid' ? '납부' : b.status === 'partial' ? '일부' : '미납';
+      return `<div class="bigcal-event ${cls}" title="${esc(b.userName)} ${b.amount.toLocaleString()}원 (${statusLabel})">${icon} ${esc(b.userName)}</div>`;
     });
     const testItems = ev.tests.map(t => {
       const icon = t.speaking ? '🎤' : '📝';
@@ -466,8 +468,8 @@ function _bigcalRenderSide(){
   const dow = ['일','월','화','수','목','금','토'][new Date(y, m-1, d).getDay()];
   const dateLabel = `${m}월 ${d}일 (${dow})`;
 
-  const totalUnpaid = ev.billings.filter(b => !b.paid).reduce((s,b) => s+(b.amount||0), 0);
-  const totalPaid = ev.billings.filter(b => b.paid).reduce((s,b) => s+(b.amount||0), 0);
+  const totalUnpaid = ev.billings.filter(b => b.status !== 'paid').reduce((s,b) => s+((b.amount||0)-(b.paidAmount||0)), 0);
+  const totalPaid = ev.billings.reduce((s,b) => s+(b.paidAmount||0), 0);
   const billHeader = ev.billings.length
     ? `💳 결제 ${ev.billings.length}건 ${totalUnpaid > 0 ? `<span style="color:#dc2626;">미납 ${totalUnpaid.toLocaleString()}원</span>` : ''}${totalPaid > 0 ? ` <span style="color:#059669;">납부 ${totalPaid.toLocaleString()}원</span>` : ''}`
     : '';
@@ -476,15 +478,20 @@ function _bigcalRenderSide(){
 
   if (ev.billings.length){
     const rows = ev.billings.map(b => {
-      const status = b.paid
+      const statusBadge = b.status === 'paid'
         ? '<span class="badge badge-green">납부</span>'
+        : b.status === 'partial'
+        ? '<span class="badge badge-amber">일부</span>'
         : '<span class="badge badge-red">미납</span>';
+      const amountStr = b.status === 'partial' && b.paidAmount
+        ? `${b.paidAmount.toLocaleString()}/${b.amount.toLocaleString()}원`
+        : `${b.amount.toLocaleString()}원`;
       return `<div class="bigcal-side-row" onclick="goPage('billing')">
         <div>
           <div class="bigcal-side-name">${esc(b.userName)}</div>
-          <div class="bigcal-side-meta">${b.amount.toLocaleString()}원${b.channel ? ' · '+esc(b.channel) : ''}</div>
+          <div class="bigcal-side-meta">${amountStr}${b.groupName ? ' · '+esc(b.groupName) : ''}</div>
         </div>
-        ${status}
+        ${statusBadge}
       </div>`;
     }).join('');
     html += `<div>

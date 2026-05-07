@@ -154,6 +154,7 @@ tbody td.td-sm{font-size:12px;}
 .bigcal-event{font-size:10px;line-height:1.3;padding:1px 4px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .bigcal-event.evt-billing-unpaid{background:#fee2e2;color:#dc2626;}
 .bigcal-event.evt-billing-paid{background:#d1fae5;color:#059669;}
+.bigcal-event.evt-billing-partial{background:#fef3c7;color:#d97706;}
 .bigcal-event.evt-test{background:#e0eeff;color:#2563eb;}
 .bigcal-event-more{font-size:10px;color:var(--gray);padding-left:4px;}
 
