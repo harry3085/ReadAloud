@@ -3223,10 +3223,10 @@ onAuthStateChanged(auth, async (user)=>{
     try {
       const lexiSnap = await getDoc(doc(db, 'appConfig', 'branding'));
       if (lexiSnap.exists()) {
-        const lexi = lexiSnap.data();
-        window.LEXIAI_BRANDING = lexi;
-        // 비로그인 시 LexiAI 기본 적용 (헤더 갱신만 — cache 는 학원 브랜딩만 보존)
-        if (!user) _applyAcademyBranding({ name: '' });
+        window.LEXIAI_BRANDING = lexiSnap.data();
+        // 비로그인 시 _applyAcademyBranding 호출 제거 — cache 보존이 우선.
+        // 인라인 FOUC script 가 이미 cache 적용했고, cache 비어있으면 HTML default (LexiAI) 그대로.
+        // 호출하면 헤더를 LexiAI 로 강제 갈아치워 학원장 cache 가 무시됨.
       }
     } catch (e) { console.warn('[LexiAI branding]', e.message); }
   }
