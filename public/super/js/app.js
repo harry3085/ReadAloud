@@ -3336,7 +3336,7 @@ function _renderLexiAIBranding() {
         <!-- 저장 -->
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" onclick="loadLexiAIBranding()" style="font-size:13px;">↺ 다시 로드</button>
-          <button class="btn btn-primary" onclick="_lexiSave()" style="font-size:13px;font-weight:700;${!_lexiBrandingDirty?'opacity:0.5;':''}" ${!_lexiBrandingDirty?'disabled':''}>💾 색상·문구 저장</button>
+          <button class="btn btn-primary" id="lexiSaveBtn" onclick="_lexiSave()" style="font-size:13px;font-weight:700;${!_lexiBrandingDirty?'opacity:0.5;':''}" ${!_lexiBrandingDirty?'disabled':''}>💾 색상·문구 저장</button>
         </div>
         <div style="font-size:11px;color:#999;text-align:right;">로고 업로드는 즉시 저장됩니다. 색상·문구는 [💾 저장] 클릭 후 반영.</div>
       </div>
@@ -3350,19 +3350,27 @@ window._lexiSelectPreset = (id) => {
   _renderLexiAIBranding();
 };
 
+function _lexiUpdateSaveBtn() {
+  const btn = document.getElementById('lexiSaveBtn');
+  if (!btn) return;
+  btn.disabled = !_lexiBrandingDirty;
+  btn.style.opacity = _lexiBrandingDirty ? '1' : '0.5';
+}
+
 window._lexiOnCatchphraseInput = (val) => {
   if (!_lexiBranding) return;
   _lexiBranding.defaultCatchphrase = val;
   _lexiBrandingDirty = true;
   const cnt = document.getElementById('lexiCpCount');
   if (cnt) cnt.textContent = val.length;
+  _lexiUpdateSaveBtn();
 };
 
 window._lexiOnAppNameInput = (val) => {
   if (!_lexiBranding) return;
   _lexiBranding.defaultAppName = val;
   _lexiBrandingDirty = true;
-  // 미리보기 즉시 갱신은 무거우니 [💾 저장] 시 재렌더로 충분
+  _lexiUpdateSaveBtn();
 };
 
 window._lexiOnLogoFile = async (event) => {
