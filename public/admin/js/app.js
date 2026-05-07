@@ -4939,7 +4939,7 @@ window.loadTestList = async() => {
       const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
       const bookName = t.bookName || (isGen ? (t.sourceSetNames?.join(', ')||'-') : '-');
       return `
-      <tr style="cursor:pointer;" onclick="toggleTestProgress('${t.id}','${t._src}')" id="test-row-${t.id}">
+      <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${t.id}','tl')" id="tl-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
         <td class="td-main">${esc(t.name)||'-'}${_testNameSpeakingBadge(t)}</td>
@@ -4959,9 +4959,9 @@ window.loadTestList = async() => {
           ${t.avgScore!==null?`<span class="badge ${t.avgScore>=80?'badge-green':t.avgScore>=60?'badge-amber':'badge-red'}">${t.avgScore}점</span>`:'-'}
         </td>
       </tr>
-      <tr id="progress-${t.id}" style="display:none;background:#f0faff;">
+      <tr id="tl-progress-${t.id}" style="display:none;background:#f0faff;">
         <td colspan="10" style="padding:0;border-top:none;">
-          <div id="progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
+          <div id="tl-progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
       </tr>`;
     }, 'testPagination', 10, { pageSize: 20 });
@@ -10723,7 +10723,7 @@ function _tpRenderTestsTable() {
 function _tpRenderTestRow(t) {
   const qCount = t.questionCount || t.questions?.length || 0;
   return `
-    <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}')" id="tp-row-${t.id}">
+    <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
       <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.targetName||'-')}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;">${qCount}</td>
@@ -12054,12 +12054,18 @@ window.tpPrintNow = () => {
   win.document.close();
 };
 
-window.tpToggleTestProgress = async (testId) => {
-  const prog = document.getElementById('tp-progress-' + testId);
+// 학생별 응시 카드 펼침 — 시험관리 + 시험 목록 공통 사용
+// prefix: 'tp' (시험관리 6개 페이지) | 'tl' (시험 목록 페이지)
+// 다른 행 ID 가 같은 페이지에 동시에 존재하지 않도록 분리
+let _tpLastPrefix = 'tp';
+window.tpToggleTestProgress = async (testId, prefix) => {
+  if (prefix) _tpLastPrefix = prefix;
+  const p = _tpLastPrefix;
+  const prog = document.getElementById(p + '-progress-' + testId);
   if (!prog) return;
   const isOpen = prog.getAttribute('data-open') === '1';
 
-  document.querySelectorAll('[id^="tp-progress-"][data-open="1"]').forEach(r => {
+  document.querySelectorAll(`[id^="${p}-progress-"][data-open="1"]`).forEach(r => {
     r.style.display = 'none';
     r.setAttribute('data-open', '0');
   });
@@ -12068,7 +12074,7 @@ window.tpToggleTestProgress = async (testId) => {
   prog.style.display = 'table-row';
   prog.setAttribute('data-open', '1');
 
-  const content = document.getElementById('tp-progress-content-' + testId);
+  const content = document.getElementById(p + '-progress-content-' + testId);
   if (!content) return;
   content.innerHTML = '<span style="color:var(--gray);">로딩 중...</span>';
 
@@ -12132,9 +12138,10 @@ window.tpToggleTestProgress = async (testId) => {
           ${studentList.map(s => {
             const c = completed.get(s.uid);
             if (c) {
-              const cfgC = _TEST_TYPE_CONFIG[_activeTestType];
+              // 시험관리 페이지면 _activeTestType, 시험 목록이면 시험 doc 자체의 testMode/mode
+              const tMode = (t.testMode || t.mode || '').toLowerCase();
               const recs = c.recordings || [];
-              const isRec = cfgC?.testMode === 'recording' && recs.length >= 1 && recs[0]?.audioUrl;
+              const isRec = tMode === 'recording' && recs.length >= 1 && recs[0]?.audioUrl;
               if (isRec) {
                 // 마지막 녹음만 저장됨 (신규 흐름) — 학생 통과 시도만
                 const last = recs[recs.length - 1];
