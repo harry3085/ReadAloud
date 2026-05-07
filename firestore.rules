@@ -259,8 +259,10 @@ service cloud.firestore {
     // 현재 항목: aiPrompts (AI Generator 시스템 프롬프트), cleanupPresets (AI OCR 정리 프리셋)
     // read: 로그인 사용자 누구나 (학원장 앱이 default 표시·시드용으로 읽음)
     // write: super_admin 전용
+    // 단, 'branding' 만 read public — 로그인 전 화면 LexiAI 기본 로고/색/이름 표시용
+    //   (로고 URL·색·이름은 어차피 public 노출되는 정보라 보안 영향 없음)
     match /appConfig/{configId} {
-      allow read: if isSignedIn();
+      allow read: if configId == 'branding' || isSignedIn();
       allow write: if isSuperAdmin();
     }
 

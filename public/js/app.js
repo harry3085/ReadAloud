@@ -3193,6 +3193,19 @@ history.replaceState({screen:'loading'},'',location.pathname);
 history.pushState({screen:'login'},'',location.pathname);
 
 // Firebase Auth 상태 감지 → 1일 이내면 자동 로그인, 초과면 로그아웃
+// 페이지 로드 즉시 LexiAI 기본 브랜딩 적용 (로그인 전 화면용)
+// appConfig/branding 만 read public 으로 풀려있어 anonymous fetch 가능
+(async () => {
+  try {
+    const lexiSnap = await getDoc(doc(db, 'appConfig', 'branding'));
+    if (!lexiSnap.exists()) return;
+    const lexi = lexiSnap.data();
+    window.LEXIAI_BRANDING = lexi;
+    // 로그인 전 화면이라 academy 없음 — academy={} 기본으로 LexiAI fallback 만 적용
+    _applyAcademyBranding({ name: '' });
+  } catch (e) { console.warn('[LexiAI branding] anonymous fetch 실패:', e.message); }
+})();
+
 onAuthStateChanged(auth, async (user)=>{
   if(user){
     // 1일 경과 체크
