@@ -2022,3 +2022,165 @@ LLM 생성 코드 리뷰 지시서 (`CLAUDE_CODE_지시서코드안정화_2026-0
 - ✅ 시험 목록·시험관리 학생별 카드 통일 + 대상 반별 표기 + 컬럼 통일
 - ✅ LexiAI 깜빡임 제거 (FOUC + 색 프리셋 캐시 + 비로그인 갈아치움 제거)
 - ✅ 페이지 ID 일치 + localStorage 단일 진입점 + billings 데이터 모델 작업 규칙 명문화
+
+---
+
+## 2026-05-08: 시험출제 출제수 옵션 + 공통 대상 picker 통합 + 메시지·공지·자료실 다중 선택 + 성장 리포트 정비
+
+당일 SW v322 → v337 (~16 commit). 큰 두 흐름:
+1. **공통 대상 셀렉터(picker) 헬퍼 추출** — 시험출제·메시지·공지·자료실·객관식 5곳 모두 단일 패턴
+2. **성장 리포트 학생 detail 정비** — 30일 기준 통계·페이지네이션·컬럼 폭·이력 표
+
+### 1) 시험출제 모달 — 출제 문제수 옵션 (랜덤 픽)
+[tpOpenPublishModal](public/admin/js/app.js) 시험 정보 그리드 4열로 확장. `tpQuestionCount` input (default = 풀 전체, min=1, max=풀 전체) + "전체 N문제 중 랜덤" 안내. tpPublish 에서 입력값 < 풀 시 `slice().sort(() => Math.random() - 0.5).slice(0, N)` 셔플 후 픽. 확인 모달에 `(전체 N 중 랜덤)` 표시. `isFinite(parseInt(...))` 패턴으로 0/NaN 함정 회피.
+
+### 2) 메시지 관리 1차 정비 (Phase 직전)
+**4가지 변경**:
+- 학생 검색 input + 후보 드롭다운 (단일 선택 — 옛 select 폐기)
+- 내용 textarea rows 4→12 + resize:vertical
+- 발송 이력 행 클릭 → **그 행 바로 아래 인라인 펼침** (옛 별도 카드 폐기, `showMsgReadStatus` 함수 제거)
+- 메시지 관리(저장 초안) ↔ 발송 이력 두 섹션 분리 + 가운데 **드래그 리사이저** (localStorage `msg_split_ratio` 저장/복원)
+
+이후 사용자 피드백으로 학생 검색은 다중 선택 picker 로 다시 교체 (Phase B).
+
+### 3) 공통 대상 picker 헬퍼 추출 (Phase A·B·C·D·E)
+
+**Phase A — UI 레이블 "그룹" → "반" 통일**
+- 메시지관리 4곳 (page-sub / 라디오 / "그룹 선택" / alert 메시지)
+- 변수명·DB 필드 (`group`) 는 그대로 — 마이그레이션 위험 회피
+- 다른 곳 (공지·자료실) 은 이미 "대상" 으로 표기됨
+
+**Phase B — 공통 picker 헬퍼 + 메시지관리 + sendPush API**
+- [_picker / pickerInit / pickerGetTargets / pickerSummarize](public/admin/js/app.js#L3409-L3577) (~200줄)
+- 단일 글로벌 state — 한 번에 한 picker 활성. cfg = `{ boxEl, summaryEl, allowAll, emptyText, height, onChange }`
+- `targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]`
+- `_pickerFetchStudents` 1분 캐시. window.pickerToggleAll/Class/Student 노출
+- 시험출제 모달 — 옛 인라인 셀렉터·`tpModalToggleGroup`/`tpModalToggleStudent`/`_tpUpdateModalSummary` 모두 폐기, `pickerInit({allowAll:false, height:280})` 호출
+- 메시지관리 — 라디오(전체/반/학생) + 학생 검색박스 모두 폐기, `pickerInit({allowAll:true})` 인라인. `pushNotifications` 신 schema 저장 (`targets[]` + `targetSummary`)
+- `api/sendPush.js` 확장 — `targets[]` 배열 받아 type 별 학생 UID 수집 + dedupe + FCM 발송. usersByUid Map 으로 다중 대상 안전 처리. 옛 단일 `target` 분기도 호환 유지 (안전망)
+- 객관식 시험배정 (`mcqOpenTargetPicker`) 도 동일 picker 사용. `_mcqTargets` 는 onChange 콜백으로 동기화 유지
+
+**Phase C — 공지관리도 picker**
+- 공지 작성/수정 모달 — 단일 `<select>` 폐기, `pickerInit({allowAll:true})`
+- `notices` 신 schema (`targets[]` + `targetSummary`)
+- 학생앱 ([public/js/app.js](public/js/app.js)) — `_noticeMatchesMe` / `_noticeLabel` / `_noticeIsAll` 헬퍼. 신/구 schema 모두 처리 (이전 데이터 호환)
+
+**Phase D — 발송이력 카드 그리드 + ✕ 학생 회수**
+- `_msgRenderSentDetail` — 인라인 펼침을 학생 카드 그리드로 (`auto-fill, minmax(160→98px,1fr)`)
+- 미읽음 빨강 / 읽음 초록 + 작은 색점 (✓/!) 학생명 옆
+- ✕ 클릭 → `userNotifications/{id}` deleteDoc → 학생 알림함에서 사라짐 (Rules `delete: if isAdminOfMyAcademy()` 통과)
+- **이미 폰에 도착한 OS 푸시는 회수 불가** — 단 학생이 앱 알림함을 열면 거기엔 없음 (본문 자세히 보기 차단). 사용자 컨펌
+
+**Phase E — 자료실 (hwFiles)**
+- `openHwFileModal` / `editHwFile` — 단일 select 폐기, picker (allowAll=true)
+- `hwFiles` 신 schema (`targets[]` + `targetSummary`). 단일 대상 케이스에는 옛 `group/targetUid` 도 함께 채움 (학생앱 폴백)
+- 학생앱 `loadHwFiles` 도 신/구 schema 호환 필터 (`_hwFileMatchesMe` / `_hwFileLabel`)
+
+### 4) 메시지 박스 폭 고정 — CSS Grid `1fr` 함정 해결
+
+가로 스크롤이 사라지지 않는 문제 — 핵심 원인은 **CSS Grid `1fr` 트랙의 기본값 `min-width:auto` (= min-content)**.
+
+부모 grid (page-message: `grid-template-columns:380px 1fr`) 의 1fr 칸은 안쪽 콘텐츠의 min-content 만큼은 보장하려 함. 행 안 nowrap 텍스트가 한 단어로 길면 → min-content 가 그 단어 너비 → 칸 자체가 늘어남 → 가로 스크롤.
+
+**수정**:
+- `msgListCard` 에 `min-width:0; overflow:hidden` 추가 → grid 칸이 부모 폭에 강제 한정
+- 행 outer: `width:100%; max-width:100%; box-sizing:border-box; overflow:hidden`
+- 안쪽 flex item: `flex:1 1 0; min-width:0; overflow:hidden`
+- 부모 스크롤 컨테이너 (savedMsgDrafts/Sent): `overflow-x:hidden`
+- msgSentWrap / msgSentInline: `width:100%; max-width:100%; overflow:hidden`
+
+### 5) 메시지 본문 미리보기 한 줄 + 말줄임
+
+이전: 50자 한 줄 (slice). 변경 시도: 200자 3줄 (line-clamp). 사용자 피드백 — "한 화면에 더 많은 행 노출 위해 한 줄 + 말줄임".
+
+`_bodyPreview` 헬퍼 — `replace(/\s+/g, ' ')` 로 줄바꿈 공백 변환 + `white-space:nowrap; overflow:hidden; text-overflow:ellipsis`. 행 높이 일정.
+
+학생 카드 그리드 — `minmax(160→98px,1fr)`, padding `8/28 → 5/20`, 학생명 옆 큰 ✅/🔴 → **작은 색점 (✓/!)**, 반 정보 9px, ✕ 16×16. 같은 공간에 약 2.5배 학생 노출.
+
+### 6) 성장 리포트 학생 detail 정비
+
+**진단 — 유형 배지 `-` 표시 원인**:
+- [scripts/diag/check-score-mode-values.js](scripts/diag/check-score-mode-values.js) — scores 컬렉션 mode 값 분포 진단 도구
+- 결과: 337건 중 36건 (`mixed` 30 / `meaning` 4 / `spelling` 2) 이 표준 5개 키 (vocab/fill_blank/unscramble/mcq/subjective/recording) 외 값
+- 옛 학생앱이 단어시험 form 을 mode 필드에 직접 저장 (CLAUDE.md 의 2026-04-23 마이그레이션 (`word`→`vocab`) 때 누락)
+- 마이그레이션: [scripts/migrate/unify-vocab-mode.js](scripts/migrate/unify-vocab-mode.js) — `mixed/meaning/spelling` → `vocab` 일괄 변경. `_modeOldValue` 백업 필드 + `_modeMigratedAt` 타임스탬프 (가역적). DRY-RUN/--apply.
+- 적용 후: vocab 101→137 (+36), 알 수 없는 값 0건. 학원장 화면 유형 배지 `-` 사라짐
+
+**시험 목록 표 컬럼 재배치** (4 라운드 조정):
+- 최종: `<colgroup>` + `table-layout:fixed`
+- No 40 / 유형 100 (언스크램블 한 줄) / **교재명 가변** / **시험명 가변** / 점수 70 (nowrap) / 정답·전체 70 / 날짜 90
+- 고정 합 360px, 잔여를 교재·시험명이 균등 분할
+- 잘리면 hover `title` 툴팁으로 전문 노출
+- 페이지네이션 40건/페이지 (`initPagination('personalScoreBody', scores, ..., 7, {pageSize:40})`)
+
+**상단 3카드 30일 통일**:
+- 응시 횟수 / 평균 점수 / 80점 이상 — 옛 누적 → **최근 30일** (AI 리포트 분석 범위와 일치)
+- `scores30d = scores.filter(s => s.date >= today-30d)` 별도 계산
+- 카드 위 헤더 `📊 최근 30일 통계 YYYY-MM-DD ~ YYYY-MM-DD` 명시
+- 응시 내역 표는 그대로 누적 (`(전체 누적 · 40건씩 페이지)` 라벨 명시) → 같은 학생에서 카드(30일) vs 표(누적) 가 다른 숫자임을 사용자가 명확히 인지
+
+**이전 성장 리포트 표 정비**:
+- 5건씩 페이지네이션 (`initPagination('grHistoryBody', history, ..., 6, {pageSize:5})`)
+- table-layout:fixed + colgroup: 생성일 90 / 평균 54 / 응시 54 / 요약 가변(가장 넓음) / 👁 32 / 🗑 38
+- 요약 폰트 11→12px + 한 줄 자르기 + hover title 툴팁
+- 표 안 👁/🗑 사이즈 16px line-height:1 통일
+
+### 7) 🗑 이모지 사이즈 통일 (1차)
+- 결제 항목 단독 🗑: 11 → **16px** (font-size + line-height:1)
+- 결제 행 / 시험 행 [🗑 삭제] 결합형 span: 14·15 → **16**
+- 성장 리포트 표 🗑/👁: 16 (신규)
+- `<button class="action-btn danger">🗑 삭제</button>` 형태 9곳 (HTML) 은 텍스트와 🗑 가 같은 폰트 사이즈라 그대로 유지. 별도 패스 (CSS 클래스 `.icon-del` 도입 + 9곳 span 변환) 후보
+
+---
+
+## 작업 규칙 추가 (2026-05-08)
+
+신규:
+- **CSS Grid `1fr` 트랙은 기본 `min-width:auto`** — 안쪽 nowrap 콘텐츠가 한 단어로 길면 min-content 가 그 단어 너비로 계산돼 트랙 자체가 늘어남 → 가로 스크롤. **grid item 에 `min-width:0` + `overflow:hidden` 명시 필수**. flex item 의 `min-width:0` 함정과 동일 패턴.
+- **공통 picker 패턴** — 시험출제·메시지·공지·자료실·객관식 모두 단일 `_picker` 헬퍼 사용. 새 화면 추가 시: `pickerInit({boxEl, summaryEl, initialTargets, allowAll, emptyText, height, onChange})` 호출 → `pickerGetTargets()` 로 읽음. targets[] 형식 통일 (`{type:'all'|'class'|'student', id, name, groupName?}`).
+- **신/구 schema 호환 필터** — targets[] 신 schema 도입 시 학생앱 클라 필터에 `Array.isArray(f.targets) && f.targets.length` 분기 + 옛 단일 필드 폴백. 마이그레이션 X (사용자가 옛 데이터 삭제 예정인 경우만 호환 폴백 안 해도 됨).
+- **알림 회수의 한계** — `userNotifications/{id}` deleteDoc 은 학생 알림함만 정리. 폰 OS 푸시 배너 (이미 도착) 는 회수 불가. UX 안내 필수.
+- **scores 누적 통계 vs 30일 통계 구분 라벨** — 같은 화면에 두 기준 혼재 시 헤더에 명시 필수 (`📊 최근 30일 통계 YYYY-MM-DD ~ YYYY-MM-DD` 등).
+- **table-layout:fixed + colgroup 권장** — 컬럼 폭이 콘텐츠 길이에 휘둘리는 게 싫을 때. width 없는 col 들끼리는 잔여 폭 균등 분할.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-08)
+- `public/admin/js/app.js`: ~12970줄 (+~670, picker 헬퍼·다중 선택·성장 리포트 정비)
+- `public/admin/index.html`: ~977줄 (+~10, picker box 영역·overflow-x 추가)
+- `public/js/app.js`: ~4810줄 (+~50, 공지·자료실 신/구 schema 호환 필터)
+- `api/sendPush.js`: targets[] 처리 (+~50줄)
+- 신규: `scripts/diag/check-score-mode-values.js` / `scripts/migrate/unify-vocab-mode.js`
+- SW 캐시: `kunsori-v337`
+
+## 진행률 (2026-05-08)
+- 멀티테넌시 인프라: ~98% (변동 없음)
+- 결제 v2: ~95% (변동 없음)
+- 화이트라벨 브랜딩: ~98% (변동 없음)
+- 시험관리 운영: ~98% (변동 없음)
+- **공통 대상 셀렉터 통합: ~100%** (5개 화면 picker 단일화)
+- **시험출제 옵션: ~100%** (출제 문제수 추가)
+- **메시지·공지·자료실 다중 선택: ~100%** (Phase A·B·C·D·E 완료)
+- **성장 리포트 정비: ~95%** (30일 통계·페이지네이션·이력 표·mode 마이그레이션)
+- 학원장 대시보드 달력: ~95% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-08 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제 PG 연동
+2. **🗑 이모지 사이즈 전체 통일 2차** — CSS 클래스 `.icon-del` 도입 + `<button class="action-btn danger">🗑 삭제</button>` 9곳 span 변환
+3. **달력 생일 카테고리 추가** — `users.birth` 입력 강화 + 4번째 점 색
+4. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **AI 평가 실패율** (Phase B Cloud Function — 베타 운영 후)
+6. **`_modeOldValue` 백업 필드 정리** — unify-vocab-mode 안정 확인 후 별도 cleanup 스크립트로 36건의 백업 필드 제거 (선택)
+
+**완료 (이 세션, 2026-05-08)**:
+- ✅ 시험출제 모달 출제 문제수 옵션 (랜덤 픽)
+- ✅ 메시지 관리 1차 정비 (학생 검색·textarea 3배·인라인 펼침·드래그 리사이저)
+- ✅ 공통 picker 헬퍼 추출 + 5개 화면 단일화 (Phase A~E)
+- ✅ pushNotifications/notices/hwFiles 신 schema (`targets[]` + `targetSummary`) — 학생앱 신/구 호환
+- ✅ 발송이력 카드 그리드 + ✕ 학생 회수
+- ✅ CSS Grid `1fr` `min-width:auto` 함정 fix (메시지 박스 가로 스크롤)
+- ✅ 성장 리포트 학생 detail — 30일 기준 통계 + 컬럼 재배치 + 페이지네이션
+- ✅ scores.mode 옛 단어시험 키 마이그레이션 (mixed/meaning/spelling → vocab, 36건)
+- ✅ 이전 성장 리포트 표 페이지네이션 (5건) + 폭 재조정
+- ✅ 🗑 이모지 사이즈 1차 통일 (단독 + 결합 span 16px)
