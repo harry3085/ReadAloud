@@ -4555,10 +4555,10 @@ window.loadPersonalScore = async(uid) => {
         <table style="table-layout:fixed;width:100%;">
           <colgroup>
             <col style="width:40px;">
-            <col style="width:80px;">
-            <col style="width:340px;">
+            <col style="width:100px;">
             <col>
-            <col style="width:64px;">
+            <col>
+            <col style="width:60px;">
             <col style="width:70px;">
             <col style="width:90px;">
           </colgroup>
