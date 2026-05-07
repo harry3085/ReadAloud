@@ -1511,11 +1511,17 @@ async function loadHwFileAdmin(){
     const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
     const files = snap.docs.map(d=>({id:d.id,...d.data()}));
     const icons={pdf:'📄',docx:'📝',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
+    const labelOf = (f) => {
+      if (f.targetSummary) return f.targetSummary;
+      if (Array.isArray(f.targets) && f.targets.length) return pickerSummarize(f.targets);
+      if (f.group === '전체') return '전체';
+      return f.group || '-';
+    };
     initPagination('hwfileTableBody', files, (f,i)=>`<tr>
       <td><input type="checkbox" value="${f.id}"></td>
       <td>${i+1}</td>
       <td style="font-weight:600;">${esc(f.name)||'-'}</td>
-      <td><span class="badge badge-teal">${f.group==='전체'?'전체':esc(f.group)||'-'}</span></td>
+      <td><span class="badge badge-teal">${esc(labelOf(f))}</span></td>
       <td>${icons[f.type]||'📄'} ${(f.type||'').toUpperCase()}</td>
       <td class="td-sub">${f.date||''}</td>
       <td><a href="${f.url||'#'}" target="_blank" class="btn btn-secondary btn-sm">다운로드</a></td>
@@ -1535,15 +1541,13 @@ window.editHwFile = async(id) => {
   if (!snap.exists()) { showAlert('입력 확인', '파일 정보를 찾을 수 없습니다.'); return; }
   const f = snap.data();
 
-  // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
-  const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
-
-  // 현재 대상값 결정
-  let currentTarget = 'all';
-  if(f.targetUid) currentTarget = 'uid:'+f.targetUid;
-  else if(f.group && f.group !== '전체') currentTarget = 'group:'+f.group;
+  // 옛 schema 도 신 schema 로 변환해서 picker 초기값으로
+  let initialTargets = Array.isArray(f.targets) ? f.targets : [];
+  if (!initialTargets.length) {
+    if (f.targetUid) initialTargets = [{ type:'student', id:f.targetUid, name:'(학생)', groupName:'' }];
+    else if (f.group && f.group !== '전체') initialTargets = [{ type:'class', id:f.group, name:f.group+' 전체', groupName:f.group }];
+    else initialTargets = [{ type:'all', id:'__all__', name:'전체 학원생' }];
+  }
 
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
@@ -1558,16 +1562,9 @@ window.editHwFile = async(id) => {
               style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
           </div>
           <div>
-            <div style="color:var(--gray);margin-bottom:6px;">대상 선택</div>
-            <select id="hwfEditTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
-              <option value="all" ${currentTarget==='all'?'selected':''}>전체</option>
-              <optgroup label="── 반별 ──">
-                ${groups.map(g=>`<option value="group:${g}" ${currentTarget==='group:'+g?'selected':''}>${g}</option>`).join('')}
-              </optgroup>
-              <optgroup label="── 개별 학생 ──">
-                ${students.map(u=>`<option value="uid:${u.id}" ${currentTarget==='uid:'+u.id?'selected':''}>${u.name} (${esc(u.group)||'-'})</option>`).join('')}
-              </optgroup>
-            </select>
+            <div style="color:var(--gray);margin-bottom:6px;">📤 대상 <span style="font-size:11px;">(반·학생 다중 선택 또는 전체)</span></div>
+            <div id="hwfPickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+            <div id="hwfPickerBox"></div>
           </div>
           <div style="padding:10px 12px;background:#f8f9fa;border-radius:8px;font-size:12px;color:var(--gray);">
             📎 현재 파일: <b style="color:var(--text);">${esc(f.name)||'-'}.${f.type||''}</b>
@@ -1580,30 +1577,44 @@ window.editHwFile = async(id) => {
         <button class="btn btn-primary" onclick="saveHwFileEdit('${id}')">💾 저장</button>
       </div>
     </div>`);
+  await pickerInit({
+    boxEl: 'hwfPickerBox',
+    summaryEl: 'hwfPickerSummary',
+    initialTargets,
+    allowAll: true,
+    emptyText: '반/학생을 선택하거나 전체를 체크하세요',
+    height: 220,
+  });
   setTimeout(()=>document.getElementById('hwfEditName')?.focus(),100);
 };
 
 window.saveHwFileEdit = async(id) => {
   const name = document.getElementById('hwfEditName')?.value.trim();
-  const targetVal = document.getElementById('hwfEditTarget')?.value||'all';
+  const targets = pickerGetTargets();
   if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
 
+  // 학생앱 옛 필터 호환을 위해 group/targetUid 도 함께 갱신 (단일 대상 케이스만 — 다중이면 신 schema 만 사용)
   let group = '전체', targetUid = null;
-  if(targetVal.startsWith('group:')) group = targetVal.replace('group:','');
-  else if(targetVal.startsWith('uid:')){ targetUid = targetVal.replace('uid:',''); group = targetUid; }
+  if (targets.length === 1) {
+    const t = targets[0];
+    if (t.type === 'class') group = t.id;
+    else if (t.type === 'student') { targetUid = t.id; group = t.id; }
+  }
 
-  await updateDoc(doc(db,'hwFiles',id),{ name, group, targetUid: targetUid||null, updatedAt:serverTimestamp() });
+  await updateDoc(doc(db,'hwFiles',id),{
+    name,
+    targets,
+    targetSummary: pickerSummarize(targets),
+    group, targetUid: targetUid||null,   // 옛 호환 (학생앱 폴백)
+    updatedAt: serverTimestamp(),
+  });
   closeModal();
   showToast('✅ 수정됐어요!');
   await loadHwFileAdmin();
 };
 
 window.openHwFileModal = async() => {
-  // 반/학생 목록 로드
-  const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-  const students = usersSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
-  const groups = [...new Set(students.map(u=>u.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
-
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -1616,16 +1627,9 @@ window.openHwFileModal = async() => {
             <input id="hwfName" type="text" placeholder="예: 1단원 받아쓰기" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
           </div>
           <div>
-            <div style="color:var(--gray);margin-bottom:6px;">대상 선택</div>
-            <select id="hwfTarget" onchange="onHwfTargetChange()" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;outline:none;">
-              <option value="all">전체</option>
-              <optgroup label="── 반별 ──">
-                ${groups.map(g=>`<option value="group:${g}">반: ${g}</option>`).join('')}
-              </optgroup>
-              <optgroup label="── 개별 학생 ──">
-                ${students.map(u=>`<option value="uid:${u.id}">학생: ${u.name} (${esc(u.group)||'-'})</option>`).join('')}
-              </optgroup>
-            </select>
+            <div style="color:var(--gray);margin-bottom:6px;">📤 대상 <span style="font-size:11px;">(반·학생 다중 선택 또는 전체)</span></div>
+            <div id="hwfPickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+            <div id="hwfPickerBox"></div>
           </div>
           <div>
             <div style="color:var(--gray);margin-bottom:6px;">파일 선택</div>
@@ -1647,6 +1651,14 @@ window.openHwFileModal = async() => {
         <button class="btn btn-primary" id="hwfUploadBtn" onclick="uploadHwFileAdmin()">📤 업로드</button>
       </div>
     </div>`);
+  await pickerInit({
+    boxEl: 'hwfPickerBox',
+    summaryEl: 'hwfPickerSummary',
+    initialTargets: [],
+    allowAll: true,
+    emptyText: '반/학생을 선택하거나 전체를 체크하세요',
+    height: 220,
+  });
   setTimeout(()=>document.getElementById('hwfName')?.focus(),100);
 };
 
@@ -1679,10 +1691,11 @@ function _isAllowedHwFile(file) {
 
 window.uploadHwFileAdmin = async() => {
   const name = document.getElementById('hwfName')?.value.trim();
-  const targetVal = document.getElementById('hwfTarget')?.value||'all';
+  const targets = pickerGetTargets();
   const fileEl = document.getElementById('hwfFile');
   const file = fileEl?.files[0];
   if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
   if (!file) { showAlert('입력 확인', '파일을 선택하세요.'); return; }
 
   // 사이즈 사전 체크 (storage.rules: 20 MB)
@@ -1701,10 +1714,13 @@ window.uploadHwFileAdmin = async() => {
     return;
   }
 
-  // 대상 파싱
+  // 학생앱 옛 필터 호환 — targets 가 단일 대상이면 group/targetUid 도 채움
   let group = '전체', targetUid = null;
-  if(targetVal.startsWith('group:')) group = targetVal.replace('group:','');
-  else if(targetVal.startsWith('uid:')){ targetUid = targetVal.replace('uid:',''); group = targetUid; }
+  if (targets.length === 1) {
+    const t = targets[0];
+    if (t.type === 'class') group = t.id;
+    else if (t.type === 'student') { targetUid = t.id; group = t.id; }
+  }
 
   const btn = document.getElementById('hwfUploadBtn');
   const prog = document.getElementById('hwfProgress');
@@ -1729,8 +1745,10 @@ window.uploadHwFileAdmin = async() => {
     const today = _ymdKST();
 
     await addDoc(collection(db,'hwFiles'),{
-      name, url, group,
-      targetUid: targetUid||null,
+      name, url,
+      targets,
+      targetSummary: pickerSummarize(targets),
+      group, targetUid: targetUid||null,   // 옛 호환 (학생앱 폴백)
       type: ext,
       date: today,
       storagePath: path,

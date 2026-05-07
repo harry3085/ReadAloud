@@ -406,16 +406,46 @@ async function loadNoticePreview(){
     </div>`).join('');
 }
 
+// 자료실 파일이 이 학생에게 보이는지 — 신/구 schema 둘 다 처리
+function _hwFileMatchesMe(f, group, uid) {
+  if (Array.isArray(f.targets) && f.targets.length) {
+    return f.targets.some(t =>
+      t.type === 'all' ||
+      (t.type === 'class' && t.id === group) ||
+      (t.type === 'student' && t.id === uid)
+    );
+  }
+  // 옛 schema
+  if (f.group === '전체') return true;
+  if (f.group === group) return true;
+  if (f.targetUid && f.targetUid === uid) return true;
+  return false;
+}
+
+function _hwFileLabel(f) {
+  if (f.targetSummary) return f.targetSummary;
+  if (Array.isArray(f.targets) && f.targets.length) {
+    if (f.targets.some(t => t.type === 'all')) return '전체';
+    const cs = f.targets.filter(t => t.type === 'class').map(t => t.groupName || t.id);
+    const ss = f.targets.filter(t => t.type === 'student');
+    const parts = [];
+    if (cs.length) parts.push(cs.join('·'));
+    if (ss.length) parts.push(`${ss.length}명`);
+    return parts.join(' + ');
+  }
+  return f.group === '전체' ? '전체' : (f.group || '-');
+}
+
+function _hwFileIsAll(f) {
+  if (Array.isArray(f.targets) && f.targets.length) return f.targets.some(t => t.type === 'all');
+  return f.group === '전체';
+}
+
 async function loadHwFiles(){
   const group = userProfile?.group||'';
   const uid = currentUser?.uid||'';
   const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-  const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>{
-    if(f.group==='전체') return true;
-    if(f.group===group) return true;
-    if(f.targetUid && f.targetUid===uid) return true;
-    return false;
-  });
+  const files = snap.docs.map(d=>({id:d.id,...d.data()})).filter(f => _hwFileMatchesMe(f, group, uid));
 
   // 파일 카드 전체를 숨기거나 표시
   const card = document.getElementById('hwFileCard');
@@ -434,7 +464,7 @@ async function loadHwFiles(){
       <div class="file-icon ${iconCls[f.type]||'pdf'}">${icons[f.type]||'📄'}</div>
       <div class="file-info">
         <div class="file-name">${esc(f.name)}</div>
-        <div class="file-meta"><span class="notice-tag${f.group==='전체'?' all':''}">${f.group==='전체'?'전체':esc(f.group)}</span><span>${esc(f.date||'')}</span></div>
+        <div class="file-meta"><span class="notice-tag${_hwFileIsAll(f)?' all':''}">${esc(_hwFileLabel(f))}</span><span>${esc(f.date||'')}</span></div>
       </div>
       <button class="download-btn" onclick="downloadHwFile('${esc(f.url||'')}','${esc(f.name||'')}',event)">다운로드</button>
     </div>`).join('');
