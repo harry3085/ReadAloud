@@ -168,6 +168,15 @@ function _applyAcademyBranding(academy) {
   // PWA manifest 갱신
   if (typeof window.updateManifest === 'function') window.updateManifest(window.MY_ACADEMY_ID);
   window.CURRENT_BRANDING = { academyName: acadName, preset, logoUrl, catchphrase: cp, planId };
+
+  // FOUC 방지 캐시 — 학원 자체 브랜딩으로 LexiAI 기본 캐시 덮어쓰기
+  // (학생앱·학원장앱 양쪽에서 다음 진입 시 자기 학원 로고/이름이 즉시 표시되도록)
+  try {
+    if (academy.name) {  // 로그인된 사용자가 학원 정보 받은 시점에만 set
+      if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);
+      if (acadName) localStorage.setItem('lexiAppName', acadName);
+    }
+  } catch (_) {}
 }
 
 async function _lookupUserByUsername(usernameRaw) {
@@ -3216,13 +3225,7 @@ onAuthStateChanged(auth, async (user)=>{
       if (lexiSnap.exists()) {
         const lexi = lexiSnap.data();
         window.LEXIAI_BRANDING = lexi;
-        // FOUC 방지용 localStorage 캐시 — 다음 새로고침 시 첫 페인트에 즉시 적용
-        try {
-          if (lexi.defaultLogo192Url) localStorage.setItem('lexiLogo192', lexi.defaultLogo192Url);
-          else localStorage.removeItem('lexiLogo192');
-          if (lexi.defaultAppName) localStorage.setItem('lexiAppName', lexi.defaultAppName);
-          else localStorage.removeItem('lexiAppName');
-        } catch (_) {}
+        // 비로그인 시 LexiAI 기본 적용 (헤더 갱신만 — cache 는 학원 브랜딩만 보존)
         if (!user) _applyAcademyBranding({ name: '' });
       }
     } catch (e) { console.warn('[LexiAI branding]', e.message); }

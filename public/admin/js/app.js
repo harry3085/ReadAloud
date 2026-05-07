@@ -184,6 +184,11 @@ function _applyAdminBranding(acData) {
     if (textNode) textNode.textContent = ' ' + acadName;
   }
   document.title = acadName + ' 관리자';
+  // 다음 진입 시 FOUC 방지용 캐시 (학생 앱과 동일 키)
+  try {
+    if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);
+    if (acadName) localStorage.setItem('lexiAppName', acadName);
+  } catch (_) {}
 }
 
 onAuthStateChanged(auth, async user => {
