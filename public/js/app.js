@@ -356,10 +356,44 @@ const updateTestBadge   = () => _updateGenTestBadge(['vocab'], 'testBadge');
 const updateMcqBadge    = () => _updateGenTestBadge(['mcq'], 'mcqBadge');
 const updateFbBadge     = () => _updateGenTestBadge(['fill_blank'], 'blankBadge');
 
+// 공지 1건이 이 학생에게 보이는지 — 신/구 schema 둘 다 처리
+function _noticeMatchesMe(n, group, uid) {
+  // 신 schema (targets[])
+  if (Array.isArray(n.targets) && n.targets.length) {
+    return n.targets.some(t =>
+      t.type === 'all' ||
+      (t.type === 'class' && t.id === group) ||
+      (t.type === 'student' && t.id === uid)
+    );
+  }
+  // 옛 schema (target 단일)
+  return n.target === 'all' || n.target === group;
+}
+
+function _noticeLabel(n) {
+  if (n.targetSummary) return n.targetSummary;
+  if (Array.isArray(n.targets) && n.targets.length) {
+    if (n.targets.some(t => t.type === 'all')) return '전체';
+    const cs = n.targets.filter(t => t.type === 'class').map(t => t.groupName || t.id);
+    const ss = n.targets.filter(t => t.type === 'student');
+    const parts = [];
+    if (cs.length) parts.push(cs.join('·'));
+    if (ss.length) parts.push(`${ss.length}명`);
+    return parts.join(' + ');
+  }
+  return n.target === 'all' ? '전체' : (n.target || '-');
+}
+
+function _noticeIsAll(n) {
+  if (Array.isArray(n.targets) && n.targets.length) return n.targets.some(t => t.type === 'all');
+  return n.target === 'all';
+}
+
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
+  const uid = currentUser?.uid||'';
   const snap = await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-  allNotices = snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
+  allNotices = snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid));
   const el = document.getElementById('noticePreview');
   if(!allNotices.length){el.innerHTML='<div class="empty-msg">공지사항이 없습니다</div>';return;}
   el.innerHTML = allNotices.slice(0,3).map(n=>`
@@ -367,7 +401,7 @@ async function loadNoticePreview(){
       <div class="notice-dot"></div>
       <div class="notice-item-text">
         <div class="notice-item-title">${esc(n.title)}</div>
-        <div class="notice-item-meta"><span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':esc(n.target)}</span><span>${esc(n.date||'')}</span></div>
+        <div class="notice-item-meta"><span class="notice-tag${_noticeIsAll(n)?' all':''}">${esc(_noticeLabel(n))}</span><span>${esc(n.date||'')}</span></div>
       </div>
     </div>`).join('');
 }
@@ -419,7 +453,7 @@ window.viewNotice = noticeId => {
   document.getElementById('noticeFullList').innerHTML=`
     <div class="notice-full-item">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-        <span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':n.target}</span>
+        <span class="notice-tag${_noticeIsAll(n)?' all':''}">${esc(_noticeLabel(n))}</span>
         <span style="font-size:12px;color:var(--gray);">${n.date||''}</span>
       </div>
       <div class="notice-full-title" style="font-size:17px;margin-bottom:14px;">${esc(n.title)}</div>
@@ -432,15 +466,16 @@ window.viewNotice = noticeId => {
 
 window.goNoticeList = async()=>{
   const group=userProfile?.group||'';
+  const uid = currentUser?.uid||'';
   const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-  allNotices=snap.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.target==='all'||n.target===group);
+  allNotices=snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid));
   document.getElementById('noticeFullList').innerHTML=allNotices.map(n=>`
     <div class="notice-full-item" onclick="viewNotice('${n.id}')" style="cursor:pointer;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
         <div class="notice-full-title" style="margin-bottom:0;">${esc(n.title)}</div>
         <span style="color:var(--teal);font-size:18px;">›</span>
       </div>
-      <div class="notice-full-meta"><span class="notice-tag${n.target==='all'?' all':''}">${n.target==='all'?'전체':esc(n.target)}</span><span>${esc(n.date||'')}</span></div>
+      <div class="notice-full-meta"><span class="notice-tag${_noticeIsAll(n)?' all':''}">${esc(_noticeLabel(n))}</span><span>${esc(n.date||'')}</span></div>
     </div>`).join('')||'<div class="empty-msg">공지사항이 없습니다</div>';
   document.getElementById('noticeScreenTitle').textContent='공지사항';
   document.getElementById('noticeBackBtn').onclick=()=>show('home');

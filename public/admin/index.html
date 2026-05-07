@@ -584,7 +584,7 @@
   <!-- 메시지 관리 -->
   <div class="page" id="page-message">
     <div class="page-header">
-      <div><div class="page-title">메시지 관리</div><div class="page-sub">학생/그룹에 알림을 보냅니다</div></div>
+      <div><div class="page-title">메시지 관리</div><div class="page-sub">학생/반에 알림을 보냅니다</div></div>
     </div>
     <div style="display:grid;grid-template-columns:380px 1fr;gap:16px;">
       <!-- 왼쪽: 작성 -->
@@ -592,36 +592,18 @@
         <div class="card-title">📨 새 메시지 작성</div>
         <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
           <div>
-            <div style="color:var(--gray);margin-bottom:4px;">대상 유형</div>
-            <div style="display:flex;gap:12px;">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="msgType" value="all" checked onchange="onMsgTypeChange()"> 전체</label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="msgType" value="group" onchange="onMsgTypeChange()"> 그룹</label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="msgType" value="student" onchange="onMsgTypeChange()"> 개별학생</label>
+            <div style="color:var(--gray);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
+              <span>📤 대상</span>
+              <span style="font-size:11px;">반·학생 다중 선택</span>
             </div>
-          </div>
-          <div id="msgGroupRow" style="display:none;">
-            <div style="color:var(--gray);margin-bottom:4px;">그룹 선택</div>
-            <select id="msgGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"></select>
-          </div>
-          <div id="msgStudentRow" style="display:none;">
-            <div style="color:var(--gray);margin-bottom:4px;">학생 선택</div>
-            <!-- 학생 검색 박스 (선택칩 + 검색 input + 후보 드롭다운) -->
-            <div style="position:relative;">
-              <div id="msgStudentSelected" style="display:none;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#f0fafa;font-size:13px;">
-                <span id="msgStudentSelectedLabel" style="flex:1;"></span>
-                <button type="button" onclick="msgClearSelectedStudent()" title="선택 해제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
-              </div>
-              <input id="msgStudentSearch" type="text" placeholder="🔍 이름·반 검색"
-                oninput="msgStudentSearchInput()" onfocus="msgStudentSearchInput()"
-                style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
-              <div id="msgStudentDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:240px;overflow-y:auto;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:10;margin-top:2px;"></div>
+            <div id="msgPickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+              <span style="color:var(--gray);font-size:12px;">로딩 중…</span>
             </div>
-            <input type="hidden" id="msgStudent">
+            <div id="msgPickerBox" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;"></div>
           </div>
           <div>
             <div style="color:var(--gray);margin-bottom:4px;">제목</div>
-            <input id="msgTitle" type="text" placeholder="알림 제목" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
-          </div>
+            <input id="msgTitle" type="text" placeholder="알림 제목" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div>
             <div style="color:var(--gray);margin-bottom:4px;">내용</div>
             <textarea id="msgBody" rows="12" placeholder="알림 내용" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;min-height:240px;"></textarea>

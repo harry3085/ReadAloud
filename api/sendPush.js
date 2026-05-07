@@ -26,8 +26,11 @@ module.exports = async (req, res) => {
     const db = getFirestore();
     const messaging = getMessaging();
 
-    const { title, body, target, idToken } = req.body;
-    if (!title || !body || !target) {
+    // 신 schema: targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]
+    // 옛 schema: target 단일 ('all' | groupName | 'uid:UID') — 안전망 유지
+    const { title, body, target, targets, idToken } = req.body;
+    const hasTargets = Array.isArray(targets) && targets.length > 0;
+    if (!title || !body || (!target && !hasTargets)) {
       return res.status(400).json({ error: '제목, 내용, 대상은 필수입니다.' });
     }
     if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
@@ -54,38 +57,65 @@ module.exports = async (req, res) => {
 
     // 대상 학생 목록 수집 (자기 학원 학생만)
     // 멀티 디바이스 지원 — fcmTokens 배열 + fcmToken 레거시 둘 다 수집
-    let users = []; // [{uid, fcmToken, fcmTokens}]
+    // 다중 대상 (targets[]) 도 자기 학원 안에서 dedupe (uid 기준)
+    const usersByUid = new Map(); // uid → {uid, fcmToken, fcmTokens}
 
-    const _push = (id, d) => users.push({
-      uid: id,
-      fcmToken: d?.fcmToken,
-      fcmTokens: Array.isArray(d?.fcmTokens) ? d.fcmTokens : [],
-    });
+    const _addUserDoc = (id, d) => {
+      if (usersByUid.has(id)) return;
+      usersByUid.set(id, {
+        uid: id,
+        fcmToken: d?.fcmToken,
+        fcmTokens: Array.isArray(d?.fcmTokens) ? d.fcmTokens : [],
+      });
+    };
 
-    if (target === 'all') {
+    const _addAll = async () => {
       const snap = await db.collection('users')
         .where('academyId', '==', callerAcademyId)
         .where('role', '==', 'student')
         .get();
-      snap.forEach(doc => _push(doc.id, doc.data()));
-    } else if (target.startsWith('uid:')) {
-      const uid = target.replace('uid:', '');
+      snap.forEach(doc => _addUserDoc(doc.id, doc.data()));
+    };
+
+    const _addClass = async (groupName) => {
+      const snap = await db.collection('users')
+        .where('academyId', '==', callerAcademyId)
+        .where('role', '==', 'student')
+        .where('group', '==', groupName)
+        .get();
+      snap.forEach(doc => _addUserDoc(doc.id, doc.data()));
+    };
+
+    const _addStudent = async (uid) => {
       const snap = await db.collection('users').doc(uid).get();
-      if (snap.exists) {
-        const d = snap.data();
-        // super_admin 이 아니면 자기 학원 학생만 발송 가능
-        if (caller.role === 'super_admin' || d.academyId === callerAcademyId) {
-          _push(snap.id, d);
+      if (!snap.exists) return;
+      const d = snap.data();
+      // super_admin 이 아니면 자기 학원 학생만
+      if (caller.role === 'super_admin' || d.academyId === callerAcademyId) {
+        _addUserDoc(snap.id, d);
+      }
+    };
+
+    if (hasTargets) {
+      // 신 schema: targets[]
+      if (targets.some(t => t?.type === 'all')) {
+        await _addAll();
+      } else {
+        for (const t of targets) {
+          if (!t || !t.type || !t.id) continue;
+          if (t.type === 'class') await _addClass(t.id);
+          else if (t.type === 'student') await _addStudent(t.id);
         }
       }
-    } else {
-      const snap = await db.collection('users')
-        .where('academyId', '==', callerAcademyId)
-        .where('role', '==', 'student')
-        .where('group', '==', target)
-        .get();
-      snap.forEach(doc => _push(doc.id, doc.data()));
+    } else if (target === 'all') {
+      await _addAll();
+    } else if (typeof target === 'string' && target.startsWith('uid:')) {
+      await _addStudent(target.replace('uid:', ''));
+    } else if (typeof target === 'string' && target) {
+      await _addClass(target);
     }
+
+    const users = [...usersByUid.values()];
 
     if (users.length === 0) {
       return res.status(200).json({
@@ -94,15 +124,37 @@ module.exports = async (req, res) => {
       });
     }
 
-    // pushNotifications 이력 저장
+    // pushNotifications 이력 저장 (신 schema: targets[] + targetSummary)
+    const _summarize = (ts) => {
+      if (!Array.isArray(ts) || !ts.length) return '';
+      if (ts.some(t => t.type === 'all')) return '전체';
+      const cs = ts.filter(t => t.type === 'class');
+      const ss = ts.filter(t => t.type === 'student');
+      const parts = [];
+      if (cs.length) parts.push(cs.map(t => t.groupName || t.id).join('·'));
+      if (ss.length) parts.push(`${ss.length}명`);
+      return parts.join(' + ');
+    };
+
     const pushRef = db.collection('pushNotifications').doc();
-    await pushRef.set({
-      title, body, target,
+    const pushDoc = {
+      title, body,
       sent: true,
       date: new Date(Date.now() + 9*3600*1000).toISOString().slice(0,10),
       createdAt: FieldValue.serverTimestamp(),
       academyId: callerAcademyId,
-    });
+    };
+    if (hasTargets) {
+      pushDoc.targets = targets;
+      pushDoc.targetSummary = _summarize(targets);
+    } else if (target) {
+      // 옛 호출자 호환 (targetSummary 만 채워서 admin 표시 일관)
+      pushDoc.target = target;
+      pushDoc.targetSummary = target === 'all' ? '전체'
+        : (typeof target === 'string' && target.startsWith('uid:')) ? '개별학생'
+        : String(target);
+    }
+    await pushRef.set(pushDoc);
     const pushId = pushRef.id;
 
     // 각 학생에게 userNotifications 도큐먼트 저장 (팝업 확인용)

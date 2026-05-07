@@ -1433,18 +1433,22 @@ async function loadNotices(){
     const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
     const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const labelOf = (n) => {
+      if (n.targetSummary) return n.targetSummary;
+      if (Array.isArray(n.targets) && n.targets.length) return pickerSummarize(n.targets);
+      if (n.target === 'all') return '전체';
+      return n.target || '-';
+    };
     initPagination('noticeTableBody', notices, (n,i)=>`<tr>
         <td><input type="checkbox" value="${n.id}"></td>
         <td>${i+1}</td>
         <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${n.id}','${(n.title||'').replace(/'/g,"\\'")}')">${esc(n.title)||'-'}</td>
-        <td><span class="badge badge-teal">${n.target==='all'?'전체':esc(n.target)||'-'}</span></td>
+        <td><span class="badge badge-teal">${esc(labelOf(n))}</span></td>
         <td class="td-sub">${esc(n.date)||''}</td>
       </tr>`, 'noticePagination', 10);
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 window.openNoticeModal = async() => {
-  const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
-  const opts='<option value="all">전체</option>'+classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -1452,8 +1456,11 @@ window.openNoticeModal = async() => {
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;">
-          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">대상</div>
-            <select id="noticeTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div>
+            <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📤 대상 <span style="font-size:11px;">(반·학생 다중 선택 또는 전체)</span></div>
+            <div id="noticePickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+            <div id="noticePickerBox"></div>
+          </div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">제목 *</div>
             <input id="noticeTitle" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
@@ -1466,13 +1473,29 @@ window.openNoticeModal = async() => {
       </div>
     </div>
   `);
+  await pickerInit({
+    boxEl: 'noticePickerBox',
+    summaryEl: 'noticePickerSummary',
+    initialTargets: [],
+    allowAll: true,
+    emptyText: '반/학생을 선택하거나 전체를 체크하세요',
+    height: 220,
+  });
 };
 window.saveNotice = async() => {
   const title=document.getElementById('noticeTitle').value.trim();
   const content=document.getElementById('noticeContent').value.trim();
-  const target=document.getElementById('noticeTarget').value;
+  const targets = pickerGetTargets();
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await addDoc(collection(db,'notices'),{title,content,target,date:_ymdKST(),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  await addDoc(collection(db,'notices'),{
+    title, content,
+    targets,
+    targetSummary: pickerSummarize(targets),
+    date:_ymdKST(),
+    createdAt:serverTimestamp(),
+    academyId:window.MY_ACADEMY_ID||'default',
+  });
   closeModal(); showToast('공지가 등록됐어요!'); await loadNotices();
 };
 window.deleteNotice = async(id) => {
@@ -3406,114 +3429,221 @@ window._billingWizardComplete = async () => {
   }
 };
 
-// ── 메시지 관리 ──────────────────────────────────────
-let _msgStudentCache = [];   // [{uid, name, group}, ...]
-
-window.onMsgTypeChange = async() => {
-  const type=document.querySelector('input[name=msgType]:checked').value;
-  document.getElementById('msgGroupRow').style.display=type==='group'?'':'none';
-  document.getElementById('msgStudentRow').style.display=type==='student'?'':'none';
-  if(type==='group'){
-    const snap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
-    document.getElementById('msgGroup').innerHTML=snap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
-  }
-  if(type==='student'){
-    // 학생 캐시 1회 로드 (이름순 정렬)
-    if (!_msgStudentCache.length) {
-      const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-      _msgStudentCache = snap.docs.map(d=>({uid:d.id, name:d.data().name||'', group:d.data().group||''}))
-        .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'ko'));
-    }
-    msgClearSelectedStudent();
-  }
+// ══════════════════════════════════════════════════════════════════════════
+// 공통 대상 셀렉터 — 시험출제 / 메시지 / 공지 등에서 재사용
+// targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]
+// 한 번에 한 picker 만 활성 (단일 글로벌 state)
+// ══════════════════════════════════════════════════════════════════════════
+const _picker = {
+  targets: [],
+  cfg: null,                 // { boxEl, summaryEl, allowAll, emptyText, onChange }
+  students: [],
+  groupMap: {},
+  sortedGroups: [],
+  fetchedAt: 0,
 };
 
-// 학생 검색 input — 키워드 필터 후 후보 드롭다운 표시
-window.msgStudentSearchInput = () => {
-  const input = document.getElementById('msgStudentSearch');
-  const dd    = document.getElementById('msgStudentDropdown');
-  if (!input || !dd) return;
-  const kw = (input.value || '').trim().toLowerCase();
-  const list = kw
-    ? _msgStudentCache.filter(s => (s.name||'').toLowerCase().includes(kw) || (s.group||'').toLowerCase().includes(kw))
-    : _msgStudentCache.slice(0, 30); // 빈 검색어 시 처음 30명
-  if (!list.length) {
-    dd.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:#bbb;text-align:center;">일치하는 학생 없음</div>';
+// 학생 목록 fetch (1분 캐시, 같은 페이지 재사용)
+async function _pickerFetchStudents() {
+  const now = Date.now();
+  if (_picker.students.length && (now - _picker.fetchedAt) < 60000) return;
+  const snap = await getDocs(query(
+    collection(db,'users'),
+    where('academyId','==',window.MY_ACADEMY_ID),
+    where('role','==','student'),
+    where('status','==','active'),
+  ));
+  _picker.students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  _picker.groupMap = {};
+  _picker.students.forEach(u => {
+    const g = u.group || '(미지정)';
+    (_picker.groupMap[g] = _picker.groupMap[g] || []).push(u);
+  });
+  Object.keys(_picker.groupMap).forEach(g =>
+    _picker.groupMap[g].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'))
+  );
+  _picker.sortedGroups = Object.keys(_picker.groupMap).sort((a,b) => a.localeCompare(b, 'ko'));
+  _picker.fetchedAt = now;
+}
+
+// 공통 셀렉터 초기화 — 페이지/모달이 진입 시 호출
+async function pickerInit({ boxEl, summaryEl, initialTargets = [], allowAll = false, emptyText = '반/학생을 선택하세요', onChange = null, height = 220 } = {}) {
+  await _pickerFetchStudents();
+  _picker.targets = Array.isArray(initialTargets) ? [...initialTargets] : [];
+  _picker.cfg = { boxEl, summaryEl, allowAll, emptyText, onChange, height };
+  _pickerRenderBox();
+  _pickerRenderSummary();
+}
+
+// 현재 선택된 targets 반환
+function pickerGetTargets() {
+  return [..._picker.targets];
+}
+
+function _pickerRenderBox() {
+  const c = _picker.cfg; if (!c) return;
+  const box = document.getElementById(c.boxEl); if (!box) return;
+  const isAll = _picker.targets.some(t => t.type === 'all');
+  const selClassIds = new Set(_picker.targets.filter(t=>t.type==='class').map(t=>t.id));
+  const selStudentIds = new Set(_picker.targets.filter(t=>t.type==='student').map(t=>t.id));
+  const dim = isAll ? 'opacity:.4;pointer-events:none;' : '';
+  box.innerHTML = `
+    ${c.allowAll ? `
+      <div style="padding:8px 12px;background:${isAll?'#e0f2fe':'#f8f9fa'};border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="pickerToggleAll()">
+        <input type="checkbox" ${isAll?'checked':''} onclick="event.stopPropagation();pickerToggleAll()">
+        <span style="font-weight:700;font-size:13px;color:${isAll?'#075985':'var(--text)'};">📢 전체 학원생</span>
+        <span style="font-size:11px;color:var(--gray);margin-left:auto;">${_picker.students.length}명</span>
+      </div>
+    ` : ''}
+    <div style="${dim}">
+      ${_picker.sortedGroups.map(g => `
+        <div style="border-bottom:1px solid #f0f0f0;">
+          <div style="padding:7px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="pickerToggleClass('${esc(g)}')">
+            <input type="checkbox" id="pck-g-${esc(g)}" ${selClassIds.has(g)?'checked':''} onclick="event.stopPropagation();pickerToggleClass('${esc(g)}')">
+            <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
+            <span style="font-size:11px;color:var(--gray);margin-left:auto;">${_picker.groupMap[g].length}명</span>
+          </div>
+          <div style="padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:3px;">
+            ${_picker.groupMap[g].map(u => `
+              <label style="display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border:1px solid var(--border);border-radius:11px;cursor:pointer;font-size:11px;background:white;">
+                <input type="checkbox" id="pck-s-${esc(u.id)}" ${selStudentIds.has(u.id)?'checked':''}
+                  onchange="pickerToggleStudent('${esc(u.id)}','${esc(u.name||'').replace(/'/g,"\\'")}','${esc(g).replace(/'/g,"\\'")}')">
+                👤 ${esc(u.name||'')}
+              </label>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>`;
+  box.style.cssText = `max-height:${c.height}px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;`;
+}
+
+function _pickerRenderSummary() {
+  const c = _picker.cfg; if (!c) return;
+  const el = document.getElementById(c.summaryEl); if (!el) return;
+  const ts = _picker.targets;
+  if (ts.length === 0) {
+    el.innerHTML = `<span style="color:var(--gray);font-size:12px;">${esc(c.emptyText)}</span>`;
+  } else if (ts.some(t => t.type === 'all')) {
+    el.innerHTML = `<span style="background:#e0f2fe;border:1px solid #7dd3fc;border-radius:14px;padding:3px 10px;font-size:11px;color:#075985;font-weight:600;">📢 전체 학원생</span>`;
   } else {
-    dd.innerHTML = list.map(s =>
-      `<div onclick="msgPickStudent('${esc(s.uid)}','${esc(s.name).replace(/'/g,"\\'")}','${esc(s.group).replace(/'/g,"\\'")}')"
-        style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"
-        onmouseover="this.style.background='#f0fafa'" onmouseout="this.style.background=''">
-        <span style="font-weight:600;">${esc(s.name)}</span>
-        <span style="color:var(--gray);font-size:11px;margin-left:6px;">${esc(s.group)||'-'}</span>
-      </div>`
+    const sorted = [...ts].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'));
+    el.innerHTML = sorted.map(t =>
+      `<span style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:14px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+        ${t.type==='class'?'👥':'👤'} ${esc(t.name)}
+      </span>`
     ).join('');
-    if (!kw && _msgStudentCache.length > 30) {
-      dd.innerHTML += `<div style="padding:6px 12px;font-size:11px;color:#bbb;text-align:center;background:#fafafa;">전체 ${_msgStudentCache.length}명 — 검색어를 입력해 좁히세요</div>`;
-    }
   }
-  dd.style.display = 'block';
+}
+
+window.pickerToggleAll = () => {
+  const c = _picker.cfg; if (!c || !c.allowAll) return;
+  const isAll = _picker.targets.some(t => t.type === 'all');
+  _picker.targets = isAll ? [] : [{ type:'all', id:'__all__', name:'전체 학원생' }];
+  _pickerRenderBox();
+  _pickerRenderSummary();
+  c.onChange?.(_picker.targets);
 };
 
-// 후보 클릭 → 단일 선택
-window.msgPickStudent = (uid, name, group) => {
-  document.getElementById('msgStudent').value = 'uid:' + uid;
-  const sel = document.getElementById('msgStudentSelected');
-  const lbl = document.getElementById('msgStudentSelectedLabel');
-  if (lbl) lbl.innerHTML = `👤 <b>${esc(name)}</b> <span style="color:var(--gray);font-size:11px;margin-left:4px;">${esc(group)||'-'}</span>`;
-  if (sel) sel.style.display = 'flex';
-  const search = document.getElementById('msgStudentSearch');
-  if (search) { search.value = ''; search.style.display = 'none'; }
-  const dd = document.getElementById('msgStudentDropdown');
-  if (dd) dd.style.display = 'none';
+window.pickerToggleClass = (g) => {
+  // 전체 모드면 해제 후 진행
+  _picker.targets = _picker.targets.filter(t => t.type !== 'all');
+  const exists = _picker.targets.find(t => t.type==='class' && t.id===g);
+  if (exists) {
+    _picker.targets = _picker.targets.filter(t => !(t.type==='class' && t.id===g));
+  } else {
+    _picker.targets.push({ type:'class', id:g, name:g+' 전체', groupName:g });
+  }
+  _pickerRenderBox();
+  _pickerRenderSummary();
+  _picker.cfg?.onChange?.(_picker.targets);
 };
 
-// 선택 해제 → 검색 input 다시 표시
-window.msgClearSelectedStudent = () => {
-  document.getElementById('msgStudent').value = '';
-  const sel = document.getElementById('msgStudentSelected');
-  if (sel) sel.style.display = 'none';
-  const search = document.getElementById('msgStudentSearch');
-  if (search) { search.value = ''; search.style.display = ''; }
-  const dd = document.getElementById('msgStudentDropdown');
-  if (dd) { dd.innerHTML = ''; dd.style.display = 'none'; }
+window.pickerToggleStudent = (uid, name, group) => {
+  _picker.targets = _picker.targets.filter(t => t.type !== 'all');
+  const exists = _picker.targets.find(t => t.type==='student' && t.id===uid);
+  if (exists) {
+    _picker.targets = _picker.targets.filter(t => !(t.type==='student' && t.id===uid));
+  } else {
+    _picker.targets.push({ type:'student', id:uid, name, groupName:group });
+  }
+  _pickerRenderBox();
+  _pickerRenderSummary();
+  _picker.cfg?.onChange?.(_picker.targets);
 };
 
-// 외부 클릭 시 드롭다운 닫기
-document.addEventListener('click', (e) => {
-  const wrap = document.getElementById('msgStudentRow');
-  const dd   = document.getElementById('msgStudentDropdown');
-  if (!wrap || !dd) return;
-  if (dd.style.display === 'block' && !wrap.contains(e.target)) dd.style.display = 'none';
-});
+// targets[] 를 학생 UID 배열로 해석 (서버 발송 / 클라 표시 양쪽에서 재사용)
+function pickerResolveUids(targets) {
+  if (!Array.isArray(targets) || !targets.length) return [];
+  if (targets.some(t => t.type === 'all')) {
+    return _picker.students.map(u => u.id);
+  }
+  const uids = new Set();
+  targets.forEach(t => {
+    if (t.type === 'student') uids.add(t.id);
+    else if (t.type === 'class') {
+      (_picker.groupMap[t.id] || []).forEach(u => uids.add(u.id));
+    }
+  });
+  return [...uids];
+}
+
+// 서버 페이로드용 요약 라벨 — pushNotifications/notices 의 targetSummary 캐시
+function pickerSummarize(targets) {
+  if (!Array.isArray(targets) || !targets.length) return '';
+  if (targets.some(t => t.type === 'all')) return '전체';
+  const cs = targets.filter(t => t.type==='class');
+  const ss = targets.filter(t => t.type==='student');
+  const parts = [];
+  if (cs.length) parts.push(cs.map(t => t.groupName||t.id).join('·'));
+  if (ss.length) parts.push(`${ss.length}명`);
+  return parts.join(' + ');
+}
+
+// ── 메시지 관리 ──────────────────────────────────────
+
+// 메시지 페이지 진입 시 picker 초기화
+async function _msgInitPicker(initialTargets = []) {
+  await pickerInit({
+    boxEl: 'msgPickerBox',
+    summaryEl: 'msgPickerSummary',
+    initialTargets,
+    allowAll: true,
+    emptyText: '반/학생을 선택하거나 전체를 체크하세요',
+    height: 220,
+  });
+}
+
 window.sendMessage = async() => {
-  const type=document.querySelector('input[name=msgType]:checked').value;
-  let target='all';
-  if(type==='group') target=document.getElementById('msgGroup').value;
-  if(type==='student') target=document.getElementById('msgStudent').value;
-  const title=document.getElementById('msgTitle').value.trim();
-  const body=document.getElementById('msgBody').value.trim();
+  const targets = pickerGetTargets();
+  const title = document.getElementById('msgTitle').value.trim();
+  const body  = document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  if (type==='student' && !target) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
-  if (type==='group'   && !target) { showAlert('입력 확인', '그룹을 선택하세요.'); return; }
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
   try{
     const idToken = await currentUser.getIdToken();
-    const res=await fetch('/api/sendPush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,target,idToken})});
+    const res = await fetch('/api/sendPush',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title, body, targets, idToken }),
+    });
     const result=await res.json();
     showToast(result.success?'✅ '+result.message:'⚠️ '+(result.message||result.error));
+    if (result.success) await loadMessages();
   }catch(e){showToast('❌ 발송 실패: '+e.message);}
 };
+
 window.saveMessage = async() => {
-  const type=document.querySelector('input[name=msgType]:checked').value;
-  let target='all';
-  if(type==='group') target=document.getElementById('msgGroup').value;
-  if(type==='student') target=document.getElementById('msgStudent').value;
-  const title=document.getElementById('msgTitle').value.trim();
-  const body=document.getElementById('msgBody').value.trim();
+  const targets = pickerGetTargets();
+  const title = document.getElementById('msgTitle').value.trim();
+  const body  = document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  if (type==='student' && !target) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
-  if (type==='group'   && !target) { showAlert('입력 확인', '그룹을 선택하세요.'); return; }
-  await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:_ymdKST(),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  await addDoc(collection(db,'pushNotifications'),{
+    targets,
+    targetSummary: pickerSummarize(targets),
+    title, body,
+    sent:false, date:_ymdKST(),
+    createdAt:serverTimestamp(),
+    academyId:window.MY_ACADEMY_ID||'default',
+  });
   showToast('💾 저장됐어요!'); await loadMessages();
 };
 // 발송 이력 행 인라인 펼침 상태 (현재 펼쳐진 pushId 1개만 유지)
@@ -3523,18 +3653,28 @@ async function loadMessages(){
   const draftEl = document.getElementById('savedMsgDrafts');
   const sentEl  = document.getElementById('savedMsgSent');
   if (!draftEl || !sentEl) return;
-  // 진입 시 리사이저 1회 초기화 (idempotent)
+  // 진입 시 리사이저 + picker 1회 초기화 (idempotent)
   _msgInitResizer();
+  try { await _msgInitPicker([]); } catch (e) { console.warn('[picker init]', e); }
   try{
     const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
 
     const drafts=[], sent=[];
     snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
 
+    // 옛/신 schema 모두에서 대상 라벨 뽑기
+    const labelOf = (n) => {
+      if (n.targetSummary) return n.targetSummary;
+      if (Array.isArray(n.targets) && n.targets.length) return pickerSummarize(n.targets);
+      // 옛 단일 target (호환 표시는 안 하기로 했으나 안전망)
+      if (n.target === 'all') return '전체';
+      if (n.target?.startsWith('uid:')) return '개별학생';
+      return n.target || '-';
+    };
+
     const renderDraft=d=>{
       const n=d.data();
-      const isStudent=n.target?.startsWith('uid:');
-      const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
+      const targetLabel = labelOf(n);
       return `<div style="border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;"
         onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
         onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
@@ -3551,8 +3691,7 @@ async function loadMessages(){
 
     const renderSent=d=>{
       const n=d.data();
-      const isStudent=n.target?.startsWith('uid:');
-      const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
+      const targetLabel = labelOf(n);
       const isOpen = _msgExpandedSentId === d.id;
       return `<div id="msgSentWrap-${d.id}">
         <div id="msgSentRow-${d.id}" style="border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};"
@@ -3634,61 +3773,79 @@ async function _msgRenderSentDetail(pushId, title) {
     <div style="padding:14px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
   </div>`;
   try {
-    const snap = await getDocs(query(
-      collection(db,'userNotifications'),
-      where('academyId','==',window.MY_ACADEMY_ID),
-      where('pushId','==',pushId),
-    ));
-    let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!notifs.length){
-      const fbSnap = await getDocs(query(
-        collection(db,'userNotifications'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('title','==',title),
-      ));
-      notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const [notifSnap, userSnap] = await Promise.all([
+      getDocs(query(collection(db,'userNotifications'), where('academyId','==',window.MY_ACADEMY_ID), where('pushId','==',pushId))),
+      getDocs(query(collection(db,'users'), where('academyId','==',window.MY_ACADEMY_ID), where('role','==','student'))),
+    ]);
+    let notifs = notifSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+    if (!notifs.length) {
+      const fbSnap = await getDocs(query(collection(db,'userNotifications'), where('academyId','==',window.MY_ACADEMY_ID), where('title','==',title)));
+      notifs = fbSnap.docs.map(d => ({ id:d.id, ...d.data() }));
     }
-    if(!notifs.length){
+    if (!notifs.length) {
       wrap.innerHTML = `<div style="margin:0 0 8px;padding:14px;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;text-align:center;color:#bbb;font-size:13px;">
         확인 데이터가 없습니다 <span style="font-size:11px;">(이전 방식으로 발송된 알림)</span>
       </div>`;
       return;
     }
-    const userSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
     const userMap = {};
-    userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
-    const read    = notifs.filter(n=>n.read===true);
-    const unread  = notifs.filter(n=>!n.read);
+    userSnap.docs.forEach(d => { userMap[d.id] = { name:d.data().name||'-', group:d.data().group||'' }; });
+
+    // 정렬: 미읽음 먼저, 같은 상태 안에서는 이름순
+    notifs.sort((a,b) => {
+      const ar = !!a.read, br = !!b.read;
+      if (ar !== br) return ar ? 1 : -1;
+      return (userMap[a.uid]?.name||'').localeCompare(userMap[b.uid]?.name||'', 'ko');
+    });
+
+    const read = notifs.filter(n => n.read === true);
+    const unread = notifs.filter(n => !n.read);
     const readPct = notifs.length ? Math.round(read.length/notifs.length*100) : 0;
+
     wrap.innerHTML = `
       <div style="margin:0 0 8px;border:1px solid var(--teal-light);border-radius:8px;background:#fafefe;overflow:hidden;">
-        <div style="display:flex;gap:12px;padding:10px 14px;background:#f0fafa;border-bottom:1px solid var(--teal-light);font-size:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:12px;padding:10px 14px;background:#f0fafa;border-bottom:1px solid var(--teal-light);font-size:12px;flex-wrap:wrap;align-items:center;">
           <span>총 <b>${notifs.length}</b>명</span>
           <span style="color:#059669;">✅ 읽음 <b>${read.length}</b>명</span>
           <span style="color:#e05050;">🔴 미읽음 <b>${unread.length}</b>명</span>
           <span style="margin-left:auto;font-weight:700;color:var(--teal);">${readPct}%</span>
         </div>
-        ${unread.length?`
-          <div style="padding:6px 14px 4px;font-size:11px;font-weight:700;color:#e05050;">🔴 미읽음 (${unread.length}명)</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 8px;">
-            ${unread.map(n=>`<span style="padding:3px 9px;background:#fee2e2;color:#b91c1c;border-radius:18px;font-size:11px;font-weight:600;">
-              ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
-            </span>`).join('')}
-          </div>`:''
-        }
-        ${read.length?`
-          <div style="padding:6px 14px 4px;font-size:11px;font-weight:700;color:#059669;">✅ 읽음 (${read.length}명)</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 10px;">
-            ${read.map(n=>`<span style="padding:3px 9px;background:#d1fae5;color:#065f46;border-radius:18px;font-size:11px;">
-              ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
-            </span>`).join('')}
-          </div>`:''
-        }
+        <div style="padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill, minmax(160px,1fr));gap:6px;">
+          ${notifs.map(n => {
+            const u = userMap[n.uid] || { name: (n.uid||'').slice(0,8), group:'' };
+            const isRead = n.read === true;
+            const bg     = isRead ? '#d1fae5' : '#fee2e2';
+            const fg     = isRead ? '#065f46' : '#b91c1c';
+            const border = isRead ? '#a7f3d0' : '#fca5a5';
+            const icon   = isRead ? '✅' : '🔴';
+            return `
+              <div id="msgRecip-${n.id}" style="background:${bg};border:1px solid ${border};border-radius:8px;padding:8px 28px 8px 10px;font-size:11px;position:relative;color:${fg};">
+                <button onclick="msgExcludeRecipient('${n.id}','${esc(u.name).replace(/'/g,"\\'")}')" title="이 학생 알림함에서 회수"
+                  style="position:absolute;top:4px;right:4px;width:20px;height:20px;background:rgba(255,255,255,0.7);border:1px solid rgba(0,0,0,.1);border-radius:50%;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;color:#666;">✕</button>
+                <div style="font-weight:700;">${icon} ${esc(u.name)}</div>
+                <div style="font-size:10px;opacity:.7;margin-top:2px;">${esc(u.group)||'-'}</div>
+              </div>`;
+          }).join('')}
+        </div>
       </div>`;
   } catch(e){
+    console.error('[msgRenderSentDetail]', e);
     wrap.innerHTML = `<div style="margin:0 0 8px;padding:14px;border:1px solid #fee;background:#fff5f5;border-radius:8px;color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||'')}</div>`;
   }
 }
+
+// 발송된 알림에서 특정 학생 1명 회수 — userNotifications doc 1개 삭제 → 학생 알림함에서 사라짐
+window.msgExcludeRecipient = async (notifId, name) => {
+  if (!(await showConfirm(`${name} 학생 알림 회수`, '이 학생의 알림함에서 알림이 사라집니다. 진행할까요?'))) return;
+  try {
+    await deleteDoc(doc(db,'userNotifications', notifId));
+    document.getElementById('msgRecip-'+notifId)?.remove();
+    showToast(`✓ ${esc(name)} 학생 알림 회수 완료`);
+  } catch(e) {
+    console.error('[msgExcludeRecipient]', e);
+    showAlert('회수 실패', e.message || e.code || '');
+  }
+};
 
 // ── 리사이저 (저장 초안 / 발송 이력 비율 조정 + localStorage) ────────
 let _msgResizerInited = false;
@@ -3752,6 +3909,10 @@ window.reuseMsg = async(id) => {
   const n=snap.data();if(!n)return;
   document.getElementById('msgTitle').value=n.title||'';
   document.getElementById('msgBody').value=n.body||'';
+  // 대상도 함께 복원 (신 schema 만)
+  if (Array.isArray(n.targets) && n.targets.length) {
+    await _msgInitPicker(n.targets);
+  }
   showToast('내용을 불러왔어요. 수정 후 발송하세요!');
 };
 window.delMsg = async(id) => {
@@ -5680,9 +5841,12 @@ async function _syncCurrentMonthBilling(studentUid, newPlan, newName) {
 window.editNotice = async(id) => {
   const snap = await getDoc(doc(db,'notices',id));
   const n = snap.data(); if(!n) return;
-  const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
-  const opts = '<option value="all" '+(n.target==='all'?'selected':'')+'>전체</option>'
-    + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}" ${n.target===d.data().name?'selected':''}>${esc(d.data().name)}</option>`).join('');
+  // 옛 단일 target 도 신 schema 로 변환해서 picker 초기값으로
+  let initialTargets = Array.isArray(n.targets) ? n.targets : [];
+  if (!initialTargets.length && n.target) {
+    if (n.target === 'all') initialTargets = [{ type:'all', id:'__all__', name:'전체 학원생' }];
+    else initialTargets = [{ type:'class', id:n.target, name:n.target+' 전체', groupName:n.target }];
+  }
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -5690,8 +5854,11 @@ window.editNotice = async(id) => {
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;">
-          <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">대상</div>
-            <select id="enTarget" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
+          <div>
+            <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📤 대상</div>
+            <div id="noticePickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+            <div id="noticePickerBox"></div>
+          </div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">제목 *</div>
             <input id="enTitle" type="text" value="${(n.title||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
@@ -5704,13 +5871,27 @@ window.editNotice = async(id) => {
       </div>
     </div>
   `);
+  await pickerInit({
+    boxEl: 'noticePickerBox',
+    summaryEl: 'noticePickerSummary',
+    initialTargets,
+    allowAll: true,
+    emptyText: '반/학생을 선택하거나 전체를 체크하세요',
+    height: 220,
+  });
 };
 window.updateNotice = async(id) => {
   const title = document.getElementById('enTitle').value.trim();
   const content = document.getElementById('enContent').value.trim();
-  const target = document.getElementById('enTarget').value;
+  const targets = pickerGetTargets();
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
-  await updateDoc(doc(db,'notices',id),{title,content,target});
+  if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  await updateDoc(doc(db,'notices',id),{
+    title, content,
+    targets,
+    targetSummary: pickerSummarize(targets),
+    // 옛 단일 target 필드는 그대로 둠 (학생앱 폴백 표시용 — 데이터 삭제 시 자연 사라짐)
+  });
   closeModal(); showToast('✅ 공지가 수정됐어요!'); await loadNotices();
 };
 
@@ -10273,55 +10454,15 @@ window.mcqClearSel = () => {
 };
 
 window.mcqOpenTargetPicker = async () => {
-  let students = [];
-  try {
-    const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-    students = snap.docs.map(d=>({id:d.id,...d.data()}));
-  } catch(e) {
-    showToast('학생 목록 로드 실패: '+e.message);
-    return;
-  }
-
-  const groupMap = {};
-  students.forEach(u => {
-    const g = u.group || '(미지정)';
-    if (!groupMap[g]) groupMap[g] = [];
-    groupMap[g].push(u);
-  });
-  Object.keys(groupMap).forEach(g => groupMap[g].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko')));
-
-  const sortedGroups = Object.keys(groupMap).sort((a,b)=>a.localeCompare(b,'ko'));
-
-  const selClassIds = new Set(_mcqTargets.filter(t=>t.type==='class').map(t=>t.id));
-  const selStudentIds = new Set(_mcqTargets.filter(t=>t.type==='student').map(t=>t.id));
-
   const html = `
     <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">👥 배정 대상 선택</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:5px;">반 체크 = 반 전체 · 학생 체크 = 개별 지정 (중복 선택시 우선)</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:5px;">반 체크 = 반 전체 · 학생 체크 = 개별 지정</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
-        ${sortedGroups.map(g => {
-          const cls = selClassIds.has(g) ? 'checked' : '';
-          return `
-            <div style="margin-bottom:10px;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-              <div style="padding:8px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="mcqTpToggleGroup('${esc(g)}')">
-                <input type="checkbox" ${cls} onclick="event.stopPropagation();mcqTpToggleGroup('${esc(g)}')">
-                <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
-                <span style="font-size:11px;color:var(--gray);margin-left:auto;">${groupMap[g].length}명</span>
-              </div>
-              <div style="padding:4px 12px 8px;display:flex;flex-wrap:wrap;gap:4px;">
-                ${groupMap[g].map(u => {
-                  const sc = selStudentIds.has(u.id) ? 'checked' : '';
-                  return `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:11px;">
-                    <input type="checkbox" ${sc} onchange="mcqTpToggleStudent('${esc(u.id)}','${esc(u.name||'')}','${esc(g)}')">
-                    👤 ${esc(u.name||'')}
-                  </label>`;
-                }).join('')}
-              </div>
-            </div>`;
-        }).join('')}
+        <div id="mcqPickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:10px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+        <div id="mcqPickerBox"></div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
@@ -10329,27 +10470,25 @@ window.mcqOpenTargetPicker = async () => {
     </div>
   `;
   showModal(html);
+  await pickerInit({
+    boxEl: 'mcqPickerBox',
+    summaryEl: 'mcqPickerSummary',
+    initialTargets: _mcqTargets,
+    allowAll: false,
+    emptyText: '반/학생을 선택하세요',
+    height: 280,
+    onChange: (t) => { _mcqTargets = t; _mcqRender(); },
+  });
 };
 
-window.mcqTpToggleGroup = (g) => {
+// 옛 mcqTpToggleGroup/Student 는 picker 헬퍼로 흡수 — 외부 호출처 없으면 제거
+window._unused_mcqTpToggleGroup_legacy = (g) => {
   const exists = _mcqTargets.find(t => t.type==='class' && t.id===g);
   if (exists) {
     _mcqTargets = _mcqTargets.filter(t => !(t.type==='class' && t.id===g));
   } else {
     _mcqTargets.push({ type:'class', id:g, name:g+' 전체', groupName:g });
   }
-  mcqOpenTargetPicker();
-  _mcqRender();
-};
-
-window.mcqTpToggleStudent = (uid, name, group) => {
-  const exists = _mcqTargets.find(t => t.type==='student' && t.id===uid);
-  if (exists) {
-    _mcqTargets = _mcqTargets.filter(t => !(t.type==='student' && t.id===uid));
-  } else {
-    _mcqTargets.push({ type:'student', id:uid, name, groupName:group });
-  }
-  _mcqRender();
 };
 
 window.mcqRemoveTarget = (id) => {
@@ -11100,31 +11239,6 @@ window.tpOpenPublishModal = async () => {
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
-  let students = [];
-  try {
-    const snap = await getDocs(query(
-      collection(db,'users'),
-      where('academyId','==',window.MY_ACADEMY_ID),
-      where('role','==','student'),
-      where('status','==','active')
-    ));
-    students = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  } catch(e) {
-    showToast('학생 목록 로드 실패: '+e.message);
-    return;
-  }
-
-  const groupMap = {};
-  students.forEach(u => {
-    const g = u.group || '(미지정)';
-    (groupMap[g] = groupMap[g] || []).push(u);
-  });
-  Object.keys(groupMap).forEach(g =>
-    groupMap[g].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'))
-  );
-  const sortedGroups = Object.keys(groupMap).sort((a,b) => a.localeCompare(b, 'ko'));
-
-  window._tpModalTargets = [];
   // 시험명 기본값: 선택된 세트 이름 (1개면 그대로, 여러 개면 "첫이름 외 N")
   const defaultName = selectedSets.length === 1
     ? (selectedSets[0].name || `${cfg.kindLabel} 시험`)
@@ -11272,26 +11386,8 @@ window.tpOpenPublishModal = async () => {
 
         <div style="margin-bottom:12px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">👥 배정 대상</div>
-          <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
-            <span>반/학생을 선택하세요</span>
-          </div>
-          <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
-            ${sortedGroups.map(g => `
-              <div style="border-bottom:1px solid #f0f0f0;">
-                <div style="padding:8px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="tpModalToggleGroup('${esc(g)}')">
-                  <input type="checkbox" id="tp-g-${esc(g)}" onclick="event.stopPropagation();tpModalToggleGroup('${esc(g)}')">
-                  <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
-                  <span style="font-size:11px;color:var(--gray);margin-left:auto;">${groupMap[g].length}명</span>
-                </div>
-                <div style="padding:4px 12px 8px;display:flex;flex-wrap:wrap;gap:4px;">
-                  ${groupMap[g].map(u => `
-                    <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:11px;">
-                      <input type="checkbox" id="tp-s-${esc(u.id)}" onchange="tpModalToggleStudent('${esc(u.id)}','${esc(u.name||'')}','${esc(g)}')">
-                      👤 ${esc(u.name||'')}
-                    </label>`).join('')}
-                </div>
-              </div>`).join('')}
-          </div>
+          <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
+          <div id="tpPickerBox"></div>
         </div>
       </div>
 
@@ -11302,7 +11398,14 @@ window.tpOpenPublishModal = async () => {
     </div>
   `;
   showModal(html);
-  _tpUpdateModalSummary();
+  await pickerInit({
+    boxEl: 'tpPickerBox',
+    summaryEl: 'tpTargetSummary',
+    initialTargets: [],
+    allowAll: false,
+    emptyText: '반/학생을 선택하세요',
+    height: 280,
+  });
 };
 
 // 단어시험 형식 변경 시 — 말하기 모드 옵션 토글 + 방향·비율 옵션 무력화
@@ -11324,48 +11427,6 @@ window._tpVocabFormatChanged = () => {
   }
 };
 
-window.tpModalToggleGroup = (g) => {
-  const cb = document.getElementById('tp-g-' + g);
-  const exists = window._tpModalTargets.find(t => t.type==='class' && t.id===g);
-  if (exists) {
-    window._tpModalTargets = window._tpModalTargets.filter(t => !(t.type==='class' && t.id===g));
-    if (cb) cb.checked = false;
-  } else {
-    window._tpModalTargets.push({type:'class', id:g, name:g+' 전체', groupName:g});
-    if (cb) cb.checked = true;
-  }
-  _tpUpdateModalSummary();
-};
-
-window.tpModalToggleStudent = (uid, name, group) => {
-  const cb = document.getElementById('tp-s-' + uid);
-  if (!cb) return;
-  if (cb.checked) {
-    if (!window._tpModalTargets.find(t => t.type==='student' && t.id===uid)) {
-      window._tpModalTargets.push({type:'student', id:uid, name, groupName:group});
-    }
-  } else {
-    window._tpModalTargets = window._tpModalTargets.filter(t => !(t.type==='student' && t.id===uid));
-  }
-  _tpUpdateModalSummary();
-};
-
-function _tpUpdateModalSummary() {
-  const el = document.getElementById('tpTargetSummary');
-  if (!el) return;
-  const ts = window._tpModalTargets || [];
-  if (ts.length === 0) {
-    el.innerHTML = '<span>반/학생을 선택하세요</span>';
-    return;
-  }
-  const sorted = [...ts].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'ko'));
-  el.innerHTML = sorted.map(t =>
-    `<span style="background:#f0fafa;border:1px solid var(--teal-light);border-radius:14px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
-      ${t.type==='class'?'👥':'👤'} ${esc(t.name)}
-    </span>`
-  ).join('');
-}
-
 window.tpPublish = async () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled) return;
@@ -11373,7 +11434,7 @@ window.tpPublish = async () => {
   const name = document.getElementById('tpName')?.value.trim();
   const passScore = parseInt(document.getElementById('tpPassScore')?.value) || 80;
   const date = document.getElementById('tpDate')?.value || _ymdKST();
-  const targets = window._tpModalTargets || [];
+  const targets = pickerGetTargets();
 
   if (!name) { showAlert('입력 확인', '시험명을 입력하세요'); document.getElementById('tpName')?.focus(); return; }
   if (targets.length === 0) { showAlert('입력 확인', '배정 대상을 선택하세요'); return; }
@@ -11469,7 +11530,6 @@ window.tpPublish = async () => {
     });
 
     showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
-    window._tpModalTargets = [];
     closeModal();
 
     await _renderTestAssignDetail(_activeTestType);
