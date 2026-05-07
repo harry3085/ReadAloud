@@ -1890,3 +1890,135 @@ LLM 생성 코드 리뷰 지시서 (`CLAUDE_CODE_지시서코드안정화_2026-0
 - ✅ AI Generator 부분 캐시 race + 결제관리 필터 + qsEditSet 폴백 다수 버그 fix
 - ✅ 학생 phone='admin' 6명 정리 + blurt 진단 도구
 - ✅ ES module / 백틱 escape / export 함정 작업 규칙 명문화
+
+---
+
+## 2026-05-07 (이어서): 학원장 대시보드 큰 달력 + 시험 화면 통일 + 화이트라벨 깜빡임 제거
+
+당일 후속 SW v307 → v322 (~17 commit). 대시보드 재구성 + 시험관리/목록 통일 + 화이트라벨 FOUC 제거 종합.
+
+### 1) 학원장 대시보드 큰 달력 통합 (P1~P5)
+사전 점검: `users.birth` 채워진 비율 6% (4/66 명), 결제·시험 데이터는 정합. 메모리·핸드오프의 `users.birthday` 추측이 틀림 — 실제 필드는 **`users.birth`** (input id 만 `euBirth`).
+
+**구조 (commit `c1ad60e`)**:
+- 좌측(공지·AI 사용량) + 우측(큰 달력 + 사이드 패널 280px) 2열 그리드
+- 작은 달력·최근 시험 결과·재원생 현황 카드 제거 (공간 양보)
+- 사용자 결정: 생일은 6% 채움이라 보류, 결제·시험만 표시
+
+**핵심 함수** ([public/admin/js/app.js](public/admin/js/app.js)):
+- `_bigcalState` (cur, events, selected) — module 스코프
+- `_bigcalLoadEvents(year, month)` — billings.yearMonth(기존 인덱스) + genTests.createdAt(기존 인덱스)+클라 date 필터 → **추가 인덱스 deploy 0**
+- `_bigcalRender()` / `_bigcalRenderSide()` — 그리드/사이드
+- `bigcalInit/ChangeMonth/GoToday/_SelectDate` — 진입 시 오늘 자동 선택, 월 이동 ◀ ▶ + [오늘]
+
+**CSS** (`.bigcal-*` 클래스, `.cal-*` 와 분리):
+- 셀 min-height 108px (commit `669bb2c` 1.5배 확대), MAX_SHOW 5건 (commit `0c3b422`)
+- 모바일 600px↓ 텍스트 → 6×6 색점, 사이드 패널 아래 스택
+
+### 2) 결제 학생 이름 표시 fix (commit `52dfe82`)
+**원인**: P2 코드가 `b.items[].userName` 에서 학생명 찾음 → items 는 청구 항목(수강료/교재비) 배열, 학생 정보 X.
+**실제 데이터 모델**: billings doc 레벨에 `studentUid`, `studentName`, `groupName`, `totalAmount`, `paidAmount`, `status` ('paid'|'partial'|'unpaid').
+**수정**: doc 1건 = 1행, partial 색 amber(`#d97706`) 신규 (범례·CSS 추가).
+
+### 3) 결제 행 클릭 → 인라인 상세 모달 (commit `b7e6606`, `799fd28`)
+- `_bigcalShowBillingDetail(billingId)` — billings doc 1건 fetch, 표준 모달 패턴(560px / header·body·footer)
+- 본문: 청구/납부/미납 3박스 + 항목 리스트(타입·채널·금액·납부 배지) + 메모(있으면 노란 박스)
+- 풋터: [닫기] / [결제관리에서 열기 →]
+- **페이지 ID 함정**: 실제 id 는 `page-payment` / `nav-payment` / `goPage('payment')` 인데 처음엔 `'billing'` 으로 호출해 빈 화면. 사이드바 onclick 과 일치 확인 필수.
+
+### 4) 항목 체크박스 납부 토글 (commit `3b31677`)
+대시보드 모달에서 항목별 체크박스 → 즉시 Firestore 저장 + 모달 재오픈(요약 갱신) + 캘린더 셀·사이드 즉시 반영.
+- `_bigcalApplyItemUpdate(billingId, mutator)` 헬퍼 — doc fetch → mutator 적용 → totalAmount/paidAmount/status 재계산 → updateDoc
+- 결제관리 캐시(`_billings`) + `_bigcalState.events` 양쪽 동기화
+- 일괄 [✓ 전체 납부 처리] 버튼 (모두 납부면 [↺ 전체 미납 되돌리기])
+
+### 5) 상단 카드 fix
+- **미납** (`statUnpaid`, commit `7b84b02`): 레거시 `payments` 컬렉션 → 결제 v2 `billings` (이번 달 yearMonth 의 status!=paid 카운트). 기존 인덱스 academyId+yearMonth 활용.
+- **오늘 시험** (`statTests`, commit `e6d5402`): scores.date==today (오늘 응시 점수) → genTests.date==today (오늘 출제된 시험). 운영 관점·달력 데이터 소스와 통일.
+
+### 6) 시험 목록 ↔ 시험관리 화면 통일
+
+**6a) 시험 목록 행 클릭 → 시험관리와 동일 학생별 카드** (commit `93bd203`)
+이전: `toggleTestProgress` (반별 chip 단순 표시)
+신규: `tpToggleTestProgress` 재사용 — 4가지 카드 변형(✅ 통과 / ⚠ 미통과 / ⏳ 대기 / 🎤 녹음 + AI 피드백) + ✕ 학생 제외 뱃지
+- `tpToggleTestProgress(testId, prefix?)` 시그니처 확장: `'tp'`(시험관리) | `'tl'`(시험 목록)
+- `_tpLastPrefix` module 변수로 prefix 유지 → `tpExcludeStudent` 자동 갱신도 같은 prefix
+- 시험 목록 row ID 패턴: `test-row-` → `tl-row-`, `progress-` → `tl-progress-` (시험관리 `tp-` 와 분리해 동시 DOM 충돌 방지)
+- `_TEST_TYPE_CONFIG[_activeTestType]` 의존 제거 → `t.testMode || t.mode` 로 isRec 직접 판별
+
+**6b) 시험 대상 표기 반별 구분** (commit `de80bc2`)
+이전: 다중 대상 시 `'N명/반 선택'` 단일 카운트
+신규: `'1반 전체 / 2반 3명'` 식 반별 분리
+- `_buildTargetName(targets)` 헬퍼 — `targets[].groupName` 기준 반별 분류
+- 표시 시점에 `t.targets` 보고 즉석 생성 → 기존 `'N명/반 선택'` 으로 저장된 데이터도 자동 새 표기
+- 신규 배정(mcq + 일반) 도 새 표기로 doc 저장 → 점진 일관화
+- 반 전체로 잡힌 그룹은 학생 카운트에서 중복 제거
+
+**6c) 시험관리 최근시험 표 — 시험 목록과 컬럼 통일** (commit `3243a04`)
+이전: 시험명 / 대상 / 문항 / 통과·응시·대상 / 평균 / 출제일 / 작업 (7컬럼)
+신규: **No / 시험명 / 대상 / 교재 / 문항수 / 출제일 / 통과·응시·대상 / 평균 / 작업** (9컬럼)
+- 유형 컬럼 X (각 시험관리 페이지가 이미 유형별)
+- 체크박스 X (시험관리는 행별 [🗑 삭제] 방식)
+- 출제일 `t.date` → `_fmtTestDateTime(t)` (YY-MM-DD HH:mm)
+- 대상 회색 텍스트 → badge-teal 배지
+- 진행상태(통과/응시/대상)·평균은 비동기 채움(`_tpLoadTestStats`) 그대로
+
+### 7) LexiAI 화이트라벨 깜빡임 제거 (4 commit)
+
+**증상**: 학원장이 로그아웃 후 재로그인할 때 / 학원장 앱 진입 시 LexiAI 로고·이름이 짧게 노출. 색상도 LexiAI 코랄로 돌아옴 → 흰 글씨 안 보임.
+
+**원인 3개**:
+1. 학원장 앱 헤더에 `LexiAI` 텍스트·이미지가 **HTML 직접 박힘** — Firestore branding fetch 전에 노출
+2. 학생앱 `onAuthStateChanged` 첫 호출 시 `appConfig/branding`(LexiAI 기본) 을 localStorage 에 **강제 캐시** → 학원장 학원 cache 가 LexiAI 로 덮임
+3. 비로그인 시 `_applyAcademyBranding({name:''})` 호출이 **헤더를 LexiAI 로 강제 갈아치움** → 인라인 FOUC script 가 모처럼 적용한 cache 가 다시 LexiAI 로 덮임. 색 프리셋(`applyPresetToCss`) 도 default 코랄로.
+
+**수정 (commit `d170f91`/`733a79f`/`09655d4`)**:
+- 학원장 앱 `<head>` 에 인라인 FOUC script 추가 — DOMContentLoaded 전 cache 읽어 `.header-logo img`·텍스트·title 즉시 적용
+- `_applyAdminBranding` / `_applyAcademyBranding` 끝에 `localStorage.setItem` 추가 — `lexiLogo192` / `lexiAppName` / **`lexiBrandPreset`**(색 프리셋 ID) 3 키 cache
+- 색 프리셋도 cache 적용 — `branding-presets.js` 가 인라인 script 보다 위에 로드되어 BRANDING_PRESETS·applyPresetToCss 즉시 사용 가능 (DOM 대기 X, CSS 변수 set 만)
+- 학생앱 `onAuthStateChanged` 의 LexiAI 기본 강제 cache 제거 + 비로그인 시 `_applyAcademyBranding` 호출 자체 제거 → cache 단일 진입점 (`_applyAcademyBranding`/`_applyAdminBranding` 만 set)
+
+**결과**: 학원장 첫 진입 후 cache 박힘 → 학생앱·학원장앱 양쪽 모두 첫 페인트부터 학원 로고+이름+색. 비로그인 학생앱 첫 방문은 그대로 LexiAI fallback (HTML default).
+
+---
+
+## 작업 규칙 추가 (2026-05-07 이어서)
+
+신규:
+- **페이지 ID 일치 필수** — 사이드바 `goPage('X')` / `<div id="page-X">` / `<div id="nav-X">` 셋이 같은 X 여야 함. 다른 이름 호출 시 빈 화면. 신규 페이지 추가 시 grep 으로 일관성 확인.
+- **localStorage cache 단일 진입점** — 같은 키를 여러 곳에서 set/clear 하면 한 곳이 set 한 직후 다른 곳이 덮어쓰는 무한 루프. 한 함수만 set/clear, 다른 곳은 read 만.
+- **헤더·title 등 HTML 박힌 brand 데이터는 인라인 FOUC script 로 cache 적용** — `<head>` 안 inline `<script>` 가 dependency(branding-presets.js 등) 보다 아래여야 즉시 사용 가능. DOMContentLoaded 안에서 DOM 갈아치움. 색 프리셋(CSS 변수) 은 DOM 대기 없이 즉시 적용 가능.
+- **billings 데이터 모델** — `studentName`/`totalAmount`/`paidAmount`/`status` 는 **doc 레벨**. items[] 는 청구 항목(수강료·교재비) 배열로 학생 정보 X. items[].paid 토글 시 doc.totalAmount/paidAmount/status 재계산해서 같이 updateDoc.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-07 이어서)
+- `public/admin/js/app.js`: ~12300줄 (+~300, 큰 달력 + 결제 모달 + 시험 통일)
+- `public/admin/index.html`: 변동 없음 (3열 → 2열 그리드, FOUC script 추가)
+- `public/admin/style.css`: +.bigcal-* 클래스 (~50줄)
+- `public/js/app.js`: 변동 적음 (cache set + FOUC 호출 제거)
+- `public/index.html`: FOUC script 색 프리셋 추가
+- 신규 진단: `scripts/diag/check-calendar-data.js`
+- SW 캐시: `kunsori-v322`
+
+## 진행률 갱신 (2026-05-07 이어서)
+- **학원장 대시보드 달력: ~95%** (큰 달력 + 결제·시험 통합 + 인라인 모달 + 항목 토글. 생일 카테고리는 보강 후보)
+- 화이트라벨 브랜딩: ~95% → **~98%** (FOUC 깜빡임 해결, 첫 페인트부터 학원 색·로고·이름)
+- 시험관리 운영: ~95% → **~98%** (학생별 카드 통일·대상 반별 표기·컬럼 통일)
+- 결제 v2: ~95% (변동 없음)
+- 멀티테넌시 인프라·한도·보안·AI 사용량: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-07 이어서 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **달력 생일 카테고리 추가** — `users.birth` 입력 강화 + 4번째 점 색 ([project_dashboard_calendar.md](memory/project_dashboard_calendar.md) 후속 보강)
+3. **v1.0 Polish 사이클** ([project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **AI 평가 실패율** (Phase B Cloud Function — 베타 운영 후)
+
+**완료 (이 세션 이어서, 2026-05-07)**:
+- ✅ 학원장 대시보드 큰 달력 통합 (P1~P5, 결제·시험·인라인 모달·항목 토글)
+- ✅ 결제 학생 이름 fix (billings doc 레벨) + partial 상태 색 분리
+- ✅ 상단 카드 fix (미납 → billings, 오늘 시험 → genTests)
+- ✅ 시험 목록·시험관리 학생별 카드 통일 + 대상 반별 표기 + 컬럼 통일
+- ✅ LexiAI 깜빡임 제거 (FOUC + 색 프리셋 캐시 + 비로그인 갈아치움 제거)
+- ✅ 페이지 ID 일치 + localStorage 단일 진입점 + billings 데이터 모델 작업 규칙 명문화
