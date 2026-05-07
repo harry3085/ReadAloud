@@ -174,17 +174,14 @@ function _applyAdminBranding(acData) {
       }
     });
   }
-  // 헤더 학원명 (옆에 표시되는 텍스트)
-  const acadName = acData.name || '';
-  if (acadName) {
-    const headerLogo = document.querySelector('.header-logo');
-    if (headerLogo) {
-      // 첫 번째 텍스트 노드(학원명) 만 교체 — 이미지는 보존
-      const textNode = Array.from(headerLogo.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
-      if (textNode) textNode.textContent = ' ' + acadName;
-    }
-    document.title = acadName + ' 관리자';
+  // 헤더 학원명 — academy.name 우선. 비어있으면 LexiAI defaultAppName 폴백
+  const acadName = acData.name || lexi.defaultAppName || 'LexiAI';
+  const headerLogo = document.querySelector('.header-logo');
+  if (headerLogo) {
+    const textNode = Array.from(headerLogo.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+    if (textNode) textNode.textContent = ' ' + acadName;
   }
+  document.title = acadName + ' 관리자';
 }
 
 onAuthStateChanged(auth, async user => {

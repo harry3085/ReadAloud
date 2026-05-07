@@ -29,8 +29,8 @@ function initAdmin() {
   initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
-const DEFAULT_NAME = '큰소리 영어';
-const DEFAULT_SHORT = '큰소리 영어';
+const DEFAULT_NAME = 'LexiAI';
+const DEFAULT_SHORT = 'LexiAI';
 const DEFAULT_PRESET = BRANDING_PRESETS[DEFAULT_PRESET_ID];
 
 module.exports = async (req, res) => {
@@ -59,6 +59,10 @@ module.exports = async (req, res) => {
     if (lexi.defaultPresetId && BRANDING_PRESETS[lexi.defaultPresetId]) preset = BRANDING_PRESETS[lexi.defaultPresetId];
     if (lexi.defaultLogo192Url) logo192 = lexi.defaultLogo192Url;
     if (lexi.defaultLogo512Url) logo512 = lexi.defaultLogo512Url;
+    if (lexi.defaultAppName) {
+      name = lexi.defaultAppName;
+      shortName = name.length > 12 ? name.slice(0, 12) : name;
+    }
 
     if (academyId) {
       try {

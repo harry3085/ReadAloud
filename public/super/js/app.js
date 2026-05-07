@@ -3222,6 +3222,7 @@ window.loadLexiAIBranding = async () => {
       defaultLogo512Url: d.defaultLogo512Url || '',
       defaultPresetId: d.defaultPresetId || 'coral',
       defaultCatchphrase: d.defaultCatchphrase || '',
+      defaultAppName: d.defaultAppName || 'LexiAI',
     };
     _lexiBrandingDirty = false;
     _renderLexiAIBranding();
@@ -3268,7 +3269,7 @@ function _renderLexiAIBranding() {
         <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">📱 미리보기 (학생 로그인 화면)</div>
         <div style="background:${currentPreset.loginGradient};color:white;padding:36px 20px;text-align:center;">
           <img src="${previewLogo}" alt="" style="width:80px;height:80px;border-radius:18px;background:rgba(255,255,255,0.2);padding:6px;object-fit:contain;margin-bottom:10px;">
-          <div style="font-size:24px;font-weight:800;margin-bottom:4px;">큰소리 영어</div>
+          <div style="font-size:24px;font-weight:800;margin-bottom:4px;">${esc(s.defaultAppName || 'LexiAI')}</div>
           <div style="font-size:13px;opacity:0.92;">${esc(previewSub)}</div>
         </div>
         <div style="padding:18px;background:white;">
@@ -3312,6 +3313,16 @@ function _renderLexiAIBranding() {
           </div>
         </div>
 
+        <!-- 앱 기본 이름 -->
+        <div class="card" style="padding:14px 18px;">
+          <div style="font-weight:700;margin-bottom:6px;">🏷️ 기본 앱 이름 <span style="font-weight:400;color:#999;font-size:12px;">(로그인 전 / 미식별 학원에서 표시)</span></div>
+          <input type="text" id="lexiAppName" maxlength="20" value="${esc(s.defaultAppName || 'LexiAI')}"
+            placeholder="LexiAI"
+            oninput="_lexiOnAppNameInput(this.value)"
+            style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
+          <div style="font-size:11px;color:#999;margin-top:4px;">학생이 로그인하면 <b>학원 이름</b>으로 자동 교체. 로그인 전 화면 + Free 학원 미설정 상태에서만 노출.</div>
+        </div>
+
         <!-- 캐치프레이즈 -->
         <div class="card" style="padding:14px 18px;">
           <div style="font-weight:700;margin-bottom:6px;">✨ LexiAI 기본 캐치프레이즈 <span style="font-weight:400;color:#999;font-size:12px;">(최대 40자)</span></div>
@@ -3345,6 +3356,13 @@ window._lexiOnCatchphraseInput = (val) => {
   _lexiBrandingDirty = true;
   const cnt = document.getElementById('lexiCpCount');
   if (cnt) cnt.textContent = val.length;
+};
+
+window._lexiOnAppNameInput = (val) => {
+  if (!_lexiBranding) return;
+  _lexiBranding.defaultAppName = val;
+  _lexiBrandingDirty = true;
+  // 미리보기 즉시 갱신은 무거우니 [💾 저장] 시 재렌더로 충분
 };
 
 window._lexiOnLogoFile = async (event) => {
@@ -3410,6 +3428,7 @@ window._lexiSave = async () => {
     await setDoc(doc(db, 'appConfig', 'branding'), {
       defaultPresetId: _lexiBranding.defaultPresetId,
       defaultCatchphrase: _lexiBranding.defaultCatchphrase,
+      defaultAppName: (_lexiBranding.defaultAppName || '').trim() || 'LexiAI',
       updatedAt: serverTimestamp(),
       updatedBy: _currentUser.uid,
     }, { merge: true });

@@ -1,6 +1,6 @@
 {
-  "name": "큰소리 영어",
-  "short_name": "큰소리 영어",
+  "name": "LexiAI",
+  "short_name": "LexiAI",
   "description": "큰소리로 말하는 영어학습",
   "start_url": "/",
   "display": "standalone",

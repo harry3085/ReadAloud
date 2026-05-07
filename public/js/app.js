@@ -153,12 +153,10 @@ function _applyAcademyBranding(academy) {
     if (appleIcon) appleIcon.href = logoUrl;
   }
 
-  // 학원명 (Free 도 자기 학원 이름 표시 — 학원명은 브랜딩과 무관한 식별자)
-  const acadName = academy.name || '';
-  if (acadName) {
-    document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
-    document.title = acadName;
-  }
+  // 학원명 — academy.name 우선. 비어있으면 LexiAI defaultAppName 폴백 ('LexiAI' 최종)
+  const acadName = academy.name || lexi.defaultAppName || 'LexiAI';
+  document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
+  document.title = acadName;
 
   // 캐치프레이즈 (Free 는 LexiAI 기본 / Lite+ 는 학원 자체 우선 → LexiAI fallback)
   const cp = isFree
