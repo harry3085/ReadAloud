@@ -1057,7 +1057,7 @@ function _fbRenderStep(){
         html += `<span onclick="fbFocusBlank(${i})" style="display:inline-flex;gap:3px;vertical-align:middle;margin:0 4px;cursor:text;">`;
         for(let k = 0; k < letterCount; k++){
           const ch = curVal[k] || '';
-          html += `<span id="fb-box-${i}-${k}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:28px;border:2px solid #ddd;background:white;color:#D85A30;border-radius:5px;font-size:17px;font-weight:700;line-height:1;">${esc(ch)}</span>`;
+          html += `<span id="fb-box-${i}-${k}" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:28px;border:2px solid #ddd;background:white;color:var(--c-brand-dark);border-radius:5px;font-size:17px;font-weight:700;line-height:1;">${esc(ch)}</span>`;
         }
         html += `</span>`;
         // 숨은 input (단어시험 패턴)
@@ -1223,11 +1223,11 @@ function _fbRefreshBoxesForBlank(blankIdx){
     const ch = curVal[k] || '';
     box.textContent = ch;
     if(ch){
-      box.style.borderColor = '#E8714A';
+      box.style.borderColor = 'var(--c-brand)';
       box.style.background = '#FFF4ED';
-      box.style.color = '#D85A30';
+      box.style.color = 'var(--c-brand-dark)';
     } else if(isActiveBlank && k === curVal.length){
-      box.style.borderColor = '#E8714A';
+      box.style.borderColor = 'var(--c-brand)';
       box.style.background = 'white';
     } else {
       box.style.borderColor = '#ddd';
@@ -2116,7 +2116,7 @@ function _rv2Render() {
 
   screen.innerHTML = `
     <!-- 코랄 히어로 헤더 + 숙제 내용 -->
-    <div style="background:linear-gradient(150deg,#E8714A,#D85A30);padding:48px 20px 28px;flex-shrink:0;">
+    <div style="background:var(--brand-header-gradient);padding:48px 20px 28px;flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="rv2Quit()">‹</button>
         <span style="font-size:16px;font-weight:800;color:white;">🤖 AI 녹음숙제</span>
@@ -2150,14 +2150,14 @@ function _rv2RenderStepBar() {
   const N = _rv2.totalRounds;
   const circleStyle = (i) => {
     if (_rv2.savedRounds[i] != null) return 'background:#059669;color:white;';
-    if (i === _rv2.currentRound) return 'background:#E8714A;color:white;';
-    return 'background:#FFE0D4;color:#E8714A;';
+    if (i === _rv2.currentRound) return 'background:var(--c-brand);color:white;';
+    return 'background:var(--c-brand-cream);color:var(--c-brand);';
   };
   const content = (i) => _rv2.savedRounds[i] != null ? '✓' : (i+1);
   const lineFill = (i) => _rv2.savedRounds[i] != null ? 100 : 0;
   let html = '';
   for (let i = 0; i < N; i++) {
-    if (i > 0) html += `<div style="flex:1;height:3px;background:#FFE0D4;border-radius:2px;"><div style="width:${lineFill(i-1)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>`;
+    if (i > 0) html += `<div style="flex:1;height:3px;background:var(--c-brand-cream);border-radius:2px;"><div style="width:${lineFill(i-1)}%;height:3px;background:#059669;border-radius:2px;transition:width .4s;"></div></div>`;
     html += `<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${circleStyle(i)}">${content(i)}</div>`;
   }
   return html;
@@ -2176,7 +2176,7 @@ function _rv2RenderRoundCard(i, cur) {
   if (saved)           statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#d1fae5;color:#059669;font-weight:700;">✓ 저장됨</span>';
   else if (isRecording) statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#fee2e2;color:#DC2626;font-weight:700;">● 녹음 중</span>';
   else if (hasTake)     statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#FFF5E5;color:#BA7517;font-weight:700;">녹음 완료</span>';
-  else if (isCurrent)   statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#FFE0D4;color:#E8714A;font-weight:700;">진행 중</span>';
+  else if (isCurrent)   statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:var(--c-brand-cream);color:var(--c-brand);font-weight:700;">진행 중</span>';
   else                  statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>';
 
   // 오디오 영역
@@ -2208,7 +2208,7 @@ function _rv2RenderRoundCard(i, cur) {
   } else if (isCurrent) {
     buttonsHtml = `
       <div style="display:flex;gap:8px;">
-        <button onclick="rv2StartRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#E8714A;color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
+        <button onclick="rv2StartRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:var(--c-brand);color:white;font-size:13px;font-weight:700;cursor:pointer;">🎙 녹음</button>
       </div>
     `;
   } else {
@@ -2889,7 +2889,7 @@ function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed
       ` : ''}
 
       <div style="display:flex;gap:10px;margin-top:16px;">
-        ${!passed ? `<button onclick="rv2RetryLastRound()" style="flex:1;padding:14px;background:#E8714A;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🎙 마지막 녹음 다시</button>` : ''}
+        ${!passed ? `<button onclick="rv2RetryLastRound()" style="flex:1;padding:14px;background:var(--c-brand);border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🎙 마지막 녹음 다시</button>` : ''}
         <button onclick="goHome()" style="flex:1;padding:14px;background:${passed ? '#8B5CF6' : '#f5f5f5'};border:none;border-radius:12px;font-size:14px;font-weight:700;color:${passed ? 'white' : 'var(--text)'};cursor:pointer;">홈으로</button>
       </div>
     </div>
@@ -3562,7 +3562,7 @@ function _vqSpkRenderArea() {
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
   const result = document.getElementById('vqSpkResult');
-  if (btn) { btn.style.background = '#E8714A'; btn.disabled = !!ans._locked; btn.textContent = '🎤'; }
+  if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = !!ans._locked; btn.textContent = '🎤'; }
   if (status) status.textContent = ans._locked ? '✓ 채점 완료' : '마이크 버튼을 누르고 영어로 말해보세요';
   if (attemptEl) attemptEl.textContent = '';
   if (result) result.style.display = ans._locked ? 'block' : 'none';
@@ -3604,7 +3604,7 @@ window.vqSpkStart = () => {
       const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
       if (s.spk.attempt < 2) {
         // 1차 실패 — 재시도 안내
-        if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+        if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
         if (status) status.textContent = `❗ "${heard}" 로 들렸어요. 다시 시도하세요.`;
       } else {
         // 2차 실패 → 오답 확정
@@ -3615,7 +3615,7 @@ window.vqSpkStart = () => {
 
   rec.onerror = (e) => {
     console.warn('[vqSpk]', e.error);
-    if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+    if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다. 브라우저 설정에서 허용해주세요.';
       _vqSpkFinalize(false, '');
@@ -3634,11 +3634,11 @@ window.vqSpkStart = () => {
   };
 
   rec.onend = () => {
-    if (btn && !ans._locked) { btn.style.background = '#E8714A'; btn.disabled = false; }
+    if (btn && !ans._locked) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
   };
 
   try { rec.start(); } catch(e) {
-    if (btn) { btn.style.background = '#E8714A'; btn.disabled = false; }
+    if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
   }
 };
