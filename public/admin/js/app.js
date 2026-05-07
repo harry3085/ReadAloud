@@ -3702,11 +3702,11 @@ async function loadMessages(){
     const renderDraft=d=>{
       const n=d.data();
       const targetLabel = labelOf(n);
-      return `<div style="width:100%;box-sizing:border-box;border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;overflow:hidden;"
+      return `<div style="width:100%;max-width:100%;box-sizing:border-box;border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;overflow:hidden;"
         onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
         onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
-          <div style="flex:1;min-width:0;overflow:hidden;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
+          <div style="flex:1 1 0;min-width:0;overflow:hidden;">
             <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
             ${_bodyPreview(n.body)}
             <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
@@ -3720,12 +3720,12 @@ async function loadMessages(){
       const n=d.data();
       const targetLabel = labelOf(n);
       const isOpen = _msgExpandedSentId === d.id;
-      return `<div id="msgSentWrap-${d.id}">
+      return `<div id="msgSentWrap-${d.id}" style="width:100%;max-width:100%;overflow:hidden;">
         <div id="msgSentRow-${d.id}" style="width:100%;box-sizing:border-box;border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};overflow:hidden;"
           onclick="toggleSentDetail('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
           onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
-            <div style="flex:1;min-width:0;overflow:hidden;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
+            <div style="flex:1 1 0;min-width:0;overflow:hidden;">
               <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
               ${_bodyPreview(n.body)}
               <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
@@ -3736,7 +3736,7 @@ async function loadMessages(){
             </div>
           </div>
         </div>
-        <div id="msgSentInline-${d.id}"></div>
+        <div id="msgSentInline-${d.id}" style="width:100%;max-width:100%;overflow:hidden;"></div>
       </div>`;
     };
 
