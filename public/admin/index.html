@@ -242,9 +242,9 @@
       </div>
     </div>
 
-    <!-- 3열 그리드 -->
+    <!-- 2열 그리드: 좌측(공지·AI) / 우측(큰 달력) -->
     <div class="dash-grid-3">
-      <!-- 공지 + 달력 -->
+      <!-- 좌측: 공지 + AI 사용량 -->
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div class="card">
           <div class="card-title">
@@ -261,35 +261,34 @@
             로딩 중...
           </div>
         </div>
-        <div class="card">
-          <div class="cal-header">
-            <button class="cal-nav" onclick="changeMonth(-1)">‹</button>
-            <div class="cal-title" id="calTitle"></div>
-            <button class="cal-nav" onclick="changeMonth(1)">›</button>
-          </div>
-          <div class="cal-grid" id="calGrid"></div>
-        </div>
       </div>
 
-      <!-- 최근 시험 결과 -->
+      <!-- 우측: 큰 달력 + 사이드 패널 -->
       <div class="card">
-        <div class="card-title">
-          📊 최근 시험 결과
-          <span class="more" onclick="goPage('score-report')">더보기 ›</span>
+        <div class="bigcal-header">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="bigcal-title" id="bigcalTitle">로딩 중...</div>
+            <div class="bigcal-nav">
+              <button onclick="bigcalChangeMonth(-1)" title="이전 달">‹</button>
+              <button class="bigcal-today-btn" onclick="bigcalGoToday()">오늘</button>
+              <button onclick="bigcalChangeMonth(1)" title="다음 달">›</button>
+            </div>
+          </div>
+          <div class="bigcal-legend">
+            <span class="bigcal-legend-item"><span class="bigcal-legend-dot" style="background:#dc2626;"></span>미납</span>
+            <span class="bigcal-legend-item"><span class="bigcal-legend-dot" style="background:#059669;"></span>납부</span>
+            <span class="bigcal-legend-item"><span class="bigcal-legend-dot" style="background:#2563eb;"></span>시험</span>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>No</th><th>반</th><th>이름</th><th>유형</th><th>교재명</th><th>점수</th><th>일시</th></tr></thead>
-            <tbody id="dashScores"><tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- 재원생 현황 -->
-      <div style="display:flex;flex-direction:column;gap:16px;">
-        <div class="card">
-          <div class="card-title">👥 재원생 현황<span class="more" onclick="goPage('student-active')">더보기 ›</span></div>
-          <div id="dashStudents"><div class="loading"><div class="spinner"></div></div></div>
+        <div class="bigcal-wrap">
+          <div class="bigcal-main">
+            <div class="bigcal-grid" id="bigcalGrid">
+              <div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--gray);">로딩 중...</div>
+            </div>
+          </div>
+          <div class="bigcal-side" id="bigcalSide">
+            <div class="bigcal-side-empty">날짜를 선택하세요</div>
+          </div>
         </div>
       </div>
     </div>

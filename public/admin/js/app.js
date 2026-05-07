@@ -306,12 +306,269 @@ function renderCalendar(){
   grid.innerHTML = html;
 }
 
+// ── 큰 달력 (대시보드 통합 일정) ─────────────────────
+// 결제(billings) + 시험(genTests) 월별 통합 뷰. 학원별 academyId 필터.
+// billings: yearMonth 필드 (기존 인덱스 academyId+yearMonth 활용)
+// genTests: academyId+createdAt 기존 인덱스 → limit 300 fetch 후 클라에서 date 필터
+const _bigcalState = {
+  cur: { year: new Date().getFullYear(), month: new Date().getMonth() },  // 0-indexed month
+  events: {},        // {'YYYY-MM-DD': { billings:[...], tests:[...] }}
+  selected: null,    // 'YYYY-MM-DD'
+  loading: false,
+};
+
+function _bigcalYM(y, m){ return `${y}-${String(m+1).padStart(2,'0')}`; }
+function _bigcalDateKey(y, m, d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+async function _bigcalLoadEvents(year, month){
+  const academyId = window.MY_ACADEMY_ID;
+  if (!academyId) return {};
+  const ym = _bigcalYM(year, month);
+  const lastDay = new Date(year, month+1, 0).getDate();
+  const monthStart = `${ym}-01`;
+  const monthEnd = `${ym}-${String(lastDay).padStart(2,'0')}`;
+  const events = {};
+  for (let d=1; d<=lastDay; d++) events[_bigcalDateKey(year, month, d)] = { billings:[], tests:[] };
+
+  try {
+    // 결제 — billings.yearMonth 기준 (이번 달 청구서)
+    const bSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId','==', academyId),
+      where('yearMonth','==', ym)
+    ));
+    bSnap.forEach(docSnap => {
+      const b = docSnap.data();
+      const due = b.dueDate?.toDate?.();
+      if (!due) return;
+      const key = _bigcalDateKey(due.getFullYear(), due.getMonth(), due.getDate());
+      if (!events[key]) events[key] = { billings:[], tests:[] };
+      (b.items || []).forEach(it => {
+        events[key].billings.push({
+          billingId: docSnap.id,
+          userId: it.userId || it.uid || '',
+          userName: it.userName || it.studentName || it.name || '-',
+          amount: it.amount || 0,
+          paid: !!it.paid,
+          channel: it.channel || '',
+        });
+      });
+    });
+
+    // 시험 — genTests.date 문자열 (academyId+createdAt 기존 인덱스 후 클라 필터)
+    const tSnap = await getDocs(query(
+      collection(db, 'genTests'),
+      where('academyId','==', academyId),
+      orderBy('createdAt','desc'),
+      limit(300)
+    ));
+    tSnap.forEach(docSnap => {
+      const t = docSnap.data();
+      const date = t.date;
+      if (!date || date < monthStart || date > monthEnd) return;
+      if (!events[date]) events[date] = { billings:[], tests:[] };
+      events[date].tests.push({
+        id: docSnap.id,
+        name: t.name || '-',
+        mode: t.mode || t.testMode || 'vocab',
+        speaking: !!(t.vocabOptions?.format === 'speaking'),
+      });
+    });
+  } catch (e) {
+    console.warn('[bigcal] load events 실패:', e);
+  }
+  return events;
+}
+
+// 그리드 + 사이드 패널 렌더
+function _bigcalRender(){
+  const { year, month } = _bigcalState.cur;
+  const titleEl = document.getElementById('bigcalTitle');
+  if (titleEl) titleEl.textContent = `${year}년 ${month+1}월`;
+  const grid = document.getElementById('bigcalGrid');
+  if (!grid) return;
+
+  const days = ['일','월','화','수','목','금','토'];
+  const today = new Date();
+  const todayKey = _bigcalDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+  const first = new Date(year, month, 1);
+  const lastDay = new Date(year, month+1, 0).getDate();
+  const startDow = first.getDay();
+  // 앞 여백 = 이전 달 말일들
+  const prevLastDay = new Date(year, month, 0).getDate();
+  const prevMonth = month === 0 ? 11 : month-1;
+  const prevYear = month === 0 ? year-1 : year;
+  // 뒤 여백 = 다음 달 1일들 (총 6주 = 42칸 채우기)
+  const totalCells = Math.ceil((startDow + lastDay) / 7) * 7;
+  const tailCount = totalCells - startDow - lastDay;
+  const nextMonth = month === 11 ? 0 : month+1;
+  const nextYear = month === 11 ? year+1 : year;
+
+  let html = days.map((d,i) => `<div class="bigcal-day-label ${i===0?'sun':i===6?'sat':''}">${d}</div>`).join('');
+
+  // 이전 달
+  for (let i=startDow-1; i>=0; i--){
+    const d = prevLastDay - i;
+    html += `<div class="bigcal-cell other-month"><div class="bigcal-num">${d}</div></div>`;
+  }
+  // 이번 달
+  for (let d=1; d<=lastDay; d++){
+    const key = _bigcalDateKey(year, month, d);
+    const dow = new Date(year, month, d).getDay();
+    const isToday = key === todayKey;
+    const isSelected = key === _bigcalState.selected;
+    const ev = _bigcalState.events[key] || { billings:[], tests:[] };
+    const cls = ['bigcal-cell',
+      isToday ? 'today' : '',
+      isSelected ? 'selected' : '',
+      dow===0 ? 'sun' : dow===6 ? 'sat' : ''
+    ].filter(Boolean).join(' ');
+
+    const billItems = ev.billings.map(b => {
+      const cls = b.paid ? 'evt-billing-paid' : 'evt-billing-unpaid';
+      const icon = b.paid ? '✅' : '💳';
+      return `<div class="bigcal-event ${cls}" title="${esc(b.userName)} ${b.amount.toLocaleString()}원 (${b.paid?'납부':'미납'})">${icon} ${esc(b.userName)}</div>`;
+    });
+    const testItems = ev.tests.map(t => {
+      const icon = t.speaking ? '🎤' : '📝';
+      return `<div class="bigcal-event evt-test" title="${esc(t.name)}">${icon} ${esc(t.name)}</div>`;
+    });
+    const all = [...billItems, ...testItems];
+    const MAX_SHOW = 3;
+    const shown = all.slice(0, MAX_SHOW).join('');
+    const moreCount = all.length - MAX_SHOW;
+    const more = moreCount > 0 ? `<div class="bigcal-event-more">+${moreCount}건</div>` : '';
+    html += `<div class="${cls}" data-date="${key}" onclick="_bigcalSelectDate('${key}')">
+      <div class="bigcal-num">${d}</div>
+      <div class="bigcal-events">${shown}${more}</div>
+    </div>`;
+  }
+  // 다음 달
+  for (let d=1; d<=tailCount; d++){
+    html += `<div class="bigcal-cell other-month"><div class="bigcal-num">${d}</div></div>`;
+  }
+  grid.innerHTML = html;
+
+  _bigcalRenderSide();
+}
+
+// 사이드 패널 렌더
+function _bigcalRenderSide(){
+  const side = document.getElementById('bigcalSide');
+  if (!side) return;
+  const sel = _bigcalState.selected;
+  if (!sel){
+    side.innerHTML = '<div class="bigcal-side-empty">날짜를 선택하세요</div>';
+    return;
+  }
+  const ev = _bigcalState.events[sel] || { billings:[], tests:[] };
+  const [y,m,d] = sel.split('-').map(Number);
+  const dow = ['일','월','화','수','목','금','토'][new Date(y, m-1, d).getDay()];
+  const dateLabel = `${m}월 ${d}일 (${dow})`;
+
+  const totalUnpaid = ev.billings.filter(b => !b.paid).reduce((s,b) => s+(b.amount||0), 0);
+  const totalPaid = ev.billings.filter(b => b.paid).reduce((s,b) => s+(b.amount||0), 0);
+  const billHeader = ev.billings.length
+    ? `💳 결제 ${ev.billings.length}건 ${totalUnpaid > 0 ? `<span style="color:#dc2626;">미납 ${totalUnpaid.toLocaleString()}원</span>` : ''}${totalPaid > 0 ? ` <span style="color:#059669;">납부 ${totalPaid.toLocaleString()}원</span>` : ''}`
+    : '';
+
+  let html = `<div class="bigcal-side-date">${dateLabel}</div>`;
+
+  if (ev.billings.length){
+    const rows = ev.billings.map(b => {
+      const status = b.paid
+        ? '<span class="badge badge-green">납부</span>'
+        : '<span class="badge badge-red">미납</span>';
+      return `<div class="bigcal-side-row" onclick="goPage('billing')">
+        <div>
+          <div class="bigcal-side-name">${esc(b.userName)}</div>
+          <div class="bigcal-side-meta">${b.amount.toLocaleString()}원${b.channel ? ' · '+esc(b.channel) : ''}</div>
+        </div>
+        ${status}
+      </div>`;
+    }).join('');
+    html += `<div>
+      <div class="bigcal-side-section-title">${billHeader}</div>
+      <div class="bigcal-side-list">${rows}</div>
+    </div>`;
+  }
+
+  if (ev.tests.length){
+    const rows = ev.tests.map(t => {
+      const badge = _unifiedTypeBadge(t.mode);
+      const speak = t.speaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : '';
+      return `<div class="bigcal-side-row" onclick="goPage('test-list')">
+        <div>
+          <div class="bigcal-side-name">${esc(t.name)}${speak}</div>
+          <div class="bigcal-side-meta">${badge}</div>
+        </div>
+      </div>`;
+    }).join('');
+    html += `<div>
+      <div class="bigcal-side-section-title">📝 시험 ${ev.tests.length}건</div>
+      <div class="bigcal-side-list">${rows}</div>
+    </div>`;
+  }
+
+  if (!ev.billings.length && !ev.tests.length){
+    html += '<div class="bigcal-side-empty">이 날 일정이 없습니다</div>';
+  }
+
+  side.innerHTML = html;
+}
+
+// 일자 선택
+window._bigcalSelectDate = (key) => {
+  _bigcalState.selected = (_bigcalState.selected === key) ? null : key;
+  _bigcalRender();
+};
+
+// 월 이동
+window.bigcalChangeMonth = async (delta) => {
+  const { year, month } = _bigcalState.cur;
+  let newY = year, newM = month + delta;
+  if (newM > 11){ newM = 0; newY++; }
+  if (newM < 0){ newM = 11; newY--; }
+  _bigcalState.cur = { year: newY, month: newM };
+  _bigcalState.selected = null;
+  _bigcalState.events = {};
+  _bigcalRender();
+  _bigcalState.events = await _bigcalLoadEvents(newY, newM);
+  _bigcalRender();
+};
+
+// 오늘 버튼
+window.bigcalGoToday = async () => {
+  const today = new Date();
+  const y = today.getFullYear(), m = today.getMonth();
+  const todayKey = _bigcalDateKey(y, m, today.getDate());
+  const sameMonth = (_bigcalState.cur.year === y && _bigcalState.cur.month === m);
+  _bigcalState.cur = { year: y, month: m };
+  _bigcalState.selected = todayKey;
+  if (!sameMonth){
+    _bigcalState.events = {};
+    _bigcalRender();
+    _bigcalState.events = await _bigcalLoadEvents(y, m);
+  }
+  _bigcalRender();
+};
+
+// 진입
+async function bigcalInit(){
+  const today = new Date();
+  const y = today.getFullYear(), m = today.getMonth();
+  _bigcalState.cur = { year: y, month: m };
+  _bigcalState.selected = _bigcalDateKey(y, m, today.getDate());
+  _bigcalRender();  // 빈 상태로 그리드 먼저
+  _bigcalState.events = await _bigcalLoadEvents(y, m);
+  _bigcalRender();  // 이벤트 채워서 재렌더
+}
+
 // ── 대시보드 ──────────────────────────────────────────
 async function initDashboard(){
   const now = new Date();
   document.getElementById('dashDate').textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
-  renderCalendar();
-  await Promise.all([loadDashStats(), loadDashNotices(), loadDashScores(), loadDashStudents(), loadApiUsage()]);
+  await Promise.all([loadDashStats(), loadDashNotices(), loadApiUsage(), bigcalInit()]);
 }
 window.refreshDashboard = initDashboard;
 
