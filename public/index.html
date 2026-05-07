@@ -27,12 +27,18 @@
       const link = document.getElementById('manifest-link');
       if (link) link.href = `/api/manifest?academy=${encodeURIComponent(academyId)}`;
     };
-    // FOUC 방지 — DOMContentLoaded 전에 localStorage 캐시된 LexiAI 로고/이름 즉시 적용
-    // (Firestore fetch 는 onAuthStateChanged 안에서 진행되어 지연됨 → 첫 페인트엔 큰소리 영어 로고 보임)
+    // FOUC 방지 — DOMContentLoaded 전에 localStorage 캐시된 학원 로고/이름·색 즉시 적용
+    // (Firestore fetch 는 onAuthStateChanged 안에서 진행되어 지연됨 → 첫 페인트엔 default 보임)
     (function () {
       try {
         const cachedLogo = localStorage.getItem('lexiLogo192');
         const cachedName = localStorage.getItem('lexiAppName');
+        const cachedPreset = localStorage.getItem('lexiBrandPreset');
+        // 색 프리셋은 CSS 변수 set 이라 DOM 필요 X — 즉시 적용 (첫 페인트부터 학원 색)
+        if (cachedPreset && window.BRANDING_PRESETS && window.applyPresetToCss) {
+          const preset = window.BRANDING_PRESETS[cachedPreset];
+          if (preset) window.applyPresetToCss(preset);
+        }
         if (cachedLogo || cachedName) {
           document.addEventListener('DOMContentLoaded', () => {
             if (cachedLogo) {

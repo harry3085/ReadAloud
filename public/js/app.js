@@ -170,11 +170,12 @@ function _applyAcademyBranding(academy) {
   window.CURRENT_BRANDING = { academyName: acadName, preset, logoUrl, catchphrase: cp, planId };
 
   // FOUC 방지 캐시 — 학원 자체 브랜딩으로 LexiAI 기본 캐시 덮어쓰기
-  // (학생앱·학원장앱 양쪽에서 다음 진입 시 자기 학원 로고/이름이 즉시 표시되도록)
+  // (학생앱·학원장앱 양쪽에서 다음 진입 시 자기 학원 로고/이름·색이 즉시 표시되도록)
   try {
     if (academy.name) {  // 로그인된 사용자가 학원 정보 받은 시점에만 set
       if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);
       if (acadName) localStorage.setItem('lexiAppName', acadName);
+      if (presetId) localStorage.setItem('lexiBrandPreset', presetId);
     }
   } catch (_) {}
 }

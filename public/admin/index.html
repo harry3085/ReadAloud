@@ -57,12 +57,18 @@
       if (btn) btn.style.display = 'none';
     }
   });
-  // FOUC 방지 — Firestore branding fetch 전에 캐시된 학원 로고/이름 즉시 적용
-  // (학생 앱과 동일 키 lexiLogo192 / lexiAppName 공유)
+  // FOUC 방지 — Firestore branding fetch 전에 캐시된 학원 로고/이름·색 즉시 적용
+  // (학생 앱과 동일 키 lexiLogo192 / lexiAppName / lexiBrandPreset 공유)
   (function () {
     try {
       const cachedLogo = localStorage.getItem('lexiLogo192');
       const cachedName = localStorage.getItem('lexiAppName');
+      const cachedPreset = localStorage.getItem('lexiBrandPreset');
+      // 색 프리셋은 CSS 변수 set 이라 즉시 적용 (DOM 대기 X)
+      if (cachedPreset && window.BRANDING_PRESETS && window.applyPresetToCss) {
+        const preset = window.BRANDING_PRESETS[cachedPreset];
+        if (preset) window.applyPresetToCss(preset);
+      }
       if (cachedLogo || cachedName) {
         document.addEventListener('DOMContentLoaded', () => {
           if (cachedLogo) {

@@ -188,6 +188,7 @@ function _applyAdminBranding(acData) {
   try {
     if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);
     if (acadName) localStorage.setItem('lexiAppName', acadName);
+    if (presetId) localStorage.setItem('lexiBrandPreset', presetId);
   } catch (_) {}
 }
 
