@@ -961,8 +961,12 @@ async function loadDashStats(){
     document.getElementById('statActive').textContent = active;
     document.getElementById('statPause').textContent = pause;
 
-    const paySnap = await getDocs(query(collection(db,'payments'),where('academyId','==',window.MY_ACADEMY_ID),where('status','==','unpaid')));
-    document.getElementById('statUnpaid').textContent = paySnap.size;
+    // 미납 = 이번 달 billings 중 status !== 'paid' (unpaid + partial)
+    const ym = _ymdKST().slice(0,7);
+    const billSnap = await getDocs(query(collection(db,'billings'),where('academyId','==',window.MY_ACADEMY_ID),where('yearMonth','==',ym)));
+    let unpaidCnt = 0;
+    billSnap.forEach(d => { if ((d.data().status || 'unpaid') !== 'paid') unpaidCnt++; });
+    document.getElementById('statUnpaid').textContent = unpaidCnt;
 
     const today = _ymdKST();
     const testSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
