@@ -548,21 +548,28 @@ window._bigcalShowBillingDetail = async (billingId) => {
       ? '<div style="text-align:center;color:var(--gray);padding:20px;font-size:12px;">항목이 없습니다.</div>'
       : items.map(it => {
           const typeLabel = _BIGCAL_TYPE_LABELS[it.type] || it.type || '-';
-          const itemBadge = it.paid
-            ? '<span class="badge badge-green" style="font-size:10px;">납부</span>'
-            : '<span class="badge badge-red" style="font-size:10px;">미납</span>';
+          const itemToggle = `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;font-weight:700;color:${it.paid?'#059669':'#dc2626'};user-select:none;">
+            <input type="checkbox" ${it.paid?'checked':''} onchange="_bigcalToggleItemPaid('${billingId}','${it.itemId}',this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#059669;">
+            ${it.paid?'납부':'미납'}
+          </label>`;
           const ch = it.channel === 'tuition' ? '학원비' : it.channel === 'materials' ? '교재비' : esc(it.channel||'-');
-          return `<div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          return `<div style="padding:10px 12px;background:${it.paid?'#f0fdf4':'#fafafa'};border:1px solid ${it.paid?'#bbf7d0':'var(--border)'};border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <div style="min-width:0;">
               <div style="font-size:13px;font-weight:600;color:var(--text);">${esc(it.label || typeLabel)}</div>
               <div style="font-size:11px;color:var(--gray);margin-top:2px;">${typeLabel} · ${ch}${it.memo ? ' · '+esc(it.memo) : ''}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
               <div style="font-size:13px;font-weight:700;color:var(--text);">${(it.amount||0).toLocaleString()}원</div>
-              <div style="margin-top:2px;">${itemBadge}</div>
+              <div style="margin-top:4px;">${itemToggle}</div>
             </div>
           </div>`;
         }).join('');
+
+    // 일괄 처리 버튼 (모든 항목 토글)
+    const allPaid = items.length > 0 && items.every(it => it.paid);
+    const bulkBtn = items.length === 0 ? '' : (allPaid
+      ? `<button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="_bigcalToggleAllPaid('${billingId}',false)">↺ 전체 미납 되돌리기</button>`
+      : `<button class="btn btn-primary" style="font-size:12px;padding:5px 10px;" onclick="_bigcalToggleAllPaid('${billingId}',true)">✓ 전체 납부 처리</button>`);
 
     const summaryHtml = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
       <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
@@ -589,7 +596,10 @@ window._bigcalShowBillingDetail = async (billingId) => {
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         ${summaryHtml}
-        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">📋 항목 (${items.length})</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">📋 항목 (${items.length})</div>
+          ${bulkBtn}
+        </div>
         ${itemsHtml}
         ${b.memo ? `<div style="margin-top:12px;padding:10px;background:#fef9c3;border-radius:6px;font-size:12px;color:var(--text);"><strong>메모:</strong> ${esc(b.memo)}</div>` : ''}
       </div>
@@ -602,6 +612,65 @@ window._bigcalShowBillingDetail = async (billingId) => {
   } catch (e) {
     console.warn('[bigcal] billing detail 실패:', e);
     showToast('결제 상세 불러오기 실패');
+  }
+};
+
+// 결제 항목 paid 토글 — billings doc 1건 갱신 + 모달·캘린더·결제관리 캐시 동기화
+async function _bigcalApplyItemUpdate(billingId, mutator){
+  const ref = doc(db, 'billings', billingId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) { showToast('청구서를 찾을 수 없습니다'); return null; }
+  const b = snap.data();
+  const items = (b.items || []).map(mutator);
+  const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+  const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+  const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+  await updateDoc(ref, { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+  // 결제관리 캐시 동기화 (있으면)
+  if (typeof _billings !== 'undefined' && Array.isArray(_billings)) {
+    const cached = _billings.find(x => x.id === billingId);
+    if (cached) { cached.items = items; cached.totalAmount = totalAmount; cached.paidAmount = paidAmount; cached.status = status; }
+  }
+  // 캘린더 사이드 패널 데이터 동기화
+  Object.values(_bigcalState.events).forEach(ev => {
+    ev.billings.forEach(bb => {
+      if (bb.billingId === billingId) {
+        bb.amount = totalAmount;
+        bb.paidAmount = paidAmount;
+        bb.status = status;
+      }
+    });
+  });
+  _bigcalRender();
+  return { items, totalAmount, paidAmount, status };
+}
+
+window._bigcalToggleItemPaid = async (billingId, itemId, paid) => {
+  try {
+    await _bigcalApplyItemUpdate(billingId, i => {
+      if (i.itemId !== itemId) return i;
+      return { ...i, paid: !!paid, paidAt: paid ? Date.now() : null };
+    });
+    closeModal();
+    _bigcalShowBillingDetail(billingId);
+    showToast(paid ? '납부 처리됨' : '미납 처리됨');
+  } catch (e) {
+    console.warn('[bigcal] toggle item paid 실패:', e);
+    showToast('저장 실패: ' + (e.message||''));
+  }
+};
+
+window._bigcalToggleAllPaid = async (billingId, paid) => {
+  const label = paid ? '전체 납부 처리' : '전체 미납 되돌리기';
+  if (!await showConfirm(label, '이 청구서의 모든 항목을 ' + (paid?'납부':'미납') + ' 처리할까요?')) return;
+  try {
+    await _bigcalApplyItemUpdate(billingId, i => ({ ...i, paid: !!paid, paidAt: paid ? Date.now() : null }));
+    closeModal();
+    _bigcalShowBillingDetail(billingId);
+    showToast(paid ? '전체 납부 처리 완료' : '전체 미납 되돌림');
+  } catch (e) {
+    console.warn('[bigcal] toggle all 실패:', e);
+    showToast('저장 실패: ' + (e.message||''));
   }
 };
 
