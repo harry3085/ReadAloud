@@ -4558,7 +4558,7 @@ window.loadPersonalScore = async(uid) => {
             <col style="width:100px;">
             <col>
             <col>
-            <col style="width:60px;">
+            <col style="width:70px;">
             <col style="width:70px;">
             <col style="width:90px;">
           </colgroup>
@@ -4580,7 +4580,7 @@ window.loadPersonalScore = async(uid) => {
         <td>${modeHtml}</td>
         <td class="td-sm" style="${ellipsis}" title="${esc(bookName)}">${esc(bookName)}</td>
         <td style="font-size:12px;${ellipsis}" title="${esc(testName)}">${esc(testName)}</td>
-        <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
+        <td style="white-space:nowrap;"><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
         <td>${s.correct||0}/${s.total||0}</td>
         <td class="td-sub">${s.date||''}</td>
       </tr>`;
