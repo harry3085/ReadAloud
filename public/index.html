@@ -50,6 +50,28 @@
         }
       } catch (_) {}
     })();
+    // 인앱 브라우저 감지 — 카카오/네이버/페북/인스타/Line/WeChat/Android WebView
+    (function () {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      // iOS 인앱: KAKAOTALK, NAVER, FBAN/FBAV, Instagram, Line, MicroMessenger
+      // Android 인앱: 위 + 'wv' (WebView) — 단 wv 만으로 단정 X (일부 Chrome 도 wv 표기)
+      const inappPatterns = /KAKAOTALK|NAVER\(inapp|FBAN|FBAV|Instagram|;\s*Line|MicroMessenger|EveryMe|Daum/i;
+      const isInapp = inappPatterns.test(ua) || (isAndroid && /;\s*wv\)/.test(ua));
+      if (!isInapp) return;
+      document.addEventListener('DOMContentLoaded', () => {
+        const box = document.getElementById('inappWarn');
+        const hint = document.getElementById('inappWarnHint');
+        if (!box || !hint) return;
+        if (isIOS) {
+          hint.innerHTML = '우상단 <b>공유 메뉴</b> 또는 <b>···</b> 를 눌러 <b>"Safari로 열기"</b> 선택<br>또는 Safari 에서 직접 <b>raloud.vercel.app</b> 입력';
+        } else {
+          hint.innerHTML = '우상단 <b>···</b> 또는 메뉴 버튼 → <b>"다른 브라우저로 열기"</b> → <b>크롬</b> 선택<br>또는 크롬에서 직접 <b>raloud.vercel.app</b> 입력';
+        }
+        box.style.display = '';
+      });
+    })();
   </script>
 </head>
 <body>
@@ -64,6 +86,20 @@
 
   <!-- LOGIN -->
   <div id="login" class="screen">
+    <!-- 인앱 브라우저(카톡/네이버/인스타 등) 감지 시 안내 배너 -->
+    <div id="inappWarn" style="display:none;background:#fffbeb;border-bottom:2px solid #f59e0b;padding:14px 18px;flex-shrink:0;">
+      <div style="display:flex;align-items:start;gap:10px;">
+        <div style="font-size:24px;line-height:1;">⚠️</div>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:4px;">앱 설치를 위해 정식 브라우저로 열어주세요</div>
+          <div id="inappWarnHint" style="font-size:12px;color:#78350f;line-height:1.6;"></div>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+            <button onclick="(navigator.clipboard?.writeText(location.href).then(()=>alert('주소가 복사됐어요!\n정식 브라우저에 붙여넣기 하세요.')))" style="padding:6px 12px;font-size:12px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📋 주소 복사</button>
+            <button onclick="document.getElementById('inappWarn').style.display='none'" style="padding:6px 12px;font-size:12px;background:white;color:#78350f;border:1px solid #fbbf24;border-radius:6px;cursor:pointer;">닫기</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="login-hero">
       <div class="logo-area">
         <img class="app-icon" src="/icons/icon-192.png" alt="LexiAI" onerror="this.style.display='none'">
