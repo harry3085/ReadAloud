@@ -486,7 +486,7 @@ function _bigcalRenderSide(){
       const amountStr = b.status === 'partial' && b.paidAmount
         ? `${b.paidAmount.toLocaleString()}/${b.amount.toLocaleString()}원`
         : `${b.amount.toLocaleString()}원`;
-      return `<div class="bigcal-side-row" onclick="goPage('billing')">
+      return `<div class="bigcal-side-row" onclick="_bigcalShowBillingDetail('${b.billingId}')">
         <div>
           <div class="bigcal-side-name">${esc(b.userName)}</div>
           <div class="bigcal-side-meta">${amountStr}${b.groupName ? ' · '+esc(b.groupName) : ''}</div>
@@ -523,6 +523,87 @@ function _bigcalRenderSide(){
 
   side.innerHTML = html;
 }
+
+// 결제 상세 인라인 모달 (보기 전용 — 편집은 결제관리 페이지에서)
+const _BIGCAL_TYPE_LABELS = { tuition:'수강료', book:'교재비', test:'시험비', uniform:'교복·체육복', extra:'기타' };
+window._bigcalShowBillingDetail = async (billingId) => {
+  try {
+    const snap = await getDoc(doc(db, 'billings', billingId));
+    if (!snap.exists()){ showToast('청구서를 찾을 수 없습니다'); return; }
+    const b = snap.data();
+    const due = b.dueDate?.toDate?.();
+    const dueStr = due ? `${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}-${String(due.getDate()).padStart(2,'0')}` : '-';
+    const status = b.status || 'unpaid';
+    const statusBadge = status === 'paid'
+      ? '<span class="badge badge-green">납부 완료</span>'
+      : status === 'partial'
+      ? '<span class="badge badge-amber">일부 납부</span>'
+      : '<span class="badge badge-red">미납</span>';
+    const total = b.totalAmount || 0;
+    const paid = b.paidAmount || 0;
+    const remain = Math.max(0, total - paid);
+    const items = b.items || [];
+
+    const itemsHtml = items.length === 0
+      ? '<div style="text-align:center;color:var(--gray);padding:20px;font-size:12px;">항목이 없습니다.</div>'
+      : items.map(it => {
+          const typeLabel = _BIGCAL_TYPE_LABELS[it.type] || it.type || '-';
+          const itemBadge = it.paid
+            ? '<span class="badge badge-green" style="font-size:10px;">납부</span>'
+            : '<span class="badge badge-red" style="font-size:10px;">미납</span>';
+          const ch = it.channel === 'tuition' ? '학원비' : it.channel === 'materials' ? '교재비' : esc(it.channel||'-');
+          return `<div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:var(--text);">${esc(it.label || typeLabel)}</div>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;">${typeLabel} · ${ch}${it.memo ? ' · '+esc(it.memo) : ''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:13px;font-weight:700;color:var(--text);">${(it.amount||0).toLocaleString()}원</div>
+              <div style="margin-top:2px;">${itemBadge}</div>
+            </div>
+          </div>`;
+        }).join('');
+
+    const summaryHtml = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+      <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--gray);">청구</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-top:2px;">${total.toLocaleString()}원</div>
+      </div>
+      <div style="background:#d1fae5;border:1px solid #a7f3d0;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:#059669;">납부</div>
+        <div style="font-size:15px;font-weight:700;color:#059669;margin-top:2px;">${paid.toLocaleString()}원</div>
+      </div>
+      <div style="background:${remain>0?'#fee2e2':'#f8f9fa'};border:1px solid ${remain>0?'#fecaca':'var(--border)'};border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:${remain>0?'#dc2626':'var(--gray)'};">미납</div>
+        <div style="font-size:15px;font-weight:700;color:${remain>0?'#dc2626':'var(--text)'};margin-top:2px;">${remain.toLocaleString()}원</div>
+      </div>
+    </div>`;
+
+    const html = `<div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="font-size:18px;font-weight:700;color:var(--text);">💳 ${esc(b.studentName||'-')}${b.groupName ? `<span style="font-size:13px;color:var(--gray);font-weight:500;margin-left:8px;">${esc(b.groupName)}</span>` : ''}</div>
+          ${statusBadge}
+        </div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">${esc(b.yearMonth||'-')} 청구 · 납부일 ${dueStr}</div>
+      </div>
+      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
+        ${summaryHtml}
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">📋 항목 (${items.length})</div>
+        ${itemsHtml}
+        ${b.memo ? `<div style="margin-top:12px;padding:10px;background:#fef9c3;border-radius:6px;font-size:12px;color:var(--text);"><strong>메모:</strong> ${esc(b.memo)}</div>` : ''}
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
+        <button class="btn btn-primary" onclick="closeModal();goPage('billing')">결제관리에서 열기 →</button>
+      </div>
+    </div>`;
+    showModal(html);
+  } catch (e) {
+    console.warn('[bigcal] billing detail 실패:', e);
+    showToast('결제 상세 불러오기 실패');
+  }
+};
 
 // 일자 선택
 window._bigcalSelectDate = (key) => {
