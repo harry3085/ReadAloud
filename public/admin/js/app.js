@@ -2048,7 +2048,7 @@ function _billingRenderRow(b, matEnabled) {
         <button class="action-btn" onclick="event.stopPropagation();_billingOpenMessage('${b.id}')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
       </td>
       <td style="padding:8px 12px;text-align:center;">
-        <button onclick="event.stopPropagation();_billingDeleteRow('${b.id}','${esc(b.studentName||'').replace(/'/g,"&#39;")}','${esc(b.studentUid||'')}')" title="이 청구서 삭제 + 자동 청구 영구 OFF" style="padding:5px 10px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:14px;line-height:1;">🗑</span>삭제</button>
+        <button onclick="event.stopPropagation();_billingDeleteRow('${b.id}','${esc(b.studentName||'').replace(/'/g,"&#39;")}','${esc(b.studentUid||'')}')" title="이 청구서 삭제 + 자동 청구 영구 OFF" style="padding:5px 10px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:16px;line-height:1;">🗑</span>삭제</button>
       </td>
     </tr>`;
 }
@@ -2431,7 +2431,7 @@ function _billingRenderItemPanel() {
               onchange="_billingUpdateItem('${it.itemId}','paid',this.checked)" style="width:14px;height:14px;">
             입금
           </label>
-          <button class="action-btn danger" onclick="_billingDeleteItem('${it.itemId}')" style="padding:3px 7px;font-size:11px;">🗑</button>
+          <button class="action-btn danger" onclick="_billingDeleteItem('${it.itemId}')" style="padding:3px 7px;font-size:16px;line-height:1;">🗑</button>
         </div>
         <input type="text" value="${esc(it.memo || '')}" placeholder="메모 (선택)"
           onblur="_billingUpdateItem('${it.itemId}','memo',this.value)"
@@ -4488,41 +4488,31 @@ window.loadPersonalScore = async(uid) => {
     _grHistoryCache = history;
     _grStudentUid = uid;
 
-    // 이력 표 (또는 안내문)
+    // 이력 표 (또는 안내문) — 5건씩 페이지네이션
     const historyHtml = history.length === 0
       ? `<div style="padding:14px 16px;text-align:center;color:var(--gray);font-size:12px;background:#f8fafc;border-radius:8px;">이전 성장 리포트가 없습니다. [📈 새 리포트 생성] 클릭 시 첫 리포트를 만들어요.</div>`
-      : `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+      : `<table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed;">
+          <colgroup>
+            <col style="width:90px;">
+            <col style="width:54px;">
+            <col style="width:54px;">
+            <col>
+            <col style="width:32px;">
+            <col style="width:38px;">
+          </colgroup>
           <thead style="background:#f8fafc;">
             <tr>
               <th style="text-align:left;padding:8px 10px;font-weight:600;">생성일</th>
               <th style="text-align:right;padding:8px 10px;font-weight:600;">평균</th>
               <th style="text-align:right;padding:8px 10px;font-weight:600;">응시</th>
               <th style="text-align:left;padding:8px 10px;font-weight:600;">요약</th>
-              <th style="text-align:center;padding:8px 6px;font-weight:600;width:32px;"></th>
-              <th style="text-align:center;padding:8px 6px;font-weight:600;width:32px;"></th>
+              <th style="text-align:center;padding:8px 6px;font-weight:600;"></th>
+              <th style="text-align:center;padding:8px 6px;font-weight:600;"></th>
             </tr>
           </thead>
-          <tbody>
-          ${history.map(h => {
-            const at = h.generatedAt?.toDate?.() ? h.generatedAt.toDate() : new Date();
-            const dateStr = at.toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-            const avgScore = h.report?.avgScore ?? '-';
-            const totalAtt = h.report?.totalAttempts ?? '-';
-            const summary = (h.report?.summary || '').slice(0, 60);
-            return `<tr style="cursor:pointer;border-bottom:1px solid #f0f0f0;"
-                       onclick="grShowFromList('${esc(h.id)}')"
-                       onmouseover="this.style.background='#fef2ec'" onmouseout="this.style.background=''">
-              <td class="td-sub" style="padding:8px 10px;">${esc(dateStr)}</td>
-              <td style="padding:8px 10px;text-align:right;font-weight:600;">${avgScore}점</td>
-              <td style="padding:8px 10px;text-align:right;color:var(--gray);">${totalAtt}회</td>
-              <td style="padding:8px 10px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;max-width:0;white-space:nowrap;">${esc(summary)}${summary.length >= 60 ? '…' : ''}</td>
-              <td style="padding:8px 6px;text-align:center;">👁</td>
-              <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation();grDeleteReport('${esc(h.id)}','${esc(uid)}')" title="삭제"
-                  onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color=''">🗑</td>
-            </tr>`;
-          }).join('')}
-          </tbody>
-        </table>`;
+          <tbody id="grHistoryBody"></tbody>
+        </table>
+        <div id="grHistoryPag" class="tbl-pagination"></div>`;
 
     detail.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -4576,6 +4566,29 @@ window.loadPersonalScore = async(uid) => {
         <div id="personalScorePag" class="tbl-pagination"></div>
       </div>
     `;
+
+    // 이전 성장 리포트 표 — 5건씩 페이지네이션 (history 가 비어있지 않을 때만)
+    if (history.length > 0) {
+      initPagination('grHistoryBody', history, (h, i) => {
+        const at = h.generatedAt?.toDate?.() ? h.generatedAt.toDate() : new Date();
+        const dateStr = at.toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+        const avgScore = h.report?.avgScore ?? '-';
+        const totalAtt = h.report?.totalAttempts ?? '-';
+        const summary = (h.report?.summary || '').replace(/\s+/g,' ');
+        const ellipsis = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        return `<tr style="cursor:pointer;border-bottom:1px solid #f0f0f0;"
+                   onclick="grShowFromList('${esc(h.id)}')"
+                   onmouseover="this.style.background='#fef2ec'" onmouseout="this.style.background=''">
+          <td class="td-sub" style="padding:8px 10px;${ellipsis}" title="${esc(dateStr)}">${esc(dateStr)}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:600;">${avgScore}점</td>
+          <td style="padding:8px 10px;text-align:right;color:var(--gray);">${totalAtt}회</td>
+          <td style="padding:8px 10px;font-size:12px;color:#475569;${ellipsis}" title="${esc(summary)}">${esc(summary)}</td>
+          <td style="padding:8px 6px;text-align:center;font-size:16px;line-height:1;">👁</td>
+          <td style="padding:8px 6px;text-align:center;font-size:16px;line-height:1;" onclick="event.stopPropagation();grDeleteReport('${esc(h.id)}','${esc(uid)}')" title="삭제"
+              onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color=''">🗑</td>
+        </tr>`;
+      }, 'grHistoryPag', 6, { pageSize: 5 });
+    }
 
     // 페이지네이션 (40건씩)
     initPagination('personalScoreBody', scores, (s, i) => {
@@ -11125,7 +11138,7 @@ function _tpRenderTestRow(t, i) {
       <td style="${cellBase}text-align:center;font-size:11px;white-space:nowrap;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="${cellBase}text-align:center;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="${cellBase}text-align:center;">
-        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:15px;line-height:1;">🗑</span>삭제</button>
+        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:16px;line-height:1;">🗑</span>삭제</button>
       </td>
     </tr>
     <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">
