@@ -605,7 +605,18 @@
           </div>
           <div id="msgStudentRow" style="display:none;">
             <div style="color:var(--gray);margin-bottom:4px;">학생 선택</div>
-            <select id="msgStudent" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;"></select>
+            <!-- 학생 검색 박스 (선택칩 + 검색 input + 후보 드롭다운) -->
+            <div style="position:relative;">
+              <div id="msgStudentSelected" style="display:none;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#f0fafa;font-size:13px;">
+                <span id="msgStudentSelectedLabel" style="flex:1;"></span>
+                <button type="button" onclick="msgClearSelectedStudent()" title="선택 해제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+              </div>
+              <input id="msgStudentSearch" type="text" placeholder="🔍 이름·반 검색"
+                oninput="msgStudentSearchInput()" onfocus="msgStudentSearchInput()"
+                style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+              <div id="msgStudentDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:240px;overflow-y:auto;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:10;margin-top:2px;"></div>
+            </div>
+            <input type="hidden" id="msgStudent">
           </div>
           <div>
             <div style="color:var(--gray);margin-bottom:4px;">제목</div>
@@ -613,7 +624,7 @@
           </div>
           <div>
             <div style="color:var(--gray);margin-bottom:4px;">내용</div>
-            <textarea id="msgBody" rows="4" placeholder="알림 내용" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:none;outline:none;"></textarea>
+            <textarea id="msgBody" rows="12" placeholder="알림 내용" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;min-height:240px;"></textarea>
           </div>
           <div style="display:flex;gap:8px;">
             <button class="btn btn-primary" onclick="sendMessage()" style="flex:1;justify-content:center;">🔔 발송</button>
@@ -621,17 +632,23 @@
           </div>
         </div>
       </div>
-      <!-- 오른쪽: 발송 이력 + 읽음 현황 -->
-      <div style="display:flex;flex-direction:column;gap:16px;">
-        <!-- 발송 이력 -->
-        <div class="card" style="flex:0 0 auto;">
-          <div class="card-title">📋 메시지 관리 <span style="font-size:12px;color:var(--gray);font-weight:400;">초안 클릭 = 재활용 · 발송 클릭 = 읽음 현황</span></div>
-          <div id="savedMsgList"><div class="loading"><div class="spinner"></div>로딩 중</div></div>
+      <!-- 오른쪽: 메시지 관리(저장 초안) + 리사이저 + 발송 이력(인라인 펼침) -->
+      <div class="card" id="msgListCard" style="display:flex;flex-direction:column;padding:0;height:calc(100vh - 200px);min-height:400px;">
+        <!-- 상단: 저장된 초안 -->
+        <div id="msgDraftSection" style="display:flex;flex-direction:column;padding:14px 16px 8px;flex:0 0 35%;min-height:80px;overflow:hidden;">
+          <div class="card-title" style="margin-bottom:8px;">💾 메시지 관리 <span style="font-size:12px;color:var(--gray);font-weight:400;">저장된 초안 — 클릭하면 재활용</span></div>
+          <div id="savedMsgDrafts" style="flex:1;overflow-y:auto;"><div class="loading"><div class="spinner"></div>로딩 중</div></div>
         </div>
-        <!-- 읽음 현황 -->
-        <div class="card" style="flex:1;">
-          <div class="card-title" id="msgReadTitle">👁 읽음 현황 <span style="font-size:12px;color:var(--gray);font-weight:400;">위에서 알림을 선택하세요</span></div>
-          <div id="msgReadList"><div style="padding:24px;text-align:center;color:#bbb;font-size:13px;">발송 이력에서 알림을 클릭하세요</div></div>
+        <!-- 리사이저 -->
+        <div id="msgResizer" title="드래그하여 위/아래 비율 조정"
+          style="height:6px;background:var(--border);cursor:row-resize;flex-shrink:0;position:relative;"
+          onmouseover="this.style.background='var(--teal)'" onmouseout="this.style.background='var(--border)'">
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:32px;height:2px;background:#bbb;border-radius:1px;"></div>
+        </div>
+        <!-- 하단: 발송 이력 -->
+        <div id="msgSentSection" style="display:flex;flex-direction:column;padding:8px 16px 14px;flex:1;min-height:80px;overflow:hidden;">
+          <div class="card-title" style="margin-bottom:8px;">📤 발송 이력 <span style="font-size:12px;color:var(--gray);font-weight:400;">행을 클릭하면 읽음 현황이 펼쳐집니다</span></div>
+          <div id="savedMsgSent" style="flex:1;overflow-y:auto;"></div>
         </div>
       </div>
     </div>

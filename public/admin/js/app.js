@@ -3407,6 +3407,8 @@ window._billingWizardComplete = async () => {
 };
 
 // ── 메시지 관리 ──────────────────────────────────────
+let _msgStudentCache = [];   // [{uid, name, group}, ...]
+
 window.onMsgTypeChange = async() => {
   const type=document.querySelector('input[name=msgType]:checked').value;
   document.getElementById('msgGroupRow').style.display=type==='group'?'':'none';
@@ -3416,10 +3418,74 @@ window.onMsgTypeChange = async() => {
     document.getElementById('msgGroup').innerHTML=snap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
   }
   if(type==='student'){
-    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
-    document.getElementById('msgStudent').innerHTML=snap.docs.map(d=>{const u=d.data();return`<option value="uid:${d.id}">${u.name} (${esc(u.group)||'-'})</option>`;}).join('');
+    // 학생 캐시 1회 로드 (이름순 정렬)
+    if (!_msgStudentCache.length) {
+      const snap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==','active')));
+      _msgStudentCache = snap.docs.map(d=>({uid:d.id, name:d.data().name||'', group:d.data().group||''}))
+        .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'ko'));
+    }
+    msgClearSelectedStudent();
   }
 };
+
+// 학생 검색 input — 키워드 필터 후 후보 드롭다운 표시
+window.msgStudentSearchInput = () => {
+  const input = document.getElementById('msgStudentSearch');
+  const dd    = document.getElementById('msgStudentDropdown');
+  if (!input || !dd) return;
+  const kw = (input.value || '').trim().toLowerCase();
+  const list = kw
+    ? _msgStudentCache.filter(s => (s.name||'').toLowerCase().includes(kw) || (s.group||'').toLowerCase().includes(kw))
+    : _msgStudentCache.slice(0, 30); // 빈 검색어 시 처음 30명
+  if (!list.length) {
+    dd.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:#bbb;text-align:center;">일치하는 학생 없음</div>';
+  } else {
+    dd.innerHTML = list.map(s =>
+      `<div onclick="msgPickStudent('${esc(s.uid)}','${esc(s.name).replace(/'/g,"\\'")}','${esc(s.group).replace(/'/g,"\\'")}')"
+        style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;"
+        onmouseover="this.style.background='#f0fafa'" onmouseout="this.style.background=''">
+        <span style="font-weight:600;">${esc(s.name)}</span>
+        <span style="color:var(--gray);font-size:11px;margin-left:6px;">${esc(s.group)||'-'}</span>
+      </div>`
+    ).join('');
+    if (!kw && _msgStudentCache.length > 30) {
+      dd.innerHTML += `<div style="padding:6px 12px;font-size:11px;color:#bbb;text-align:center;background:#fafafa;">전체 ${_msgStudentCache.length}명 — 검색어를 입력해 좁히세요</div>`;
+    }
+  }
+  dd.style.display = 'block';
+};
+
+// 후보 클릭 → 단일 선택
+window.msgPickStudent = (uid, name, group) => {
+  document.getElementById('msgStudent').value = 'uid:' + uid;
+  const sel = document.getElementById('msgStudentSelected');
+  const lbl = document.getElementById('msgStudentSelectedLabel');
+  if (lbl) lbl.innerHTML = `👤 <b>${esc(name)}</b> <span style="color:var(--gray);font-size:11px;margin-left:4px;">${esc(group)||'-'}</span>`;
+  if (sel) sel.style.display = 'flex';
+  const search = document.getElementById('msgStudentSearch');
+  if (search) { search.value = ''; search.style.display = 'none'; }
+  const dd = document.getElementById('msgStudentDropdown');
+  if (dd) dd.style.display = 'none';
+};
+
+// 선택 해제 → 검색 input 다시 표시
+window.msgClearSelectedStudent = () => {
+  document.getElementById('msgStudent').value = '';
+  const sel = document.getElementById('msgStudentSelected');
+  if (sel) sel.style.display = 'none';
+  const search = document.getElementById('msgStudentSearch');
+  if (search) { search.value = ''; search.style.display = ''; }
+  const dd = document.getElementById('msgStudentDropdown');
+  if (dd) { dd.innerHTML = ''; dd.style.display = 'none'; }
+};
+
+// 외부 클릭 시 드롭다운 닫기
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('msgStudentRow');
+  const dd   = document.getElementById('msgStudentDropdown');
+  if (!wrap || !dd) return;
+  if (dd.style.display === 'block' && !wrap.contains(e.target)) dd.style.display = 'none';
+});
 window.sendMessage = async() => {
   const type=document.querySelector('input[name=msgType]:checked').value;
   let target='all';
@@ -3428,6 +3494,8 @@ window.sendMessage = async() => {
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
+  if (type==='student' && !target) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
+  if (type==='group'   && !target) { showAlert('입력 확인', '그룹을 선택하세요.'); return; }
   try{
     const idToken = await currentUser.getIdToken();
     const res=await fetch('/api/sendPush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,target,idToken})});
@@ -3443,14 +3511,22 @@ window.saveMessage = async() => {
   const title=document.getElementById('msgTitle').value.trim();
   const body=document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
+  if (type==='student' && !target) { showAlert('입력 확인', '학생을 선택하세요.'); return; }
+  if (type==='group'   && !target) { showAlert('입력 확인', '그룹을 선택하세요.'); return; }
   await addDoc(collection(db,'pushNotifications'),{target,title,body,sent:false,date:_ymdKST(),createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   showToast('💾 저장됐어요!'); await loadMessages();
 };
+// 발송 이력 행 인라인 펼침 상태 (현재 펼쳐진 pushId 1개만 유지)
+let _msgExpandedSentId = null;
+
 async function loadMessages(){
-  const el=document.getElementById('savedMsgList');
+  const draftEl = document.getElementById('savedMsgDrafts');
+  const sentEl  = document.getElementById('savedMsgSent');
+  if (!draftEl || !sentEl) return;
+  // 진입 시 리사이저 1회 초기화 (idempotent)
+  _msgInitResizer();
   try{
     const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">메시지가 없습니다</div>';return;}
 
     const drafts=[], sent=[];
     snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
@@ -3477,33 +3553,188 @@ async function loadMessages(){
       const n=d.data();
       const isStudent=n.target?.startsWith('uid:');
       const targetLabel=isStudent?'개별학생':(n.target==='all'?'전체':n.target||'-');
-      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;"
-        onclick="showMsgReadStatus('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
-        onmouseover="this.style.background='#f0fafa'" onmouseout="this.style.background=''">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
-            <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
-            <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
-          </div>
-          <div style="display:flex;gap:2px;flex-shrink:0;">
-            <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
-            <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
+      const isOpen = _msgExpandedSentId === d.id;
+      return `<div id="msgSentWrap-${d.id}">
+        <div id="msgSentRow-${d.id}" style="border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};"
+          onclick="toggleSentDetail('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
+          onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
+              <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
+            </div>
+            <div style="display:flex;gap:2px;flex-shrink:0;">
+              <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
+              <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
+            </div>
           </div>
         </div>
+        <div id="msgSentInline-${d.id}"></div>
       </div>`;
     };
 
-    const sectionHeader=(label, count)=>`<div style="font-size:11px;font-weight:700;color:var(--gray);margin:6px 2px 6px;letter-spacing:.5px;">${label} (${count})</div>`;
-
-    let html='';
-    if(drafts.length) html += sectionHeader('💾 저장된 초안', drafts.length) + drafts.map(renderDraft).join('');
-    if(sent.length)   html += sectionHeader('📤 발송 이력', sent.length) + sent.map(renderSent).join('');
-    el.innerHTML = html;
+    if(drafts.length){
+      draftEl.innerHTML = drafts.map(renderDraft).join('');
+    } else {
+      draftEl.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">저장된 초안이 없습니다</div>';
+    }
+    if(sent.length){
+      sentEl.innerHTML = sent.map(renderSent).join('');
+      // 펼쳐진 항목이 여전히 존재하면 인라인 다시 채움. 삭제됐으면 상태 초기화
+      if (_msgExpandedSentId) {
+        const stillThere = sent.find(d=>d.id===_msgExpandedSentId);
+        if (stillThere && document.getElementById('msgSentInline-'+_msgExpandedSentId)) {
+          _msgRenderSentDetail(_msgExpandedSentId, stillThere.data().title || '');
+        } else {
+          _msgExpandedSentId = null;
+        }
+      }
+    } else {
+      _msgExpandedSentId = null;
+      sentEl.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송 이력이 없습니다</div>';
+    }
   }catch(e){
     console.error('[loadMessages]', e);
-    el.innerHTML=`<div style="color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+    draftEl.innerHTML = `<div style="color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+    sentEl.innerHTML = '';
   }
+}
+
+// ── 발송 이력 인라인 펼침 토글 ────────────────────────
+window.toggleSentDetail = (pushId, title) => {
+  if (_msgExpandedSentId === pushId) {
+    // 닫기
+    _msgExpandedSentId = null;
+    const inline = document.getElementById('msgSentInline-'+pushId);
+    if (inline) inline.innerHTML = '';
+    const row = document.getElementById('msgSentRow-'+pushId);
+    if (row) { row.style.borderColor = 'var(--border)'; row.style.background = ''; }
+    const arrow = row?.querySelector('span[style*="--teal"], span[style*="ccc"]');
+    return;
+  }
+  // 다른 행 닫기
+  if (_msgExpandedSentId) {
+    const prevInline = document.getElementById('msgSentInline-'+_msgExpandedSentId);
+    if (prevInline) prevInline.innerHTML = '';
+    const prevRow = document.getElementById('msgSentRow-'+_msgExpandedSentId);
+    if (prevRow) { prevRow.style.borderColor = 'var(--border)'; prevRow.style.background = ''; }
+  }
+  _msgExpandedSentId = pushId;
+  const row = document.getElementById('msgSentRow-'+pushId);
+  if (row) { row.style.borderColor = 'var(--teal)'; row.style.background = '#f0fafa'; }
+  _msgRenderSentDetail(pushId, title);
+};
+
+// 인라인 펼침 영역에 읽음 현황 렌더 (showMsgReadStatus 본체 이식)
+async function _msgRenderSentDetail(pushId, title) {
+  const wrap = document.getElementById('msgSentInline-'+pushId);
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="margin:0 0 8px;border:1px solid var(--teal-light);border-radius:8px;background:#fafefe;overflow:hidden;">
+    <div style="padding:14px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>
+  </div>`;
+  try {
+    const snap = await getDocs(query(
+      collection(db,'userNotifications'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('pushId','==',pushId),
+    ));
+    let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!notifs.length){
+      const fbSnap = await getDocs(query(
+        collection(db,'userNotifications'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('title','==',title),
+      ));
+      notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    if(!notifs.length){
+      wrap.innerHTML = `<div style="margin:0 0 8px;padding:14px;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;text-align:center;color:#bbb;font-size:13px;">
+        확인 데이터가 없습니다 <span style="font-size:11px;">(이전 방식으로 발송된 알림)</span>
+      </div>`;
+      return;
+    }
+    const userSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
+    const userMap = {};
+    userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
+    const read    = notifs.filter(n=>n.read===true);
+    const unread  = notifs.filter(n=>!n.read);
+    const readPct = notifs.length ? Math.round(read.length/notifs.length*100) : 0;
+    wrap.innerHTML = `
+      <div style="margin:0 0 8px;border:1px solid var(--teal-light);border-radius:8px;background:#fafefe;overflow:hidden;">
+        <div style="display:flex;gap:12px;padding:10px 14px;background:#f0fafa;border-bottom:1px solid var(--teal-light);font-size:12px;flex-wrap:wrap;">
+          <span>총 <b>${notifs.length}</b>명</span>
+          <span style="color:#059669;">✅ 읽음 <b>${read.length}</b>명</span>
+          <span style="color:#e05050;">🔴 미읽음 <b>${unread.length}</b>명</span>
+          <span style="margin-left:auto;font-weight:700;color:var(--teal);">${readPct}%</span>
+        </div>
+        ${unread.length?`
+          <div style="padding:6px 14px 4px;font-size:11px;font-weight:700;color:#e05050;">🔴 미읽음 (${unread.length}명)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 8px;">
+            ${unread.map(n=>`<span style="padding:3px 9px;background:#fee2e2;color:#b91c1c;border-radius:18px;font-size:11px;font-weight:600;">
+              ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
+            </span>`).join('')}
+          </div>`:''
+        }
+        ${read.length?`
+          <div style="padding:6px 14px 4px;font-size:11px;font-weight:700;color:#059669;">✅ 읽음 (${read.length}명)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 10px;">
+            ${read.map(n=>`<span style="padding:3px 9px;background:#d1fae5;color:#065f46;border-radius:18px;font-size:11px;">
+              ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
+            </span>`).join('')}
+          </div>`:''
+        }
+      </div>`;
+  } catch(e){
+    wrap.innerHTML = `<div style="margin:0 0 8px;padding:14px;border:1px solid #fee;background:#fff5f5;border-radius:8px;color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||'')}</div>`;
+  }
+}
+
+// ── 리사이저 (저장 초안 / 발송 이력 비율 조정 + localStorage) ────────
+let _msgResizerInited = false;
+function _msgInitResizer() {
+  if (_msgResizerInited) return;
+  const card    = document.getElementById('msgListCard');
+  const top     = document.getElementById('msgDraftSection');
+  const bottom  = document.getElementById('msgSentSection');
+  const resizer = document.getElementById('msgResizer');
+  if (!card || !top || !bottom || !resizer) return;
+  _msgResizerInited = true;
+
+  // 저장된 비율 복원
+  const saved = parseFloat(localStorage.getItem('msg_split_ratio'));
+  if (isFinite(saved) && saved >= 0.1 && saved <= 0.9) {
+    top.style.flex = `0 0 ${(saved * 100).toFixed(2)}%`;
+  }
+
+  let dragging = false, startY = 0, startTopH = 0, cardH = 0;
+  resizer.addEventListener('pointerdown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startTopH = top.getBoundingClientRect().height;
+    cardH = card.getBoundingClientRect().height;
+    try { resizer.setPointerCapture(e.pointerId); } catch(_){}
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  });
+  resizer.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const minH = 80, resizerH = 6;
+    const newTopH = Math.max(minH, Math.min(cardH - minH - resizerH, startTopH + (e.clientY - startY)));
+    top.style.flex = `0 0 ${newTopH}px`;
+  });
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    const ratio = top.getBoundingClientRect().height / card.getBoundingClientRect().height;
+    if (isFinite(ratio) && ratio > 0.05 && ratio < 0.95) {
+      localStorage.setItem('msg_split_ratio', String(ratio));
+    }
+  };
+  resizer.addEventListener('pointerup', finish);
+  resizer.addEventListener('pointercancel', finish);
 }
 
 // 초안 삭제 — userNotifications cascade 불필요 (안 보냈으니 자녀 doc 없음)
@@ -3516,75 +3747,6 @@ window.delDraftMsg = async(id) => {
   }catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
-window.showMsgReadStatus = async(pushId, title) => {
-  const titleEl = document.getElementById('msgReadTitle');
-  const listEl  = document.getElementById('msgReadList');
-  if(!listEl) return;
-  if(titleEl) titleEl.innerHTML = `👁 읽음 현황 <span style="font-size:13px;color:var(--text);font-weight:600;">${esc(title)}</span>`;
-  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#bbb;">로딩 중...</div>';
-  try{
-    // 이 알림(pushId)에 해당하는 userNotifications 조회 — academyId 필터 필수
-    const snap = await getDocs(query(
-      collection(db,'userNotifications'),
-      where('academyId','==',window.MY_ACADEMY_ID),
-      where('pushId','==',pushId),
-    ));
-
-    let notifs = snap.docs.map(d=>({id:d.id,...d.data()}));
-
-    if(!notifs.length){
-      // pushId 없는 구버전: title 로 fallback (academyId 필터 동반)
-      const fbSnap = await getDocs(query(
-        collection(db,'userNotifications'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('title','==',title),
-      ));
-      notifs = fbSnap.docs.map(d=>({id:d.id,...d.data()}));
-    }
-
-    if(!notifs.length){
-      listEl.innerHTML='<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">확인 데이터가 없습니다<br><span style="font-size:11px;">이전 방식으로 발송된 알림입니다</span></div>';
-      return;
-    }
-
-    // uid 목록으로 학생 이름 조회
-    const uids = [...new Set(notifs.map(n=>n.uid))];
-    const userSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student')));
-    const userMap = {};
-    userSnap.docs.forEach(d=>userMap[d.id]={name:d.data().name||'-', group:d.data().group||''});
-
-    const read    = notifs.filter(n=>n.read===true);
-    const unread  = notifs.filter(n=>!n.read);
-    const readPct = notifs.length ? Math.round(read.length/notifs.length*100) : 0;
-
-    listEl.innerHTML = `
-      <!-- 요약 -->
-      <div style="display:flex;gap:12px;padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap;">
-        <span>총 <b>${notifs.length}</b>명</span>
-        <span style="color:#059669;">✅ 읽음 <b>${read.length}</b>명</span>
-        <span style="color:#e05050;">🔴 미읽음 <b>${unread.length}</b>명</span>
-        <span style="margin-left:auto;font-weight:700;color:var(--teal);">${readPct}%</span>
-      </div>
-      <!-- 미읽음 먼저 -->
-      ${unread.length?`
-        <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;color:#e05050;">🔴 미읽음 (${unread.length}명)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;">
-          ${unread.map(n=>`<span style="padding:4px 10px;background:#fee2e2;color:#b91c1c;border-radius:20px;font-size:12px;font-weight:600;">
-            ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
-          </span>`).join('')}
-        </div>`:''
-      }
-      <!-- 읽음 -->
-      ${read.length?`
-        <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;color:#059669;">✅ 읽음 (${read.length}명)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 10px;">
-          ${read.map(n=>`<span style="padding:4px 10px;background:#d1fae5;color:#065f46;border-radius:20px;font-size:12px;">
-            ${esc(userMap[n.uid]?.name||n.uid)} <span style="font-size:10px;opacity:.7;">${esc(userMap[n.uid]?.group||'')}</span>
-          </span>`).join('')}
-        </div>`:''
-      }`;
-  }catch(e){ listEl.innerHTML=`<div style="padding:16px;color:#e05050;">불러오기 실패: ${e.message}</div>`; }
-};
 window.reuseMsg = async(id) => {
   const snap=await getDoc(doc(db,'pushNotifications',id));
   const n=snap.data();if(!n)return;
