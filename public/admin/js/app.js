@@ -4521,9 +4521,12 @@ window.loadPersonalScore = async(uid) => {
         </table>`;
 
     detail.innerHTML=`
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
         <div class="card-title" style="margin:0;">${esc(u.name)} · ${esc(u.group)||'-'}</div>
-        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="openGrowthReport('${esc(uid)}')">📈 새 리포트 생성</button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:11px;color:var(--gray);background:#f0fafa;border:1px solid var(--teal-light);border-radius:14px;padding:3px 10px;">📅 AI 리포트 작성 기준: 최근 30일</span>
+          <button class="btn btn-primary" style="font-size:12px;padding:6px 12px;" onclick="openGrowthReport('${esc(uid)}')">📈 새 리포트 생성</button>
+        </div>
       </div>
 
       <div style="margin-bottom:18px;">
@@ -4544,6 +4547,10 @@ window.loadPersonalScore = async(uid) => {
           <div style="font-size:12px;color:var(--gray);margin-top:2px;">80점 이상</div>
         </div>
       </div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        📊 응시 내역
+        <span style="font-size:11px;color:var(--gray);font-weight:400;">(전체 누적 · 40건씩 페이지)</span>
+      </div>
       <div class="table-wrap">
         <table style="table-layout:fixed;width:100%;">
           <colgroup>
@@ -4556,25 +4563,28 @@ window.loadPersonalScore = async(uid) => {
             <col style="width:90px;">
           </colgroup>
           <thead><tr><th>No</th><th>유형</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
-          <tbody>${scores.map((s,i)=>{
-            const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
-            const bookName=s.bookName||s.unitName||'-';
-            const testName=s.testName||'-';
-            const ellipsis='overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
-            return `<tr>
-              <td>${i+1}</td>
-              <td>${modeHtml}</td>
-              <td class="td-sm" style="${ellipsis}" title="${esc(bookName)}">${esc(bookName)}</td>
-              <td style="font-size:12px;${ellipsis}" title="${esc(testName)}">${esc(testName)}</td>
-              <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
-              <td>${s.correct||0}/${s.total||0}</td>
-              <td class="td-sub">${s.date||''}</td>
-            </tr>`;
-          }).join('')||'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:12px;">응시 내역이 없습니다</td></tr>'}
-          </tbody>
+          <tbody id="personalScoreBody"></tbody>
         </table>
+        <div id="personalScorePag" class="tbl-pagination"></div>
       </div>
     `;
+
+    // 페이지네이션 (40건씩)
+    initPagination('personalScoreBody', scores, (s, i) => {
+      const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
+      const bookName = s.bookName || s.unitName || '-';
+      const testName = s.testName || '-';
+      const ellipsis = 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+      return `<tr>
+        <td>${i+1}</td>
+        <td>${modeHtml}</td>
+        <td class="td-sm" style="${ellipsis}" title="${esc(bookName)}">${esc(bookName)}</td>
+        <td style="font-size:12px;${ellipsis}" title="${esc(testName)}">${esc(testName)}</td>
+        <td><span class="badge ${s.score>=80?'badge-green':s.score>=60?'badge-amber':'badge-red'}">${s.score}점</span></td>
+        <td>${s.correct||0}/${s.total||0}</td>
+        <td class="td-sub">${s.date||''}</td>
+      </tr>`;
+    }, 'personalScorePag', 7, { pageSize: 40 });
   }catch(e){
     console.error('[loadPersonalScore]', e);
     detail.innerHTML=`<div style="color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
