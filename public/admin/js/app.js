@@ -3690,6 +3690,12 @@ async function loadMessages(){
       return n.target || '-';
     };
 
+    // 본문 미리보기 — 최대 3줄 (line-clamp), 약 120자
+    const _bodyPreview = (txt) => {
+      const s = esc(txt || '').slice(0, 200);
+      return `<div style="font-size:12px;color:var(--gray);margin-top:3px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;">${s}</div>`;
+    };
+
     const renderDraft=d=>{
       const n=d.data();
       const targetLabel = labelOf(n);
@@ -3699,8 +3705,8 @@ async function loadMessages(){
         <div style="display:flex;align-items:flex-start;justify-content:space-between;">
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
-            <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
-            <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
+            ${_bodyPreview(n.body)}
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">${esc(targetLabel)} · ${esc(n.date)||''}</div>
           </div>
           <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
         </div>
@@ -3718,8 +3724,8 @@ async function loadMessages(){
           <div style="display:flex;align-items:flex-start;justify-content:space-between;">
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:600;">${esc(n.title)||''}</div>
-              <div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(n.body||'').slice(0,50)}${(n.body||'').length>50?'...':''}</div>
-              <div style="font-size:11px;color:#bbb;margin-top:3px;">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
+              ${_bodyPreview(n.body)}
+              <div style="font-size:11px;color:#bbb;margin-top:4px;">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0;">
               <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
@@ -3828,20 +3834,22 @@ async function _msgRenderSentDetail(pushId, title) {
           <span style="color:#e05050;">🔴 미읽음 <b>${unread.length}</b>명</span>
           <span style="margin-left:auto;font-weight:700;color:var(--teal);">${readPct}%</span>
         </div>
-        <div style="padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill, minmax(160px,1fr));gap:6px;">
+        <div style="padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fill, minmax(98px,1fr));gap:4px;">
           ${notifs.map(n => {
             const u = userMap[n.uid] || { name: (n.uid||'').slice(0,8), group:'' };
             const isRead = n.read === true;
             const bg     = isRead ? '#d1fae5' : '#fee2e2';
             const fg     = isRead ? '#065f46' : '#b91c1c';
             const border = isRead ? '#a7f3d0' : '#fca5a5';
-            const icon   = isRead ? '✅' : '🔴';
+            const dot    = isRead ? '✓' : '!';
             return `
-              <div id="msgRecip-${n.id}" style="background:${bg};border:1px solid ${border};border-radius:8px;padding:8px 28px 8px 10px;font-size:11px;position:relative;color:${fg};">
+              <div id="msgRecip-${n.id}" style="background:${bg};border:1px solid ${border};border-radius:6px;padding:5px 20px 5px 7px;font-size:11px;position:relative;color:${fg};line-height:1.3;">
                 <button onclick="msgExcludeRecipient('${n.id}','${esc(u.name).replace(/'/g,"\\'")}')" title="이 학생 알림함에서 회수"
-                  style="position:absolute;top:4px;right:4px;width:20px;height:20px;background:rgba(255,255,255,0.7);border:1px solid rgba(0,0,0,.1);border-radius:50%;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;color:#666;">✕</button>
-                <div style="font-weight:700;">${icon} ${esc(u.name)}</div>
-                <div style="font-size:10px;opacity:.7;margin-top:2px;">${esc(u.group)||'-'}</div>
+                  style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:rgba(255,255,255,0.7);border:1px solid rgba(0,0,0,.1);border-radius:50%;cursor:pointer;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;color:#666;padding:0;">✕</button>
+                <div style="font-weight:700;font-size:11px;">
+                  <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${border};color:white;font-size:8px;line-height:11px;text-align:center;font-weight:700;margin-right:3px;vertical-align:1px;">${dot}</span>${esc(u.name)}
+                </div>
+                <div style="font-size:9px;opacity:.7;margin-top:1px;">${esc(u.group)||'-'}</div>
               </div>`;
           }).join('')}
         </div>
