@@ -10724,41 +10724,48 @@ function _tpRenderNoSets(cfg) {
 }
 
 function _tpRenderTestsTable() {
+  // 시험 목록 페이지(testListBody)와 컬럼 통일 — 유형·체크박스만 제외, 작업(행별 🗑 삭제) 추가
   return `
     <table style="width:100%;border-collapse:collapse;">
       <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
         <tr>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:50px;">No</th>
           <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);">시험명</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:140px;">대상</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:70px;">문항</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;" title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:160px;">대상</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);">교재</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">문항수</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:130px;">출제일</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:110px;" title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
           <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:80px;">평균</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">출제일</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:100px;">작업</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray);border-bottom:1px solid var(--border);width:90px;">작업</th>
         </tr>
       </thead>
       <tbody>
-        ${_tpGenTests.map(t => _tpRenderTestRow(t)).join('')}
+        ${_tpGenTests.map((t, i) => _tpRenderTestRow(t, i)).join('')}
       </tbody>
     </table>`;
 }
 
-function _tpRenderTestRow(t) {
+function _tpRenderTestRow(t, i) {
   const qCount = t.questionCount || t.questions?.length || 0;
+  const bookName = t.bookName || t.sourceSetNames?.join(', ') || '-';
+  const cellBase = 'padding:10px 12px;border-bottom:1px solid #f5f5f5;';
   return `
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
-      <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid #f5f5f5;">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;">${qCount}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--text);border-bottom:1px solid #f5f5f5;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
-      <td style="padding:10px 12px;font-size:11px;color:var(--gray);border-bottom:1px solid #f5f5f5;">${esc(t.date||'')}</td>
-      <td style="padding:10px 12px;text-align:center;border-bottom:1px solid #f5f5f5;">
+      <td style="${cellBase}font-size:12px;color:var(--gray);">${(i||0)+1}</td>
+      <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
+      <td style="${cellBase}font-size:12px;"><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</span></td>
+      <td style="${cellBase}font-size:12px;color:var(--text);max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(bookName)}">${esc(bookName)}</td>
+      <td style="${cellBase}text-align:center;font-size:12px;color:var(--text);">${qCount}문제</td>
+      <td style="${cellBase}font-size:11px;color:var(--gray);white-space:nowrap;">${_fmtTestDateTime(t)}</td>
+      <td style="${cellBase}text-align:center;font-size:11px;white-space:nowrap;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
+      <td style="${cellBase}text-align:center;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
+      <td style="${cellBase}text-align:center;">
         <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:15px;line-height:1;">🗑</span>삭제</button>
       </td>
     </tr>
     <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">
-      <td colspan="7" style="padding:0;">
+      <td colspan="9" style="padding:0;">
         <div id="tp-progress-content-${t.id}" style="padding:10px 16px;font-size:12px;color:var(--gray);">로딩 중...</div>
       </td>
     </tr>`;
