@@ -12057,7 +12057,7 @@ function _renderBrandingPage() {
           <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:#999;margin-bottom:10px;">비밀번호</div>
           <div id="brandingPreviewBtn" style="background:${currentPreset.loginGradient};color:white;text-align:center;padding:12px;border-radius:12px;font-weight:700;font-size:14px;">로그인</div>
           <div style="text-align:center;font-size:10px;color:#999;margin-top:10px;letter-spacing:0.3px;">
-            Powered by <strong style="color:#666;">LexiAI</strong> 🤖
+            Powered by <strong style="color:#666;">LexiAI</strong>
           </div>
         </div>
       </div>
