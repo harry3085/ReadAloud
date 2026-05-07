@@ -3193,20 +3193,23 @@ history.replaceState({screen:'loading'},'',location.pathname);
 history.pushState({screen:'login'},'',location.pathname);
 
 // Firebase Auth 상태 감지 → 1일 이내면 자동 로그인, 초과면 로그아웃
-// 페이지 로드 즉시 LexiAI 기본 브랜딩 적용 (로그인 전 화면용)
-// appConfig/branding 만 read public 으로 풀려있어 anonymous fetch 가능
-(async () => {
-  try {
-    const lexiSnap = await getDoc(doc(db, 'appConfig', 'branding'));
-    if (!lexiSnap.exists()) return;
-    const lexi = lexiSnap.data();
-    window.LEXIAI_BRANDING = lexi;
-    // 로그인 전 화면이라 academy 없음 — academy={} 기본으로 LexiAI fallback 만 적용
-    _applyAcademyBranding({ name: '' });
-  } catch (e) { console.warn('[LexiAI branding] anonymous fetch 실패:', e.message); }
-})();
+// LexiAI 기본 브랜딩 — onAuthStateChanged 내부에서 첫 호출 시 1회 fetch
+// (페이지 로드 즉시 self-executing async 는 Firestore SDK 와 race 유발 — INTERNAL ASSERTION FAILED)
+let _lexiFetched = false;
 
 onAuthStateChanged(auth, async (user)=>{
+  // 첫 호출 시 LexiAI 기본 브랜딩 fetch (Auth 초기화 후라 race 없음)
+  if (!_lexiFetched) {
+    _lexiFetched = true;
+    try {
+      const lexiSnap = await getDoc(doc(db, 'appConfig', 'branding'));
+      if (lexiSnap.exists()) {
+        window.LEXIAI_BRANDING = lexiSnap.data();
+        if (!user) _applyAcademyBranding({ name: '' });
+      }
+    } catch (e) { console.warn('[LexiAI branding]', e.message); }
+  }
+
   if(user){
     // 1일 경과 체크
     const lastLogin = parseInt(localStorage.getItem('lastLoginAt')||'0');
