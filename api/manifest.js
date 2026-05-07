@@ -40,6 +40,7 @@ module.exports = async (req, res) => {
 
   try {
     const academyId = String(req.query.academy || '').trim();
+    const isAdmin = String(req.query.admin || '') === '1';
 
     let name = DEFAULT_NAME;
     let shortName = DEFAULT_SHORT;
@@ -88,15 +89,22 @@ module.exports = async (req, res) => {
       }
     }
 
+    // 학원장 PWA: start_url=/admin/ + 이름에 '관리자' 표시 (학생 PWA와 별도 아이콘으로 구분)
+    const adminSuffix = isAdmin ? ' 관리자' : '';
+    const startBase = isAdmin ? '/admin/' : '/';
+    const startUrl = academyId ? `${startBase}?academy=${encodeURIComponent(academyId)}` : startBase;
+
     const manifest = {
-      name,
-      short_name: shortName,
-      description: `${name} 학습 앱`,
-      start_url: academyId ? `/?academy=${encodeURIComponent(academyId)}` : '/',
+      name: name + adminSuffix,
+      short_name: (shortName + adminSuffix).slice(0, 12),
+      description: `${name}${adminSuffix} 학습 앱`,
+      id: startUrl,  // start_url 다르면 별개 PWA — 학생/학원장 별도 아이콘 등록 가능
+      start_url: startUrl,
       display: 'standalone',
       background_color: preset.primaryBg,
       theme_color: preset.primary,
-      orientation: 'portrait',
+      orientation: isAdmin ? 'any' : 'portrait',
+      scope: startBase,
       icons: [
         { src: logo192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
         { src: logo512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' },

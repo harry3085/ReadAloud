@@ -144,6 +144,8 @@ async function _loadMyAcademyContext(user, userDocData) {
     window.MY_ACADEMY_NAME = (acData && acData.name) || '';
     window.LEXIAI_BRANDING = (lexiSnap && lexiSnap.exists?.()) ? lexiSnap.data() : null;
     _applyAdminBranding(acData);
+    // PWA manifest 학원별 갱신 (바로가기 추가 시 학원 로고로 등록)
+    if (typeof window.updateAdminManifest === 'function') window.updateAdminManifest(academyId);
   } catch(_) { window.MY_ACADEMY_NAME = ''; }
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
 }

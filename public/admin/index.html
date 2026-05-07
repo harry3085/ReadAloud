@@ -6,8 +6,58 @@
 <meta name="theme-color" content="#E8714A">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>LexiAI 관리자</title>
+<link id="manifest-link" rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="stylesheet" href="/admin/style.css">
 <script src="/js/branding-presets.js"></script>
+<script>
+  // SW 등록 (학생 앱과 공용 /sw.js)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+  }
+  // PWA 설치 prompt 캐시
+  let _adminDeferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    _adminDeferredPrompt = e;
+    const btn = document.getElementById('installAdminBtn');
+    if (btn) btn.style.display = '';
+  });
+  window.installAdminApp = async () => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) { alert('이미 앱으로 실행 중이에요!'); return; }
+    if (_adminDeferredPrompt) {
+      _adminDeferredPrompt.prompt();
+      const { outcome } = await _adminDeferredPrompt.userChoice;
+      _adminDeferredPrompt = null;
+      if (outcome === 'accepted') {
+        const btn = document.getElementById('installAdminBtn');
+        if (btn) btn.style.display = 'none';
+      }
+      return;
+    }
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isAndroid = /Android/i.test(ua);
+    if (isIOS) alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n※ Safari 에서 열어주세요\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+    else if (isAndroid) alert('📱 홈화면 추가 방법 (Android)\n\n① 우상단 메뉴 (⋮)\n② "홈 화면에 추가" 또는 "앱 설치"\n\n※ 크롬 브라우저 권장\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+    else alert('💻 PC 크롬에서 주소창 우측 ⊕ 설치 아이콘 클릭\n또는 우상단 ⋮ → "앱 설치"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+  };
+  // 학원 식별 후 manifest URL 갱신 — admin=1 로 start_url=/admin/ 분리 (학생 PWA와 별도 아이콘)
+  window.updateAdminManifest = function (academyId) {
+    if (!academyId) return;
+    const link = document.getElementById('manifest-link');
+    if (link) link.href = `/api/manifest?academy=${encodeURIComponent(academyId)}&admin=1`;
+  };
+  // standalone 모드면 [바로가기] 버튼 숨김
+  document.addEventListener('DOMContentLoaded', () => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) {
+      const btn = document.getElementById('installAdminBtn');
+      if (btn) btn.style.display = 'none';
+    }
+  });
+</script>
 </head>
 <body>
 
@@ -22,6 +72,7 @@
   </div>
   <div class="header-right">
     <span class="admin-name" id="adminName">관리자</span>
+    <button id="installAdminBtn" class="logout-btn" onclick="installAdminApp()" title="홈화면/바탕화면에 바로가기 추가" style="background:rgba(255,255,255,0.18);">📱 바로가기</button>
     <button class="logout-btn" onclick="doLogout()">로그아웃</button>
   </div>
 </header>
