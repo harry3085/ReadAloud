@@ -595,7 +595,7 @@ window._bigcalShowBillingDetail = async (billingId) => {
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
-        <button class="btn btn-primary" onclick="closeModal();goPage('billing')">결제관리에서 열기 →</button>
+        <button class="btn btn-primary" onclick="closeModal();goPage('payment')">결제관리에서 열기 →</button>
       </div>
     </div>`;
     showModal(html);
