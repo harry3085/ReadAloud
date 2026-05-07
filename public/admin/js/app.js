@@ -3690,10 +3690,10 @@ async function loadMessages(){
       return n.target || '-';
     };
 
-    // 본문 미리보기 — 최대 3줄 (line-clamp), 약 120자
+    // 본문 미리보기 — 한 줄, 박스 폭에 맞춰 말줄임. 줄바꿈 문자도 공백 처리해 한 줄에 흐르게
     const _bodyPreview = (txt) => {
-      const s = esc(txt || '').slice(0, 200);
-      return `<div style="font-size:12px;color:var(--gray);margin-top:3px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;">${s}</div>`;
+      const s = esc((txt || '').replace(/\s+/g, ' '));
+      return `<div style="font-size:12px;color:var(--gray);margin-top:2px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s}</div>`;
     };
 
     const renderDraft=d=>{
