@@ -2390,6 +2390,13 @@ window._billingToggleChannel = async (billingId, channel, paid) => {
 // ── 항목 사이드 패널 (P1-6) ────────────────────────────
 let _billingPanelId = null;
 let _billingPanelChannel = null;
+// 진행 중인 항목 update Promise 집합 — [✓ 완료] 클릭 시 끝까지 대기 후 그리드 새로고침
+const _billingPending = new Set();
+function _billingTrack(promise) {
+  _billingPending.add(promise);
+  promise.finally(() => _billingPending.delete(promise));
+  return promise;
+}
 
 window._billingOpenItemPanel = async (billingId, channel) => {
   _billingPanelId = billingId;
@@ -2467,75 +2474,85 @@ function _billingRenderItemPanel() {
 window._billingAddItem = async () => {
   const b = _billings.find(x => x.id === _billingPanelId);
   if (!b) return;
-  try {
-    const ch = _billingPanelChannel;
-    const monthNum = parseInt((b.yearMonth || '').split('-')[1]);
-    const newItem = {
-      itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-      type: ch === 'tuition' ? 'tuition' : 'book',
-      label: ch === 'tuition' ? `${monthNum}월 수강료` : '교재비',
-      amount: 0,
-      channel: ch,
-      paid: false,
-      paidAt: null,
-      paidVia: '',
-      memo: '',
-      addedAt: Date.now(),
-      addedBy: currentUser?.uid || 'manual',
-    };
-    const items = [...(b.items || []), newItem];
-    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
-    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
-    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, updatedAt: serverTimestamp() });
-    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount;
-    _billingRenderItemPanel();
-  } catch (e) { showAlert('추가 실패', e.message); }
+  return _billingTrack((async () => {
+    try {
+      const ch = _billingPanelChannel;
+      const monthNum = parseInt((b.yearMonth || '').split('-')[1]);
+      const newItem = {
+        itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+        type: ch === 'tuition' ? 'tuition' : 'book',
+        label: ch === 'tuition' ? `${monthNum}월 수강료` : '교재비',
+        amount: 0,
+        channel: ch,
+        paid: false,
+        paidAt: null,
+        paidVia: '',
+        memo: '',
+        addedAt: Date.now(),
+        addedBy: currentUser?.uid || 'manual',
+      };
+      const items = [...(b.items || []), newItem];
+      const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+      const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+      const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+      await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+      b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
+      _billingRenderItemPanel();
+    } catch (e) { showAlert('추가 실패', e.message); }
+  })());
 };
 
 window._billingUpdateItem = async (itemId, field, value) => {
   const b = _billings.find(x => x.id === _billingPanelId);
   if (!b) return;
-  try {
-    const items = (b.items || []).map(i => {
-      if (i.itemId !== itemId) return i;
-      const updated = { ...i, [field]: value };
-      if (field === 'paid') updated.paidAt = value ? Date.now() : null;
-      return updated;
-    });
-    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
-    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
-    const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
-    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
-    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
-    _billingRenderItemPanel();
-    // 그리드도 백그라운드 갱신 (모달 닫을 때 보일 수 있도록)
-  } catch (e) { showAlert('저장 실패', e.message); }
+  return _billingTrack((async () => {
+    try {
+      const items = (b.items || []).map(i => {
+        if (i.itemId !== itemId) return i;
+        const updated = { ...i, [field]: value };
+        if (field === 'paid') updated.paidAt = value ? Date.now() : null;
+        return updated;
+      });
+      const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+      const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+      const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+      await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+      b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
+      _billingRenderItemPanel();
+    } catch (e) { showAlert('저장 실패', e.message); }
+  })());
 };
 
-// 완료 버튼 — 활성 input blur 강제 → 진행 중 저장 완료 대기 → 모달 닫기
+// 완료 버튼 — 활성 input blur 강제 → 진행 중 저장 모두 끝까지 대기 → 모달 닫기
 window._billingPanelDone = async () => {
   const active = document.activeElement;
   if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) {
-    active.blur();  // pending blur 핸들러 fire (async updateDoc 시작)
+    active.blur();  // 펜딩 onblur 핸들러 발화 → _billingUpdateItem 호출 시작
   }
-  // 짧은 대기로 updateDoc 완료 보장 (Firestore 보통 100~300ms)
-  await new Promise(r => setTimeout(r, 350));
-  closeModal();  // closeModal hook 이 그리드 자동 갱신
+  // 다음 tick — blur 이벤트 핸들러가 _billingUpdateItem 을 호출해 _billingPending 에 담기게 함
+  await new Promise(r => setTimeout(r, 0));
+  // 진행 중인 모든 update/add/delete 완료 대기 (Firestore 응답 + in-memory 동기화 끝까지)
+  while (_billingPending.size > 0) {
+    await Promise.allSettled([..._billingPending]);
+  }
+  closeModal();  // closeModal hook 이 _renderBillingGrid() 호출 → fresh fetch
 };
 
 window._billingDeleteItem = async (itemId) => {
   if (!await showConfirm('항목 삭제', '이 항목을 삭제할까요?')) return;
   const b = _billings.find(x => x.id === _billingPanelId);
   if (!b) return;
-  try {
-    const items = (b.items || []).filter(i => i.itemId !== itemId);
-    const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
-    const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
-    const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
-    await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
-    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
-    _billingRenderItemPanel();
-  } catch (e) { showAlert('삭제 실패', e.message); }
+  return _billingTrack((async () => {
+    try {
+      const items = (b.items || []).filter(i => i.itemId !== itemId);
+      const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
+      const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
+      const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+      await updateDoc(doc(db, 'billings', b.id), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
+      b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
+      _billingRenderItemPanel();
+    } catch (e) { showAlert('삭제 실패', e.message); }
+  })());
 };
 
 // 모달 닫힐 때 그리드 갱신 — closeModal 직접 hook 못 하므로, 사이드 패널 hide 시에 처리
