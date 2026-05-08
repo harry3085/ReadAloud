@@ -2341,3 +2341,118 @@ API 확장 (`api/uploadLogo.js`):
 - ✅ 흰 버튼 버그 fix (setIf 가드 + 즉시 default 적용)
 - ✅ 결제 필터 / qsEditSet 폴백 / AI Generator race / blurt 진단 / phone='admin' 정리 등
 - ✅ 대시보드 카드 핸드오프 문서
+
+---
+
+## 2026-05-08 (밤): SSR 도입 — iOS PWA 학원명 자동 노출 + 결제 패널 Eventual Consistency fix
+
+당일 SW v337 → v365 (+28). 두 큰 흐름:
+1. **iOS PWA [홈화면 추가] 시 학원명 자동 노출** — 8회 시도 끝에 SSR 도입으로 해결 (Phase 1 학생 + Phase 2 학원장)
+2. **결제 패널 항목 입력 즉시 반영** — Firestore eventual consistency + closeModal wrapper 함정
+
+### 1) iOS PWA 학원명 문제 — SSR 로 최종 해결
+
+**증상**: iOS Safari·Mac Safari·Mac Chrome 의 [공유 → 홈화면 추가] 시 input 에 학원명 안 나오고 'LexiAI' 또는 'L E X I A I' (super_admin 입력값) 표시. Android Chrome 은 자동 학원명.
+
+**시도하다 실패**:
+1. apple-mobile-web-app-title 메타 동적 갱신 (setAttribute / createElement) — iOS 가 첫 캡처만 사용
+2. manifest link href 동적 변경 (`replaceWith`) — 브라우저가 다시 fetch X
+3. manifest API `Cache-Control: no-store` — 도움 안 됨
+4. URL `?academy=xxx` 자동 reload — `_applyAcademyBranding` 안에서 doLogin navigation 도중 trigger 되어 학생앱 무한 로딩
+5. 정적 메타 제거 + JS createElement 추가 / 정적 `<title>` 빈 값 — 효과 없음
+6. SW HTML intercept (workbox-style) — `FetchEvent.respondWith received an error: TypeError: Type error` 페이지 자체 못 열림
+
+**진단으로 결정적 단서**:
+- [scripts/diag/dump-default-academy.js](scripts/diag/dump-default-academy.js) — `academies/default.name = "큰소리 영어"` 정상 박혀있음
+- 그러나 사용자 [홈화면 추가] = 'LexiAI'. super_admin defaultAppName 변경 시 즉시 반영 → **iOS 가 manifest.name 우선 사용 결정적 증거**
+
+**진정한 해결 — SSR (Phase 1 학생 + Phase 2 학원장)**:
+
+| 변경 | 내용 |
+|------|------|
+| `public/index.html` → `public/_app.html` rename | Vercel 정적 파일 우선 동작 우회 |
+| `public/admin/index.html` → `public/admin/_app.html` rename | 동일 |
+| [api/render-index.js](api/render-index.js) 신규 | GET / 호출 받아 `academies/{id}` fetch + `_app.html` template `fs.readFileSync` + `<title>` / `apple-mobile-web-app-title` / `application-name` / **manifest link href** 학원명·`?academy={id}` 로 치환 후 응답 |
+| [api/render-admin.js](api/render-admin.js) 신규 | render-index 와 동일 패턴. ` 관리자` suffix + manifest URL `&admin=1` |
+| `vercel.json` rewrites | `/`, `/index.html` → `/api/render-index`. `/admin`, `/admin/`, `/admin/index.html` → `/api/render-admin` |
+| `public/sw.js` APP_SHELL | `/`, `/index.html` 제거 (SSR 응답 캐시 방지) |
+
+**핵심 fix (Phase 1 deployed 후 추가)** — `<link rel="manifest" href>` 도 `?academy={id}` 박힘. iOS 가 manifest 우선 사용하므로, SSR 응답 시점부터 manifest URL 이 학원별이어야 학원명 노출.
+
+**Vercel 캐시**: `Cache-Control: public, s-maxage=300, stale-while-revalidate=60` + `Vary: Cookie` (학원별 분리)
+
+**Pro 플랜 전환**: Hobby 한도 12개 거의 다 차서 새 함수 2개 (render-index, render-admin) 추가 위해 사용자가 Pro 전환.
+
+**알려진 함정 메모**:
+- HTTP 헤더 값은 ASCII 만 허용 — `X-Ssr-Academy: 큰소리영어` (한글) → 'Invalid character in header content' throw → 진단 헤더 제거 필요
+- SW HTML intercept — Vercel·iOS Safari 환경에서 응답 객체 reconstruction (`new Headers`/`response.text()`/Content-Encoding) 처리에 throw 가능. 안전한 회귀 어려움 — 결국 SSR 로
+
+### 2) 결제 패널 항목 입력 즉시 반영 fix
+
+**증상**: 결제관리 항목 입력·완료 시 그리드에 즉시 안 보이고 다른 화면 갔다 와야 반영.
+
+**원인 1 — `_billingPanelDone` 의 350ms 고정 대기**:
+- onblur 의 async `updateDoc` 가 더 오래 걸리면 `_renderBillingGrid` 가 fresh fetch 하다가 stale 응답 받음
+
+**원인 2 — Firestore Eventual Consistency**:
+- `await updateDoc()` 직후 `await getDocs(query(...))` 가 server stale snapshot 받을 수 있음
+- 클라 측 in-memory `_billings` 는 이미 갱신됐으나 다시 fetch 하면 옛 데이터로 덮음
+
+**원인 3 (진짜) — `closeModal` wrapper 가 단순 정의에 의해 덮어씌워짐**:
+- 라인 3134 `_origCloseModal` wrapper (결제 패널 닫을 때 `_renderBillingGrid` 호출) 가 라인 4960 의 단순 `closeModal = () => {...}` 에 의해 덮임
+- ES module top-down 실행 → 마지막 등록자만 유효 → wrapper 한 번도 작동 안 함
+
+**3중 fix** ([app.js:_billingPanelDone / _renderBillingGrid / closeModal](public/admin/js/app.js)):
+1. **`_billingPending` Set** 도입 + `_billingTrack(promise)` 헬퍼 — `_billingAddItem` / `_billingUpdateItem` / `_billingDeleteItem` 모두 추적. `_billingPanelDone` 이 모든 pending 끝까지 await 후 closeModal
+2. **`_renderBillingGrid` 에 `{refetch: false}` 옵션** — 패널 닫을 때 in-memory 캐시만으로 렌더 (Firestore 재query 시 eventual consistency 회피)
+3. **라인 4960 `closeModal` 정의 자체에 결제 패널 정리 hook 인라인** — `_billingPanelId !== null` 이면 정리 + render. ✓ 완료 / ✕ 취소 / 바깥 클릭 등 모든 닫기 경로에서 작동
+
+### 3) 부수 변경
+
+- **scores.mode 마이그레이션 추가 (오늘 두 번째)** 없음. 이미 오전에 완료
+- **alert 안내문 정리** — SSR 로 학원명 자동이라 "input 학원명 직접 수정" 안내 제거. iOS alert 에 "[더 보기] 눌러주세요" 안내 추가 (공유 시트에서 [홈화면 추가] 안 보일 때)
+- **rename 이력**: `public/index.html` / `public/admin/index.html` 가 사라지고 `_app.html` 로. 외부 참조 (SW APP_SHELL, manifest start_url 등) 영향 없음 — vercel.json rewrites 로 `/` 와 `/index.html` 모두 SSR API 로 라우팅됨
+
+### 작업 규칙 추가 (2026-05-08 밤)
+
+신규:
+- **iOS Safari [홈화면 추가] 다이얼로그는 manifest.name 을 우선 사용** — 정적 HTML `<title>` / 메타가 아님. 첫 페이지 로드 시점의 manifest URL 이 학원별이어야 학원명 노출. JS 로 link.href 변경한 후의 manifest 응답은 무시.
+- **HTTP 헤더 값은 ASCII 만** — 한글 학원명을 `X-Sw-Academy` 같은 헤더에 박으면 'Invalid character in header content' throw. URL encode 또는 헤더 자체 제거.
+- **`closeModal` 같은 글로벌 함수 wrapper 패턴 주의** — wrapper 등록 후 단순 정의가 다시 등록되면 wrapper 무효. ES module top-down 실행에서 마지막 등록자만 유효. 충돌 가능성 있으면 정의에 인라인 hook 추가가 안전.
+- **Firestore eventual consistency** — `await updateDoc()` 직후 `await getDocs(query)` 는 stale snapshot 가능. 즉시 화면 갱신은 in-memory 캐시 활용 (fetch 생략 옵션).
+- **Vercel rewrites 의 정적 파일 우선 동작 우회** — `/` 요청 시 정적 `/index.html` 이 있으면 정적 파일 응답 (rewrites 안 통함). SSR 도입 시 `index.html` → `_app.html` rename 필수.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-08 밤)
+- `api/render-index.js`: ~140줄 신규
+- `api/render-admin.js`: ~140줄 신규
+- `public/_app.html` (rename from index.html): 변동 없음
+- `public/admin/_app.html` (rename): 변동 없음
+- `vercel.json`: rewrites 4줄 추가/변경
+- `public/sw.js`: APP_SHELL `/`, `/index.html` 제거. v337 → v365
+- `scripts/diag/dump-default-academy.js`: 신규 진단 도구
+- `docs/ios-pwa-academy-name-handoff.md`: 핸드오프 문서 (작업 끝나면 archive 또는 결과 추가)
+
+## 진행률 갱신 (2026-05-08 밤)
+- 화이트라벨 브랜딩: **~100%** (Phase A·B·C·D 완료 + iOS PWA 학원명 자동 노출 SSR 도입)
+- 결제 v2: ~96% (즉시 반영 fix 추가)
+- 멀티테넌시 인프라: ~98% (변동 없음)
+- super_admin 앱: ~98% (변동 없음)
+- 시험관리 운영: ~98% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-08 밤 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제 PG 연동
+2. **학원장 대시보드 큰 달력** ([docs/dashboard-cards-handoff.md](docs/dashboard-cards-handoff.md))
+3. **자동 로그아웃 후 학원 색 유지** — localStorage academyId 저장 → redirect 시 `/?academy=xxx`
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **super_admin defaultAppName 정정** — 'L E X I A I' → 'LexiAI' (사용자 직접, super 앱)
+6. **`_modeOldValue` 백업 필드 정리** (선택)
+
+**완료 (이 세션 밤, 2026-05-08)**:
+- ✅ iOS PWA 학원명 자동 노출 — SSR 도입 (Phase 1 학생 + Phase 2 학원장)
+- ✅ 결제 패널 항목 입력 즉시 반영 (3중 fix: pending 추적 + refetch:false + closeModal hook 인라인)
+- ✅ scores.mode 옛 단어시험 키 마이그레이션 (mixed/meaning/spelling → vocab, 36건)
+- ✅ alert 안내문 정리 (학원명 직접 수정 제거 + iOS '더 보기' 안내)
+- ✅ Vercel Pro 전환 — 함수 한도 회복
