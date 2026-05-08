@@ -15,14 +15,19 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/js/branding-presets.js"></script>
   <script>
-    // PWA 홈화면 추가 시 ?academy=xxx 이면 학원별 manifest 로 즉시 전환
+    // PWA 홈화면 추가 시 학원별 manifest 로 즉시 전환
+    // — URL 의 ?academy=xxx 또는 localStorage 캐시된 학원 ID 우선
+    // — iOS [홈화면에 추가] 다이얼로그가 manifest.name 을 우선 사용 → manifest URL
+    //   이 페이지 로드 시점부터 학원별이어야 학원 이름 노출
     (function () {
-      const params = new URLSearchParams(location.search);
-      const acad = params.get('academy');
-      if (acad) {
-        const link = document.getElementById('manifest-link');
-        if (link) link.href = `/api/manifest?academy=${encodeURIComponent(acad)}`;
-      }
+      try {
+        const params = new URLSearchParams(location.search);
+        const acad = params.get('academy') || localStorage.getItem('lexiAcademyId');
+        if (acad) {
+          const link = document.getElementById('manifest-link');
+          if (link) link.href = `/api/manifest?academy=${encodeURIComponent(acad)}`;
+        }
+      } catch (_) {}
     })();
     // 로그인 후 호출되는 헬퍼 — 학원 식별 시점에 manifest URL 갱신
     window.updateManifest = function(academyId) {
