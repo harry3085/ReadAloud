@@ -5,7 +5,9 @@
     { "source": "/admin/", "destination": "/admin/index.html" },
     { "source": "/super", "destination": "/super/index.html" },
     { "source": "/super/", "destination": "/super/index.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/", "destination": "/api/render-index" },
+    { "source": "/index.html", "destination": "/api/render-index" },
+    { "source": "/(.*)", "destination": "/_app.html" }
   ],
   "headers": [
     {
