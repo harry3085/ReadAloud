@@ -1875,18 +1875,21 @@ function _billingMonthOptions(selected) {
   return opts.join('');
 }
 
-async function _renderBillingGrid(generated = 0) {
+async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
   const main = document.getElementById('billingMain');
   if (!main) return;
   const academyId = window.MY_ACADEMY_ID || 'default';
 
-  // 청구서 로드
-  const billingSnap = await getDocs(query(
-    collection(db, 'billings'),
-    where('academyId', '==', academyId),
-    where('yearMonth', '==', _billingMonth),
-  ));
-  _billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // 청구서 로드 — refetch=false 일 땐 in-memory _billings 사용 (Firestore eventual
+  // consistency 회피: 방금 updateDoc 한 데이터가 즉시 query 에 안 잡힐 수 있음)
+  if (refetch) {
+    const billingSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', academyId),
+      where('yearMonth', '==', _billingMonth),
+    ));
+    _billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
   _billings.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
 
   // 반 목록 (필터용)
@@ -3136,7 +3139,9 @@ window.closeModal = function() {
   if (wasBillingPanel) {
     _billingPanelId = null;
     _billingPanelChannel = null;
-    if (currentPage === 'payment') _renderBillingGrid();
+    // refetch:false — 패널에서 in-memory _billings 이미 갱신됨. Firestore 재fetch 시
+    // eventual consistency 로 stale 데이터가 올 수 있어 캐시 그대로 사용.
+    if (currentPage === 'payment') _renderBillingGrid(0, { refetch: false });
   }
   if (wasBillingMsg) {
     _billingMsgState = null;
