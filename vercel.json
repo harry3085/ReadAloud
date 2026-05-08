@@ -1,8 +1,9 @@
 {
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/admin", "destination": "/admin/index.html" },
-    { "source": "/admin/", "destination": "/admin/index.html" },
+    { "source": "/admin", "destination": "/api/render-admin" },
+    { "source": "/admin/", "destination": "/api/render-admin" },
+    { "source": "/admin/index.html", "destination": "/api/render-admin" },
     { "source": "/super", "destination": "/super/index.html" },
     { "source": "/super/", "destination": "/super/index.html" },
     { "source": "/", "destination": "/api/render-index" },
