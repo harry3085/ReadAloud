@@ -3216,18 +3216,16 @@ window.installApp=async()=>{
   }
   // iOS Safari
   if(isIOS){
-    const acadName = localStorage.getItem('lexiAppName') || '학원명';
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 입력칸의 이름을 "' + acadName + '"으로 수정\n④ 우상단 "추가"\n\n💡 입력칸의 기본값은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n※ Safari 에서 열어주세요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요');
     return;
   }
   // Android 기타 브라우저
   if(isAndroid){
-    alert('📱 홈화면 추가 방법 (Android)\n\n① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는\n   "앱 설치" 선택\n\n※ 크롬 브라우저를 권장해요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요\n   (학원 로고로 새로 등록됩니다)');
+    alert('📱 홈화면 추가 방법 (Android)\n\n① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는\n   "앱 설치" 선택\n\n※ 크롬 브라우저를 권장해요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요');
     return;
   }
   // PC (또는 UA 가 모바일로 인식 안 된 케이스 — iPad 데스크톱 모드 등)
-  const acadName = localStorage.getItem('lexiAppName') || '학원명';
-  alert('💻 PC 에서 바로가기 추가\n\n① 크롬 주소창 우측 ⊕ 설치 아이콘 클릭\n  (또는 우상단 ⋮ → "앱 설치")\n② 이름을 "' + acadName + '"으로 수정\n③ 설치\n\n💡 기본 이름은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+  alert('💻 PC 에서 바로가기 추가\n\n① 크롬 주소창 우측 ⊕ 설치 아이콘 클릭\n  (또는 우상단 ⋮ → "앱 설치")\n② 설치\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
 };
 
 window.addEventListener('appinstalled',()=>{
