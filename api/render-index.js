@@ -125,6 +125,17 @@ module.exports = async (req, res) => {
       `$1${safeName}$2`
     );
 
+    // manifest link href — ?academy={id} 박힘 (iOS 가 manifest.name 우선 사용 → 학원명 응답 보장)
+    const manifestUrl = `/api/manifest?academy=${encodeURIComponent(academyId)}`;
+    html = html.replace(
+      /(<link\s[^>]*rel=["']manifest["'][^>]*href=["'])[^"']*(["'])/i,
+      `$1${manifestUrl}$2`
+    );
+    html = html.replace(
+      /(<link\s[^>]*href=["'])[^"']*(["'][^>]*rel=["']manifest["'])/i,
+      `$1${manifestUrl}$2`
+    );
+
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // CDN 학원별 캐시 — Vercel Edge 가 academy 별로 cache key 분리
     res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
