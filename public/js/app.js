@@ -79,6 +79,48 @@ document.addEventListener('click', e=>{if(!e.target.closest('.home-header')){doc
 // 추후: 서브도메인 또는 학원코드 입력으로 academyId 결정.
 const _LOGIN_ACADEMY_ID = 'default';
 
+// ── SW 에 학원명 전달 (iOS PWA 학원명 자동 노출) ──────────
+// SW 가 HTML 응답을 가로채서 <title>/메타 학원명 주입 (sw.js _injectAcademyName)
+function _notifySwAcademyName(academyId, name) {
+  if (!name || !academyId) return;
+  if (!navigator.serviceWorker?.controller) return;
+  try {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'ACADEMY_NAME_UPDATE',
+      academyId: String(academyId),
+      name: String(name),
+    });
+  } catch (_) {}
+}
+
+// ── iOS 검출 (iPad 데스크톱 모드 포함) ────────────────
+function _isIos() {
+  const ua = navigator.userAgent || '';
+  return /iphone|ipad|ipod/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// ── iOS [홈화면 추가] 후 자동 reload 등록 ─────────────
+// 사용자가 [공유 → 홈화면 추가] 누르고 공유 시트 닫힐 때 visibilitychange 발화
+// → reload → SW 가 학원명 박힌 HTML 응답 → 다시 추가 시 학원명 노출
+function _registerIosInstallReload() {
+  if (!_isIos()) return;
+  if (window._iosInstallReloadRegistered) return;
+  window._iosInstallReloadRegistered = true;
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window._iosInstallReloadRegistered = false;
+      setTimeout(() => window.location.reload(), 300);
+    }
+  };
+  // 공유 시트 뜨는 타이밍에 맞춰 listener 등록
+  setTimeout(() => {
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  }, 500);
+}
+
 // usernameLookup/{academyId}_{usernameLower} 로 email 조회.
 // 누락 시 null 반환 → 호출자가 레거시 users 쿼리로 폴백.
 // 학원 컨텍스트 로드 — Custom Claims 우선, users 문서 폴백, 'default' 최종 폴백
@@ -173,6 +215,9 @@ function _applyAcademyBranding(academy) {
   // PWA manifest 갱신
   if (typeof window.updateManifest === 'function') window.updateManifest(window.MY_ACADEMY_ID);
   window.CURRENT_BRANDING = { academyName: acadName, preset, logoUrl, catchphrase: cp, planId };
+
+  // SW 에 학원명 전달 — iOS [홈화면 추가] 시 SW 가 HTML 가로채서 학원명 박은 응답
+  _notifySwAcademyName(window.MY_ACADEMY_ID, acadName);
 
   // FOUC 방지 캐시 — 학원 자체 브랜딩으로 LexiAI 기본 캐시 덮어쓰기
   // (학생앱·학원장앱 양쪽에서 다음 진입 시 자기 학원 로고/이름·색이 즉시 표시되도록)
@@ -3172,7 +3217,9 @@ window.installApp=async()=>{
   // iOS Safari
   if(isIOS){
     const acadName = localStorage.getItem('lexiAppName') || '학원명';
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 입력칸의 이름을 "' + acadName + '"으로 수정\n④ 우상단 "추가"\n\n💡 입력칸의 기본값은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+    // 공유 시트 닫힌 후 자동 reload (SW 가 HTML 가로채 학원명 박은 응답 → 다시 추가 시 학원명 노출)
+    _registerIosInstallReload();
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n💡 처음 추가 시 이름이 LexiAI 로 보일 수 있어요.\n   공유 창 닫으면 자동 새로고침 → 다시 시도하시면\n   "' + acadName + '"으로 자동 표시됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
     return;
   }
   // Android 기타 브라우저

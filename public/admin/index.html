@@ -46,7 +46,19 @@
     const isAndroid = /Android/i.test(ua);
     const acadName = localStorage.getItem('lexiAppName') || '학원명';
     if (isIOS) {
-      alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 입력칸의 이름을 "' + acadName + ' 관리자"로 수정\n④ 우상단 "추가"\n\n💡 입력칸의 기본값은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + ' 관리자") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+      // 공유 시트 닫힌 후 자동 reload (SW HTML intercept 활성화 → 다시 추가 시 학원명 노출)
+      if (!window._iosInstallReloadRegistered) {
+        window._iosInstallReloadRegistered = true;
+        const onVisChange = () => {
+          if (document.visibilityState === 'visible') {
+            document.removeEventListener('visibilitychange', onVisChange);
+            window._iosInstallReloadRegistered = false;
+            setTimeout(() => window.location.reload(), 300);
+          }
+        };
+        setTimeout(() => document.addEventListener('visibilitychange', onVisChange), 500);
+      }
+      alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n💡 처음 추가 시 이름이 LexiAI 로 보일 수 있어요.\n   공유 창 닫으면 자동 새로고침 → 다시 시도하시면\n   "' + acadName + ' 관리자"로 자동 표시됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
     }
     else if (isAndroid) alert('📱 홈화면 추가 방법 (Android)\n\n① 우상단 메뉴 (⋮)\n② "홈 화면에 추가" 또는 "앱 설치"\n③ 이름을 "' + acadName + ' 관리자"로 수정\n④ 추가\n\n※ 크롬 브라우저 권장\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
     else {

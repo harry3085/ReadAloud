@@ -199,6 +199,18 @@ function _applyAdminBranding(acData) {
     if (window.MY_ACADEMY_ID) localStorage.setItem('lexiAcademyId', window.MY_ACADEMY_ID);
   } catch (_) {}
 
+  // SW 에 학원명 전달 — iOS [홈화면 추가] 시 SW 가 HTML 가로채서 학원명 박은 응답
+  // (학원장 페이지는 SW 가 ' 관리자' suffix 자동 추가)
+  if (navigator.serviceWorker?.controller && acadName && window.MY_ACADEMY_ID) {
+    try {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'ACADEMY_NAME_UPDATE',
+        academyId: String(window.MY_ACADEMY_ID),
+        name: String(acadName),
+      });
+    } catch (_) {}
+  }
+
   // [PWA 학원명 적용 reload] 제거 — 로그인 navigation 도중 trigger 되어 무한 로딩 유발.
 }
 
