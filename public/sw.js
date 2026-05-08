@@ -1,16 +1,17 @@
 // 큰소리 영어 Service Worker — 앱 쉘 캐시 + 일반 fetch 만
 // FCM 백그라운드 알림은 firebase-messaging-sw.js (Firebase 자동 등록 SW) 가 전담.
 
-const CACHE_NAME = 'kunsori-v345';
+const CACHE_NAME = 'kunsori-v346';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.css',
   '/js/app.js',
-  '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512_.png',
 ];
+// manifest.json / api/manifest 는 캐시 X (학원별 동적 응답 — iOS [홈화면 추가] 시
+// 항상 최신 학원 이름 노출되도록)
 
 // 설치: 앱 쉘 캐시
 self.addEventListener('install', e => {
@@ -37,8 +38,9 @@ self.addEventListener('fetch', e => {
 
   const url = e.request.url;
 
-  // Firebase / API / Storage(로고) 요청은 항상 네트워크 (로고는 학원장 변경 즉시 반영 필요)
-  if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/') || url.includes('storage.googleapis.com')) return;
+  // Firebase / API / Storage(로고) / manifest 요청은 항상 네트워크
+  // — manifest 는 학원별 동적이라 캐시되면 [홈화면 추가] 시 옛 학원명 노출
+  if (url.includes('firestore') || url.includes('firebase') || url.includes('/api/') || url.includes('storage.googleapis.com') || url.endsWith('/manifest.json')) return;
 
   // 앱 쉘(HTML, CSS, JS, 아이콘): 네트워크 우선, 실패 시 캐시 (배포 즉시 반영)
   const isAppShell = APP_SHELL.some(path => url.endsWith(path) || url === self.location.origin + path);
