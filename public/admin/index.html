@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#E8714A">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="LexiAI 관리자">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="application-name" content="LexiAI 관리자">
+<!-- apple-mobile-web-app-title / application-name 은 인라인 script 가 동적 추가 (학원명 보장) -->
 <title>LexiAI 관리자</title>
 <link id="manifest-link" rel="manifest" href="/api/manifest?admin=1">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -126,14 +125,19 @@
         const preset = window.BRANDING_PRESETS[cachedPreset];
         if (preset) window.applyPresetToCss(preset);
       }
-      // 메타·title 즉시 갱신 (DOMContentLoaded 기다리지 않음 — iOS PWA 이름 보장)
+      // 메타·title 즉시 갱신 — 메타는 createElement 로 head 에 새로 추가
+      // (정적 HTML 에 없으니 iOS 가 캐시할 옛 값이 없음 — JS 추가 메타 인식 보장)
       if (cachedName) {
         const adminTitle = cachedName + ' 관리자';
         document.title = adminTitle;
-        const _at = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-        if (_at) _at.setAttribute('content', adminTitle);
-        const _an = document.querySelector('meta[name="application-name"]');
-        if (_an) _an.setAttribute('content', adminTitle);
+        const at = document.createElement('meta');
+        at.name = 'apple-mobile-web-app-title';
+        at.content = adminTitle;
+        document.head.appendChild(at);
+        const an = document.createElement('meta');
+        an.name = 'application-name';
+        an.content = adminTitle;
+        document.head.appendChild(an);
       }
       // 로고·텍스트는 DOM 생성 후
       if (cachedLogo || cachedName) {

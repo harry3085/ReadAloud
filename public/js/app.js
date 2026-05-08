@@ -157,11 +157,20 @@ function _applyAcademyBranding(academy) {
   const acadName = academy.name || lexi.defaultAppName || 'LexiAI';
   document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
   document.title = acadName;
-  // iOS '홈화면 추가' 시 기본 이름 (apple-mobile-web-app-title 메타가 우선)
-  const _appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-  if (_appleTitle) _appleTitle.setAttribute('content', acadName);
-  const _appName = document.querySelector('meta[name="application-name"]');
-  if (_appName) _appName.setAttribute('content', acadName);
+  // iOS '홈화면 추가' 시 기본 이름 — 메타 자체를 새로 만들어 추가 (옛 메타 제거 후)
+  // 정적 HTML 에 메타가 없으니 iOS 가 캐시할 옛 값이 없음. createElement 로 fresh 메타.
+  const _atOld = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (_atOld) _atOld.remove();
+  const _at = document.createElement('meta');
+  _at.name = 'apple-mobile-web-app-title';
+  _at.content = acadName;
+  document.head.appendChild(_at);
+  const _anOld = document.querySelector('meta[name="application-name"]');
+  if (_anOld) _anOld.remove();
+  const _an = document.createElement('meta');
+  _an.name = 'application-name';
+  _an.content = acadName;
+  document.head.appendChild(_an);
 
   // 캐치프레이즈 (Free 는 LexiAI 기본 / Lite+ 는 학원 자체 우선 → LexiAI fallback)
   const cp = isFree

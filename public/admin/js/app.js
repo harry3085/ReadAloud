@@ -184,12 +184,20 @@ function _applyAdminBranding(acData) {
     if (textNode) textNode.textContent = ' ' + acadName;
   }
   document.title = acadName + ' 관리자';
-  // iOS 홈화면 추가 시 표시되는 이름 (apple-mobile-web-app-title 우선)
+  // iOS 홈화면 추가 시 표시되는 이름 — 메타 createElement 로 fresh 추가
   const adminTitle = acadName + ' 관리자';
-  const _appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-  if (_appleTitle) _appleTitle.setAttribute('content', adminTitle);
-  const _appName = document.querySelector('meta[name="application-name"]');
-  if (_appName) _appName.setAttribute('content', adminTitle);
+  const _atOld = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (_atOld) _atOld.remove();
+  const _at = document.createElement('meta');
+  _at.name = 'apple-mobile-web-app-title';
+  _at.content = adminTitle;
+  document.head.appendChild(_at);
+  const _anOld = document.querySelector('meta[name="application-name"]');
+  if (_anOld) _anOld.remove();
+  const _an = document.createElement('meta');
+  _an.name = 'application-name';
+  _an.content = adminTitle;
+  document.head.appendChild(_an);
   // 다음 진입 시 FOUC 방지용 캐시 (학생 앱과 동일 키)
   try {
     if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);

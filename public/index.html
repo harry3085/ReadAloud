@@ -9,9 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
   <meta name="theme-color" content="#E8714A">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="LexiAI">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="application-name" content="LexiAI">
+  <!-- apple-mobile-web-app-title / application-name 은 인라인 script 가 동적 추가 (학원명 보장) -->
+  <!-- 정적으로 박으면 iOS 가 첫 페이지 로드 시점의 값을 캐시해 JS 변경을 무시 -->
+
   <link rel="stylesheet" href="/style.css">
   <script src="/js/branding-presets.js"></script>
   <script>
@@ -56,13 +57,18 @@
           const preset = window.BRANDING_PRESETS[cachedPreset];
           if (preset) window.applyPresetToCss(preset);
         }
-        // 메타·title 즉시 갱신 (DOMContentLoaded 기다리지 않음 — iOS PWA 이름 보장)
+        // 메타·title 즉시 갱신 — 메타는 createElement 로 head 에 새로 추가
+        // (정적 HTML 에 없으니 iOS 가 캐시할 옛 값이 없음 — JS 추가 메타 인식 보장)
         if (cachedName) {
           document.title = cachedName;
-          const _at = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-          if (_at) _at.setAttribute('content', cachedName);
-          const _an = document.querySelector('meta[name="application-name"]');
-          if (_an) _an.setAttribute('content', cachedName);
+          const at = document.createElement('meta');
+          at.name = 'apple-mobile-web-app-title';
+          at.content = cachedName;
+          document.head.appendChild(at);
+          const an = document.createElement('meta');
+          an.name = 'application-name';
+          an.content = cachedName;
+          document.head.appendChild(an);
         }
         // 로고·텍스트는 DOM 생성 후 (이미지·요소 렌더 시점)
         if (cachedLogo || cachedName) {
