@@ -2184,3 +2184,160 @@ LLM 생성 코드 리뷰 지시서 (`CLAUDE_CODE_지시서코드안정화_2026-0
 - ✅ scores.mode 옛 단어시험 키 마이그레이션 (mixed/meaning/spelling → vocab, 36건)
 - ✅ 이전 성장 리포트 표 페이지네이션 (5건) + 폭 재조정
 - ✅ 🗑 이모지 사이즈 1차 통일 (단독 + 결합 span 16px)
+
+---
+
+## 2026-05-08 (저녁): super_admin LexiAI 기본 브랜딩 + PWA 흐름 정비 + 시험화면 토큰화
+
+당일 SW v322 → v339 (~17 commit). 화이트라벨 시스템 후속 — Free 학원·미설정 학원의 기본값을 super_admin이 변경 가능하도록 + PWA 설치 흐름 정비 + 시험 풀이 화면 색 토큰화.
+
+### 1) super_admin [🎨 LexiAI 브랜딩] 탭
+
+`appConfig/branding` 도큐먼트 — Free 학원·미설정 학원의 fallback. super_admin 전용 편집:
+- **🎨 색상 프리셋** (7개 중 default 선택)
+- **🖼️ 기본 로고** (PNG 5MB → sharp 192/512 자동 리사이즈)
+- **🏷️ 기본 앱 이름** (defaultAppName — 'LexiAI' 또는 학원장 추가 안내문)
+- **✨ 기본 캐치프레이즈** (defaultCatchphrase 40자)
+
+저장 위치:
+- Firestore `appConfig/branding` (super_admin write 전용, **read public** — 로그인 전 화면 fallback)
+- Storage `appConfig/branding/logos/{original|192|512}.png`
+
+API 확장 (`api/uploadLogo.js`):
+- `target='lexiai'` 파라미터 → super_admin 만 가능, `appConfig/branding` 경로
+- 일반 학원 업로드와 분리 (학원 admin / super_admin 둘 다 사용)
+
+미리보기 (`_renderLexiAIBranding`): 학생 로그인 화면 형태로 색·로고·이름·캐치프레이즈 즉시 반영.
+
+### 2) Fallback 체인 일관화
+
+학생 앱 / 학원장 앱 / `api/manifest.js` 모두 일관:
+
+| 학원 플랜 | 색·로고·이름 |
+|-----------|-------------|
+| **Free** | 항상 super_admin LexiAI 기본 (학원 자체 brand 무시) |
+| **Lite+** | 학원 자체 branding 우선 → 비어있으면 LexiAI 기본 → 코드 default(coral) |
+
+학생 앱 `_loadMyAcademyContext`: `academies` + `appConfig/branding` 병렬 fetch → `window.LEXIAI_BRANDING` 노출 → `_applyAcademyBranding` 가 fallback 적용.
+
+학원장 앱 `_applyAdminBranding` 동일 패턴.
+
+### 3) PWA 설치 흐름 전면 정비
+
+**학생 앱**:
+- 로그인 화면 [📱 홈화면 추가] 버튼 **제거** (로그인 전이라 LexiAI 로 등록되던 문제)
+- 학생 메인 화면 우상단 점3개 메뉴에 **[홈화면에 추가]** 항목 추가 (내 정보 변경 / 로그아웃 사이)
+- standalone 모드면 자동 숨김
+
+**학원장 앱**:
+- manifest link + apple-touch-icon + service worker 등록 추가
+- 헤더 우측 로그아웃 옆에 **[📱 바로가기]** 버튼 추가
+- `_loadMyAcademyContext` 가 `updateAdminManifest(academyId)` 호출 → 학원별 manifest URL 갱신
+- standalone 모드면 자동 숨김
+
+**`api/manifest.js`**:
+- `admin=1` 파라미터 추가 → start_url=`/admin/`, scope=`/admin/`, name 에 ` 관리자` 추가
+- `id` 필드로 학생 PWA 와 별개 인스턴스로 등록 → 같은 디바이스에 학생/학원장 별도 아이콘 가능
+
+**iOS 호환**:
+- `apple-touch-icon` 메타 동적 갱신 (manifest 보다 우선시)
+- iOS Safari 안내 alert (`installAdminApp`/`installApp`) — 공유→홈화면 추가 절차
+
+**인앱 브라우저 감지** (`public/index.html`):
+- UA 패턴 매칭: 카카오톡 / 네이버 / 페북 / 인스타 / Line / WeChat / Daum / Android WebView
+- 로그인 화면 상단에 노란 안내 배너 — OS별 브라우저 전환 가이드 + [📋 주소 복사] 버튼
+
+### 4) FOUC 제거 — LexiAI 정적 아이콘 교체
+
+- 정적 `/icons/icon-192.png` + `/icons/icon-512.png` 를 super_admin 업로드 LexiAI 로고로 직접 덮어씀
+- `scripts/admin/sync-lexiai-icons.js` 신규 — Storage 에서 다운받아 정적 파일 갱신
+- 첫 방문자도 캐시 비운 사용자도 LexiAI 로고 첫 페인트부터 표시
+- 추가로 학생 앱 inline `<head>` script — localStorage `lexiLogo192`/`lexiAppName` 캐시 → DOMContentLoaded 즉시 적용 (재방문자 FOUC 제거)
+
+### 5) 시험 풀이 화면 색상 토큰화
+
+학생 앱의 시험 화면이 코랄 hex 박혀 학원 브랜딩 미반영이던 문제 — 일괄 변수화:
+
+- `public/js/app.js` 13곳: `#E8714A` → `var(--c-brand)`, `#D85A30` → `var(--c-brand-dark)`, `#FFE0D4` → `var(--c-brand-cream)`, `linear-gradient(150deg,...)` → `var(--brand-header-gradient)`
+- `public/style.css`: 4종 그라디언트 + login-input/progress-bar-wrap/choice-btn.correct/notice-tag/hw-done 등
+- `public/index.html`: vocabQuiz 합체 카드 헤더 그라디언트 + 마이크 버튼 + 타이머 SVG circle stroke (속성 → style 변환) + 정보 모달 타이틀
+
+이제 학원이 [브랜딩]에서 색 변경 시 **시험 풀이 화면 (단어/객관식/빈칸/언스크램블/녹음숙제) 모두 학원 색 즉시 반영**.
+
+### 6) 자동 로그아웃 후 흰 버튼 버그 fix
+
+학원장 앱 1일 자동 로그아웃 → `/` 학생앱 redirect → 학생앱 로그인 화면이 **흰 버튼**으로 표시되던 버그.
+
+**원인**:
+- `applyPresetToCss` 가 빈 string/undefined 도 `setProperty` 호출
+- 빈 값으로 set 하면 `:root` 의 default 가 무효화 → `var(--brand-login-gradient)` = 'none' → 배경 안 보임
+
+**2단 방어**:
+1. **`setIf` 가드** — `applyPresetToCss` 가 truthy 값일 때만 setProperty (누락 키는 default 살아남음)
+2. **branding-presets.js 로드 즉시** `applyPresetToCss(BRANDING_PRESETS.coral)` IIFE 호출 — onAuthStateChanged 가 발화 안 해도 첫 페인트부터 코랄 색
+
+### 7) 그 외 수정
+
+- AI Generator [메뉴 진입 시 카운트 0 표시 race fix](public/admin/js/app.js) — `loadQuizGenerate` 의 `if (!_genPages && !_genBooks)` 조건이 시험관리에서 books만 fetch한 상태 후 진입 시 skip → pages 비어있어 카운트 0. 각 컬렉션 비어있을 때 개별 fetch
+- 결제관리 [반/상태 필터 무동작](public/admin/js/app.js#L1449) — ES module `let` 변수 inline onchange 직접 할당 실패. `window._billingChangeFilterGroup(val)` 별도 함수
+- 결제관리 행별 [🗑 삭제] — 청구서 삭제 + `users.tuitionPlan.active=false` (자동 청구 영구 OFF)
+- 시험관리 [🗑 삭제] — 다중 (`tpDeleteSelectedSets`) + 단건 (`tpDeleteGenTest`) + 학생 제외 (`tpExcludeStudent` cascade)
+- `qsEditSet` 폴백 체인 추가 — `_qsList → _tpSets → Firestore` (시험관리에서 호출 시 "세트 못 찾음" 해결)
+- 학생 phone='admin' 6명 정리 ([scripts/migrate/reset-admin-phone.js](scripts/migrate/reset-admin-phone.js))
+- 'Powered by LexiAI' 뒤 🤖 이모지 제거 (3곳)
+- 정적 HTML '큰소리 영어' → 'LexiAI' 일괄
+
+### 8) 핸드오프 문서
+
+`docs/dashboard-cards-handoff.md` — 학원장 대시보드 카드 구조 + 큰 달력 통합 작업 정리. 다음 세션에서 새 챗으로 이어서 진행 가능.
+
+---
+
+## 작업 규칙 추가 (2026-05-08 저녁)
+
+신규:
+- **`<script src="...">` 동기 로드 파일은 IIFE 끝에서 default 적용** — 비동기 fetch 결과를 기다리는 코드만 있으면 이벤트 미발화 시 흰 화면 위험. `branding-presets.js` 의 `applyPresetToCss(BRANDING_PRESETS.coral)` 가 표본.
+- **`setProperty` 빈 값 함정** — `style.setProperty(name, '')` 또는 `undefined` 호출 시 `:root` 의 default 가 무효화되어 `var()` 가 빈 값으로 평가됨 → background:none. 가드 필수: `if (val) setProperty(...)`.
+- **PWA 별도 인스턴스 분리** — 같은 도메인에 두 PWA(학생/학원장) 등록하려면 manifest 의 `id` 필드 다르게 + `start_url` 다르게. `id` 필드 미사용 시 같은 PWA로 인식돼 한 쪽만 등록.
+- **인앱 브라우저 UA 패턴 표준** — 카카오/네이버/페북/인스타/Line/WeChat/Daum + Android WebView (`;\s*wv\)`). 신규 인앱 추가 시 같은 패턴 보강.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-08 저녁)
+- `public/admin/js/app.js`: ~13000줄 (변동 적음)
+- `public/super/js/app.js`: ~3400줄 (+200, LexiAI 브랜딩 탭)
+- `public/js/app.js`: ~4900줄 (+50, 학생앱 brand fetch + dropdown install item)
+- `public/js/branding-presets.js`: ~140줄 (+20, setIf 가드 + IIFE default 적용)
+- `api/uploadLogo.js`: target='lexiai' 분기 추가
+- `api/manifest.js`: admin=1 파라미터 + id 필드 + LexiAI defaultAppName fallback
+- `firestore.rules`: appConfig/branding read public 분기
+- `storage.rules`: appConfig/branding/logos/ 경로 추가
+- 신규: `scripts/admin/sync-lexiai-icons.js` / `docs/dashboard-cards-handoff.md`
+- SW 캐시: `kunsori-v339`
+
+## 진행률 (2026-05-08 저녁)
+- 화이트라벨 브랜딩: **~99%** (Phase A·B·C·D 모두 완료, super_admin 기본 + Free fallback + 시험 화면 토큰화)
+- super_admin 앱: **~98%** (LexiAI 브랜딩 탭 추가)
+- PWA 설치 흐름: **~100%** (학생/학원장 별도 PWA + iOS/Android/PC 분기 + 인앱 안내)
+- 결제 v2: ~95% (변동 없음)
+- 시험관리 운영: ~98% (변동 없음)
+- 멀티테넌시 인프라: ~98% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-08 저녁 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관·개인정보 / 결제 PG 연동
+2. **학원장 대시보드 큰 달력** ([docs/dashboard-cards-handoff.md](docs/dashboard-cards-handoff.md) + [memory/project_dashboard_calendar.md](memory/project_dashboard_calendar.md))
+3. **자동 로그아웃 후 학원 색 유지** — localStorage academyId 저장 → redirect 시 `/?academy=xxx` 로 추방 → 학생앱이 학원 brand 미리 적용
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **AI 평가 실패율** (Phase B Cloud Function — 베타 운영 후)
+
+**완료 (이 세션 저녁, 2026-05-08)**:
+- ✅ super_admin [🎨 LexiAI 브랜딩] 탭 — 색·로고·앱이름·캐치프레이즈
+- ✅ Fallback 체인 일관화 (Free → LexiAI / Lite+ → 학원→LexiAI→default)
+- ✅ PWA 설치 흐름 정비 — 학생 앱 점3개 메뉴, 학원장 앱 [📱 바로가기], manifest admin=1 분리, id 필드
+- ✅ 인앱 브라우저 감지 + 노란 안내 배너
+- ✅ 정적 아이콘 LexiAI 교체 (FOUC 제거) + sync 스크립트
+- ✅ 학생 앱 시험 화면 색상 토큰화 (모든 풀이 화면)
+- ✅ 흰 버튼 버그 fix (setIf 가드 + 즉시 default 적용)
+- ✅ 결제 필터 / qsEditSet 폴백 / AI Generator race / blurt 진단 / phone='admin' 정리 등
+- ✅ 대시보드 카드 핸드오프 문서
