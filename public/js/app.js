@@ -3171,18 +3171,8 @@ window.installApp=async()=>{
   }
   // iOS Safari
   if(isIOS){
-    // 진단 정보 — LexiAI 가 그대로 노출되는 원인 분석용
-    const link = document.getElementById('manifest-link');
-    const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-    const acad = localStorage.getItem('lexiAcademyId') || '(없음)';
-    const name = localStorage.getItem('lexiAppName') || '(없음)';
-    let mInfo = '(fetch 안 됨)';
-    try {
-      const r = await fetch(link.href, { cache: 'no-store' });
-      const j = await r.json();
-      mInfo = 'name: ' + j.name + '\nshort_name: ' + j.short_name;
-    } catch (e) { mInfo = 'fetch 실패: ' + e.message; }
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
+    const acadName = localStorage.getItem('lexiAppName') || '학원명';
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 입력칸의 이름을 "' + acadName + '"으로 수정\n④ 우상단 "추가"\n\n💡 입력칸의 기본값은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
     return;
   }
   // Android 기타 브라우저
@@ -3191,18 +3181,8 @@ window.installApp=async()=>{
     return;
   }
   // PC (또는 UA 가 모바일로 인식 안 된 케이스 — iPad 데스크톱 모드 등)
-  // 진단 정보도 함께 표시 — manifest 가 학원별로 잡히는지 확인
-  const link = document.getElementById('manifest-link');
-  const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-  const acad = localStorage.getItem('lexiAcademyId') || '(없음)';
-  const name = localStorage.getItem('lexiAppName') || '(없음)';
-  let mInfo = '(fetch 안 됨)';
-  try {
-    const r = await fetch(link.href, { cache: 'no-store' });
-    const j = await r.json();
-    mInfo = 'name: ' + j.name + '\nshort_name: ' + j.short_name;
-  } catch (e) { mInfo = 'fetch 실패: ' + e.message; }
-  alert('📱 모바일에서 접속 후 홈화면에 추가해주세요!\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nUA: ' + (navigator.userAgent || '').slice(0, 80) + '\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
+  const acadName = localStorage.getItem('lexiAppName') || '학원명';
+  alert('💻 PC 에서 바로가기 추가\n\n① 크롬 주소창 우측 ⊕ 설치 아이콘 클릭\n  (또는 우상단 ⋮ → "앱 설치")\n② 이름을 "' + acadName + '"으로 수정\n③ 설치\n\n💡 기본 이름은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
 };
 
 window.addEventListener('appinstalled',()=>{
