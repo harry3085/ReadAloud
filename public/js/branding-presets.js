@@ -74,31 +74,35 @@ function getAllPresets() {
 }
 
 // CSS 변수에 프리셋 주입 — 학생/학원장 앱 어디서든 호출
+// 가드: 누락된 키는 setProperty 안 함 → :root 의 default 가 그대로 살아남음
+// (빈 string 으로 set 하면 default 무효화되어 background:none 으로 평가됨 — 흰 버튼 버그 방지)
 function applyPresetToCss(preset) {
   if (!preset) return;
   const root = document.documentElement;
-  root.style.setProperty('--brand-primary', preset.primary);
-  root.style.setProperty('--brand-primary-dark', preset.primaryDark);
-  root.style.setProperty('--brand-primary-light', preset.primaryLight);
-  root.style.setProperty('--brand-primary-bg', preset.primaryBg);
-  root.style.setProperty('--brand-primary-text', preset.primaryText);
-  root.style.setProperty('--brand-accent-secondary', preset.accentSecondary);
-  root.style.setProperty('--brand-login-gradient', preset.loginGradient);
-  root.style.setProperty('--brand-header-gradient', preset.headerGradient);
-  if (preset.bgGradient) root.style.setProperty('--brand-bg-gradient', preset.bgGradient);
-  // 학생 앱 홈 배경 alias (style.css 의 --bg-gradient 가 자동 따라옴)
-  if (preset.bgGradient) root.style.setProperty('--bg-gradient', preset.bgGradient);
+  const setIf = (name, val) => { if (val) root.style.setProperty(name, val); };
+  setIf('--brand-primary', preset.primary);
+  setIf('--brand-primary-dark', preset.primaryDark);
+  setIf('--brand-primary-light', preset.primaryLight);
+  setIf('--brand-primary-bg', preset.primaryBg);
+  setIf('--brand-primary-text', preset.primaryText);
+  setIf('--brand-accent-secondary', preset.accentSecondary);
+  setIf('--brand-login-gradient', preset.loginGradient);
+  setIf('--brand-header-gradient', preset.headerGradient);
+  setIf('--brand-bg-gradient', preset.bgGradient);
+  setIf('--bg-gradient', preset.bgGradient);
   // 학원장 앱 호환 (--teal 별칭)
-  root.style.setProperty('--teal', preset.primary);
-  root.style.setProperty('--teal-dark', preset.primaryDark);
-  root.style.setProperty('--teal-light', preset.primaryBg);
+  setIf('--teal', preset.primary);
+  setIf('--teal-dark', preset.primaryDark);
+  setIf('--teal-light', preset.primaryBg);
   // 학생 앱 호환 (--c-brand 별칭)
-  root.style.setProperty('--c-brand', preset.primary);
-  root.style.setProperty('--c-brand-dark', preset.primaryDark);
-  root.style.setProperty('--c-brand-cream', preset.primaryBg);
+  setIf('--c-brand', preset.primary);
+  setIf('--c-brand-dark', preset.primaryDark);
+  setIf('--c-brand-cream', preset.primaryBg);
   // theme-color 메타
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = preset.primary;
+  if (preset.primary) {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = preset.primary;
+  }
   window.CURRENT_PRESET = preset;
 }
 
