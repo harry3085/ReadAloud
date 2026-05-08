@@ -129,7 +129,7 @@ module.exports = async (req, res) => {
     // CDN 학원별 캐시 — Vercel Edge 가 academy 별로 cache key 분리
     res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
     res.setHeader('Vary', 'Cookie');
-    res.setHeader('X-Ssr-Academy', safeName);
+    // X-Ssr-Academy 헤더 제거 — HTTP 헤더는 ASCII 만 허용 (한글 학원명 throw)
     res.status(200).send(html);
   } catch (e) {
     console.error('[render-index]', e);
