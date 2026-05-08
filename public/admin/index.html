@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#E8714A">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LexiAI 관리자">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="application-name" content="LexiAI 관리자">
 <title>LexiAI 관리자</title>
 <link id="manifest-link" rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -82,6 +85,12 @@
               if (tn) tn.textContent = ' ' + cachedName;
             });
             document.title = cachedName + ' 관리자';
+            // iOS 홈화면 추가 시 표시되는 이름
+            const adminTitle = cachedName + ' 관리자';
+            const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            if (appleTitle) appleTitle.setAttribute('content', adminTitle);
+            const appName = document.querySelector('meta[name="application-name"]');
+            if (appName) appName.setAttribute('content', adminTitle);
           }
         });
       }

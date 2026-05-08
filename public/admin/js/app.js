@@ -184,6 +184,12 @@ function _applyAdminBranding(acData) {
     if (textNode) textNode.textContent = ' ' + acadName;
   }
   document.title = acadName + ' 관리자';
+  // iOS 홈화면 추가 시 표시되는 이름 (apple-mobile-web-app-title 우선)
+  const adminTitle = acadName + ' 관리자';
+  const _appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (_appleTitle) _appleTitle.setAttribute('content', adminTitle);
+  const _appName = document.querySelector('meta[name="application-name"]');
+  if (_appName) _appName.setAttribute('content', adminTitle);
   // 다음 진입 시 FOUC 방지용 캐시 (학생 앱과 동일 키)
   try {
     if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);

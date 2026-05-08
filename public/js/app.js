@@ -157,6 +157,11 @@ function _applyAcademyBranding(academy) {
   const acadName = academy.name || lexi.defaultAppName || 'LexiAI';
   document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = acadName; });
   document.title = acadName;
+  // iOS '홈화면 추가' 시 기본 이름 (apple-mobile-web-app-title 메타가 우선)
+  const _appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (_appleTitle) _appleTitle.setAttribute('content', acadName);
+  const _appName = document.querySelector('meta[name="application-name"]');
+  if (_appName) _appName.setAttribute('content', acadName);
 
   // 캐치프레이즈 (Free 는 LexiAI 기본 / Lite+ 는 학원 자체 우선 → LexiAI fallback)
   const cp = isFree

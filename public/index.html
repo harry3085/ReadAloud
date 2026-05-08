@@ -9,6 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
   <meta name="theme-color" content="#E8714A">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="LexiAI">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="LexiAI">
   <link rel="stylesheet" href="/style.css">
   <script src="/js/branding-presets.js"></script>
   <script>
@@ -51,6 +54,11 @@
             if (cachedName) {
               document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = cachedName; });
               document.title = cachedName;
+              // iOS 홈화면 추가 시 표시되는 이름 — apple-mobile-web-app-title 우선 적용
+              const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+              if (appleTitle) appleTitle.setAttribute('content', cachedName);
+              const appName = document.querySelector('meta[name="application-name"]');
+              if (appName) appName.setAttribute('content', cachedName);
             }
           });
         }
