@@ -3630,7 +3630,7 @@ function _vqRenderSpellBoxes(ans) {
     const ch = val[i] || '';
     const cls = ch ? 'spell-box filled' : (i === val.length ? 'spell-box active' : 'spell-box');
     return `<div class="${cls}" onclick="_vqFocusSpellInput()"
-      style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;">${ch||'_'}</div>`;
+      style="width:${boxW}px;height:${boxW+18}px;font-size:${fontSize}px;border-radius:6px;">${ch||'_'}</div>`;
   }).join('');
 }
 
@@ -3948,7 +3948,7 @@ function _vqRenderSpellFeedback(ans, isCorrect) {
     const mainCh = match ? userCh : (userCh || '_');
     const subCh = (!match && userCh) ? correctCh : '';
     const subHtml = subCh ? `<div style="font-size:9px;line-height:1;margin-top:1px;color:#6b7280;font-weight:600;">→${esc(subCh)}</div>` : '';
-    return `<div class="spell-box" style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};display:flex;flex-direction:column;align-items:center;justify-content:center;">${esc(mainCh)}${subHtml}</div>`;
+    return `<div class="spell-box" style="width:${boxW}px;height:${boxW+18}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};display:flex;flex-direction:column;align-items:center;justify-content:center;">${esc(mainCh)}${subHtml}</div>`;
   }).join('');
 
   // 배너로 결과 표시 (빈칸채우기와 동일 스타일)
