@@ -115,4 +115,8 @@ if (typeof window !== 'undefined') {
   window.getPresetById = getPresetById;
   window.getAllPresets = getAllPresets;
   window.applyPresetToCss = applyPresetToCss;
+  // 페이지 로드 즉시 default(coral) 적용 — onAuthStateChanged 가 발화 안 하거나
+  // 늦어지는 경우(자동 로그아웃 후 redirect 등) 흰 화면 방지
+  // 그 후 학원/LexiAI 색이 비동기로 덮어씀 (정상 흐름)
+  applyPresetToCss(BRANDING_PRESETS[DEFAULT_PRESET_ID]);
 }
