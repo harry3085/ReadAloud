@@ -207,17 +207,7 @@ function _applyAdminBranding(acData) {
     if (window.MY_ACADEMY_ID) localStorage.setItem('lexiAcademyId', window.MY_ACADEMY_ID);
   } catch (_) {}
 
-  // [홈화면 추가] PWA 다이얼로그가 학원 manifest 인식하려면 첫 로드 시점부터 link 가 학원별이어야 함.
-  // URL 에 ?academy=xxx 추가한 채 자동 reload. URL 검사만으로 무한 reload 방지.
-  try {
-    if (window.MY_ACADEMY_ID) {
-      const u = new URL(window.location.href);
-      if (u.searchParams.get('academy') !== window.MY_ACADEMY_ID) {
-        u.searchParams.set('academy', window.MY_ACADEMY_ID);
-        window.location.replace(u.toString());
-      }
-    }
-  } catch (_) {}
+  // [PWA 학원명 적용 reload] 제거 — 로그인 navigation 도중 trigger 되어 무한 로딩 유발.
 }
 
 onAuthStateChanged(auth, async user => {

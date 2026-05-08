@@ -195,18 +195,8 @@ function _applyAcademyBranding(academy) {
     }
   } catch (_) {}
 
-  // [홈화면 추가] PWA 다이얼로그가 학원 manifest 를 인식하려면, 페이지 첫 로드 시점에
-  // link.href 가 학원별이어야 함. JS 로 동적 변경한 manifest 는 브라우저가 다시 fetch 안 함.
-  // → URL 에 ?academy=xxx 추가한 채 자동 reload. URL 검사만으로 무한 reload 방지.
-  try {
-    if (window.MY_ACADEMY_ID) {
-      const u = new URL(window.location.href);
-      if (u.searchParams.get('academy') !== window.MY_ACADEMY_ID) {
-        u.searchParams.set('academy', window.MY_ACADEMY_ID);
-        window.location.replace(u.toString());
-      }
-    }
-  } catch (_) {}
+  // [PWA 학원명 적용 reload] 제거 — doLogin navigation 도중 trigger 되어 무한 로딩 유발.
+  // PWA 이름 문제는 별도 방식으로 해결 (input 수정 안내 등). 자동 reload 안전 확보 우선.
 }
 
 async function _lookupUserByUsername(usernameRaw) {
