@@ -2526,7 +2526,10 @@ window._billingUpdateItem = async (itemId, field, value) => {
   })());
 };
 
-// 완료 버튼 — 활성 input blur 강제 → 진행 중 저장 모두 끝까지 대기 → 모달 닫기
+// 완료 버튼 — 활성 input blur 강제 → 진행 중 저장 모두 끝까지 대기 → 그리드 직접 갱신 → 모달 닫기
+//
+// 주의: closeModal 이 라인 4960 에서 단순 정의로 다시 덮어씌워져 3134 의 wrapper hook
+// (closeModal 후 _renderBillingGrid 호출) 이 작동 안 함. 그래서 여기서 직접 렌더.
 window._billingPanelDone = async () => {
   const active = document.activeElement;
   if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) {
@@ -2538,7 +2541,13 @@ window._billingPanelDone = async () => {
   while (_billingPending.size > 0) {
     await Promise.allSettled([..._billingPending]);
   }
-  closeModal();  // closeModal hook 이 _renderBillingGrid() 호출 → fresh fetch
+  // 그리드 직접 갱신 (in-memory _billings 사용 — 방금 갱신됨)
+  _billingPanelId = null;
+  _billingPanelChannel = null;
+  if (currentPage === 'payment') {
+    await _renderBillingGrid(0, { refetch: false });
+  }
+  closeModal();
 };
 
 window._billingDeleteItem = async (itemId) => {
@@ -4957,7 +4966,17 @@ window.showModal = (html, opts = {}) => {
   }
   document.getElementById('modalOverlay').style.display = 'flex';
 };
-window.closeModal = () => { document.getElementById('modalOverlay').style.display='none'; document.getElementById('modalBox').style.width=''; };
+window.closeModal = () => {
+  document.getElementById('modalOverlay').style.display='none';
+  document.getElementById('modalBox').style.width='';
+  // 결제 항목 패널 정리 — 닫는 경로 (✓ 완료 / ✕ 취소 / 바깥 클릭) 무관 그리드 갱신.
+  // 라인 3134 wrapper 가 이 정의로 덮어씌워지는 상황 우회 (인라인 hook).
+  if (_billingPanelId !== null) {
+    _billingPanelId = null;
+    _billingPanelChannel = null;
+    if (currentPage === 'payment') _renderBillingGrid(0, { refetch: false });
+  }
+};
 // 리사이즈 드래그 후 오버레이에서 mouseup 시 닫히는 문제 방지
 // mousedown 시작이 오버레이일 때만 닫힘
 let _modalMouseDownOnOverlay = false;
