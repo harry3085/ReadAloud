@@ -6,7 +6,7 @@
 //   application-name 메타를 학원명으로 교체. iOS Safari [홈화면 추가] 시
 //   학원명 자동 노출 보장 (페이지 첫 응답 시점부터 학원명 박힘).
 
-const CACHE_NAME = 'kunsori-v359';
+const CACHE_NAME = 'kunsori-v360';
 const ACADEMY_META_CACHE = 'academy-meta-v1';   // 학원명 캐시 전용 (활성화 시 보존)
 const APP_SHELL = [
   '/',
@@ -110,80 +110,86 @@ function _getAcademyIdFromUrl(urlString) {
 }
 
 // ── HTML 에 학원명 주입 ──────────────────────────────
+// 어떤 에러든 원본 응답 통과 (페이지 안 열리는 사고 방지)
 async function _injectAcademyName(request) {
-  // 학원 ID 결정: URL > 쿠키 > default
-  const academyId =
-    _getAcademyIdFromUrl(request.url) ||
-    _getAcademyIdFromCookie(request.headers.get('cookie')) ||
-    'default';
-
-  // 네트워크에서 원본 HTML fetch
-  let originalResponse;
   try {
-    originalResponse = await fetch(request);
-  } catch (_) {
-    return fetch(request);   // 네트워크 실패 시 그대로 통과
+    // 학원 ID 결정: URL > 쿠키 > default
+    const academyId =
+      _getAcademyIdFromUrl(request.url) ||
+      _getAcademyIdFromCookie(request.headers.get('cookie')) ||
+      'default';
+
+    // 네트워크에서 원본 HTML fetch
+    const originalResponse = await fetch(request);
+
+    // HTML 이 아니면 통과 (Content-Type 검사)
+    const ct = originalResponse.headers.get('content-type') || '';
+    if (!ct.includes('text/html')) return originalResponse;
+
+    // 학원명 조회
+    const academyName = await _getAcademyName(academyId);
+    if (!academyName) return originalResponse;
+
+    // HTML 텍스트 변환 (response 복제 — 실패 시 원본 그대로 반환 가능하게)
+    const cloned = originalResponse.clone();
+    let html;
+    try {
+      html = await cloned.text();
+    } catch (_) {
+      return originalResponse;
+    }
+
+    // XSS 방지 escape
+    const safeName = academyName
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    // 학원장 페이지면 ' 관리자' suffix
+    const isAdmin = (new URL(request.url).pathname).startsWith('/admin');
+    const finalName = isAdmin ? `${safeName} 관리자` : safeName;
+
+    // <title> 교체
+    html = html.replace(/<title>[^<]*<\/title>/i, `<title>${finalName}</title>`);
+
+    // apple-mobile-web-app-title 메타 (name·content 순서 둘 다 처리)
+    html = html.replace(
+      /(<meta\s[^>]*name=["']apple-mobile-web-app-title["'][^>]*content=["'])[^"']*(["'])/i,
+      `$1${finalName}$2`
+    );
+    html = html.replace(
+      /(<meta\s[^>]*content=["'])[^"']*(["'][^>]*name=["']apple-mobile-web-app-title["'])/i,
+      `$1${finalName}$2`
+    );
+
+    // application-name 메타
+    html = html.replace(
+      /(<meta\s[^>]*name=["']application-name["'][^>]*content=["'])[^"']*(["'])/i,
+      `$1${finalName}$2`
+    );
+    html = html.replace(
+      /(<meta\s[^>]*content=["'])[^"']*(["'][^>]*name=["']application-name["'])/i,
+      `$1${finalName}$2`
+    );
+
+    // 응답 헤더 — 원본 헤더 복사 + content-encoding/length 제거 (우리가 압축 풀고 길이 바뀜)
+    const newHeaders = new Headers(originalResponse.headers);
+    newHeaders.delete('content-encoding');
+    newHeaders.delete('content-length');
+    newHeaders.set('content-type', 'text/html; charset=utf-8');
+    newHeaders.set('x-sw-academy', finalName);
+    newHeaders.set('x-sw-version', 'v359');
+
+    return new Response(html, {
+      status: originalResponse.status,
+      statusText: originalResponse.statusText,
+      headers: newHeaders,
+    });
+  } catch (e) {
+    // 어떤 에러든 fail-safe — 원본 fetch 그대로 (페이지 못 여는 사고 방지)
+    try { return await fetch(request); } catch (_) { throw e; }
   }
-
-  // 학원명 조회
-  const academyName = await _getAcademyName(academyId);
-  if (!academyName) {
-    return originalResponse;   // 학원명 없으면 원본 그대로
-  }
-
-  // HTML 텍스트 변환
-  let html;
-  try {
-    html = await originalResponse.text();
-  } catch (_) {
-    return originalResponse;
-  }
-
-  // XSS 방지 escape
-  const safeName = academyName
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-  // 학원장 페이지면 ' 관리자' suffix
-  const isAdmin = (new URL(request.url).pathname).startsWith('/admin');
-  const finalName = isAdmin ? `${safeName} 관리자` : safeName;
-
-  // <title> 교체
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${finalName}</title>`);
-
-  // apple-mobile-web-app-title (name 속성 앞)
-  html = html.replace(
-    /(<meta\s[^>]*name=["']apple-mobile-web-app-title["'][^>]*content=["'])[^"']*(["'])/i,
-    `$1${finalName}$2`
-  );
-  // apple-mobile-web-app-title (content 속성 앞)
-  html = html.replace(
-    /(<meta\s[^>]*content=["'])[^"']*(["'][^>]*name=["']apple-mobile-web-app-title["'])/i,
-    `$1${finalName}$2`
-  );
-
-  // application-name (name 속성 앞)
-  html = html.replace(
-    /(<meta\s[^>]*name=["']application-name["'][^>]*content=["'])[^"']*(["'])/i,
-    `$1${finalName}$2`
-  );
-  // application-name (content 속성 앞)
-  html = html.replace(
-    /(<meta\s[^>]*content=["'])[^"']*(["'][^>]*name=["']application-name["'])/i,
-    `$1${finalName}$2`
-  );
-
-  return new Response(html, {
-    status: originalResponse.status,
-    statusText: originalResponse.statusText,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'X-Sw-Academy': finalName,   // 진단용 — SW 가 학원명 주입 성공 표시
-      'X-Sw-Version': 'v358',
-    },
-  });
 }
 
 // ── 앱 → SW 학원명 전달 ──────────────────────────────
