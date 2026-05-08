@@ -3165,7 +3165,18 @@ window.installApp=async()=>{
   }
   // iOS Safari
   if(isIOS){
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 탭 (□↑)\n② "홈 화면에 추가" 선택\n③ 오른쪽 위 "추가" 탭\n\n※ 반드시 Safari에서 열어주세요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요\n   (학원 로고로 새로 등록됩니다)');
+    // 진단 정보 — LexiAI 가 그대로 노출되는 원인 분석용
+    const link = document.getElementById('manifest-link');
+    const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    const acad = localStorage.getItem('lexiAcademyId') || '(없음)';
+    const name = localStorage.getItem('lexiAppName') || '(없음)';
+    let mInfo = '(fetch 안 됨)';
+    try {
+      const r = await fetch(link.href, { cache: 'no-store' });
+      const j = await r.json();
+      mInfo = 'name: ' + j.name + '\nshort_name: ' + j.short_name;
+    } catch (e) { mInfo = 'fetch 실패: ' + e.message; }
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
     return;
   }
   // Android 기타 브라우저
