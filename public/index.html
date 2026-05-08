@@ -32,6 +32,10 @@
     };
     // FOUC 방지 — DOMContentLoaded 전에 localStorage 캐시된 학원 로고/이름·색 즉시 적용
     // (Firestore fetch 는 onAuthStateChanged 안에서 진행되어 지연됨 → 첫 페인트엔 default 보임)
+    //
+    // 메타 (apple-mobile-web-app-title / application-name / title) 는 head 인라인 동기
+    // 실행으로 즉시 갱신 — iOS Safari 가 페이지 로드 시점의 메타만 캡처해 '홈화면에 추가'
+    // 시 사용하므로, DOMContentLoaded 늦게 변경하면 학원 이름 반영 안 됨.
     (function () {
       try {
         const cachedLogo = localStorage.getItem('lexiLogo192');
@@ -42,6 +46,15 @@
           const preset = window.BRANDING_PRESETS[cachedPreset];
           if (preset) window.applyPresetToCss(preset);
         }
+        // 메타·title 즉시 갱신 (DOMContentLoaded 기다리지 않음 — iOS PWA 이름 보장)
+        if (cachedName) {
+          document.title = cachedName;
+          const _at = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (_at) _at.setAttribute('content', cachedName);
+          const _an = document.querySelector('meta[name="application-name"]');
+          if (_an) _an.setAttribute('content', cachedName);
+        }
+        // 로고·텍스트는 DOM 생성 후 (이미지·요소 렌더 시점)
         if (cachedLogo || cachedName) {
           document.addEventListener('DOMContentLoaded', () => {
             if (cachedLogo) {
@@ -53,12 +66,6 @@
             }
             if (cachedName) {
               document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = cachedName; });
-              document.title = cachedName;
-              // iOS 홈화면 추가 시 표시되는 이름 — apple-mobile-web-app-title 우선 적용
-              const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-              if (appleTitle) appleTitle.setAttribute('content', cachedName);
-              const appName = document.querySelector('meta[name="application-name"]');
-              if (appName) appName.setAttribute('content', cachedName);
             }
           });
         }

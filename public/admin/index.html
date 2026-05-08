@@ -62,6 +62,9 @@
   });
   // FOUC 방지 — Firestore branding fetch 전에 캐시된 학원 로고/이름·색 즉시 적용
   // (학생 앱과 동일 키 lexiLogo192 / lexiAppName / lexiBrandPreset 공유)
+  //
+  // 메타 (apple-mobile-web-app-title 등) 는 head 인라인 동기 실행으로 즉시 갱신 —
+  // iOS Safari 가 페이지 로드 시점의 메타만 캡처해 '홈화면에 추가' 시 사용.
   (function () {
     try {
       const cachedLogo = localStorage.getItem('lexiLogo192');
@@ -72,6 +75,16 @@
         const preset = window.BRANDING_PRESETS[cachedPreset];
         if (preset) window.applyPresetToCss(preset);
       }
+      // 메타·title 즉시 갱신 (DOMContentLoaded 기다리지 않음 — iOS PWA 이름 보장)
+      if (cachedName) {
+        const adminTitle = cachedName + ' 관리자';
+        document.title = adminTitle;
+        const _at = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (_at) _at.setAttribute('content', adminTitle);
+        const _an = document.querySelector('meta[name="application-name"]');
+        if (_an) _an.setAttribute('content', adminTitle);
+      }
+      // 로고·텍스트는 DOM 생성 후
       if (cachedLogo || cachedName) {
         document.addEventListener('DOMContentLoaded', () => {
           if (cachedLogo) {
@@ -84,13 +97,6 @@
               const tn = Array.from(el.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
               if (tn) tn.textContent = ' ' + cachedName;
             });
-            document.title = cachedName + ' 관리자';
-            // iOS 홈화면 추가 시 표시되는 이름
-            const adminTitle = cachedName + ' 관리자';
-            const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-            if (appleTitle) appleTitle.setAttribute('content', adminTitle);
-            const appName = document.querySelector('meta[name="application-name"]');
-            if (appName) appName.setAttribute('content', adminTitle);
           }
         });
       }
