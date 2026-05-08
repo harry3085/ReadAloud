@@ -3862,9 +3862,28 @@ function _vqRenderMcqFeedback(ans) {
   _vqShowFeedbackBanner(ans.input === correctText, correctText);
 }
 
+// 스펠링 채점 정규화: NFKC + hidden 공백/zero-width 제거 + collapse + lowercase
+function _vqNormStr(s) {
+  return String(s || '')
+    .normalize('NFKC')
+    .replace(/[   ]/g, ' ')        // NBSP / 좁은 공백 → 일반 공백
+    .replace(/[​‌‍﻿]/g, '')   // zero-width 제거
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+// per-character 비교용 (길이 유지)
+function _vqNormCh(ch) {
+  if (!ch) return '';
+  const cp = ch.codePointAt(0);
+  if (cp === 0x00A0 || cp === 0x2009 || cp === 0x202F) return ' ';
+  if (cp === 0x200B || cp === 0x200C || cp === 0x200D || cp === 0xFEFF) return '';
+  return ch.toLowerCase();
+}
+
 function _vqIsAnsCorrect(q, ans) {
-  const user = (ans.input || '').trim().toLowerCase();
-  const target = (ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'')).trim().toLowerCase();
+  const user = _vqNormStr(ans.input);
+  const target = _vqNormStr(ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||''));
   return !!user && user === target;
 }
 
@@ -3921,12 +3940,15 @@ function _vqRenderSpellFeedback(ans, isCorrect) {
   boxes.innerHTML = Array.from({length:len},(_,i)=>{
     const userCh = val[i] || '';
     const correctCh = target[i] || '';
-    const match = userCh && userCh.toLowerCase() === correctCh.toLowerCase();
+    const match = !!userCh && _vqNormCh(userCh) === _vqNormCh(correctCh);
     const bg = match ? '#d1fae5' : (userCh ? '#fee2e2' : '#fef3c7');
     const color = match ? '#047857' : (userCh ? '#b91c1c' : '#92400e');
     const border = match ? '#10b981' : (userCh ? '#ef4444' : '#f59e0b');
-    const showCh = isCorrect || match ? (userCh || correctCh) : correctCh;
-    return `<div class="spell-box" style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};">${esc(showCh)}</div>`;
+    // mismatch 박스: 학생이 실제 친 글자 표시 (빈 입력이면 '_' + 정답 작은 회색)
+    const mainCh = match ? userCh : (userCh || '_');
+    const subCh = (!match && userCh) ? correctCh : '';
+    const subHtml = subCh ? `<div style="font-size:9px;line-height:1;margin-top:1px;color:#6b7280;font-weight:600;">→${esc(subCh)}</div>` : '';
+    return `<div class="spell-box" style="width:${boxW}px;height:${boxW+8}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};display:flex;flex-direction:column;align-items:center;justify-content:center;">${esc(mainCh)}${subHtml}</div>`;
   }).join('');
 
   // 배너로 결과 표시 (빈칸채우기와 동일 스타일)
@@ -3966,10 +3988,7 @@ async function _vqSubmit() {
   let correct = 0;
   const total = s.questions.length;
   s.questions.forEach((q, i) => {
-    const ans = s.answers[i];
-    const user = (ans.input || '').trim().toLowerCase();
-    const target = (ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'')).trim().toLowerCase();
-    if (user && user === target) correct++;
+    if (_vqIsAnsCorrect(q, s.answers[i])) correct++;
   });
 
   const score = total ? Math.round((correct / total) * 100) : 0;
@@ -4020,7 +4039,7 @@ function _vqBuildDetail(questions, answers) {
     const prompt = dir === 'en2ko' ? (q.word||'') : (q.meaning||'');
     const target = dir === 'en2ko' ? (q.meaning||'') : (q.word||'');
     const user = (a.input || '').trim();
-    const isCorrect = user && user.toLowerCase() === target.trim().toLowerCase();
+    const isCorrect = !!user && _vqNormStr(user) === _vqNormStr(target);
     const bg = isCorrect ? '#F0FDF4' : '#FEF2F2';
     const border = isCorrect ? '#BBF7D0' : '#FECACA';
     return `
