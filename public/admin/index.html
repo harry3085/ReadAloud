@@ -86,11 +86,12 @@
     if (oldLink) oldLink.replaceWith(newLink);
     else document.head.appendChild(newLink);
   };
-  // localStorage 에 학원 ID 캐시되어 있으면 페이지 로드 즉시 학원별 manifest 로 전환
+  // localStorage 또는 URL ?academy=xxx 에서 학원 ID 잡아 페이지 로드 즉시 학원별 manifest 로 전환
   // — iOS [홈화면에 추가] 다이얼로그가 manifest.name 우선 사용 (강제 교체)
   (function () {
     try {
-      const acad = localStorage.getItem('lexiAcademyId');
+      const params = new URLSearchParams(location.search);
+      const acad = params.get('academy') || localStorage.getItem('lexiAcademyId');
       if (acad) {
         const oldLink = document.getElementById('manifest-link');
         const newLink = document.createElement('link');

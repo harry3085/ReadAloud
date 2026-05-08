@@ -185,6 +185,20 @@ function _applyAcademyBranding(academy) {
       if (window.MY_ACADEMY_ID) localStorage.setItem('lexiAcademyId', window.MY_ACADEMY_ID);
     }
   } catch (_) {}
+
+  // [홈화면 추가] PWA 다이얼로그가 학원 manifest 를 인식하려면, 페이지 첫 로드 시점에
+  // link.href 가 학원별이어야 함. JS 로 동적 변경한 manifest 는 브라우저가 다시 fetch 안 함.
+  // → URL 에 ?academy=xxx 추가한 채 한 번만 자동 reload (sessionStorage 마커로 무한 reload 방지)
+  try {
+    if (window.MY_ACADEMY_ID && !sessionStorage.getItem('manifestReloaded')) {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get('academy') !== window.MY_ACADEMY_ID) {
+        sessionStorage.setItem('manifestReloaded', '1');
+        u.searchParams.set('academy', window.MY_ACADEMY_ID);
+        window.location.replace(u.toString());
+      }
+    }
+  } catch (_) {}
 }
 
 async function _lookupUserByUsername(usernameRaw) {
