@@ -3147,8 +3147,11 @@ document.addEventListener('DOMContentLoaded', _refreshInstallMenuItem);
 window.addEventListener('beforeinstallprompt', _refreshInstallMenuItem);
 
 window.installApp=async()=>{
-  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isAndroid=/android/i.test(navigator.userAgent);
+  const ua = navigator.userAgent || '';
+  // iPad 데스크톱 모드 (iPadOS 13+) — UA 가 'Macintosh' 로 위장. maxTouchPoints 로 검출
+  const isIPadDesktop = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  const isIOS = /iphone|ipad|ipod/i.test(ua) || isIPadDesktop;
+  const isAndroid = /android/i.test(ua);
   const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
 
   if(isStandalone){
@@ -3184,8 +3187,19 @@ window.installApp=async()=>{
     alert('📱 홈화면 추가 방법 (Android)\n\n① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는\n   "앱 설치" 선택\n\n※ 크롬 브라우저를 권장해요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요\n   (학원 로고로 새로 등록됩니다)');
     return;
   }
-  // PC
-  alert('📱 모바일에서 접속 후\n홈화면에 추가해주세요!\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요');
+  // PC (또는 UA 가 모바일로 인식 안 된 케이스 — iPad 데스크톱 모드 등)
+  // 진단 정보도 함께 표시 — manifest 가 학원별로 잡히는지 확인
+  const link = document.getElementById('manifest-link');
+  const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  const acad = localStorage.getItem('lexiAcademyId') || '(없음)';
+  const name = localStorage.getItem('lexiAppName') || '(없음)';
+  let mInfo = '(fetch 안 됨)';
+  try {
+    const r = await fetch(link.href, { cache: 'no-store' });
+    const j = await r.json();
+    mInfo = 'name: ' + j.name + '\nshort_name: ' + j.short_name;
+  } catch (e) { mInfo = 'fetch 실패: ' + e.message; }
+  alert('📱 모바일에서 접속 후 홈화면에 추가해주세요!\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nUA: ' + (navigator.userAgent || '').slice(0, 80) + '\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
 };
 
 window.addEventListener('appinstalled',()=>{

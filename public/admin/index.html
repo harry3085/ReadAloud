@@ -40,7 +40,9 @@
       return;
     }
     const ua = navigator.userAgent || '';
-    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    // iPad 데스크톱 모드 (iPadOS 13+) — UA 가 'Macintosh' 로 위장. maxTouchPoints 로 검출
+    const isIPadDesktop = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || isIPadDesktop;
     const isAndroid = /Android/i.test(ua);
     if (isIOS) {
       // iOS 진단 정보 — LexiAI 가 그대로 노출되는 원인 분석용
@@ -57,7 +59,20 @@
       alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
     }
     else if (isAndroid) alert('📱 홈화면 추가 방법 (Android)\n\n① 우상단 메뉴 (⋮)\n② "홈 화면에 추가" 또는 "앱 설치"\n\n※ 크롬 브라우저 권장\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
-    else alert('💻 PC 크롬에서 주소창 우측 ⊕ 설치 아이콘 클릭\n또는 우상단 ⋮ → "앱 설치"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+    else {
+      // PC (또는 UA 모바일 미인식) — 진단 정보 추가
+      const link = document.getElementById('manifest-link');
+      const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      const acad = localStorage.getItem('lexiAcademyId') || '(없음)';
+      const name = localStorage.getItem('lexiAppName') || '(없음)';
+      let mInfo = '(fetch 안 됨)';
+      try {
+        const r = await fetch(link.href, { cache: 'no-store' });
+        const j = await r.json();
+        mInfo = 'name: ' + j.name + '\nshort_name: ' + j.short_name;
+      } catch (e) { mInfo = 'fetch 실패: ' + e.message; }
+      alert('💻 PC 크롬에서 주소창 우측 ⊕ 설치 아이콘 클릭\n또는 우상단 ⋮ → "앱 설치"\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가\n\n— 진단 —\nUA: ' + (navigator.userAgent || '').slice(0, 80) + '\nacademyId: ' + acad + '\nappName: ' + name + '\nmeta title: ' + (meta?.content || '(없음)') + '\n\nmanifest URL:\n' + (link?.href || '(없음)') + '\n\nmanifest 응답:\n' + mInfo);
+    }
   };
   // 학원 식별 후 manifest URL 갱신 — admin=1 로 start_url=/admin/ 분리 (학생 PWA와 별도 아이콘)
   // iOS 가 옛 link 의 manifest 를 캐시한 경우 강제 교체로 새 manifest fetch 트리거
