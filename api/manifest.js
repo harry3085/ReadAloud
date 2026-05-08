@@ -112,7 +112,9 @@ module.exports = async (req, res) => {
     };
 
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    // iOS Safari 가 manifest 를 origin 단위로 강하게 캐시 — no-store 로 매번 fresh fetch 강제
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.status(200).json(manifest);
   } catch (e) {
     console.error('[manifest]', e);
