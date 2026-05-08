@@ -6,7 +6,7 @@
 //   application-name 메타를 학원명으로 교체. iOS Safari [홈화면 추가] 시
 //   학원명 자동 노출 보장 (페이지 첫 응답 시점부터 학원명 박힘).
 
-const CACHE_NAME = 'kunsori-v360';
+const CACHE_NAME = 'kunsori-v361';
 const ACADEMY_META_CACHE = 'academy-meta-v1';   // 학원명 캐시 전용 (활성화 시 보존)
 const APP_SHELL = [
   '/',
@@ -235,7 +235,9 @@ self.addEventListener('fetch', e => {
     !url.pathname.endsWith('firebase-messaging-sw.js');
 
   if (isNavigation) {
-    e.respondWith(_injectAcademyName(req));
+    // SW 학원명 주입 일시 비활성화 — TypeError 로 페이지 못 여는 사고 방지.
+    // 기본 fetch 통과로 페이지 정상 노출 보장. 학원명 주입은 별도 방식 검토.
+    // _injectAcademyName 함수는 그대로 두되 호출 안 함 (캐시 로직 message handler 에서 사용).
     return;
   }
 

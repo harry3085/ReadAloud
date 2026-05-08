@@ -3217,23 +3217,7 @@ window.installApp=async()=>{
   // iOS Safari
   if(isIOS){
     const acadName = localStorage.getItem('lexiAppName') || '학원명';
-    _registerIosInstallReload();
-
-    // SW 진단 — SW 가 HTML 가로채서 학원명 박는지 직접 fetch 해서 확인
-    let swDiag = '';
-    try {
-      const swReg = navigator.serviceWorker?.controller ? '✓ 활성' : '✗ 미활성';
-      const r = await fetch(location.href, { cache: 'reload' });
-      const txt = await r.text();
-      const tm = txt.match(/<title>([^<]*)<\/title>/i);
-      const am = txt.match(/<meta\s[^>]*name=["']apple-mobile-web-app-title["'][^>]*content=["']([^"']*)/i);
-      const xName = r.headers.get('x-sw-academy') || '(없음)';
-      swDiag = '\n— 진단 —\nSW: ' + swReg + '\n응답 title: ' + (tm?.[1] || '?') + '\n응답 meta: ' + (am?.[1] || '?') + '\nSW header: ' + xName;
-    } catch(e) {
-      swDiag = '\n— 진단 —\n오류: ' + e.message;
-    }
-
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 우상단 "추가"\n\n💡 처음 추가 시 이름이 LexiAI 로 보일 수 있어요.\n   공유 창 닫으면 자동 새로고침 → 다시 시도하시면\n   "' + acadName + '"으로 자동 표시됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가' + swDiag);
+    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② "홈 화면에 추가"\n③ 입력칸의 이름을 "' + acadName + '"으로 수정\n④ 우상단 "추가"\n\n💡 입력칸의 기본값은 LexiAI 로 표시되지만,\n   직접 학원명 ("' + acadName + '") 으로 수정하시면 됩니다.\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
     return;
   }
   // Android 기타 브라우저
