@@ -19,21 +19,26 @@
     // — URL 의 ?academy=xxx 또는 localStorage 캐시된 학원 ID 우선
     // — iOS [홈화면에 추가] 다이얼로그가 manifest.name 을 우선 사용 → manifest URL
     //   이 페이지 로드 시점부터 학원별이어야 학원 이름 노출
+    function _replaceManifestLink(href) {
+      const oldLink = document.getElementById('manifest-link');
+      const newLink = document.createElement('link');
+      newLink.id = 'manifest-link';
+      newLink.rel = 'manifest';
+      newLink.href = href;
+      if (oldLink) oldLink.replaceWith(newLink);
+      else document.head.appendChild(newLink);
+    }
     (function () {
       try {
         const params = new URLSearchParams(location.search);
         const acad = params.get('academy') || localStorage.getItem('lexiAcademyId');
-        if (acad) {
-          const link = document.getElementById('manifest-link');
-          if (link) link.href = `/api/manifest?academy=${encodeURIComponent(acad)}`;
-        }
+        if (acad) _replaceManifestLink(`/api/manifest?academy=${encodeURIComponent(acad)}`);
       } catch (_) {}
     })();
-    // 로그인 후 호출되는 헬퍼 — 학원 식별 시점에 manifest URL 갱신
+    // 로그인 후 호출되는 헬퍼 — 학원 식별 시점에 manifest URL 갱신 (강제 교체)
     window.updateManifest = function(academyId) {
       if (!academyId) return;
-      const link = document.getElementById('manifest-link');
-      if (link) link.href = `/api/manifest?academy=${encodeURIComponent(academyId)}`;
+      _replaceManifestLink(`/api/manifest?academy=${encodeURIComponent(academyId)}`);
     };
     // FOUC 방지 — DOMContentLoaded 전에 localStorage 캐시된 학원 로고/이름·색 즉시 적용
     // (Firestore fetch 는 onAuthStateChanged 안에서 진행되어 지연됨 → 첫 페인트엔 default 보임)
