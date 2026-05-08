@@ -2456,3 +2456,101 @@ API 확장 (`api/uploadLogo.js`):
 - ✅ scores.mode 옛 단어시험 키 마이그레이션 (mixed/meaning/spelling → vocab, 36건)
 - ✅ alert 안내문 정리 (학원명 직접 수정 제거 + iOS '더 보기' 안내)
 - ✅ Vercel Pro 전환 — 함수 한도 회복
+
+---
+
+## 2026-05-09: 단어시험 스펠링 채점 인지 함정 fix + 박스 높이
+
+당일 SW v365 → v367 (3 commit). 학원장이 "정답 입력했는데 알파벳 한 개가 오답 처리됨" 보고 → 진단 → 코드 인지 함정 발견 → fix.
+
+### 1) 보고된 사례
+- default 학원, '26마더텅 중 1 ch9 Words' 문제 세트
+- '위에' / 'on top of' — 'n' 박스 빨강
+- '질서 있게' / 'in an orderly fashion' — 'orderly' 의 'r' 박스 빨강
+- 학원장 스크린샷 두 장: 빨간 박스 외 나머지 모두 초록 (정답)
+
+### 2) 진단 (문제 없음 확인)
+- [scripts/diag/inspect-vocab-chars.js](scripts/diag/inspect-vocab-chars.js) — `q.word` 데이터 char 단위 dump. 두 단어 모두 순수 ASCII. NBSP / zero-width / 좁은 공백 0개
+- [scripts/diag/inspect-vocab-submissions.js](scripts/diag/inspect-vocab-submissions.js) — `userCompleted/{uid}.answers[i].input` 학생 응시 답안 dump. mismatch 0건
+- 단, **userCompleted 는 통과 응시만 questions/answers 저장** (CLAUDE.md 작업 규칙 7) — 미통과 응시는 Firestore에 안 남아 직접 검증 불가
+
+### 3) 진짜 원인 — 결과 박스 코드의 인지 함정
+[public/js/app.js _vqRenderSpellFeedback](public/js/app.js):
+```js
+const showCh = isCorrect || match ? (userCh || correctCh) : correctCh;
+```
+mismatch 박스에 **항상 정답 글자**(`correctCh`) 표시. 학생이 빈 칸 또는 다른 글자를 친 경우에도 박스에는 정답 글자만 보임 → 학원장/학생 입장 "정답 입력했는데 빨강" 으로 인식.
+
+스크린샷의 빨간 박스에 보이는 'n' / 'r' 은 **학생이 친 글자가 아니라 정답 글자**. 코드가 학생 raw input 을 시각적으로 안 보여줘서 진짜 입력값을 알 길이 없음.
+
+### 4) Fix — 결과 박스 + 채점 정규화
+**결과 박스 표시 변경**:
+- mismatch 박스: 학생이 실제 친 글자 (`userCh`) 표시. 빈 입력은 `_`
+- mismatch 박스 하단: 작은 회색 `→정답글자` (정답 비교 가능)
+- 코드: `mainCh = match ? userCh : (userCh || '_')` + `subCh = (!match && userCh) ? correctCh : ''`
+
+**정규화 헬퍼 추가** ([public/js/app.js _vqNormStr / _vqNormCh](public/js/app.js)):
+```js
+function _vqNormStr(s) {
+  return String(s||'').normalize('NFKC')
+    .replace(/[NBSP/U+2009/U+202F]/g,' ')   // 좁은 공백류 → 일반 공백
+    .replace(/[U+200B-U+200D/U+FEFF]/g,'')   // zero-width 제거
+    .replace(/\s+/g,' ').trim().toLowerCase();
+}
+function _vqNormCh(ch) { /* 길이 유지 per-char 비교용 */ }
+```
+
+**4곳 비교 로직 통일**:
+- `_vqIsAnsCorrect` (정답 판정)
+- `_vqSubmit` (점수 집계) — `_vqIsAnsCorrect` 호출로 단순화
+- `_vqRenderSpellFeedback` (per-char 박스 색)
+- `_vqBuildDetail` (결과 detail 모달)
+
+### 5) 박스 높이 +10px
+- 입력 박스 + 결과 박스 둘 다: `height = boxW+8` → `boxW+18`
+- 작은 박스 34→44 / 중간 38→48 / 큰 박스 42→52 px
+- 폭/폰트는 그대로
+
+### 6) 영향 범위 (사용자 확인용)
+- ✅ 시험 내용 (`genTests` / `genQuestionSets`) — 변동 없음
+- ✅ 이미 저장된 점수 (`scores`) — 변동 없음
+- ⚠ 다음 응시부터 새 채점 적용 — 정규화 강화로 NBSP 데이터 들어와도 정답 처리
+- ⚠ 결과 화면 다시 보기 — 새 박스 표시 (학생 raw input + 정답 작게)
+
+### 7) 다음 응시 시 진짜 원인 즉시 진단 가능
+빨간 박스에 학생이 친 글자가 그대로 보이므로:
+- 빈 박스 (`_`) 면 → 미입력 (모바일 터치 누락)
+- 다른 글자면 → 옆 키 / 모바일 IME 자동수정
+- 정답 글자면 → 데이터 hidden char (정규화로 이미 자동 처리되지만 추가 케이스 발견 시)
+
+---
+
+## 작업 규칙 추가 (2026-05-09)
+
+신규:
+- **결과 화면 박스에는 정답이 아닌 학생 raw input 표시** — `showCh = isCorrect||match ? (userCh||correctCh) : correctCh` 같이 mismatch 시 정답 글자만 보여주면 사용자/학생이 자기가 친 글자라 인식. 빨간 배경 + 학생 입력 + (필요 시) 정답 작은 회색 패턴 사용.
+- **`userCompleted` 진단 한계** — 통과 응시만 questions/answers 스냅샷 저장 (CLAUDE.md 규칙 7). 미통과 사례 분석 시 Firestore에 데이터 없으니 화면 측 fix (학생 raw input 표시) 가 우선.
+- **스펠링 채점 정규화 표준** — `String.normalize('NFKC')` + NBSP/U+2009/U+202F → space + zero-width 제거 + collapse spaces + lowercase + trim. per-char 비교용은 길이 유지 버전 별도 (`_vqNormCh`). 미래 OCR/AI/clipboard 데이터 hidden char 안전망.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-09)
+- `public/js/app.js`: ~4925줄 (+25, _vqNormStr/_vqNormCh + 결과 박스 변경)
+- 신규 진단: `scripts/diag/inspect-vocab-chars.js` / `scripts/diag/inspect-vocab-submissions.js`
+- SW 캐시: `kunsori-v367`
+
+## 진행률 (2026-05-09)
+- 단어시험 채점 견고성: **~100%** (인지 함정 + 정규화 + 박스 높이)
+- 화이트라벨 브랜딩: ~100% (변동 없음)
+- 결제 v2: ~96% (변동 없음)
+- 멀티테넌시 인프라: ~98% (변동 없음)
+- super_admin 앱: ~98% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션, 2026-05-09)**:
+- ✅ 단어시험 스펠링 결과 박스 — 학생 raw input 표시 (mismatch 시 정답 글자 → 학생 친 글자로)
+- ✅ 빈 입력 박스 `_` 표시 + 박스 하단 작은 회색 `→정답글자`
+- ✅ 채점 정규화 헬퍼 (_vqNormStr / _vqNormCh) — NFKC + NBSP/zero-width 처리
+- ✅ 4곳 비교 로직 통일 (정답 판정·점수 집계·박스 색·detail)
+- ✅ 박스 높이 +10px (입력 + 결과 양쪽)
+- ✅ 진단 스크립트 2개 (vocab chars / submissions)
