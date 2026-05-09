@@ -1274,7 +1274,7 @@ window.toggleTuitionVisible = () => {
   _syncTuitionToggleBtnLabel();
 };
 
-// 수강료 / 납부일 셀 표시 헬퍼 — 가림 토글 반영
+// 수강료 / 납부일 셀 표시 헬퍼 — 가림 토글 반영. 학생 수정 모달 select 라벨과 동일 형식.
 function _tuitionCells(u) {
   const tp = u.tuitionPlan || {};
   const amt = parseInt(tp.amount) || 0;
@@ -1282,8 +1282,8 @@ function _tuitionCells(u) {
   const amtCell = !amt ? '-' : (_tuitionVisible ? amt.toLocaleString() : '***');
   let dueCell = '-';
   if (amt) {
-    if (!isFinite(dueDay) || dueDay === 0) dueCell = _tuitionVisible ? '학원기본' : '***';
-    else if (dueDay === -1) dueCell = _tuitionVisible ? '말일' : '***';
+    if (dueDay === -1) dueCell = _tuitionVisible ? '말일' : '***';
+    else if (!isFinite(dueDay) || dueDay === 0) dueCell = _tuitionVisible ? '학원기본' : '***';
     else if (dueDay >= 1 && dueDay <= 31) dueCell = _tuitionVisible ? `${dueDay}일` : '***';
   }
   return { amtCell, dueCell };
@@ -5200,9 +5200,10 @@ window.downloadSampleExcel = () => {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
     ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일'],
-    ['student01','홍길동','1반','2015-03-15','영남초등학교','5','010-1234-5678','홍아버지','010-9876-5432',200000,5],
+    ['student01','홍길동','1반','2015-03-15','영남초등학교','5','010-1234-5678','홍아버지','010-9876-5432',200000,'5일'],
     ['student02','김철수','2반','2014-07-22','강남초등학교','6','010-2345-6789','','',180000,'말일'],
-    ['student03','이영희','1반','2015-09-01','영남초등학교','5','','','','',''],
+    ['student03','이영희','1반','2015-09-01','영남초등학교','5','','','','',200000,'학원기본'],
+    ['student04','박민준','2반','2014-11-10','강남초등학교','6','','','','',''],
   ]);
   ws['!cols'] = [12,8,6,14,16,6,14,10,14,10,8].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '재원생등록');
@@ -5288,11 +5289,17 @@ window.importStudentExcel = async() => {
       const tuitionRaw = (row[9]||'').toString().replace(/[^\d]/g,'').trim();
       const tuitionAmount = parseInt(tuitionRaw) || 0;
       const dueDayStr = (row[10]||'').toString().trim();
+      // 받아들이는 형식: 숫자(5), '5일', '말일', '학원기본'/'학원 기본값', 빈값
       let dueDay = 0;  // 0 = 학원 기본값
       if (dueDayStr === '말일' || dueDayStr === '-1') dueDay = -1;
-      else if (/^\d+$/.test(dueDayStr)) {
-        const n = parseInt(dueDayStr);
-        if (n >= 1 && n <= 31) dueDay = n;
+      else if (dueDayStr === '학원기본' || dueDayStr === '학원 기본값') dueDay = 0;
+      else {
+        // '5일' 처럼 한글 단위 붙은 경우도 허용 — 숫자만 추출
+        const numStr = dueDayStr.replace(/[^\d]/g, '');
+        if (/^\d+$/.test(numStr)) {
+          const n = parseInt(numStr);
+          if (n >= 1 && n <= 31) dueDay = n;
+        }
       }
       const payload = {
         idToken, username, password:'123456', name,
@@ -5644,12 +5651,13 @@ window.exportStudentExcel = async(status='active') => {
 
     const statusLabel = {active:'재원생',pause:'휴원생',out:'퇴원생'};
     // 수강료·납부일 셀 헬퍼 — export 시엔 항상 노출 (학원장 본인이 다운로드하는 파일)
+    // 학생 수정 모달 select 의 옵션 라벨과 동일 형식: '5일' / '말일' / '학원기본'
     const _amt = (u) => parseInt(u.tuitionPlan?.amount) || 0;
     const _due = (u) => {
       const d = parseInt(u.tuitionPlan?.dueDay);
       if (!_amt(u)) return '';
-      if (!isFinite(d) || d === 0) return '';  // 학원 기본값
       if (d === -1) return '말일';
+      if (!isFinite(d) || d === 0) return '학원기본';
       return `${d}일`;
     };
     let headers, rows;
