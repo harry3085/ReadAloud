@@ -4850,7 +4850,7 @@ window.openNotifPanel = async() => {
           <span style="font-size:20px;flex-shrink:0;">${n.read?'🔔':'🔴'}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
-            <div style="font-size:12px;color:#777;line-height:1.5;">${esc(n.body||'')}</div>
+            <div style="font-size:12px;color:#777;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${esc(n.body||'')}</div>
             <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
           </div>
         </div>
