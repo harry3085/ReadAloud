@@ -51,6 +51,7 @@
         const cachedLogo = localStorage.getItem('lexiLogo192');
         const cachedName = localStorage.getItem('lexiAppName');
         const cachedPreset = localStorage.getItem('lexiBrandPreset');
+        const cachedCp = localStorage.getItem('lexiCatchphrase');
         // 색 프리셋은 CSS 변수 set 이라 DOM 필요 X — 즉시 적용 (첫 페인트부터 학원 색)
         if (cachedPreset && window.BRANDING_PRESETS && window.applyPresetToCss) {
           const preset = window.BRANDING_PRESETS[cachedPreset];
@@ -64,21 +65,36 @@
           const an = document.querySelector('meta[name="application-name"]');
           if (an) an.setAttribute('content', cachedName);
         }
-        // 로고·텍스트는 DOM 생성 후 (이미지·요소 렌더 시점)
-        if (cachedLogo || cachedName) {
-          document.addEventListener('DOMContentLoaded', () => {
-            if (cachedLogo) {
-              document.querySelectorAll('.app-icon, .loading-icon, .header-icon').forEach(img => {
-                if (img.tagName === 'IMG') img.src = cachedLogo;
+        // 로고·텍스트·캐치프레이즈는 DOM 생성 후 (이미지·요소 렌더 시점)
+        document.addEventListener('DOMContentLoaded', () => {
+          if (cachedLogo) {
+            document.querySelectorAll('.app-icon, .loading-icon, .header-icon').forEach(img => {
+              if (img.tagName === 'IMG') img.src = cachedLogo;
+            });
+            const apple = document.querySelector('link[rel="apple-touch-icon"]');
+            if (apple) apple.href = cachedLogo;
+          }
+          if (cachedName) {
+            document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = cachedName; });
+          }
+          if (cachedCp) {
+            document.querySelectorAll('.logo-sub').forEach(el => { el.textContent = cachedCp; });
+          }
+          // Version 동적 표시 — SW 캐시 버전 'kunsori-v373' → 'version 3.7.3'
+          // (자릿수마다 dot 분리. 4자리 (1234) 도 같은 방식: '1.2.3.4')
+          if ('caches' in window) {
+            caches.keys().then(keys => {
+              const k = keys.find(s => s.startsWith('kunsori-v'));
+              if (!k) return;
+              const numStr = k.replace('kunsori-v', '');
+              if (!/^\d+$/.test(numStr)) return;
+              const formatted = numStr.split('').join('.');
+              document.querySelectorAll('.version').forEach(el => {
+                el.textContent = `version ${formatted}`;
               });
-              const apple = document.querySelector('link[rel="apple-touch-icon"]');
-              if (apple) apple.href = cachedLogo;
-            }
-            if (cachedName) {
-              document.querySelectorAll('.logo-title, .loading-title, .home-logo-text').forEach(el => { el.textContent = cachedName; });
-            }
-          });
-        }
+            }).catch(() => {});
+          }
+        });
       } catch (_) {}
     })();
     // 인앱 브라우저 감지 — 카카오/네이버/페북/인스타/Line/WeChat/Android WebView
@@ -146,7 +162,7 @@
       <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
         <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
       </div>
-      <div class="version">version : 3.0.0</div>
+      <div class="version"></div>
       <div class="powered-by" style="text-align:center;font-size:11px;color:#999;padding:14px 0 4px;letter-spacing:0.3px;">
         Powered by <strong style="color:#666;">LexiAI</strong>
       </div>

@@ -226,6 +226,9 @@ function _applyAcademyBranding(academy) {
       if (logoUrl) localStorage.setItem('lexiLogo192', logoUrl);
       if (acadName) localStorage.setItem('lexiAppName', acadName);
       if (presetId) localStorage.setItem('lexiBrandPreset', presetId);
+      // 캐치프레이즈도 캐시 — 비로그인 학생앱 화면도 학원 컨텍스트 일관 표시
+      if (cp) localStorage.setItem('lexiCatchphrase', cp);
+      else localStorage.removeItem('lexiCatchphrase');
       // PWA manifest 학원별 적용 — head 인라인 script 가 다음 진입부터 학원 manifest 로 즉시 전환
       if (window.MY_ACADEMY_ID) localStorage.setItem('lexiAcademyId', window.MY_ACADEMY_ID);
     }
