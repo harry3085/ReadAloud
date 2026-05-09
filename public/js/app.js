@@ -2735,6 +2735,30 @@ function _rv2ShowSubmitting(title, subtitle) {
   `;
 }
 
+// (D) AbortController 로 30초 timeout + (C) 1회 자동 재시도 fetch helper
+async function _rv2FetchWithRetry(url, opts, retries = 1) {
+  let lastErr = null;
+  for (let i = 0; i <= retries; i++) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const res = await fetch(url, { ...opts, signal: ctrl.signal });
+      clearTimeout(tid);
+      return res;
+    } catch (e) {
+      clearTimeout(tid);
+      lastErr = e;
+      const isAbort = e.name === 'AbortError';
+      console.warn(`[rv2 fetch] attempt ${i+1}/${retries+1} failed (${isAbort?'timeout':'error'}):`, e.message);
+      if (i === retries) {
+        throw new Error(isAbort ? '평가 timeout (30초 초과). 네트워크를 확인하세요' : (e.message || '네트워크 오류'));
+      }
+      await new Promise(r => setTimeout(r, 5000));  // 5초 대기 후 재시도
+    }
+  }
+  throw lastErr;
+}
+
 async function _rv2Submit() {
   if (_rv2.savedRounds.length !== _rv2.totalRounds) {
     showToast(`${_rv2.totalRounds}회 녹음이 모두 필요합니다`);
@@ -2751,6 +2775,7 @@ async function _rv2Submit() {
   _rv2ShowSubmitting('🎤 마지막 녹음 업로드 중...', '1개 파일 Storage 에 저장');
 
   let stage = 'upload';
+  let _retryCount = 0;
   try {
     console.log('[rv2Submit] START', { testId: t.id, totalRounds: _rv2.totalRounds });
     const storage = getStorage();
@@ -2765,7 +2790,7 @@ async function _rv2Submit() {
     const audioUrl = await getDownloadURL(fileRef);
     console.log('[rv2Submit] upload done');
 
-    _rv2ShowSubmitting('🤖 AI 평가 중...', '전체 녹음 분석 + 피드백 생성 (10~20초)');
+    _rv2ShowSubmitting('🤖 AI 평가 중...', '전체 녹음 분석 + 피드백 생성 (10~20초)\n실패 시 1회 자동 재시도');
     stage = 'eval';
 
     // 통합 호출 — score + feedback 한 번에
@@ -2775,7 +2800,7 @@ async function _rv2Submit() {
     const idToken = currentUser ? await currentUser.getIdToken() : '';
     // 평가구간: q.evaluationSeconds 우선 (시험별), 없으면 0 (전체)
     const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
-    const res = await fetch('/api/check-recording', {
+    const res = await _rv2FetchWithRetry('/api/check-recording', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2785,7 +2810,7 @@ async function _rv2Submit() {
         mimeType: sendMime,
         evaluationSeconds: evalSec,
       }),
-    });
+    }, 1);  // 1회 재시도
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(`평가 실패: ${data?.error || res.status}`);
@@ -2858,8 +2883,36 @@ async function _rv2Submit() {
       _rv2._submitted = true;
       _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: true, passScore });
     } else {
-      // 미통과 → 저장 안 하고 재시도 화면 (마지막 라운드만 다시 녹음 가능)
-      // userCompleted 의 latestFailedScore 만 업데이트 (audio 저장 X)
+      // 미통과 — 응시 흔적 보존 (B): scores 에 점수 저장 (audio·recordings 는 안 박음 — 비용)
+      // 학원장이 '학생 시도했지만 미통과' 인 걸 응시 내역에서 볼 수 있도록.
+      try {
+        await addDoc(collection(db,'scores'), {
+          academyId: window.MY_ACADEMY_ID || 'default',
+          uid: currentUser.uid,
+          userId: currentUser.uid,
+          userName: userProfile?.name || '',
+          name: userProfile?.name || '',
+          group: userProfile?.group || '',
+          testId: t.id,
+          testName: t.name || '',
+          unitId: t.id,
+          unitName: t.name || '',
+          bookName: t.bookName || '',
+          mode: 'recording',
+          score,
+          correct: 0,
+          wrong: 1,
+          total: 1,
+          passed: false,
+          passScore,
+          // recordings 는 빈 배열 — 미통과는 audio 보관 X (Storage 비용 절감)
+          recordings: [],
+          date: today,
+          createdAt: serverTimestamp(),
+        });
+      } catch(e) { console.warn('failed scores 기록 실패', e); }
+
+      // userCompleted 도 latestFailedScore 갱신
       try {
         await setDoc(
           doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
@@ -2880,6 +2933,24 @@ async function _rv2Submit() {
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
     _rv2._submitting = false;  // 재시도 가능하도록
+
+    // (A) 시도 흔적 기록 — 학원장이 '학생 시도했지만 AI/네트워크 실패' 인 걸 볼 수 있도록
+    // userCompleted 에 latestAttemptAt + latestErrorStage + latestErrorMessage 박기.
+    if (currentUser && t?.id) {
+      try {
+        await setDoc(
+          doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+          {
+            uid: currentUser.uid,
+            userName: userProfile?.name || '',
+            latestAttemptAt: serverTimestamp(),
+            latestErrorStage: stage,  // 'upload' / 'eval' / 'firestore'
+            latestErrorMessage: (e?.message || String(e) || '').slice(0, 200),
+          },
+          { merge: true }
+        );
+      } catch(_) {}
+    }
     // 화면에 에러 유지 표시 (토스트는 짧게 사라지므로)
     const screen = document.getElementById('recAiQuiz');
     if (screen) {
