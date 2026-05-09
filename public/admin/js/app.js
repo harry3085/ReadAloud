@@ -1305,10 +1305,10 @@ function renderStudentTable(status, students){
       <td class="td-sm">${esc(u.birth)||'-'}</td>
       <td class="td-sm">${esc(u.school)||'-'}</td>
       <td class="td-sm">${esc(u.grade)||'-'}</td>
-      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
-      <td class="td-sm" style="text-align:center;">${dueCell}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
       <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
+      <td class="td-sm" style="text-align:center;">${dueCell}</td>
     </tr>`;
     }, pgId, 12);
   } else {
@@ -1322,10 +1322,10 @@ function renderStudentTable(status, students){
       <td class="td-sm">${esc(u.birth)||'-'}</td>
       <td class="td-sm">${esc(u.school)||'-'}</td>
       <td class="td-sm">${esc(u.grade)||'-'}</td>
-      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
-      <td class="td-sm" style="text-align:center;">${dueCell}</td>
       <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       <td class="td-sub">${u.statusDate||'-'}</td>
+      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
+      <td class="td-sm" style="text-align:center;">${dueCell}</td>
     </tr>`;
     }, pgId, 11);
   }
@@ -5653,23 +5653,23 @@ window.exportStudentExcel = async(status='active') => {
     };
     let headers, rows;
     if(status==='active'){
-      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일','등록일'];
+      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','등록일','수강료','납부일'];
       rows = students.map((u,i)=>[
         i+1, u.group||'', u.username||'', u.name||'', u.birth||'',
         u.school||'', u.grade||'', u.phone||'',
         u.parentName||'', u.parentPhone||'',
+        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
         _amt(u) || '', _due(u),
-        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):''
       ]);
     } else {
       const dateCol = status==='pause'?'휴원일':'퇴원일';
-      headers = ['No','아이디','이름','생일','학교','학년','수강료','납부일','등록일',dateCol];
+      headers = ['No','아이디','이름','생일','학교','학년','등록일',dateCol,'수강료','납부일'];
       rows = students.map((u,i)=>[
         i+1, u.username||'', u.name||'', u.birth||'',
         u.school||'', u.grade||'',
-        _amt(u) || '', _due(u),
         u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
-        u.statusDate||''
+        u.statusDate||'',
+        _amt(u) || '', _due(u),
       ]);
     }
 
