@@ -5199,11 +5199,12 @@ window.deleteSelectedTest = async() => {
 window.downloadSampleExcel = () => {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
-    ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처'],
-    ['student01','홍길동','1반','2015-03-15','영남초등학교','5','010-1234-5678','홍아버지','010-9876-5432'],
-    ['student02','김철수','2반','2014-07-22','강남초등학교','6','010-2345-6789','',''],
+    ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일'],
+    ['student01','홍길동','1반','2015-03-15','영남초등학교','5','010-1234-5678','홍아버지','010-9876-5432',200000,5],
+    ['student02','김철수','2반','2014-07-22','강남초등학교','6','010-2345-6789','','',180000,'말일'],
+    ['student03','이영희','1반','2015-09-01','영남초등학교','5','','','','',''],
   ]);
-  ws['!cols'] = [12,8,6,14,16,6,14,10,14].map(w=>({wch:w}));
+  ws['!cols'] = [12,8,6,14,16,6,14,10,14,10,8].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '재원생등록');
   XLSX.writeFile(wb, '큰소리영어_학생등록_샘플.xlsx');
   showToast('샘플 파일을 다운로드했어요!');
@@ -5652,24 +5653,26 @@ window.exportStudentExcel = async(status='active') => {
       return `${d}일`;
     };
     let headers, rows;
+    // 양식 통일 (import / 샘플 과 동일 11 컬럼) + 참고용 컬럼은 끝에
     if(status==='active'){
-      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','등록일','수강료','납부일'];
-      rows = students.map((u,i)=>[
-        i+1, u.group||'', u.username||'', u.name||'', u.birth||'',
+      headers = ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일','등록일'];
+      rows = students.map(u=>[
+        u.username||'', u.name||'', u.group||'', u.birth||'',
         u.school||'', u.grade||'', u.phone||'',
         u.parentName||'', u.parentPhone||'',
-        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
         _amt(u) || '', _due(u),
+        u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
       ]);
     } else {
       const dateCol = status==='pause'?'휴원일':'퇴원일';
-      headers = ['No','아이디','이름','생일','학교','학년','등록일',dateCol,'수강료','납부일'];
-      rows = students.map((u,i)=>[
-        i+1, u.username||'', u.name||'', u.birth||'',
-        u.school||'', u.grade||'',
+      headers = ['아이디','이름','반','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일','등록일',dateCol];
+      rows = students.map(u=>[
+        u.username||'', u.name||'', u.group||'', u.birth||'',
+        u.school||'', u.grade||'', u.phone||'',
+        u.parentName||'', u.parentPhone||'',
+        _amt(u) || '', _due(u),
         u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
         u.statusDate||'',
-        _amt(u) || '', _due(u),
       ]);
     }
 
