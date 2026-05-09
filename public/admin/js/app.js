@@ -9029,6 +9029,36 @@ window.qgRunWordsnap = async () => {
 
   const btn = document.getElementById('qgWordsnapBtn');
   if (btn) btn.disabled = true;
+  const status = document.getElementById('qgWordsnapStatus');
+
+  // ─── 동음이의어 자동 채움 (말하기 시험 채점 보조) ───
+  // 실패해도 저장은 진행 — 동음이의어 빈 배열로 fallback. 사용자 흐름 안 끊음.
+  let homophonesFilled = 0;
+  try {
+    if (status) status.innerHTML = '<span style="color:var(--gray);">🤖 동음이의어 분석 중...</span>';
+    const resp = await _geminiFetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'homophones-only', words: questions.map(q => q.word) }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.success && Array.isArray(data.results)) {
+        const map = new Map(data.results.map(r => [String(r.word || '').toLowerCase(), r.homophones || []]));
+        questions.forEach(q => {
+          q.homophones = map.get(q.word.toLowerCase()) || [];
+          if (q.homophones.length) homophonesFilled++;
+        });
+      }
+    } else {
+      // AI 실패 — 빈 배열로 채워 채점 코드 정합성 유지
+      questions.forEach(q => { q.homophones = []; });
+    }
+  } catch (e) {
+    console.warn('[Wordsnap] homophones AI failed:', e.message);
+    questions.forEach(q => { q.homophones = []; });
+  }
+
   try {
     await addDoc(collection(db, 'genQuestionSets'), {
       name: setName,
@@ -9043,7 +9073,8 @@ window.qgRunWordsnap = async () => {
       createdBy: auth.currentUser?.uid || '',
       updatedAt: serverTimestamp(),
     });
-    showToast(`✓ "${setName}" 저장됨 (${questions.length}단어)`);
+    const homoNote = homophonesFilled > 0 ? ` · 동음이의어 ${homophonesFilled}건` : '';
+    showToast(`✓ "${setName}" 저장됨 (${questions.length}단어${homoNote})`);
     ta.value = '';
     window._qgWordsnapUpdateStatus();
     setTimeout(() => goPage('quiz-sets'), 400);

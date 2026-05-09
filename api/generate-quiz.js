@@ -468,13 +468,20 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { idToken, pages, count, type, customSystemPrompt } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt, mode, words } = req.body || {};
 
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
     if (q.error) return res.status(q.status).json({ error: q.error, limit: q.limit, currentCount: q.currentCount });
     // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
     await incrementUsage({ ...q, res, endpoint: 'generate-quiz' });
+
+    // ─── 동음이의어 전용 분기 (Wordsnap 수동 입력용) ───
+    // 문제 생성 X. 단어 리스트 → AI → { word, homophones[] } 매핑.
+    // 토큰 적음 (정상 vocab 호출의 1/10 수준).
+    if (mode === 'homophones-only') {
+      return await handleHomophonesOnly({ words, apiKey, res });
+    }
 
     // ─── 입력 검증 ───
     if (!Array.isArray(pages) || pages.length === 0) {
@@ -655,6 +662,120 @@ module.exports = async function handler(req, res) {
   }
 };
 
+// ─── 동음이의어 전용 프롬프트 ───
+// 단어 리스트 → 각 단어의 영어 동음이의어 추출. 단어 시험 말하기 모드 채점 보조.
+// 출력: { results: [{ word, homophones: [] }] } — 입력 순서·소문자 유지.
+const HOMOPHONES_PROMPT = `You are an English homophones identifier for Korean students' speaking vocabulary tests.
+
+For each given English word or phrase, list any English homophones — sound-alike words that pronounce identically (or near-identically) in standard American English and that a speech recognition system would commonly confuse with the input.
+
+RULES:
+1. Only list TRUE homophones (same pronunciation, different spelling/meaning).
+   Examples: cereal/serial, piece/peace, weak/week, weather/whether, your/you're, their/there/they're, flower/flour, knight/night.
+   NOT homophones: cat/cot, mat/mate, bit/beat — these have clearly different vowels and should NOT be listed.
+
+2. Multi-word phrases: list phrases that sound identical (e.g., "be served"/"be surveyed") only if a true phrase-level homophone exists. Otherwise return [].
+
+3. Output the EXACT lowercase form (no capitalization, no quotes, no extra spaces).
+
+4. If a word has NO true homophones, return an empty array — do NOT invent any. False positives are worse than empty results.
+
+5. Output ONLY a valid JSON object (no markdown, no prose):
+{
+  "results": [
+    { "word": "cereal", "homophones": ["serial"] },
+    { "word": "piece", "homophones": ["peace"] },
+    { "word": "cat", "homophones": [] },
+    { "word": "their", "homophones": ["there", "they're"] }
+  ]
+}
+
+The "results" array must include EVERY input word, in the same order, with empty array if no homophones.`;
+
+async function handleHomophonesOnly({ words, apiKey, res }) {
+  if (!Array.isArray(words) || words.length === 0) {
+    return res.status(400).json({ error: 'words array is required' });
+  }
+  const sanitized = words
+    .map(w => String(w || '').trim())
+    .filter(w => w && w.length >= 2 && w.length <= 60)
+    .slice(0, 200);
+  if (sanitized.length === 0) {
+    return res.status(400).json({ error: 'No valid words (length 2~60 required)' });
+  }
+
+  const userPrompt = `Identify English homophones for each of these ${sanitized.length} English words/phrases:
+
+${sanitized.map((w, i) => `${i + 1}. ${w}`).join('\n')}
+
+Output ONLY the JSON object as specified.`;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (status) => status === 503 || status === 429;
+
+  let rawText = null;
+  let usedModel = null;
+  let lastError = null;
+  let lastStatus = null;
+
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await callGemini(model, apiKey, HOMOPHONES_PROMPT, userPrompt);
+        if (result.ok) { usedModel = model; rawText = result.text; break outer; }
+        lastError = result.error;
+        lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+        }
+        if (isTransient(lastStatus) && attempt === 0) { await sleep(800); continue; }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+
+  if (!rawText) {
+    return res.status(502).json({ error: 'All AI models failed', detail: lastError, triedModels: GEMINI_MODELS });
+  }
+
+  const parsed = parseAIResponse(rawText);
+  if (!parsed || !Array.isArray(parsed.results)) {
+    return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
+  }
+
+  // 입력 단어 → 동음이의어 매핑 (input order 보존)
+  const mapByLower = new Map();
+  for (const r of parsed.results) {
+    if (!r || typeof r !== 'object') continue;
+    const w = String(r.word || '').toLowerCase().trim();
+    if (!w) continue;
+    const homos = Array.isArray(r.homophones) ? r.homophones : [];
+    const cleaned = Array.from(new Set(
+      homos
+        .map(h => String(h || '').toLowerCase().trim())
+        .filter(h => h && h !== w && h.length >= 2 && h.length <= 60)
+    )).slice(0, 5);
+    mapByLower.set(w, cleaned);
+  }
+
+  const results = sanitized.map(w => ({
+    word: w,
+    homophones: mapByLower.get(w.toLowerCase()) || [],
+  }));
+
+  return res.status(200).json({
+    success: true,
+    mode: 'homophones-only',
+    model: usedModel,
+    count: results.length,
+    results,
+  });
+}
+
 async function callGemini(model, apiKey, systemPrompt, userPrompt) {
   const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
@@ -746,7 +867,13 @@ function buildUserPrompt(pages, count, type, opts) {
 - Each word appears only ONCE in the set.
 - Distribute across all passages (if multiple).
 - Include sourcePageId for each word.
-- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)}.`,
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)}.
+- For each question, ALSO include a "homophones" field (string array). List ONLY true English homophones — words that pronounce identically (or near-identically) in standard American English and that a speech recognition system would commonly confuse with this word.
+  Examples of TRUE homophones: cereal→["serial"], piece→["peace"], weak→["week"], weather→["whether"], their→["there","they're"].
+  NOT homophones: cat/cot, mat/mate, bit/beat (different vowels — do NOT list these).
+  If a word has no true homophones, output [].
+  For multi-word phrases: list phrases that sound the same (e.g., "be served"→["be surveyed"]) only if a true homophone exists.
+  Output exact lowercase form, no extra spaces.`,
     unscramble: `Please generate ${count} unscramble questions.
 - Split each sentence into ${Math.min(Math.max(parseInt(opts?.chunkCount)||4, 2), 10)} chunks (±1 allowed) using '/' separator, whichever respects natural linguistic boundaries better.
 - Pick meaningful sentences (6-30 words each).
@@ -1100,9 +1227,19 @@ function validateVocab(questions, pages) {
       const difficulty = ['easy', 'medium', 'hard'].includes(q.difficulty)
         ? q.difficulty : 'medium';
 
+      // homophones — 말하기 모드 채점에서만 사용. UI/인쇄/단어장에 노출 X.
+      const homophones = Array.isArray(q.homophones)
+        ? Array.from(new Set(
+            q.homophones
+              .map(h => String(h || '').toLowerCase().trim())
+              .filter(h => h && h !== wordLower && h.length >= 2 && h.length <= 60)
+          )).slice(0, 5)
+        : [];
+
       return {
         type: 'vocab',
         word, meaning, example, exampleKo,
+        homophones,
         sourcePageId, sourcePageTitle, difficulty,
       };
     })

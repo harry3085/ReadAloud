@@ -3816,7 +3816,7 @@ window.vqSpkStart = () => {
   if (attemptEl) attemptEl.textContent = `시도 ${s.spk.attempt}/2`;
 
   rec.onresult = (e) => {
-    const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness);
+    const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     if (grading.correct) {
       _vqSpkFinalize(true, grading.matchedWith || q.word);
     } else {
@@ -4236,21 +4236,40 @@ function _spkLevenshteinSimilarity(a, b) {
   return maxLen === 0 ? 1 : 1 - dist / maxLen;
 }
 
-// 음성 인식 결과(SpeechRecognitionResultList[0]) + 정답 영단어 + 엄격도 → 채점 결과
-function _spkGradeAnswer(recognitionResults, correctEnglish, strictness) {
+// 음성 인식 결과(SpeechRecognitionResultList[0]) + 정답 영단어 + 엄격도 + 동음이의어 → 채점 결과
+// homophones: AI Generator/Wordsnap 단어시험 생성 시 채워두는 동음이의어 배열.
+//   Web Speech API 가 cereal 을 serial 로 들어도 정답 처리 (단어 지식 평가가 1차 목표).
+//   UI/인쇄/단어장에는 노출 X — 말하기 모드 채점에서만 사용.
+function _spkGradeAnswer(recognitionResults, correctEnglish, strictness, homophones) {
   const cfg = SPK_STRICTNESS_CONFIG[strictness] || SPK_STRICTNESS_CONFIG.normal;
   const ans = String(correctEnglish || '').toLowerCase().trim();
   if (!ans) return { correct: false, alternatives: [] };
+
+  // 정답 후보 = [원래 정답, ...동음이의어] (모두 소문자·trim)
+  const validAnswers = [ans];
+  if (Array.isArray(homophones)) {
+    for (const h of homophones) {
+      const hh = String(h || '').toLowerCase().trim();
+      if (hh && hh !== ans) validAnswers.push(hh);
+    }
+  }
 
   const alternatives = Array.from(recognitionResults || []).slice(0, cfg.maxAlternatives);
 
   for (const alt of alternatives) {
     const said = String(alt.transcript || '').toLowerCase().trim();
     if (!said) continue;
-    if (said === ans) return { correct: true, matchedWith: said, similarity: 1.0 };
-    if (cfg.similarityThreshold < 1.0) {
-      const sim = _spkLevenshteinSimilarity(said, ans);
-      if (sim >= cfg.similarityThreshold) return { correct: true, matchedWith: said, similarity: sim };
+    // 모든 정답 후보(원래 + 동음이의어)에 대해 매칭 시도
+    for (const candidate of validAnswers) {
+      if (said === candidate) {
+        return { correct: true, matchedWith: said, similarity: 1.0, viaHomophone: candidate !== ans };
+      }
+      if (cfg.similarityThreshold < 1.0) {
+        const sim = _spkLevenshteinSimilarity(said, candidate);
+        if (sim >= cfg.similarityThreshold) {
+          return { correct: true, matchedWith: said, similarity: sim, viaHomophone: candidate !== ans };
+        }
+      }
     }
   }
   return {
