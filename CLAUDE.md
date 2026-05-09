@@ -2554,3 +2554,119 @@ function _vqNormCh(ch) { /* 길이 유지 per-char 비교용 */ }
 - ✅ 4곳 비교 로직 통일 (정답 판정·점수 집계·박스 색·detail)
 - ✅ 박스 높이 +10px (입력 + 결과 양쪽)
 - ✅ 진단 스크립트 2개 (vocab chars / submissions)
+
+---
+
+## 2026-05-09 (이어서): 알림 줄바꿈 + 학생관리 수강정보 + 엑셀 양식 통일 + 결제 마법사 '말일' 버그
+
+당일 SW v367 → v373 (~7 commit). 학생관리에 결제 v2 의 수강료·납부일 표시 통합 + 엑셀 라운드트립 양식 통일 + 결제 마법사 '말일' 버그 fix 등 운영 정비.
+
+### 1) 학생앱 알림함 메시지 줄바꿈 표시 (commit `9a79285`)
+[loadMessages](public/js/app.js#L4853) 알림 패널 행의 body div 에 `white-space: pre-wrap` + `word-break: break-word` 누락. esc() 가 `\n` 그대로 출력해도 CSS 기본값 (normal) 이 collapse → 한 줄로 보임. 해결: 행 안 body div 에 두 속성 추가. 알림 모달 (notifModalBody) 은 이미 적용되어 있어 그대로.
+
+옛 메시지도 같이 적용됨 — body 텍스트는 Firestore 그대로, 표시만 변경.
+
+### 2) 학생관리 표에 수강료·납부일 컬럼 + 가림 토글 (commit `dc3e98c`, `89b7ce6`)
+
+**컬럼 추가** (재원/휴원/퇴원 모두 동일):
+- 표 맨 끝 위치 (등록일·휴원일·퇴원일 뒤로)
+- 형식: `200,000` (숫자, 콤마 구분, '원' 빼고) / `5일` / `말일` / `학원기본`
+- 학생 수정 모달 select 라벨과 완전 일치
+
+**가림 토글** ([_tuitionVisible](public/admin/js/app.js#L1271-L1286)):
+- 재원/휴원/퇴원 페이지 셋 다 우상단 [💰 수강정보 보기] / [🙈 수강정보 가리기] 버튼
+- 기본 가림 (`***`), 클릭 시 노출. 페이지 새로고침 시 자동 가림 (모듈 변수 초기화)
+- 모듈 전역 변수 — 셋 페이지가 같은 상태 공유. 동일 id `tuitionToggleBtn` 3개에 querySelectorAll 로 라벨 동기화
+- 옵션 A 채택 (B/C/D 검토 후) — localStorage 저장 X (지나가다 누가 보는 문제 회피)
+
+**표시 헬퍼** (`_tuitionCells`):
+- amt = 0 → '-' (자동 청구 미설정)
+- dueDay = -1 → '말일'
+- dueDay = 0 또는 미설정 → '학원기본'
+- 1~31 → 'N일'
+- 가림 시 모두 `***`
+
+### 3) 엑셀 샘플·import·export 양식 통일 (commit `dc3e98c`, `240209f`, `f862b45`)
+
+이전 상태 — 샘플(9컬럼) / import(11컬럼) / export(13컬럼, 'No' + '반' 우선) 가 제각각 → 학원장이 export 받은 파일 그대로 import 못함.
+
+**통일 양식 (import 기준 11 컬럼)**:
+| 열 | 항목 |
+|---|------|
+| A | 아이디 * |
+| B | 이름 * |
+| C | 반 |
+| D | 생일 |
+| E | 학교 |
+| F | 학년 |
+| G | 연락처 |
+| H | 부모님성함 |
+| I | 부모님연락처 |
+| J | 수강료 (숫자, 빈값 OK) |
+| K | 납부일 |
+| (L+) | 참고용 — 등록일 / 휴원일 / 퇴원일 (import 시 무시) |
+
+**import 받아들이는 납부일 형식** (사용자 어떻게 입력하든 OK):
+- 숫자 (`5`)
+- 한글 단위 (`5일`)
+- `말일` / `-1`
+- `학원기본` / `학원 기본값`
+- 빈값 (= 학원 기본값)
+
+**export 표시·샘플** — 학생 모달 select 라벨과 완전 일치 (`5일` / `말일` / `학원기본`). 빈 셀은 자동 청구 미설정.
+
+**휴원/퇴원 export 도 풀 컬럼** (반·연락처·부모님 등) — 휴원/퇴원생 데이터 엑셀 편집 후 재원생으로 import 라운드트립 가능.
+
+### 4) 결제 마법사 '말일' 저장 안 되던 버그 (commit `24c46b6`) ⭐
+**진짜 원인**: [_renderWizardStep1](public/admin/js/app.js#L3343) 의 select 첫 옵션이 `<option value="0">말일</option>` — value=0 인데 라벨 "말일" 충돌. 사용자가 "말일" 선택해도 `dueDay=0` 저장됨. 이후 `0 || 15` 함정 (`_ensureCurrentMonthBillings` 의 `_billingSettings?.defaultDueDay || 15`) 으로 매월 15일에 청구서 생성.
+
+학생 수정 모달은 `value="-1"=말일` 정상이라 학생 단위 "말일" 은 OK. 학원 단위 default 만 깨져있던 비대칭 버그.
+
+**수정 (5곳)**:
+1. `_renderWizardStep1`: select 첫 옵션 `value="-1"` + selected 처리
+2. `openPaymentSettingsWizard` prefill: `|| 15` → `isFinite(eDD) && (eDD === -1 || (eDD >= 1 && eDD <= 31)) ? eDD : 15`
+3. saveSettings (라인 3520): defaultDueDay 저장 시 동일 검증 — `-1` 유효
+4. `_ensureCurrentMonthBillings` (3259): defaultDueDay fallback 안전화
+5. `_syncCurrentMonthBilling` (5999): 동일
+
+**옛 데이터 (defaultDueDay=0)** 자동 마이그레이션 안 함 — 학원장이 설정 다시 열어 "말일" 재선택 + 저장하면 -1 로 갱신. 안전 운영 전략.
+
+---
+
+## 작업 규칙 추가 (2026-05-09 이어서)
+
+신규:
+- **`white-space: pre-wrap`** 은 사용자 입력 텍스트 (메시지 본문, 메모 등) 표시 div 에 필수. esc() 만으로는 `\n` 이 visible 줄바꿈으로 표시 안 됨. CSS 기본값 (normal) 이 공백·줄바꿈 collapse.
+- **민감 정보 가림 토글 패턴** — 모듈 전역 변수 + 우상단 토글 버튼 + querySelectorAll 로 여러 페이지 라벨 동기화. localStorage 저장 X (지나가다 노출 회피). 페이지 새로고침 = 자동 가림.
+- **엑셀 라운드트립 양식 통일** — 샘플·import·export 컬럼 순서·라벨 동일. 참고용 컬럼 (등록일·상태일 등) 은 끝에 두고 import 시 무시. 사용자가 export 받은 파일을 그대로 수정해서 재 import 가능해야 함.
+- **`X || fallback` 함정 — 0 도 의미 있는 값일 때** — `|| 15` 가 `0` (의도된 0 또는 옛 잘못된 0) 을 fallback 으로 덮어쓰면 디버깅 어려움. `isFinite(x) + 범위 체크` 패턴 권장. 특히 select option value 와 의미값 매핑 일관성 필수 (학원 마법사 vs 학생 모달 dueDay 충돌이 표본 — `value="-1"=말일` 통일).
+- **select option `value` 와 의미값 매핑 일관성** — 같은 도메인 (예: 납부일) 에서 여러 화면 간 매핑 다르면 한 쪽 저장값을 다른 쪽이 오해석. 모든 화면이 동일 mapping 사용해야 (`-1`=말일, `0`=학원기본, `1~31`=일).
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-09 이어서)
+- `public/admin/js/app.js`: ~13050줄 (+~80, 학생관리 컬럼·토글·엑셀 통일·말일 버그 fix)
+- `public/admin/_app.html`: 학생관리 헤더 + 안내문 갱신
+- `public/js/app.js`: 알림 줄바꿈 1줄 변경
+- SW 캐시: `kunsori-v373`
+
+## 진행률 (2026-05-09 이어서)
+- 단어시험 채점 견고성: ~100% (변동 없음)
+- 결제 v2: ~96% → **~98%** (학원 default '말일' 버그 fix + 학생관리 통합)
+- 학생관리 운영: ~95% → **~98%** (수강료 가림 토글 + 엑셀 라운드트립)
+- 화이트라벨 브랜딩·멀티테넌시·super_admin: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-09 이어서 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **PWA [홈화면 추가] 학원명 노출** — manifest·메타 시도 다 안 통함, 사용자가 input 직접 수정 안내 (alert 에 적용 완료). SSR 도입은 부담 큼 — 보류
+3. **학원장 대시보드 달력 보강** — 생일 카테고리 추가 (`users.birth` 입력 강화 + 4번째 점 색)
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+
+**완료 (이 세션 이어서, 2026-05-09)**:
+- ✅ 학생앱 알림함 줄바꿈 표시 (white-space:pre-wrap)
+- ✅ 학생관리 표 수강료·납부일 컬럼 + 가림 토글 (재원/휴원/퇴원 모두)
+- ✅ 엑셀 샘플·import·export 양식 통일 (라운드트립 가능)
+- ✅ 납부일 형식 학생 모달 select 라벨과 통일 (5일 / 말일 / 학원기본)
+- ✅ 결제 마법사 '말일' value=0 vs -1 충돌 fix (5곳)
+- ✅ PWA 홈화면 추가 학원명 alert 안내문 (input 직접 수정 가이드)
