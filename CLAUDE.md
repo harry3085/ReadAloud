@@ -2670,3 +2670,101 @@ function _vqNormCh(ch) { /* 길이 유지 per-char 비교용 */ }
 - ✅ 납부일 형식 학생 모달 select 라벨과 통일 (5일 / 말일 / 학원기본)
 - ✅ 결제 마법사 '말일' value=0 vs -1 충돌 fix (5곳)
 - ✅ PWA 홈화면 추가 학원명 alert 안내문 (input 직접 수정 가이드)
+
+---
+
+## 2026-05-10: 단어 말하기 시험 동음이의어 자동 처리 (cereal/serial)
+
+당일 SW v376 → v377 (1 commit). Web Speech API 의 동음이의어 인식 한계 (cereal 을 정확히 발음해도 `serial` 로 들림) 해결. Metaphone 알고리즘 검토 후 폐기 → AI 기반 사전 등록 채택.
+
+### 1) 보고된 증상 + 베타 데이터 진단
+학원장 보고: "너그러움" 엄격도여도 cereal 같은 단어는 학생이 어떻게 발음해도 오답 처리. 다른 단어도 비슷한 케이스 있을 것 같음.
+
+신규 진단 도구 [scripts/diag/analyze-speaking-errors.js](scripts/diag/analyze-speaking-errors.js):
+- `genTests` 중 `vocabOptions.format='speaking'` 시험 스캔 → `userCompleted/{uid}.answers[]` 추출
+- 단어별 오답 횟수 + 학생이 들린 단어 (`spkHeard`) 빈도 카운팅
+- 동음이의어 후보 자동 탐지: 들린 단어가 정답 오답의 50% 이상 같은 단어로 인식되면 의심
+
+베타 결과:
+- **piece/peace** 2/2 (100% 일관 — 완벽한 동음이의어)
+- soar / weird / be served — 2~4건 오답이지만 들린 단어 다양 (Web Speech API 의 일반적 인식 오류)
+- 전체 오답률 ~20% — 임계값 문제가 아닌 발음 인식 한계 영역
+
+### 2) 설계 비교 — Metaphone vs AI 동음이의어
+| | Metaphone | AI 동음이의어 (채택) |
+|---|-----------|---------------------|
+| 방식 | 자음 추출 알고리즘 | AI 가 단어별 사전 등록 |
+| 범위 | **모든 단어** 자동 적용 | **등록된 쌍만** 매칭 |
+| cereal/serial | ✅ 통과 | ✅ 통과 |
+| **cat/cot** | ❌ 둘 다 KT → 잘못 통과 | ✅ 등록 안 됨 → 오답 (정상) |
+| **mat/mate** | ❌ 둘 다 MT → 잘못 통과 | ✅ 오답 (정상) |
+| **bit/beat** | ❌ 둘 다 BT → 잘못 통과 | ✅ 오답 (정상) |
+
+핵심 차이: Metaphone 은 **폭넓고·거침** (false positive 다발). AI 동음이의어는 **좁고·정밀** (의미 인지). 1차 목표(단어 지식 평가) 를 깨뜨리지 않으면서 발음 인식 한계만 보정.
+
+사용자 결정: false positive 회피 우선 → AI 동음이의어. UI/인쇄/단어장에 노출 X (말하기 모드 채점에서만 사용) — 학습자 혼란 방지.
+
+### 3) 구현 — 3개 파일
+
+**[api/generate-quiz.js](api/generate-quiz.js)**
+- `typeInstructions.vocab` 에 homophones 지시 추가 (true homophone 만, cat/cot 같은 false positive 명시 차단)
+- `validateVocab` 가 homophones 정규화 (lowercase·trim·dedupe·max 5개·자기자신 제외)
+- POST handler 에 `mode: 'homophones-only'` 분기 신설 + `HOMOPHONES_PROMPT` 상수 + `handleHomophonesOnly` 헬퍼
+- **`appConfig/aiPrompts.vocab` (super_admin 편집) 손대지 않음** — typeInstructions·validator 단계에서 처리. 학원장이 vocab 프롬프트 편집해도 homophones 자동 생성됨
+
+**[public/admin/js/app.js qgRunWordsnap](public/admin/js/app.js)**
+- 클립보드 파싱 후 → AI 호출 1회 (`mode: 'homophones-only'`, words 만 보냄) → questions 채워서 Firestore 저장
+- AI 실패 시 빈 배열 fallback (저장 흐름 안 끊음)
+- 토스트에 동음이의어 건수 표시
+- 토큰: 정상 vocab 호출의 1/10 수준 (문제 생성 X, 단어 리스트만)
+
+**[public/js/app.js _spkGradeAnswer](public/js/app.js)**
+- 시그니처에 `homophones` 추가 (4번째 인자)
+- 정답 후보 = `[정답, ...homophones]` 모두에 대해 매칭 시도
+- `viaHomophone` 플래그 반환 (디버깅 가능)
+- 호출부 `q.homophones` 전달
+
+### 4) 적용 시점 + 비용 모델
+- **세트 생성 시점에 1회 AI 호출** → 그 세트로 시험 100번 출제해도 추가 비용 0
+- **출제 시 AI 의존도 0** (네트워크/할당량 영향 없음)
+- 시험 배정 → genTests 복사 시 homophones 따라옴
+- **기존 단어 세트는 영향 없음** (homophones 필드 없으면 빈 배열 fallback → 기존 동작 그대로). 적용하려면 새로 만들어야
+
+---
+
+## 작업 규칙 추가 (2026-05-10)
+
+신규:
+- **AI 기반 사전 등록 vs 알고리즘 기반 처리 — false positive 회피 우선** — Metaphone·Soundex 같은 폭넓은 알고리즘은 false positive 가 학습 효과를 깨뜨림 (cat/cot 같이 다른 단어를 같다고 처리). 의미 인지가 필요한 도메인 (단어 지식 평가 등) 에선 AI 기반 사전 등록이 정확. 학습자가 직접 검토·편집 가능한 점도 장점.
+- **노이즈 데이터는 채점 데이터 (질) 가 아니라 인식 시스템 한계 (양)** — 임계값 (similarityThreshold) 으로 풀려 하지 말고 도메인 사전 (homophones) 으로 풀기. 베타 데이터 분석으로 노이즈 패턴 분류 후 결정.
+- **세트 단위 사전 처리 vs 출제 단위 즉석 처리** — 비용·일관성 측면에서 세트 생성 시 1회 처리가 우선. 출제는 횟수 많고 시점이 학생 기다리는 critical path. 단, 기존 데이터엔 적용 안 되는 trade-off 명시 필요 — 사용자 결정 (a) 새로 만들기 / (b) 일괄 채우기 버튼 추가 중 선택.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-10)
+- `api/generate-quiz.js`: ~1290줄 (+~135, mode='homophones-only' 분기 + HOMOPHONES_PROMPT + handleHomophonesOnly + typeInstructions.vocab 확장 + validateVocab 정규화)
+- `public/admin/js/app.js`: ~13070줄 (+~30, qgRunWordsnap AI 호출 추가)
+- `public/js/app.js`: ~4940줄 (+~15, _spkGradeAnswer 시그니처 확장 + 정답 후보 루프)
+- 신규 진단: `scripts/diag/analyze-speaking-errors.js` / `scripts/diag/dump-speaking-completion.js`
+- SW 캐시: `kunsori-v377`
+
+## 진행률 (2026-05-10)
+- **단어 말하기 시험: ~100% → 동음이의어 보강 (변동 없음)**
+- 단어시험 채점 견고성: ~100% (변동 없음)
+- 결제 v2: ~98% (변동 없음)
+- 학생관리 운영: ~98% (변동 없음)
+- 화이트라벨 브랜딩·멀티테넌시·super_admin: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-10 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **학원장 대시보드 달력 보강** — 생일 카테고리 추가 (`users.birth` 입력 강화)
+3. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **(선택) 동음이의어 일괄 채우기 버튼** — 기존 단어 세트에 적용. 베타 운영 후 빈도 보고 결정
+
+**완료 (이 세션, 2026-05-10)**:
+- ✅ 단어 말하기 시험 동음이의어 자동 처리 (AI Generator + Wordsnap 양쪽)
+- ✅ Metaphone vs AI 동음이의어 비교 분석 + AI 채택 (false positive 회피)
+- ✅ 베타 데이터 분석 도구 신규 (analyze-speaking-errors.js)
+- ✅ `_spkGradeAnswer` 정답 후보 [정답 + homophones] 루프 매칭
+- ✅ super_admin 편집 vocab 프롬프트 보존 (typeInstructions 단계 처리)
