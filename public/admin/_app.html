@@ -408,11 +408,12 @@
     <div class="card" style="padding:0;overflow:hidden;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
         <input type="text" id="studentSearch" placeholder="🔍 이름, 아이디 검색..." onkeyup="searchStudents()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
+        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="margin-left:auto;font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th onclick="sortTable('studentTableBody',0)" class="sortable">No</th><th onclick="sortTable('studentTableBody',1)" class="sortable">반</th><th onclick="sortTable('studentTableBody',2)" class="sortable">아이디</th><th onclick="sortTable('studentTableBody',3)" class="sortable">이름</th><th onclick="sortTable('studentTableBody',4)" class="sortable">생일</th><th onclick="sortTable('studentTableBody',5)" class="sortable">학교</th><th onclick="sortTable('studentTableBody',6)" class="sortable">학년</th><th>알림수신</th><th onclick="sortTable('studentTableBody',8)" class="sortable">등록일</th></tr></thead>
-          <tbody id="studentTableBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th onclick="sortTable('studentTableBody',0)" class="sortable">No</th><th onclick="sortTable('studentTableBody',1)" class="sortable">반</th><th onclick="sortTable('studentTableBody',2)" class="sortable">아이디</th><th onclick="sortTable('studentTableBody',3)" class="sortable">이름</th><th onclick="sortTable('studentTableBody',4)" class="sortable">생일</th><th onclick="sortTable('studentTableBody',5)" class="sortable">학교</th><th onclick="sortTable('studentTableBody',6)" class="sortable">학년</th><th onclick="sortTable('studentTableBody',7)" class="sortable">수강료</th><th onclick="sortTable('studentTableBody',8)" class="sortable">납부일</th><th>알림수신</th><th onclick="sortTable('studentTableBody',10)" class="sortable">등록일</th></tr></thead>
+          <tbody id="studentTableBody"><tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
           <div class="tbl-actions">
@@ -436,13 +437,16 @@
   <div class="page" id="page-student-pause">
     <div class="page-header">
       <div><div class="page-title">휴원생 관리</div><div class="page-sub">휴원 중인 학생을 관리합니다</div></div>
-      <button class="btn btn-secondary" onclick="exportStudentExcel('pause')">📊 엑셀 내보내기</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        <button class="btn btn-secondary" onclick="exportStudentExcel('pause')">📊 엑셀 내보내기</button>
+      </div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th onclick="sortTable('pauseTableBody',0)" class="sortable">No</th><th onclick="sortTable('pauseTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('pauseTableBody',2)" class="sortable">이름</th><th onclick="sortTable('pauseTableBody',3)" class="sortable">생일</th><th onclick="sortTable('pauseTableBody',4)" class="sortable">학교</th><th onclick="sortTable('pauseTableBody',5)" class="sortable">학년</th><th onclick="sortTable('pauseTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('pauseTableBody',7)" class="sortable">휴원일</th></tr></thead>
-          <tbody id="pauseTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th onclick="sortTable('pauseTableBody',0)" class="sortable">No</th><th onclick="sortTable('pauseTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('pauseTableBody',2)" class="sortable">이름</th><th onclick="sortTable('pauseTableBody',3)" class="sortable">생일</th><th onclick="sortTable('pauseTableBody',4)" class="sortable">학교</th><th onclick="sortTable('pauseTableBody',5)" class="sortable">학년</th><th onclick="sortTable('pauseTableBody',6)" class="sortable">수강료</th><th onclick="sortTable('pauseTableBody',7)" class="sortable">납부일</th><th onclick="sortTable('pauseTableBody',8)" class="sortable">등록일</th><th onclick="sortTable('pauseTableBody',9)" class="sortable">휴원일</th></tr></thead>
+          <tbody id="pauseTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
           <div class="tbl-actions">
@@ -460,13 +464,16 @@
   <div class="page" id="page-student-out">
     <div class="page-header">
       <div><div class="page-title">퇴원생 관리</div><div class="page-sub">퇴원한 학생을 관리합니다</div></div>
-      <button class="btn btn-secondary" onclick="exportStudentExcel('out')">📊 엑셀 내보내기</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        <button class="btn btn-secondary" onclick="exportStudentExcel('out')">📊 엑셀 내보내기</button>
+      </div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th onclick="sortTable('outTableBody',0)" class="sortable">No</th><th onclick="sortTable('outTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('outTableBody',2)" class="sortable">이름</th><th onclick="sortTable('outTableBody',3)" class="sortable">생일</th><th onclick="sortTable('outTableBody',4)" class="sortable">학교</th><th onclick="sortTable('outTableBody',5)" class="sortable">학년</th><th onclick="sortTable('outTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('outTableBody',7)" class="sortable">퇴원일</th></tr></thead>
-          <tbody id="outTableBody"><tr><td colspan="9" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th onclick="sortTable('outTableBody',0)" class="sortable">No</th><th onclick="sortTable('outTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('outTableBody',2)" class="sortable">이름</th><th onclick="sortTable('outTableBody',3)" class="sortable">생일</th><th onclick="sortTable('outTableBody',4)" class="sortable">학교</th><th onclick="sortTable('outTableBody',5)" class="sortable">학년</th><th onclick="sortTable('outTableBody',6)" class="sortable">수강료</th><th onclick="sortTable('outTableBody',7)" class="sortable">납부일</th><th onclick="sortTable('outTableBody',8)" class="sortable">등록일</th><th onclick="sortTable('outTableBody',9)" class="sortable">퇴원일</th></tr></thead>
+          <tbody id="outTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
         </table>
         <div class="tbl-toolbar">
           <div class="tbl-actions">
@@ -500,7 +507,13 @@
             F열: 학년 (예: 5)<br>
             G열: 연락처<br>
             H열: 부모님 성함<br>
-            I열: 부모님 연락처
+            I열: 부모님 연락처<br>
+            J열: 월 수강료 (숫자, 예: 200000)<br>
+            K열: 납부일 (1~31 또는 '말일')
+          </div>
+          <div style="margin-top:8px;padding:8px 10px;background:#f0fafa;border-radius:6px;font-size:11px;color:var(--gray);line-height:1.6;">
+            💰 J·K열 비워두면 자동 청구서 생성 안 됨.<br>
+            기존 학원장이 사용하던 엑셀 양식 그대로 업로드 가능 (수강료 컬럼 추가 권장).
           </div>
           <div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:12px;">
             ⚠️ 기본 비밀번호는 <b>123456</b>으로 설정돼요.<br>

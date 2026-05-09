@@ -1249,6 +1249,7 @@ async function loadStudents(status='active'){
     const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==',status)));
     allStudents=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderStudentTable(status, allStudents);
+    _syncTuitionToggleBtnLabel();
     if(status==='active'){
       const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
       const sel=document.getElementById('studentClassFilter');
@@ -1257,12 +1258,45 @@ async function loadStudents(status='active'){
   }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 
+// 수강정보 가림/노출 토글 (재원생·휴원생·퇴원생 표 공통)
+let _tuitionVisible = false;
+function _syncTuitionToggleBtnLabel() {
+  document.querySelectorAll('#tuitionToggleBtn').forEach(btn => {
+    btn.textContent = _tuitionVisible ? '🙈 수강정보 가리기' : '💰 수강정보 보기';
+  });
+}
+window.toggleTuitionVisible = () => {
+  _tuitionVisible = !_tuitionVisible;
+  // 현재 활성 페이지 재렌더 (status 별로 allStudents 가 마지막 호출분으로 채워져 있음)
+  if (currentPage === 'student-active') renderStudentTable('active', allStudents);
+  else if (currentPage === 'student-pause') renderStudentTable('pause', allStudents);
+  else if (currentPage === 'student-out') renderStudentTable('out', allStudents);
+  _syncTuitionToggleBtnLabel();
+};
+
+// 수강료 / 납부일 셀 표시 헬퍼 — 가림 토글 반영
+function _tuitionCells(u) {
+  const tp = u.tuitionPlan || {};
+  const amt = parseInt(tp.amount) || 0;
+  const dueDay = parseInt(tp.dueDay);
+  const amtCell = !amt ? '-' : (_tuitionVisible ? amt.toLocaleString() : '***');
+  let dueCell = '-';
+  if (amt) {
+    if (!isFinite(dueDay) || dueDay === 0) dueCell = _tuitionVisible ? '학원기본' : '***';
+    else if (dueDay === -1) dueCell = _tuitionVisible ? '말일' : '***';
+    else if (dueDay >= 1 && dueDay <= 31) dueCell = _tuitionVisible ? `${dueDay}일` : '***';
+  }
+  return { amtCell, dueCell };
+}
+
 function renderStudentTable(status, students){
   const tbodyMap={'active':'studentTableBody','pause':'pauseTableBody','out':'outTableBody'};
   const pgMap={'active':'studentPagination','pause':'pausePagination','out':'outPagination'};
   const tbodyId=tbodyMap[status], pgId=pgMap[status];
   if(status==='active'){
-    initPagination(tbodyId, students, (u,i)=>`<tr>
+    initPagination(tbodyId, students, (u,i)=>{
+      const { amtCell, dueCell } = _tuitionCells(u);
+      return `<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
       <td><span class="badge badge-teal">${esc(u.group)||'-'}</span></td>
@@ -1271,11 +1305,16 @@ function renderStudentTable(status, students){
       <td class="td-sm">${esc(u.birth)||'-'}</td>
       <td class="td-sm">${esc(u.school)||'-'}</td>
       <td class="td-sm">${esc(u.grade)||'-'}</td>
+      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
+      <td class="td-sm" style="text-align:center;">${dueCell}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
       <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-    </tr>`, pgId, 10);
+    </tr>`;
+    }, pgId, 12);
   } else {
-    initPagination(tbodyId, students, (u,i)=>`<tr>
+    initPagination(tbodyId, students, (u,i)=>{
+      const { amtCell, dueCell } = _tuitionCells(u);
+      return `<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
       <td class="td-mono">${esc(u.username)||'-'}</td>
@@ -1283,9 +1322,12 @@ function renderStudentTable(status, students){
       <td class="td-sm">${esc(u.birth)||'-'}</td>
       <td class="td-sm">${esc(u.school)||'-'}</td>
       <td class="td-sm">${esc(u.grade)||'-'}</td>
+      <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
+      <td class="td-sm" style="text-align:center;">${dueCell}</td>
       <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
       <td class="td-sub">${u.statusDate||'-'}</td>
-    </tr>`, pgId, 9);
+    </tr>`;
+    }, pgId, 11);
   }
 }
 
@@ -5241,6 +5283,16 @@ window.importStudentExcel = async() => {
     const name=(row[1]||'').toString().trim();
     if(!username||!name){failList.push((username||'?')+': 아이디/이름 누락');fail++;continue;}
     try{
+      // 수강료·납부일 파싱 (J/K 열, 빈값 OK — 자동 청구 미생성)
+      const tuitionRaw = (row[9]||'').toString().replace(/[^\d]/g,'').trim();
+      const tuitionAmount = parseInt(tuitionRaw) || 0;
+      const dueDayStr = (row[10]||'').toString().trim();
+      let dueDay = 0;  // 0 = 학원 기본값
+      if (dueDayStr === '말일' || dueDayStr === '-1') dueDay = -1;
+      else if (/^\d+$/.test(dueDayStr)) {
+        const n = parseInt(dueDayStr);
+        if (n >= 1 && n <= 31) dueDay = n;
+      }
       const payload = {
         idToken, username, password:'123456', name,
         group:(row[2]||'').toString().trim(),
@@ -5251,6 +5303,14 @@ window.importStudentExcel = async() => {
         parentName:(row[7]||'').toString().trim(),
         parentPhone:(row[8]||'').toString().trim(),
       };
+      if (tuitionAmount > 0) {
+        payload.tuitionPlan = {
+          amount: tuitionAmount,
+          dueDay,
+          startMonth: new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
+          active: true,
+        };
+      }
       const res = await fetch('/api/createStudent', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -5582,21 +5642,32 @@ window.exportStudentExcel = async(status='active') => {
     if (!students.length) { showAlert('입력 확인', '내보낼 학생이 없습니다.'); return; }
 
     const statusLabel = {active:'재원생',pause:'휴원생',out:'퇴원생'};
+    // 수강료·납부일 셀 헬퍼 — export 시엔 항상 노출 (학원장 본인이 다운로드하는 파일)
+    const _amt = (u) => parseInt(u.tuitionPlan?.amount) || 0;
+    const _due = (u) => {
+      const d = parseInt(u.tuitionPlan?.dueDay);
+      if (!_amt(u)) return '';
+      if (!isFinite(d) || d === 0) return '';  // 학원 기본값
+      if (d === -1) return '말일';
+      return `${d}일`;
+    };
     let headers, rows;
     if(status==='active'){
-      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','등록일'];
+      headers = ['No','반','아이디','이름','생일','학교','학년','연락처','부모님성함','부모님연락처','수강료','납부일','등록일'];
       rows = students.map((u,i)=>[
         i+1, u.group||'', u.username||'', u.name||'', u.birth||'',
         u.school||'', u.grade||'', u.phone||'',
         u.parentName||'', u.parentPhone||'',
+        _amt(u) || '', _due(u),
         u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):''
       ]);
     } else {
       const dateCol = status==='pause'?'휴원일':'퇴원일';
-      headers = ['No','아이디','이름','생일','학교','학년','등록일',dateCol];
+      headers = ['No','아이디','이름','생일','학교','학년','수강료','납부일','등록일',dateCol];
       rows = students.map((u,i)=>[
         i+1, u.username||'', u.name||'', u.birth||'',
         u.school||'', u.grade||'',
+        _amt(u) || '', _due(u),
         u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'',
         u.statusDate||''
       ]);
