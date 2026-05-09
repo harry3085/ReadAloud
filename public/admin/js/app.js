@@ -12621,36 +12621,60 @@ window.tpToggleTestProgress = async (testId, prefix) => {
               // 시험관리 페이지면 _activeTestType, 시험 목록이면 시험 doc 자체의 testMode/mode
               const tMode = (t.testMode || t.mode || '').toLowerCase();
               const recs = c.recordings || [];
-              const isRec = tMode === 'recording' && recs.length >= 1 && recs[0]?.audioUrl;
-              if (isRec) {
-                // 마지막 녹음만 저장됨 (신규 흐름) — 학생 통과 시도만
-                const last = recs[recs.length - 1];
-                const fb = last?.feedback;
-                const passScore = c.passScore || 80;
-                const isPassed = last.score >= passScore;
-                return `
-                  <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;">
-                    <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-right:24px;">
-                      <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
-                      <span style="color:${isPassed ? '#059669' : '#CA8A04'};font-weight:700;">${last.score}점</span>
+              const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+              // ── 녹음숙제 4가지 케이스: audio통과 / AI평가실패 / 미통과 / (그외 fall-through) ──
+              if (tMode === 'recording') {
+                const last = recs.length >= 1 ? recs[recs.length - 1] : null;
+                const passScore = c.passScore || t.passScore || 80;
+                // 1) audio 있음 — 통과 (큰 카드 + 피드백)
+                if (last?.audioUrl) {
+                  const fb = last.feedback;
+                  const isPassed = last.score >= passScore;
+                  return `
+                    <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;">
+                      <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-right:24px;">
+                        <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
+                        <span style="color:${isPassed ? '#059669' : '#CA8A04'};font-weight:700;">${last.score}점</span>
+                      </div>
+                      <audio src="${esc(last.audioUrl)}" controls preload="none" style="width:100%;height:32px;margin-bottom:6px;"></audio>
+                      <div style="font-size:10px;color:var(--gray);padding-top:4px;border-top:1px solid #f3f4f6;">
+                        ${esc(c.date || '')}${last.duration ? ' · ' + last.duration + '초' : ''} · 마지막 녹음 (총 ${recs.length}회 중)
+                      </div>
+                      ${fb ? `
+                        <details style="margin-top:8px;">
+                          <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백</summary>
+                          <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
+                            ${fb.missedWords?.length ? `<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
+                            ${fb.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`${esc(p.word)} (${esc(p.issue)})`).join(' · ')}</div>` : ''}
+                            ${fb.tips?.length ? `<div style="margin-top:3px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
+                          </div>
+                        </details>
+                      ` : '<div style="font-size:10px;color:var(--gray);margin-top:6px;">마지막 회차가 임계점 미달 → 피드백 없음</div>'}
                     </div>
-                    <audio src="${esc(last.audioUrl)}" controls preload="none" style="width:100%;height:32px;margin-bottom:6px;"></audio>
-                    <div style="font-size:10px;color:var(--gray);padding-top:4px;border-top:1px solid #f3f4f6;">
-                      ${esc(c.date || '')}${last.duration ? ' · ' + last.duration + '초' : ''} · 마지막 녹음 (총 ${recs.length}회 중)
-                    </div>
-                    ${fb ? `
-                      <details style="margin-top:8px;">
-                        <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (3회차)</summary>
-                        <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
-                          ${fb.missedWords?.length ? `<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
-                          ${fb.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`${esc(p.word)} (${esc(p.issue)})`).join(' · ')}</div>` : ''}
-                          ${fb.tips?.length ? `<div style="margin-top:3px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
-                        </div>
-                      </details>
-                    ` : '<div style="font-size:10px;color:var(--gray);margin-top:6px;">마지막 회차가 임계점 미달 → 피드백 없음</div>'}
-                  </div>
-                `;
+                  `;
+                }
+                // 2) AI 평가 실패 (catch 진입) — 빨간 ⚠️ 카드, 실패 단계 + 시각 + 에러 메시지(툴팁)
+                if (c.latestErrorStage) {
+                  const stageLabel = { upload:'업로드', eval:'AI 평가', firestore:'저장' }[c.latestErrorStage] || c.latestErrorStage;
+                  const errAt = c.latestAttemptAt?.toDate?.() ? _ymdKST(c.latestAttemptAt.toDate()) : '';
+                  const errMsg = c.latestErrorMessage || '';
+                  return `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;" title="${esc(errMsg)}">
+                    ${xBtnRec}
+                    <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+                    <div style="color:#b91c1c;">⚠️ ${esc(stageLabel)} 실패${errAt ? ' · ' + esc(errAt) : ''}</div>
+                  </div>`;
+                }
+                // 3) 미통과 점수만 박혀있음 (latestFailedScore)
+                if (c.latestFailedScore !== undefined && c.latestFailedScore !== null) {
+                  const failAt = c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '';
+                  return `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                    ${xBtnRec}
+                    <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+                    <div style="color:#92400e;">⚠ ${c.latestFailedScore}점 (통과 ${passScore})${failAt ? ' · ' + esc(failAt) : ''}</div>
+                  </div>`;
+                }
+                // 4) 그 외 — fall-through (일반 시험 분기 또는 대기)
               }
               // 일반 시험 (vocab/mcq/fill_blank/unscramble/subjective)
               // _writeUserCompleted 정책: c.score/passed/date 는 최고점 통과 시에만 저장
