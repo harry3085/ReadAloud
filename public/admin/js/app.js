@@ -3256,7 +3256,9 @@ async function _ensureCurrentMonthBillings() {
 
     // 3) 누락된 학생만 생성
     let created = 0;
-    const defaultDueDay = _billingSettings?.defaultDueDay || 15;
+    // 0 || 15 함정 회피 — -1 (말일) 도 정상값. isFinite + 범위 체크.
+    const rawDD = _billingSettings?.defaultDueDay;
+    const defaultDueDay = (isFinite(rawDD) && (rawDD === -1 || (rawDD >= 1 && rawDD <= 31))) ? rawDD : 15;
     const monthNum = parseInt(ym.split('-')[1]);
 
     for (const sDoc of studentsSnap.docs) {
@@ -3321,8 +3323,10 @@ window.openPaymentSettingsWizard = () => {
   _billingWizardData = {};
   // 기존 설정 prefill
   const existing = _billingSettings || {};
+  // -1 (말일) 도 정상값. || 함정 회피 — isFinite + 범위 검증
+  const eDD = existing.defaultDueDay;
   _billingWizardData = {
-    defaultDueDay: existing.defaultDueDay || 15,
+    defaultDueDay: (isFinite(eDD) && (eDD === -1 || (eDD >= 1 && eDD <= 31))) ? eDD : 15,
     tuition: { ...(existing.tuitionChannel || {}) },
     materialsEnabled: existing.materialsChannel?.enabled || false,
     materials: { ...(existing.materialsChannel || {}) },
@@ -3344,7 +3348,8 @@ function _renderWizardStep1() {
   const bankOpts = ['<option value="">선택</option>',
     ..._BILLING_BANKS.map(b => `<option value="${b}"${t.bankName === b ? ' selected' : ''}>${b}</option>`)
   ].join('');
-  const dueDayOpts = ['<option value="0">말일</option>',
+  const dueDayOpts = [
+    `<option value="-1"${d.defaultDueDay === -1 ? ' selected' : ''}>말일</option>`,
     ...Array.from({length: 31}, (_, i) => i + 1).map(n =>
       `<option value="${n}"${d.defaultDueDay === n ? ' selected' : ''}>${n}일</option>`
     )
@@ -3514,7 +3519,8 @@ window._billingWizardComplete = async () => {
   // academies/{id}.paymentSettings 저장
   const academyName = (await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID))).data()?.name || '';
   const settings = {
-    defaultDueDay: d.defaultDueDay || 15,
+    // -1 (말일) 도 유효 — || 함정 회피
+    defaultDueDay: (isFinite(d.defaultDueDay) && (d.defaultDueDay === -1 || (d.defaultDueDay >= 1 && d.defaultDueDay <= 31))) ? d.defaultDueDay : 15,
     tuitionChannel: {
       label: '학원 결제',
       cardLink: d.tuition.cardLink || '',
@@ -5992,7 +5998,8 @@ async function _syncCurrentMonthBilling(studentUid, newPlan, newName) {
       const acad = await getDoc(doc(db, 'academies', academyId));
       _billingSettings = acad.exists() ? (acad.data().paymentSettings || {}) : {};
     }
-    const defaultDueDay = _billingSettings?.defaultDueDay || 15;
+    const rawDD = _billingSettings?.defaultDueDay;
+    const defaultDueDay = (isFinite(rawDD) && (rawDD === -1 || (rawDD >= 1 && rawDD <= 31))) ? rawDD : 15;
     let dueDay = parseInt(newPlan.dueDay);
     if (!isFinite(dueDay) || dueDay === 0) dueDay = defaultDueDay;
     const [y, mm] = ym.split('-').map(Number);
