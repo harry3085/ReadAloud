@@ -1812,8 +1812,9 @@ async function loadRecAiList(){
       const qCount = t.questionCount || t.questions?.length || 0;
       const name = (t.name||'AI 녹음 시험').replace(/'/g,"\\'");
       const onc = done ? `viewRecAiResult('${t.id}')` : `startRecAi('${t.id}','${name}')`;
+      // 학생에겐 녹음숙제 점수 비공개 — '✓ 완료' 만 표시 (학원장 화면은 점수 보임)
       const badge = done
-        ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${score!=null?' '+score+'점':''}</span>`
+        ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료</span>`
         : `<span style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:20px;">AI · ${qCount}문장</span>`;
       return `<div class="unit-card" onclick="${onc}">
         <div style="flex:1">
@@ -3062,11 +3063,10 @@ function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed
             const isLast = i === recordings.length - 1;
             const dur = r.duration ? r.duration + '초' : '';
             const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '';
-            const scoreBadge = isLast && typeof r.score === 'number'
-              ? `<span style="color:${passed?'#059669':'#CA8A04'};font-weight:700;margin-left:6px;">${r.score}점</span>` : '';
+            // 학생에겐 점수 비공개 — 점수 배지 제거 (학원장은 회차별 점수 봄)
             const lastTag = isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : '';
             return `<div style="margin-top:6px;padding:6px 10px;background:#f9fafb;border-radius:6px;">
-              <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">${i+1}회차${dur ? ' · ' + dur : ''}${va ? ' · 성실도 ' + va : ''}${scoreBadge}${lastTag}</div>
+              <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">${i+1}회차${dur ? ' · ' + dur : ''}${va ? ' · 성실도 ' + va : ''}${lastTag}</div>
               <audio src="${esc(r.audioUrl||'')}" controls preload="none" style="width:100%;height:32px;"></audio>
             </div>`;
           }).join('')}
@@ -3178,7 +3178,9 @@ async function renderRanking(){
     // 기간 필터 (startYmd 빈 문자열 = 누적)
     if (startYmd && (s.date || '') < startYmd) return;
     if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
-    if(s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
+    // 녹음숙제 (recording) 점수는 best 비교 제외 — 학생 점수 비공개 정책.
+    // count/total 은 누적 (평균에 묻힘 OK).
+    if(s.mode !== 'recording' && s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
     scoresMap[s.uid].count++;
     scoresMap[s.uid].total += (s.score||0);
   });
