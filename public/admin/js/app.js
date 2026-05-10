@@ -4213,20 +4213,30 @@ function _adminVqBuildDetail(questions, answers){
     const prompt=dir==='en2ko'?(q.word||''):(q.meaning||'');
     const target=dir==='en2ko'?(q.meaning||''):(q.word||'');
     const user=(a.input||'').trim();
-    const isCorrect=user && user.toLowerCase()===target.trim().toLowerCase();
+    // 말하기 모드는 spkCorrect 우선 (input 은 정답 시 q.word, 오답 시 빈 문자열이라 신뢰 X)
+    const isSpeaking = a.format === 'speaking';
+    const isCorrect = isSpeaking
+      ? a.spkCorrect === true
+      : (user && user.toLowerCase() === target.trim().toLowerCase());
     const bg=isCorrect?'#F0FDF4':'#FEF2F2';
     const border=isCorrect?'#BBF7D0':'#FECACA';
+    const formatLabel = a.format==='mcq' ? '객관식' : (isSpeaking ? '🎤 말하기' : '단답');
+    // 동음이의어 매칭으로 통과한 경우 표시 (q.homophones 에 들린 단어가 있는지)
+    const heardLower = String(a.spkHeard||'').toLowerCase().trim();
+    const matchedHomophone = isSpeaking && isCorrect && heardLower && heardLower !== String(q.word||'').toLowerCase().trim()
+      ? heardLower : null;
     return `
       <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
           <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
-          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':'단답'}</span>
+          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${formatLabel}</span>
         </div>
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
-          <span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>
-          ${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}
+          ${isSpeaking
+            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${a.spkHeard ? `들린 단어: "${esc(a.spkHeard)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
+            : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}`}
         </div>
       </div>`;
   }).join('');

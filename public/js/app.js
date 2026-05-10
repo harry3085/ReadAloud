@@ -3787,6 +3787,13 @@ window.vqSpkStart = () => {
   if (ans._locked) return;
   const q = s.questions[s.currentIdx];
 
+  // 안전 가드 — 이미 2회 시도한 상태에서 더 누르면 즉시 finalize (oversight 방지)
+  // 정상 흐름엔 영향 X (2회째 onresult 도달 시 finalize 됨). rec.start 실패 등 edge case 대비.
+  if ((s.spk.attempt || 0) >= 2) {
+    _vqSpkFinalize(false, s.spk.lastHeard || '');
+    return;
+  }
+
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     showToast('이 브라우저는 음성 인식을 지원하지 않습니다.');
@@ -3815,6 +3822,7 @@ window.vqSpkStart = () => {
       _vqSpkFinalize(true, grading.matchedWith || q.word);
     } else {
       const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
+      s.spk.lastHeard = heard;  // 안전 가드용 — 이후 attempt>=2 도달 시 finalize 에서 사용
       if (s.spk.attempt < 2) {
         // 1차 실패 — 재시도 안내
         if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
@@ -3851,6 +3859,8 @@ window.vqSpkStart = () => {
   };
 
   try { rec.start(); } catch(e) {
+    // rec.start 실패 → attempt 증가 롤백 (사용자가 진짜 시도 못 했으니)
+    s.spk.attempt = Math.max(0, (s.spk.attempt || 1) - 1);
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
   }
