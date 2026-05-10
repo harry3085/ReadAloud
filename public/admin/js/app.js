@@ -9198,7 +9198,7 @@ async function _qgCallVocab(opts) {
 
     if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
-    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildSetDefaultName('단어시험'), _qgOpts: opts });
+    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildDefaultName(), _qgOpts: opts });
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
     showToast('네트워크 에러: ' + e.message);
@@ -9248,7 +9248,7 @@ async function _qgCallUnscramble(opts) {
 
     if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
-    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildSetDefaultName('언스크램블'), _qgOpts: opts });
+    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildDefaultName(), _qgOpts: opts });
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
     showToast('네트워크 에러: ' + e.message);
