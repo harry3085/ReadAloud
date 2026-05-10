@@ -2902,7 +2902,7 @@ async function _rv2Submit() {
       _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
       console.log('[rv2Submit] DONE (passed)');
       _rv2._submitted = true;
-      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: true, passScore });
+      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: true, passScore, recordings: recordingsDetail });
     } else {
       // 미통과 — recordings + AI feedback 모두 저장 (학원장이 회차별 audio + 피드백 보도록)
       try {
@@ -2931,7 +2931,7 @@ async function _rv2Submit() {
 
       console.log('[rv2Submit] DONE (failed) — retry available');
       _rv2._submitting = false;
-      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: false, passScore });
+      _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: false, passScore, recordings: recordingsDetail });
     }
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
@@ -2999,40 +2999,40 @@ window.viewRecAiResult = async (testId) => {
     const completed = compSnap.data();
     const recordings = completed.recordings || [];
 
-    // Phase 5.5 v2 판정 (audioUrl + score 둘 다 있어야 3회차 결과로 재구성 가능)
-    const isV2 = recordings.length >= 2 && recordings[0]?.audioUrl && recordings[0]?.score !== undefined;
-    if (!isV2) {
-      // Phase 5 구버전 완료 — 간단한 결과 카드만
-      showToast(`완료됨: ${completed.score ?? '-'}점 · ${completed.date || ''}`);
+    // 새 데이터 모델 (commit 6a538cb): 회차별 audioUrl 모두 + score/feedback 은 마지막 회차에만
+    const lastRec = recordings[recordings.length - 1];
+    const hasNewData = recordings.length >= 1 && lastRec?.audioUrl && lastRec?.score !== undefined;
+    if (!hasNewData) {
+      // 옛 데이터 (audio·feedback 없음) — 점수 토스트만
+      const oldScore = completed.score ?? completed.latestScore;
+      showToast(`완료됨: ${oldScore ?? '-'}점 · ${completed.date || completed.latestAt || ''}`);
       return;
     }
 
     const test = testSnap.exists() ? testSnap.data() : {};
-    const q = test.questions?.[0] || {};
-    const threshold = q.accuracyThreshold || 70;
-
-    const checkResults = recordings.map((r, i) => ({
-      round: r.round || (i + 1),
-      score: r.score ?? 0,
-      missedWords: r.missedWords || [],
-      note: r.note || '',
-    }));
-
-    const lastRec = recordings[recordings.length - 1];
-    const feedback = lastRec?.feedback || null;
-    const passed = (lastRec?.score ?? 0) >= threshold;
-    const allAudioUrls = recordings.map(r => r.audioUrl || '');
+    const passScore = test.passScore || completed.passScore || 70;
+    const passed = (lastRec.score ?? 0) >= passScore;
 
     show('recAiQuiz');
-    _rv2RenderResult(checkResults, feedback, passed, threshold, allAudioUrls);
+    _rv2RenderResult({
+      score: lastRec.score,
+      missedWords: lastRec.missedWords || [],
+      note: lastRec.note || '',
+      feedback: lastRec.feedback || null,
+      audioUrl: lastRec.audioUrl,
+      passed,
+      passScore,
+      recordings,  // 회차별 audio 표시용
+    });
   } catch(e) {
     console.error(e);
     showToast('결과 불러오기 실패: ' + e.message);
   }
 };
 
-// 결과 화면 — 단일 녹음 + 피드백 항상 표시 + 미통과 시 재시도 버튼
-function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed, passScore }) {
+// 결과 화면 — 회차별 녹음 + 피드백 항상 표시 + 미통과 시 재시도 버튼
+// recordings: 회차별 audio 배열 (있으면 회차별 표시, 없으면 audioUrl 1개만 표시)
+function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed, passScore, recordings }) {
   _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
@@ -3056,8 +3056,24 @@ function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed
       </div>
 
       <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 마지막 녹음 다시 듣기</div>
-        <audio src="${esc(audioUrl)}" controls preload="none" style="width:100%;height:36px;"></audio>
+        ${(Array.isArray(recordings) && recordings.length > 1) ? `
+          <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 회차별 녹음 다시 듣기 (총 ${recordings.length}회)</div>
+          ${recordings.map((r, i) => {
+            const isLast = i === recordings.length - 1;
+            const dur = r.duration ? r.duration + '초' : '';
+            const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '';
+            const scoreBadge = isLast && typeof r.score === 'number'
+              ? `<span style="color:${passed?'#059669':'#CA8A04'};font-weight:700;margin-left:6px;">${r.score}점</span>` : '';
+            const lastTag = isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : '';
+            return `<div style="margin-top:6px;padding:6px 10px;background:#f9fafb;border-radius:6px;">
+              <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">${i+1}회차${dur ? ' · ' + dur : ''}${va ? ' · 성실도 ' + va : ''}${scoreBadge}${lastTag}</div>
+              <audio src="${esc(r.audioUrl||'')}" controls preload="none" style="width:100%;height:32px;"></audio>
+            </div>`;
+          }).join('')}
+        ` : `
+          <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 마지막 녹음 다시 듣기</div>
+          <audio src="${esc(audioUrl)}" controls preload="none" style="width:100%;height:36px;"></audio>
+        `}
       </div>
 
       ${(missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
