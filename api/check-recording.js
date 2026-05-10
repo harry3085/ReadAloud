@@ -64,7 +64,7 @@ Return strictly JSON (no markdown):
   "feedback": {
     "missedWords": [<up to 3 omitted words, can overlap with above>],
     "weakPronunciation": [
-      { "word": "<english word>", "issue": "<one-line Korean issue>" }
+      { "word": "<english word>", "issue": "<specific actionable Korean instruction>" }
     ],
     "tips": [<up to 3 actionable Korean tips>]
   }
@@ -76,6 +76,18 @@ Scoring guide (entire recording vs full text):
 - 60-74: Noticeable omissions, mispronunciation, or rushed portions
 - 40-59: Many words missed or unclear; partial reading
 - 0-39: Silent, noise only, or entirely different content
+
+CRITICAL — weakPronunciation.issue rules:
+- DO NOT use Korean phonetic transliteration alone (e.g., "유진처럼 발음했습니다" 같은 한글 음역 단독 금지). 한국어 음역은 영어 발음을 정확히 표기 못 하므로 학생이 무엇을 고쳐야 할지 모름.
+- ALWAYS include AT LEAST ONE specific, actionable instruction the student can follow:
+  * Stress placement (예: "두 번째 음절 -GENE 에 강세")
+  * Specific consonant/vowel issue (예: "j 발음 [dʒ] 강하게, '쥐'와 '주' 사이")
+  * Mouth/tongue position hint (예: "L 발음 시 혀를 윗니 뒤에")
+  * Length/timing (예: "ee 모음 길게, '이-' 늘여서")
+- IPA notation in brackets is encouraged when helpful (예: "[ˈjuːdʒiːn], 영어 강세는 첫 음절").
+- BAD example (do NOT do this): "Eugene을 '유진'처럼 발음했어요. '유진'에 가깝게 연습하세요" — 음역만 있고 행동 지시 없음. 학생 이해 불가.
+- GOOD example: "Eugene [ˈjuːdʒiːn] — 첫 음절 'YOO' 길고 강하게, 두 번째 'gene' 짧게. 'jeen' 의 j 는 입술 둥글게."
+- If you cannot produce a useful actionable instruction for a word, DO NOT include it in weakPronunciation. Empty array is better than vague feedback.
 
 Feedback Korean: natural, encouraging, appropriate for middle/high school students.`;
 }

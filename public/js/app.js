@@ -2772,25 +2772,39 @@ async function _rv2Submit() {
   const passScore = t.passScore || q.accuracyThreshold || 80;
   if (!currentUser) { _rv2._submitting = false; showToast('로그인이 필요해요'); return; }
 
-  _rv2ShowSubmitting('🎤 마지막 녹음 업로드 중...', '1개 파일 Storage 에 저장');
+  _rv2ShowSubmitting('🎤 녹음 업로드 중...', `${_rv2.totalRounds}개 파일 Storage 에 저장`);
 
   let stage = 'upload';
   let _retryCount = 0;
   try {
     console.log('[rv2Submit] START', { testId: t.id, totalRounds: _rv2.totalRounds });
     const storage = getStorage();
-    // 마지막 라운드만 업로드·평가 (이전 라운드는 무결성 통과만 확인 — 메모리 보관)
+    // 모든 라운드 Storage 업로드 (학원장이 회차별 audio 다 들을 수 있도록).
+    // AI 평가는 마지막 라운드만 (정책 그대로 — 비용·일관성).
+    const recordingsDetail = [];
+    const tsBase = Date.now();
+    for (let i = 0; i < _rv2.savedRounds.length; i++) {
+      const r = _rv2.savedRounds[i];
+      const ext = r.mime.includes('mp4') ? 'm4a' : 'webm';
+      const path = `recordings/genTests/${t.id}/${currentUser.uid}/round${i+1}_${tsBase}_${i}.${ext}`;
+      const fileRef = ref(storage, path);
+      console.log(`[rv2Submit] upload round${i+1} → ${path} (${r.blob.size} bytes)`);
+      await uploadBytes(fileRef, r.blob);
+      const url = await getDownloadURL(fileRef);
+      recordingsDetail.push({
+        round: i + 1,
+        audioUrl: url,
+        duration: r.duration || 0,
+        voiceActivity: (typeof r.voiceActivity === 'number') ? r.voiceActivity : null,
+      });
+      _rv2ShowSubmitting(`🎤 녹음 업로드 중... (${i+1}/${_rv2.savedRounds.length})`, `Storage 저장`);
+    }
     const lastIdx = _rv2.totalRounds - 1;
     const lastRound = _rv2.savedRounds[lastIdx];
-    const ext = lastRound.mime.includes('mp4') ? 'm4a' : 'webm';
-    const path = `recordings/genTests/${t.id}/${currentUser.uid}/last_${Date.now()}.${ext}`;
-    const fileRef = ref(storage, path);
-    console.log(`[rv2Submit] upload last → ${path} (${lastRound.blob.size} bytes)`);
-    await uploadBytes(fileRef, lastRound.blob);
-    const audioUrl = await getDownloadURL(fileRef);
-    console.log('[rv2Submit] upload done');
+    const audioUrl = recordingsDetail[lastIdx].audioUrl;
+    console.log('[rv2Submit] all uploads done');
 
-    _rv2ShowSubmitting('🤖 AI 평가 중...', '전체 녹음 분석 + 피드백 생성 (10~20초)\n실패 시 1회 자동 재시도');
+    _rv2ShowSubmitting('🤖 AI 평가 중...', '마지막 회차 분석 + 피드백 생성 (10~20초)\n실패 시 1회 자동 재시도');
     stage = 'eval';
 
     // 통합 호출 — score + feedback 한 번에
@@ -2821,47 +2835,46 @@ async function _rv2Submit() {
     const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [] };
     console.log(`[rv2Submit] eval done: score=${score}`);
 
+    // 마지막 회차 detail 에 AI 평가 결과 추가 (회차별 audio + 마지막에만 평가)
+    recordingsDetail[lastIdx].score = score;
+    recordingsDetail[lastIdx].missedWords = missedWords;
+    recordingsDetail[lastIdx].note = note;
+    recordingsDetail[lastIdx].feedback = feedback;
+
     const passed = score >= passScore;
     const today = _ymdKST();
 
+    // 공통 scores doc 페이로드
+    const scoresPayload = {
+      academyId: window.MY_ACADEMY_ID || 'default',
+      uid: currentUser.uid,
+      userId: currentUser.uid,
+      userName: userProfile?.name || '',
+      name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id,
+      testName: t.name || '',
+      unitId: t.id,
+      unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'recording',
+      score,
+      correct: passed ? 1 : 0,
+      wrong: passed ? 0 : 1,
+      total: 1,
+      passed,
+      passScore,
+      recordings: recordingsDetail,
+      date: today,
+      createdAt: serverTimestamp(),
+    };
+
     if (passed) {
-      // 통과 → scores + userCompleted 저장
+      // 통과 → scores + userCompleted 저장 + 옛 마커 cleanup
       _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
       stage = 'firestore';
 
-      const recordingsDetail = [{
-        round: lastIdx + 1,
-        audioUrl,
-        duration: lastRound.duration,
-        score,
-        missedWords,
-        note,
-        feedback,
-      }];
-
-      await addDoc(collection(db,'scores'), {
-        academyId: window.MY_ACADEMY_ID || 'default',
-        uid: currentUser.uid,
-        userId: currentUser.uid,
-        userName: userProfile?.name || '',
-        name: userProfile?.name || '',
-        group: userProfile?.group || '',
-        testId: t.id,
-        testName: t.name || '',
-        unitId: t.id,
-        unitName: t.name || '',
-        bookName: t.bookName || '',
-        mode: 'recording',
-        score,
-        correct: 1,
-        wrong: 0,
-        total: 1,
-        passed: true,
-        passScore,
-        recordings: recordingsDetail,
-        date: today,
-        createdAt: serverTimestamp(),
-      });
+      await addDoc(collection(db,'scores'), scoresPayload);
 
       try {
         await setDoc(
@@ -2870,9 +2883,17 @@ async function _rv2Submit() {
             uid: currentUser.uid,
             userName: userProfile?.name || '',
             score,
+            passed: true,
+            passScore,
             date: today,
             recordings: recordingsDetail,
             completedAt: serverTimestamp(),
+            // cleanup — 옛 미통과/에러 마커 제거 (분기 충돌 방지)
+            latestFailedScore: null,
+            latestFailedAt: null,
+            latestErrorStage: null,
+            latestErrorMessage: null,
+            latestAttemptAt: null,
           },
           { merge: true }
         );
@@ -2883,44 +2904,26 @@ async function _rv2Submit() {
       _rv2._submitted = true;
       _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed: true, passScore });
     } else {
-      // 미통과 — 응시 흔적 보존 (B): scores 에 점수 저장 (audio·recordings 는 안 박음 — 비용)
-      // 학원장이 '학생 시도했지만 미통과' 인 걸 응시 내역에서 볼 수 있도록.
+      // 미통과 — recordings + AI feedback 모두 저장 (학원장이 회차별 audio + 피드백 보도록)
       try {
-        await addDoc(collection(db,'scores'), {
-          academyId: window.MY_ACADEMY_ID || 'default',
-          uid: currentUser.uid,
-          userId: currentUser.uid,
-          userName: userProfile?.name || '',
-          name: userProfile?.name || '',
-          group: userProfile?.group || '',
-          testId: t.id,
-          testName: t.name || '',
-          unitId: t.id,
-          unitName: t.name || '',
-          bookName: t.bookName || '',
-          mode: 'recording',
-          score,
-          correct: 0,
-          wrong: 1,
-          total: 1,
-          passed: false,
-          passScore,
-          // recordings 는 빈 배열 — 미통과는 audio 보관 X (Storage 비용 절감)
-          recordings: [],
-          date: today,
-          createdAt: serverTimestamp(),
-        });
+        await addDoc(collection(db,'scores'), scoresPayload);
       } catch(e) { console.warn('failed scores 기록 실패', e); }
 
-      // userCompleted 도 latestFailedScore 갱신
       try {
         await setDoc(
           doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
           {
             uid: currentUser.uid,
             userName: userProfile?.name || '',
+            passScore,
             latestFailedScore: score,
             latestFailedAt: serverTimestamp(),
+            // 회차별 audio + 마지막 AI feedback — 학원장 미통과 카드에서 표시
+            recordings: recordingsDetail,
+            // cleanup — 옛 에러 마커 제거 (이번엔 정상 평가까지 끝났음)
+            latestErrorStage: null,
+            latestErrorMessage: null,
+            latestAttemptAt: null,
           },
           { merge: true }
         );
@@ -3034,31 +3037,22 @@ function _rv2RenderResult({ score, missedWords, note, feedback, audioUrl, passed
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
 
-  const emoji = passed ? '🎉' : '💪';
-  const headline = passed ? '통과했어요!' : '조금 더 노력해볼까요?';
+  // 학생앱 — 통과/불통만 표기 (점수 숨김). 학원장은 점수 본다.
+  const emoji = passed ? '✅' : '❌';
+  const headline = passed ? '통과' : '미통과';
   const subline = passed
     ? '피드백을 확인하고 마무리하세요'
-    : `통과점수 ${passScore}점 미달. 피드백 보고 마지막 녹음만 다시 도전!`;
-  const scoreColor = passed ? '#059669' : '#CA8A04';
+    : '피드백 보고 마지막 녹음만 다시 도전해보세요';
+  const headColor = passed ? '#059669' : '#DC2626';
 
   screen.innerHTML = `
     <div style="flex:1;overflow-y:auto;padding:20px 16px;">
 
-      <div style="background:white;border-radius:16px;padding:24px 20px;box-shadow:0 2px 12px rgba(0,0,0,0.08);text-align:center;margin-bottom:14px;">
-        <div style="font-size:56px;margin-bottom:6px;">${emoji}</div>
-        <div style="font-size:20px;font-weight:800;color:var(--text);">${headline}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:6px;line-height:1.5;">${esc(subline)}</div>
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;display:flex;justify-content:space-around;">
-          <div>
-            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">평가 점수</div>
-            <div style="font-size:32px;font-weight:800;color:${scoreColor};line-height:1;">${score}<span style="font-size:14px;color:var(--gray);font-weight:600;">점</span></div>
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">통과점수</div>
-            <div style="font-size:32px;font-weight:800;color:var(--text);line-height:1;">${passScore}<span style="font-size:14px;color:var(--gray);font-weight:600;">점</span></div>
-          </div>
-        </div>
-        ${note ? `<div style="margin-top:12px;padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--text);line-height:1.5;">${esc(note)}</div>` : ''}
+      <div style="background:white;border-radius:16px;padding:28px 20px;box-shadow:0 2px 12px rgba(0,0,0,0.08);text-align:center;margin-bottom:14px;">
+        <div style="font-size:64px;margin-bottom:8px;">${emoji}</div>
+        <div style="font-size:28px;font-weight:800;color:${headColor};">${headline}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:8px;line-height:1.5;">${esc(subline)}</div>
+        ${note ? `<div style="margin-top:16px;padding:10px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--text);line-height:1.5;">${esc(note)}</div>` : ''}
       </div>
 
       <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
