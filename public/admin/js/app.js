@@ -10039,6 +10039,54 @@ window.qsAssignSet = async (setId) => {
   }
 };
 
+// 문제 세트의 생성 시 옵션 요약 (난이도·청크수·빈칸수). 보기 모달 헤더에 표시.
+function _qsBuildOptionsSummary(s) {
+  const qs = s.questions || [];
+  if (!qs.length) return '';
+  const sourceType = s.sourceType || qs[0]?.type || '';
+  const parts = [];
+
+  // 난이도 — recording 제외 (학년/난이도 의미 없음)
+  if (sourceType !== 'recording') {
+    const counts = { easy: 0, medium: 0, hard: 0 };
+    qs.forEach(q => {
+      const d = q.difficulty || 'medium';
+      if (counts[d] !== undefined) counts[d]++;
+    });
+    const labels = { easy: '쉬움', medium: '보통', hard: '어려움' };
+    const present = Object.entries(counts).filter(([_, c]) => c > 0);
+    if (present.length === 1) {
+      parts.push(`난이도: ${labels[present[0][0]]}`);
+    } else if (present.length > 1) {
+      parts.push(`난이도: ${present.map(([d, c]) => `${labels[d]} ${c}`).join(' · ')}`);
+    }
+  }
+
+  // 청크 수 (unscramble)
+  if (sourceType === 'unscramble') {
+    const chunks = qs
+      .map(q => q.chunkCount || (q.chunkedSentence || '').split('/').filter(Boolean).length)
+      .filter(n => n > 0);
+    if (chunks.length) {
+      const min = Math.min(...chunks);
+      const max = Math.max(...chunks);
+      parts.push(min === max ? `${min}청크` : `${min}~${max}청크`);
+    }
+  }
+
+  // 빈칸 수 (fill_blank)
+  if (sourceType === 'fill_blank') {
+    const blanks = qs.map(q => (q.blanks || []).length).filter(n => n > 0);
+    if (blanks.length) {
+      const min = Math.min(...blanks);
+      const max = Math.max(...blanks);
+      parts.push(min === max ? `${min} 빈칸` : `${min}~${max} 빈칸`);
+    }
+  }
+
+  return parts.join(' · ');
+}
+
 window.qsViewDetail = async (setId) => {
   let s = _qsList.find(x => x.id === setId)
        || (typeof _tpSets !== 'undefined' && _tpSets.find(x => x.id === setId));
@@ -10057,6 +10105,10 @@ window.qsViewDetail = async (setId) => {
         <div style="font-size:12px;color:var(--gray);">
           ${s.questions?.length||0}문제${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
         </div>
+        ${(() => {
+          const opts = _qsBuildOptionsSummary(s);
+          return opts ? `<div style="font-size:11px;color:var(--gray);margin-top:4px;">⚙️ ${opts}</div>` : '';
+        })()}
       </div>
       <div style="padding:16px 24px;flex:1;overflow-y:auto;min-height:0;">
         ${(s.questions||[]).map((q, i) => _qsRenderViewCard(q, i)).join('')}
