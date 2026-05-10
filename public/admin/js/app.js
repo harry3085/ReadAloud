@@ -12905,7 +12905,8 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 // 관리자 디바이스별로 독립 관리. 저장된 경우 생성 API 호출 시 동반 전송.
 
 // UI 에서 쓰는 타입명. 'word'(단어시험) 는 API 호출 시 'vocab' 으로 변환 필요.
-const _qgAiPromptTypes = ['mcq', 'fill_blank', 'subjective', 'recording', 'word', 'unscramble'];
+// mcq_grammar 은 mcq 의 subType='grammar' 와 연결 (별도 프롬프트 키).
+const _qgAiPromptTypes = ['mcq', 'mcq_grammar', 'fill_blank', 'subjective', 'recording', 'word', 'unscramble'];
 // UI 타입 → API 타입 변환 (/api/generate-quiz GET/POST 에 전달)
 const _qgUiToApiType = { word: 'vocab' };
 function _qgApiTypeOf(uiType) { return _qgUiToApiType[uiType] || uiType; }
@@ -13000,15 +13001,22 @@ window.qgOpenPromptModal = async () => {
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
 };
 
+// QG_TYPE_OPTIONS 에 없는 별칭 키들 (mcq_grammar 같은 subType 별 프롬프트)
+const _QG_PROMPT_ALIAS_LABELS = {
+  mcq:         { icon: '📖', label: '객관식 (본문이해)' },
+  mcq_grammar: { icon: '📐', label: '객관식 (문법)' },
+};
+
 function _qgRenderPromptTabs() {
   const tabs = document.getElementById('qgPromptTabs');
   if (!tabs) return;
   tabs.innerHTML = _qgAiPromptTypes.map(t => {
+    const alias = _QG_PROMPT_ALIAS_LABELS[t];
     const cfg = QG_TYPE_OPTIONS[t] || {};
     const active = t === _qgPromptEditingType;
     const hasCustom = !!_qgGetCustomPrompt(_qgApiTypeOf(t));
-    const icon = cfg.icon || '•';
-    const label = cfg.label || t;
+    const icon = alias?.icon || cfg.icon || '•';
+    const label = alias?.label || cfg.label || t;
     return `<button onclick="qgSwitchPromptTab('${t}')" class="btn ${active?'btn-primary':'btn-secondary'}" style="font-size:12px;padding:5px 12px;">
       ${icon} ${esc(label)}${hasCustom?' <span style="color:#c47;">●</span>':''}
     </button>`;
