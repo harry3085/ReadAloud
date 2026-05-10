@@ -9277,7 +9277,7 @@ function _qgBuildRecordingSet(opts) {
   const instructionKo =
     `${firstPage.title || '첫 페이지'}「${startSentence}」부터 ` +
     `${lastPage.title || '마지막 페이지'}「${endSentence}」까지 ` +
-    `실제 책을 보며 연속으로 3회 반복 녹음하세요.`;
+    `실제 책을 보며 또렷하게 녹음하세요.`;
 
   const question = {
     type: 'recording',
@@ -9427,14 +9427,12 @@ function _qgRenderQuestion(q, idx) {
   } else if (q.type === 'recording' && q.schemaV === 2) {
     const preview = (q.fullText || '').slice(0, 240) + ((q.fullText||'').length > 240 ? '…' : '');
     body = `
-      <div style="font-size:11px;color:#CA8A04;font-weight:700;margin-bottom:5px;">🎤 Page 단위 녹음숙제 (3회 반복)</div>
+      <div style="font-size:11px;color:#CA8A04;font-weight:700;margin-bottom:5px;">🎤 Page 단위 녹음숙제</div>
       <div style="font-size:12px;color:var(--text);padding:8px 12px;background:#fefce8;border-left:3px solid #CA8A04;margin-bottom:8px;">${esc(q.instructionKo || '')}</div>
       <div style="font-size:13px;line-height:1.6;padding:10px 14px;background:#f5f5f5;border-radius:6px;color:#444;margin-bottom:6px;">${esc(preview)}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;">
         <span style="background:#e0f2fe;padding:3px 10px;border-radius:10px;color:#0369a1;font-weight:600;">📄 ${q.pageCount||1} Page</span>
-        <span style="background:#fce7f3;padding:3px 10px;border-radius:10px;color:#be185d;font-weight:600;">🎯 ${q.accuracyThreshold||70}점</span>
-        <span style="background:#dcfce7;padding:3px 10px;border-radius:10px;color:#166534;font-weight:600;">⏱ ${q.evaluationSeconds||60}초</span>
-        <span style="background:#f3e8ff;padding:3px 10px;border-radius:10px;color:#6b21a8;font-weight:600;">🔁 3회 반복</span>
+        <span style="font-size:10px;color:var(--gray);">⚙️ 통과점수·평가시간·녹음횟수는 시험 배정 시 설정</span>
       </div>
     `;
   } else if (q.type === 'recording') {
@@ -10434,28 +10432,16 @@ function _qsRenderEditQuestion(q, idx) {
 
   if (q.type === 'recording') {
     if (q.schemaV === 2) {
-      return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+      // 녹음숙제 카드 — 본문 textarea 가 모달 남는 공간 다 사용 (1 question only).
+      return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;display:flex;flex-direction:column;height:100%;min-height:500px;">
         ${header}
         <label style="font-size:11px;color:var(--gray);">지시문 (학생에게 표시)</label>
-        <textarea oninput="qsEditUpdate(${idx},'instructionKo',this.value)" rows="3"
-          style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;">${esc(q.instructionKo||'')}</textarea>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-          <div>
-            <label style="font-size:11px;color:var(--gray);">정확도 임계값 (점)</label>
-            <input type="number" value="${q.accuracyThreshold||70}" min="50" max="95"
-              oninput="qsEditUpdate(${idx},'accuracyThreshold',parseInt(this.value)||70)"
-              style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--gray);">평가 구간 (초)</label>
-            <input type="number" value="${q.evaluationSeconds||60}" min="30" max="180"
-              oninput="qsEditUpdate(${idx},'evaluationSeconds',parseInt(this.value)||60)"
-              style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
-          </div>
-        </div>
-        <label style="font-size:11px;color:var(--gray);">전체 본문 (AI 평가 대상, 수정 신중)</label>
-        <textarea oninput="qsEditUpdate(${idx},'fullText',this.value)" rows="4"
-          style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.fullText||'')}</textarea>
+        <textarea oninput="qsEditUpdate(${idx},'instructionKo',this.value)" rows="2"
+          style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;flex-shrink:0;">${esc(q.instructionKo||'')}</textarea>
+        <div style="font-size:10px;color:var(--gray);background:#fef9c3;border-left:3px solid #ca8a04;padding:6px 10px;margin-bottom:10px;flex-shrink:0;">⚙️ 통과점수·평가시간·녹음횟수는 시험 배정 시 학원장이 설정합니다 (세트 단계 옵션 X).</div>
+        <label style="font-size:11px;color:var(--gray);flex-shrink:0;">전체 본문 (AI 평가 대상, 수정 신중)</label>
+        <textarea oninput="qsEditUpdate(${idx},'fullText',this.value)"
+          style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;flex:1;min-height:200px;resize:vertical;">${esc(q.fullText||'')}</textarea>
       </div>`;
     }
     return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
@@ -10981,7 +10967,7 @@ const _TEST_TYPE_CONFIG = {
     phaseLabel: null,
     actions: ['assign'],
     gradingMode: 'ai',
-    hint: 'Page 단위 3회 반복 녹음을 학생앱에 배정합니다. AI 가 정확도를 평가합니다.',
+    hint: 'Page 단위 녹음숙제를 학생앱에 배정합니다. 회차·통과점수·시간은 배정 시 설정. AI 가 정확도를 평가합니다.',
   },
 };
 
