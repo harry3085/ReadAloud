@@ -2768,3 +2768,385 @@ function _vqNormCh(ch) { /* 길이 유지 per-char 비교용 */ }
 - ✅ 베타 데이터 분석 도구 신규 (analyze-speaking-errors.js)
 - ✅ `_spkGradeAnswer` 정답 후보 [정답 + homophones] 루프 매칭
 - ✅ super_admin 편집 vocab 프롬프트 보존 (typeInstructions 단계 처리)
+
+---
+
+## 2026-05-10 (이어서): 녹음숙제 회차별 표시 + 학생 통과/불통 단순화 + 발음 피드백 강화 + 말하기 detail fix
+
+당일 SW v377 → v379 (2 commit). 녹음숙제 베타 진단 → 사용자 결정 3건 + 말하기 시험 베타 fix 3건.
+
+### 1) 녹음숙제 — 회차별 audio + 미통과 AI 피드백 + 학생 단순화 (commit `6a538cb`, SW v378)
+
+**사용자 결정 3건** 묶음 처리:
+
+| 항목 | 결정 | 변경 |
+|------|------|------|
+| 회차별 표시 | B (audio 모두) | 모든 라운드 Storage 업로드 (이전엔 마지막만) |
+| 발음 피드백 | B (행동 지시) | check-recording.js 프롬프트 강화 |
+| 점수 표시 | 학생만 단순화 | 학생 ✅통과/❌미통과 28px만, 학원장은 점수 그대로 |
+
+**[_rv2Submit](public/js/app.js) 변경**:
+- `for` 루프로 모든 `_rv2.savedRounds[i]` Storage 업로드
+- path 패턴: `recordings/genTests/{testId}/{uid}/round{N}_{ts}_{i}.{ext}`
+- recordingsDetail = `[{round, audioUrl, duration, voiceActivity}, ...]`, 마지막 회차에만 score/missedWords/note/feedback 추가
+- AI 호출은 마지막 1회 (정책 그대로 — 비용·일관성)
+- Storage 비용 N배 (최대 4배) 감수 — 학원장 진단 가치 우선
+
+**미통과 분기 강화** (이전 합의 묶음):
+- 이전: `scores.recordings=[]` 빈 배열, `userCompleted` 에 `latestFailedScore` 만
+- 변경: 통과와 동일하게 `scores.recordings + userCompleted.recordings` 저장 (audio + AI feedback)
+- **옛 마커 cleanup** — 통과/미통과 시 `latestErrorStage`/`latestErrorMessage`/`latestAttemptAt`/`latestFailedScore`/`latestFailedAt` 등 `null` 셋팅 (분기 충돌 방지)
+- '에러 → 미통과' 케이스 빨간 카드 잘못 표시 fix
+
+**학원장 카드 분기 변경** (`tpToggleTestProgress` line 12657):
+- 우선순위: `completedAt` 통과 > `latestFailedAt+recs` 미통과 > `latestFailedScore` 옛 데이터 > `latestErrorStage` 에러 > 대기
+- 통과/미통과 공통 큰 카드 (회차별 audio 플레이어 N개 + 성실도% + 마지막 점수 배지 + AI 피드백 details)
+- 노란 테두리/배경으로 미통과 시각 구분
+
+**학생앱 결과 화면** (`_rv2RenderResult`):
+- 점수 grid (32px 큰 박스) 폐기
+- "✅ 통과" / "❌ 미통과" 28px 헤드라인만
+- 점수 학생에게 노출 X (학원장만 점수 봄)
+
+**AI 발음 피드백 프롬프트 강화** (`api/check-recording.js buildEvalPrompt`):
+- 문제: `weakPronunciation.issue` 가 한국어 음역만 적던 케이스 (예: "유진처럼 발음했어요. '유진'에 가깝게" — 학생 행동 지시 0)
+- CRITICAL 규칙 추가:
+  · 한국어 음역 단독 금지
+  · 강세·자음·모음·길이·혀 위치 등 구체적 행동 지시 필수
+  · IPA 표기 권장 (`[ˈjuːdʒiːn]`)
+  · GOOD/BAD 예시 명시
+  · 유용한 지시 못 만들면 weakPronunciation 비우기 (모호한 피드백 X)
+
+### 2) 말하기 시험 베타 fix 3종 (commit `5de29ae`, SW v379)
+
+사용자 보고: "piece 가 너그러움에서도 peace 로 들리면 오답 / 4회 진행 / 결과 내답 빈칸"
+
+**Fix A — 학원장 detail 말하기 분기 추가 (확정 버그)**:
+- `_adminVocabBuildDetail` (admin/app.js line 4210) 가 `a.format='speaking'` 분기 누락
+- 말하기 모드는 `ans.input` 이 정답 시 `q.word`, 오답 시 빈 문자열이라 표시 부적절
+- 학원장은 항상 '내답: (미입력)' 만 봄 → spkHeard 노출 안 됨
+- 학생앱과 동일 분기 추가 — `들린 단어: "peace"` 표시
+- `isCorrect` 는 `a.spkCorrect` 로 판정 (input 신뢰 X)
+- 형식 라벨 '🎤 말하기' 추가
+- **🔊 동음이의어 매칭** 보라 배지 추가 (heard != q.word 이지만 spkCorrect=true 인 경우)
+
+**Fix B — vqSpkStart 안전 가드** (4회 진행 edge case):
+- 정상 흐름은 attempt=2 도달 시 finalize. `rec.start()` 실패 등 edge case 시 무한 시도 가능
+- 추가:
+  · 시작 시 `attempt >= 2` 면 즉시 `_vqSpkFinalize(false, lastHeard)`
+  · `onresult` 시 `s.spk.lastHeard` 캐시 (가드 발동 시 사용)
+  · `rec.start()` 실패 시 `attempt -= 1` 롤백 (진짜 시도 못 했으니)
+- 정상 시나리오엔 영향 X
+
+**Fix C — 동음이의어 진단 스크립트** (`scripts/diag/dump-homophones.js`):
+- vocab 세트의 `homophones` 채움 현황 dump
+- `--word=piece` 로 특정 단어 어느 세트에 있는지 검색
+- `--academy` 필터, `--missing-only` 필터
+- **진단 결과**: 32 세트 모두 0% 커버리지 (동음이의어 작업 이후 새로 만든 세트 0건)
+  → 사용자가 piece 테스트한 세트는 옛 세트, 정책대로 적용 안 됨이 정상
+  → 새 세트 만들어 검증 필요 (옵션 a 결정대로)
+
+### 3) 그 외 토론·진단
+
+- **503 UNAVAILABLE 에러 분석** — 녹음숙제 컴플레인 (학생 끊김) 직접 관련 가능성. 폴백 체인 (2.5-flash-lite → 2.5-flash → 3.1-flash-lite-preview) 누적 시간 ~36s 가 클라 30s timeout 과 충돌. A+B+C+D (이전 세션) 로 데이터 보존되지만 학생 경험은 동일. 베타 누적 후 클라 timeout 확대 또는 안내 토스트 검토
+- **403 Forbidden 가능 원인** — API 키 권한·IP 제한·preview 모델 권한·결제 정지. 의심 1순위 IP 제한 (Vercel 서버 IP 다양). 폴백 정책상 첫 모델 403 시 즉시 502 (모델별 권한 다를 수 있는데 폴백 안 함)
+- **AI 평가 실패율 리포트 위치** — SuperAdmin Phase B T9 (Cloud Function 일일 집계 필요). 현 인프라는 시도 기준 카운터만 → 성공/실패 분리 불가. 베타 후 묶음 작업 권장
+- **DEP0169 url.parse 경고** — 외부 라이브러리 (firebase-admin·sharp 등) 의 deprecated API. 우리 코드 X (grep 0건). 무해 — CVE 발급 안 됨
+
+---
+
+## 작업 규칙 추가 (2026-05-10 이어서)
+
+신규:
+- **녹음숙제 회차별 audio 보관 정책** — 모든 라운드 Storage 업로드 (이전 "마지막만" 정책 폐기). 학원장 진단 가치 > Storage 비용. AI 평가는 여전히 마지막 1회만 (비용·일관성). path 패턴 `recordings/genTests/{testId}/{uid}/round{N}_{ts}_{i}.{ext}` 로 회차 식별 가능.
+- **userCompleted 마커 cleanup 필수** — `setDoc({...}, {merge:true})` 라 옛 필드 안 지워짐. 통과/미통과 새 응시 시 옛 `latestErrorStage`/`latestFailedScore` 등 `null` 셋팅 필수. 안 하면 분기 우선순위 충돌로 잘못된 카드 표시 (예: '에러 → 미통과' → 빨간 에러 카드 오표시).
+- **말하기 모드 채점 결과 표시는 spkHeard 사용, 통과 판정은 spkCorrect 사용** — `ans.input` 은 신뢰 불가 (정답 시 `q.word`, 오답 시 빈 문자열). 학생앱·학원장 detail 모두 같은 패턴이어야 함. 학원장 detail 말하기 분기 누락은 표본 버그.
+- **AI 발음 피드백 프롬프트 — 한국어 음역 단독 금지** — `weakPronunciation.issue` 에 "유진처럼 발음" 같은 음역만 적으면 학생이 무엇을 고쳐야 할지 모름. IPA + 강세·자음·모음·혀 위치 등 구체적 행동 지시 필수. 유용한 지시 못 만들면 빈 배열 반환 (모호한 피드백 X).
+- **edge case 무한 시도 안전 가드** — `vqSpkStart` 같이 사용자가 반복 누를 수 있는 핸들러는 시작 시 attempt 가드 + 실패 시 카운트 롤백. 정상 시나리오엔 영향 없도록 보수적으로.
+- **세트 단위 사전 처리 데이터의 검증 — 진단 스크립트 우선** — 동음이의어처럼 세트 생성 시 채워지는 데이터는 베타 운영 시작 시점에 진단 스크립트 (dump-homophones.js 같은) 부터 만들어 커버리지 확인. 사용자 보고 받기 전에 본인이 세트 만들었는지 의심.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-10 이어서)
+- `public/js/app.js`: ~5000줄 (+50, _rv2Submit 회차별 + cleanup + 결과 단순화 + vqSpkStart 가드)
+- `public/admin/js/app.js`: ~13130줄 (+50, 카드 분기 + _adminVocabBuildDetail 말하기 분기)
+- `api/check-recording.js`: +20줄 (발음 피드백 CRITICAL 규칙)
+- `scripts/diag/dump-homophones.js`: 신규 ~110줄
+- SW 캐시: `kunsori-v379`
+
+## 진행률 (2026-05-10 이어서)
+- 단어 말하기 시험: ~100% (변동 없음 — 학원장 detail 표시·가드 보강)
+- 녹음숙제 시스템: **~95% → ~98%** (회차별 audio·미통과 AI 피드백·학생 단순화·발음 피드백 강화)
+- 단어시험 채점 견고성: ~100% (변동 없음)
+- 결제 v2: ~98% (변동 없음)
+- 학생관리 운영: ~98% (변동 없음)
+- 화이트라벨 브랜딩·멀티테넌시·super_admin: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-10 이어서 갱신)
+1. **녹음숙제 사용자 베타 피드백 수렴** — 회차별 audio 재생, AI 발음 피드백 구체성, 학생 통과/불통 단순화, 에러→미통과 cleanup 효과 확인
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리 추가 (`users.birth` 입력 강화)
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **AI 평가 실패율 (SuperAdmin Phase B T9)** — 베타 30일+ 누적 후 Cloud Function 일일 집계 묶음 작업
+6. **(선택) 동음이의어 일괄 채우기 버튼 + 학원장 편집 UI** — 베타 운영 후 빈도 보고 결정. A 진단 / B 보기 / C 편집 묶음
+
+**완료 (이 세션 이어서, 2026-05-10)**:
+- ✅ 녹음숙제 회차별 audio 모두 Storage 업로드 + 학원장 카드 표시
+- ✅ 미통과 분기 AI 피드백·recordings 저장 (이전엔 빈 배열)
+- ✅ userCompleted 옛 마커 cleanup (latestErrorStage·latestFailedScore null 셋팅)
+- ✅ 학생앱 결과 화면 통과/불통 단순화 (점수 숨김)
+- ✅ AI 발음 피드백 프롬프트 강화 (IPA·강세·자음·구체 행동 지시 필수)
+- ✅ 학원장 _adminVocabBuildDetail 말하기 분기 추가 (들린 단어 표시 + 동음이의어 매칭 배지)
+- ✅ vqSpkStart 안전 가드 (4회 진행 edge case 차단 + rec.start 실패 시 롤백)
+- ✅ 동음이의어 진단 스크립트 dump-homophones.js + 베타 데이터 0% 커버리지 확인
+
+---
+
+## 2026-05-11: 객관식 문법 카테고리 + 학원장 커스텀 프롬프트 Firestore 이전 + UX 정비
+
+당일 SW v379 → v404 (~25 commit). 큰 작업 두 갈래:
+1. **객관식 시험에 문법 카테고리 추가** — 본문이해 vs 문법 (subType 분리)
+2. **학원장 커스텀 AI 프롬프트 다중 PC 동기화** (localStorage → Firestore)
+
+그 외 다수 UX fix (학생별 카드 클릭, 랭킹 기간 토글, 점수 비공개 정책, 라벨 통일 등).
+
+### 1) 객관식 시험에 문법 카테고리 (commit `4f4a758`, `b02f075`, `7f35747`, `38f6e45`, `c4f8584`, `af60c49`, `b869b44`)
+
+**데이터 모델**: `q.subType: 'content' | 'grammar'` 필드. 세트 단위로 한 종류 (혼합 X). 옛 mcq 데이터는 'content' 폴백.
+
+**Backend ([api/generate-quiz.js](api/generate-quiz.js))**:
+- `SYSTEM_PROMPTS.mcq_grammar` 신설 — 시제·관사·전치사·관계절·조건문·수동태 등
+- POST handler `subType:'grammar'` 받으면 `promptKey='mcq_grammar'` 사용
+- `validateMCQ` 가 `q.subType` 박음
+- `appConfig/aiPrompts.mcq_grammar` 키 자동 폴백
+
+**프롬프트 편집 UI** (super_admin + 학원장):
+- super 앱 `PROMPT_TYPES` 에 `mcq_grammar` 추가, 라벨 `📖 객관식 (본문이해)` / `📐 객관식 (문법)`
+- 학원장 앱 `_qgAiPromptTypes` 에 추가, `_QG_PROMPT_ALIAS_LABELS` 매핑
+- super_admin Firestore 미정의 키는 서버 default fetch 로 폴백 (코드 SYSTEM_PROMPTS 보며 편집 가능)
+
+**AI Generator UI**:
+- `QG_TYPE_OPTIONS.mcq.label` '내용이해_객관식' → '본문이해·문법_객관식'
+- options 에 '문제 종류' select (본문이해 / 문법) 추가
+- `_qgCallMcq` 가 subType + customPrompt key 분기
+- 문법 선택 시 세트명 default 에 `' · 문법'` suffix
+
+**시험명 옆 배지**:
+- `_testNameGrammarBadge(t)` 신설 — testMode='mcq' + first question.subType='grammar' → 보라 `📐 문법`
+- `_testNameBadges(t)` 통합 헬퍼 (말하기 + 문법 미래 확장)
+- 시험 목록·시험관리·성적 리포트 testName 옆 배지 적용
+
+**학생앱**:
+- `_makeTypeCard` mcq 분기에 isGrammar 판정 + `📐 문법` 배지
+- 홈 카드 라벨 '교재이해' → '본문이해·문법'
+
+**라벨 통일** (모든 곳 '본문이해' 로):
+- '교재이해' / '내용이해' → '본문이해'
+- 콤마 → 가운데점 ' · ' → '·' (컴팩트 표기)
+- 학원장 사이드바 + page-title + pageLabels + AI Generator 옵션 + 학생앱 카드/타이틀 + growth-report MODE_LABELS
+
+### 2) MCQ 후처리 모듈 (commit `ab5687c`, `bc727e2`)
+
+핸드오프 문서 (다른 LLM 협업 결과) 반영. `api/_lib/quiz-post-process.js` 신설:
+
+**`shouldUseAn(word)`** — vowel sound 판정:
+- AN 예외 (자음 글자/모음 소리): `hour, honest, honor, heir, mvp, fbi, x-ray, sos, mri, nba, nfl, sat, fyi`
+- A 예외 (모음 글자/자음 소리): `university, uniform, useful, unique, user, usual, utopia, european, europe, one, once, year, young, yellow, yesterday`
+- `.startsWith()` 매칭 — derived form (universities, honestly 등) 자동 커버
+- 일반 규칙: a/e/i/o/u → an (예외 후), 그 외 자음 → a
+
+**`validateAndFixArticleQuestion(q)`** — q.choices 에 a/an 둘 다 있고 빈칸 다음 단어 판정 가능하면 isAnswer 자동 토글. the/X 정답은 손대지 않음. `_autoFixed: true` 마커.
+
+**`shuffleChoices(q)`** — Fisher-Yates 로 결과 모달 정답 위치 편향 제거. (응시·인쇄 시 또 셔플되지만 무관 — 학원장 검토 시점에 균등 분포 보장.)
+
+**`postProcessMCQ(arr)`** — 보정 → 셔플 순서. `autoFixedCount` 반환.
+
+**`validateMCQ` 직후 호출** — mcq 전체 (subType 무관) 적용. 본문이해도 a/an 정답 묻는 케이스 가능.
+
+**학원장 결과 모달**: status 에 `🔧 N건 자동 보정 (a/an)` 안내 (보정 시만).
+
+**`SYSTEM_PROMPTS.mcq_grammar` 강화**:
+- NEW CONTENT (본문 verbatim 금지, 일상 주제로 새 문장)
+- SHORT (모바일 친화 — question ≤12 / choices ≤5 / questionKo ≤30자 / explanation ≤60자)
+- RANDOM ANSWER POSITION (1~4 균등)
+- questionKo Type A/B 분기 (모달·관사 = 한글 번역 포함, 그 외 = 짧은 지시문)
+- a/an 규칙 + 예외 단어 명시 (artificial/hour/university/year 등)
+
+**진단 스크립트**: `scripts/diag/test-quiz-post-process.js` — 6 케이스 (artificial/university/hour/the/셔플 분포/잘못된 입력) + 통합 테스트 17/17 통과.
+
+### 3) 학원장 커스텀 AI 프롬프트 Firestore 이전 (commit `d8aebf6`)
+
+**이전**: localStorage `'ai_prompt_custom_*'` — 한 PC 만 적용. 다른 PC 에서 빈 값.
+
+**변경**: `academies/{id}.customPrompts.{type}` Firestore 저장
+- 같은 학원장 계정 어느 PC 든 동기화
+- 학원 백업에 자동 포함
+- localStorage 휘발 (브라우저 캐시 청소) 위험 차단
+
+**구현**:
+- `_qgGetCustomPrompt(type)` — `window.MY_CUSTOM_PROMPTS` 메모리 cache 읽기
+- `_qgSetCustomPrompt(type, value)` — cache 즉시 갱신 + Firestore updateDoc 비동기 (deleteField 로 빈 값 제거)
+- `_loadMyAcademyContext` — academies fetch 시 customPrompts 도 cache 에 로드
+- `_migrateLocalStoragePromptsToFirestore` — 진입 시 1회 자동 마이그레이션 (background, 사용자 재편집 불필요)
+- import: `deleteField` 추가 (firebase-firestore.js)
+
+**Rules**: academies update 화이트리스트에 `customPrompts` 추가 + `firebase deploy --only firestore:rules` 완료.
+
+**우선순위 (변동 없음)**: 학원장 customPrompts (Firestore) > super_admin appConfig > 코드 SYSTEM_PROMPTS.
+
+### 4) MCQ 셔플 mismatch fix (commit `0ee3d88`)
+
+응시 시 매번 `q.choices` 셔플. `_writeUserCompleted` 가 셔플된 questions 를 `comp.questions` 에 저장. 그러나 다시 보기 (`mcqViewPreviousResult`) 가 `test.questions` (원본) 사용 → 셔플 mismatch → 학생이 ② 골랐는데 원본 ② 위치 다른 보기 → 오답 표시.
+
+**fix**: `comp.questions` 우선, 없으면 `test.questions` 폴백.
+
+### 5) 학생별 카드 클릭 → 상세 모달 (commit `92cab86`, `2e159a1`)
+
+**신규 함수**: `tpOpenStudentScoreDetail(testId, uid)`
+- scores 에서 academyId+testId+uid 매칭 doc fetch (client-side createdAt desc 정렬)
+- 가장 최신 doc 의 scoreId 로 기존 `showScoreDetail` 호출
+- composite index 불필요 (where 3개 equality)
+
+**카드 onclick 추가** (옵션 B — 데이터 있는 카드만):
+- 일반 시험 통과 카드 (vocab/mcq/fill_blank/unscramble/subjective)
+- 녹음숙제 통과·미통과 카드 (회차별 audio + AI 피드백 있음)
+- cursor:pointer + title 툴팁
+
+**충돌 방지**: 녹음숙제 카드 안 audio·details summary 에 `event.stopPropagation()` — 재생/펼침 클릭이 모달 열기와 충돌 방지.
+
+**academyId 필터 필수** — Rules 가 같은 학원만 허용. query 에 academyId 없으면 'missing or insufficient permission'.
+
+**적용 범위**: 시험 목록 메뉴 + 시험관리 6개 메뉴 모두.
+
+### 6) 학생앱 랭킹 기간 토글 (commit `e45659e`)
+
+**이전**: 누적 전체 기간 — 옛 학생 우세, 신규/최근 노력 반영 X.
+
+**변경**:
+- 헤더에 알약 토글 3개 (이번 주 default / 이번 달 / 누적)
+- `_rankPeriod` 모듈 변수 + `_rankPeriodStartYmd(period)` KST 헬퍼
+  · week: 이번 주 월요일 0시 (월=1, 일=0 기준)
+  · month: 이번 달 1일 0시
+  · all: 빈 문자열 (필터 X)
+- `renderRanking` — `scores.date >= startYmd` 클라 필터 (string 비교 OK — `_ymdKST` 가 'YYYY-MM-DD')
+
+### 7) 녹음숙제 점수 학생 비공개 정책 (commit `dea31f1`)
+
+이전 commit `5de29ae` 에서 결과 헤드라인은 ✅통과/❌미통과 만 표시했지만 점수 잔존 3 곳 fix:
+- 학생앱 녹음숙제 완료 카드: `'✓ 완료 80점'` → `'✓ 완료'`
+- 결과 화면 회차별 audio 라벨: 마지막 회차 점수 배지 제거
+- 학생앱 랭킹: 녹음숙제 score 를 best 비교에서 제외 (count/total 은 누적 — 평균에 묻힘)
+
+**학원장 화면 그대로** (점수 표시).
+
+### 8) 학생앱 녹음숙제 결과 화면 fix (commit `7c792b8`)
+
+commit `6a538cb` 후 stale 두 버그:
+
+**1. `viewRecAiResult` isV2 판정 stale**:
+- 이전: `recordings.length >= 2 && recordings[0].score`
+- 새 데이터 모델은 score 가 마지막 회차에만 박힘 → 첫 회차에 score 없음 → 토스트만
+- fix: `recordings.length >= 1 && lastRec.score`
+
+**2. `_rv2RenderResult` 호출 시그니처 mismatch**:
+- positional 5개 호출, 함수는 단일 객체 destructuring → 모든 인자 undefined
+- fix: 객체로 호출 + recordings 배열 함께 전달
+
+**3. 회차별 audio 표시 추가**:
+- recordings 배열 있으면 회차별 플레이어 (성실도 표시, 학생용은 점수 X)
+- 1회면 마지막 audio 만 (이전 동작 유지)
+
+### 9) 성적 리포트 컬럼 폭 재조정 (commit `111536e`, `f85e7b0`, `3ff3a1c`, `63adefe`)
+
+`table-layout:fixed` + colgroup 적용. scores 의 실제 최대 bookName 55자 ('Bricks Subject Reading TOTAL · 1 Bricks Subject Reading') 확인 후 폭 산정:
+- No 40 / 반 80 / 이름 90 / 유형 90 / **교재명 360 (영문 55자)** / **시험명 가변 (잔여)**
+- 정답·전체 70 / 점수 70 / 일시 120 / 상세 90
+
+화면 1280px (사이드바 260px 제외) 에선 시험명 가변 짧음 — 큰 화면 (1440+) 권장. 잘리는 컬럼은 hover title.
+
+### 10) 시험관리 운영 개선 (commit `e2791b9`, `0898bf2`)
+
+**문제 세트 보기 모달 정리**:
+- 상단 헤더: 유형/모델 제거, 문제 수 + 출처 페이지만
+- 카드 헤더: 녹음숙제 [보통] 배지 숨김 (difficulty 의미 없음)
+- 녹음숙제 메타: 가짜 70점/60초/3회 반복 제거 → `📄 N Page · ⚙️ 통과점수·평가시간·녹음횟수는 시험 배정 시 설정`
+
+**옵션 요약** (commit `5c6276e`):
+- `_qsMcqSubType(s)` 헬퍼 — 첫 question.subType 으로 세트 종류 판정
+- `_qsBuildOptionsSummary` — mcq 면 `📖 본문이해` 또는 `📐 문법`, unscramble `4청크` 또는 `3~5청크`, fill_blank `2 빈칸`, recording 옵션 X
+
+**수정 모달 녹음숙제**:
+- 정확도/평가구간 input 제거 (시험 배정 시 결정 정책)
+- 안내문 추가
+- 본문 textarea flex:1 + min-height:200px + resize:vertical (모달 남는 공간 다 사용)
+
+### 11) 세트 default 이름 정리 (commit `41a6d2c`, `42672f9`)
+
+유형 컬럼에 표시되니 이름에 중복 X:
+- mcq 본문이해: `_qgBuildDefaultName()` (Chapter · 첫 페이지 제목)
+- mcq 문법: `_qgBuildDefaultName() + ' · 문법'`
+- 단어시험·언스크램블: `_qgBuildSetDefaultName('단어시험'/'언스크램블')` → `_qgBuildDefaultName()`
+- Wordsnap·빈칸·주관식·녹음숙제 그대로 (사용자 미명시)
+
+옛 세트 이름은 그대로 유지 (Firestore 에 박힌 이름 변동 X). 신규부터 적용.
+
+---
+
+## 작업 규칙 추가 (2026-05-11)
+
+신규:
+- **학원장 학원 단위 설정 — Firestore 이전 권장** — 학원장이 여러 PC 사용 가능 시나리오 누락하면 안 됨. localStorage 는 1인 1PC 사용자 선호 (인쇄 옵션, UI 토글) 에만. 학원 단위 데이터 (커스텀 프롬프트, 클린업 프리셋 등) 는 Firestore. `academies/{id}.{field}` + Rules 화이트리스트에 추가.
+- **응시 시 셔플되는 데이터는 셔플 결과까지 저장** — `comp.questions` 에 셔플된 순서 박아야 다시 보기 시 `comp.answers` idx 와 매칭. mcq 셔플 mismatch 가 표본. 다른 시험에서도 응시 시 random 처리하면 동일 패턴 검토.
+- **subType 필드 패턴 — sourceType 분리 X** — 같은 시험 메뉴 안에서 카테고리 구분 필요 시 `q.subType` 필드로. sourceType 새로 만들면 메뉴 분리·시험 배정 등 영향 큼. mcq grammar 가 표본.
+- **후처리 모듈 위치 — 서버 측 권장** — 클라가 응답 받기 전 보정. 모든 학원 동일 적용. 클라 코드 변경 X. `api/_lib/quiz-post-process.js` 패턴.
+- **a/an 자동 보정** — AI 가 자주 실수하는 영역. shouldUseAn (vowel sound + 예외 사전) 패턴으로 자동 보정. 향후 시제·조동사 등 같은 패턴 확장 가능.
+- **컬럼 폭 결정 — 실제 데이터 최대 길이 확인** — 작업 전 진단 query 로 max length 측정. 추정으로 정하면 줄바꿈/잘림 발생. scores bookName 55자 확인이 표본.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-11)
+- `api/generate-quiz.js`: ~1370줄 (+~80, mcq_grammar 프롬프트 + subType 분기 + post-process 호출)
+- `api/_lib/quiz-post-process.js`: 신규 ~110줄 (4 함수)
+- `public/admin/js/app.js`: ~13350줄 (+~250, mcq subType + 라벨 통일 + 카드 클릭 모달 + 후처리 안내)
+- `public/super/js/app.js`: ~3450줄 (+~30, mcq_grammar 탭 + Firestore 미정의 시 서버 fetch)
+- `public/js/app.js`: ~5050줄 (+~70, 랭킹 기간 토글 + mcq 셔플 fix + 녹음숙제 결과 화면 fix + 점수 비공개)
+- `public/_app.html`: 학생앱 카드/타이틀/랭킹 토글 추가
+- `public/admin/_app.html`: 사이드바 + 페이지 + colgroup
+- `firestore.rules`: academies update 화이트리스트 + customPrompts
+- 신규 진단: `scripts/diag/test-quiz-post-process.js` (17/17 통과)
+- SW 캐시: `kunsori-v404`
+
+## 진행률 (2026-05-11)
+- **MCQ 시스템: ~100%** (본문이해 + 문법 카테고리, 후처리 모듈, 셔플 mismatch fix)
+- **AI 프롬프트 인프라: ~100%** (super_admin / 학원장 / 코드 default 3단 fallback, 다중 PC 동기화)
+- 단어 말하기 시험: ~100% (변동 없음)
+- 녹음숙제 시스템: ~98% (학생앱 결과 화면 fix)
+- 결제 v2: ~98% (변동 없음)
+- 학생관리 운영: ~98% (변동 없음)
+- 화이트라벨 브랜딩·멀티테넌시·super_admin: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-11 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **학원장 대시보드 달력 보강** — 생일 카테고리 추가 (`users.birth` 입력 강화)
+3. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **AI 평가 실패율 (SuperAdmin Phase B T9)** — 베타 30일+ 누적 후 Cloud Function 일일 집계
+5. **(선택) 옛 세트 이름 일괄 정리** — '· 객관식' / '· 단어시험' suffix 일괄 제거 마이그레이션 스크립트
+6. **(선택) 후처리 모듈 확장** — 시제 / 조동사 / 주어동사 일치 검증 추가
+
+**완료 (이 세션, 2026-05-11)**:
+- ✅ 객관식 시험에 문법 카테고리 추가 (subType 'content'|'grammar' + 별도 프롬프트)
+- ✅ MCQ 후처리 모듈 (a/an 자동 보정 + 셔플 + 진단 스크립트 17/17 통과)
+- ✅ SYSTEM_PROMPTS.mcq_grammar 컴팩트화 (NEW CONTENT/SHORT/Type A·B questionKo/a·an 예외)
+- ✅ 학원장 커스텀 AI 프롬프트 Firestore 이전 (다중 PC 동기화 + 자동 마이그레이션)
+- ✅ super_admin Firestore 미정의 시 서버 default fetch (코드 default 보며 편집)
+- ✅ MCQ 셔플 mismatch fix (comp.questions 우선)
+- ✅ 학생별 카드 클릭 → 상세 모달 (시험 목록 + 시험관리)
+- ✅ 학생앱 랭킹 기간 토글 (이번 주/이번 달/누적, default 'week')
+- ✅ 녹음숙제 점수 학생 비공개 정책 (3 곳 + 랭킹 best 비교 제외)
+- ✅ 학생앱 녹음숙제 결과 화면 fix (isV2 + 시그니처 + 회차별 audio)
+- ✅ 성적 리포트 컬럼 폭 재조정 (실제 최대 데이터 기준)
+- ✅ 시험관리 운영 개선 (가짜 메타 제거, 옵션 요약, 본문 textarea flex)
+- ✅ 라벨 통일 ('교재이해'/'내용이해' → '본문이해', 콤마 → 가운데점, 컴팩트)
+- ✅ 세트 default 이름 정리 (유형 suffix 제거 — 컬럼 표시 중복 회피)
