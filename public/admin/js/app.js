@@ -10028,8 +10028,7 @@ window.qsViewDetail = async (setId) => {
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${esc(s.name)}</div>
         <div style="font-size:12px;color:var(--gray);">
-          ${s.questions?.length||0}문제 · 유형 <code>${esc(s.sourceType||'-')}</code> · 모델 <code>${esc(s.aiModel||'')}</code>
-          ${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
+          ${s.questions?.length||0}문제${s.sourcePages?.length ? ' · 출처 '+s.sourcePages.length+'개 Page' : ''}
         </div>
       </div>
       <div style="padding:16px 24px;flex:1;overflow-y:auto;min-height:0;">
@@ -10048,7 +10047,9 @@ window.qsViewDetail = async (setId) => {
 function _qsRenderViewCard(q, i) {
   const diff = {easy:'쉬움',medium:'보통',hard:'어려움'}[q.difficulty] || q.difficulty || '-';
   const icon = q.type==='fill_blank'?'✏️' : q.type==='subjective'?'✍️' : q.type==='recording'?'🎤' : q.type==='vocab'?'📝' : q.type==='unscramble'?'🔀' : '📖';
-  const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번 · [${esc(diff)}]${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
+  // 녹음숙제는 difficulty 의미 없음 (본문 발화 평가). 배지 숨김.
+  const diffBadge = q.type === 'recording' ? '' : ` · [${esc(diff)}]`;
+  const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번${diffBadge}${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
   const explanation = q.explanation ? `<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>` : '';
 
   if (q.type === 'fill_blank') {
@@ -10089,11 +10090,9 @@ function _qsRenderViewCard(q, i) {
         ${header}
         <div style="font-size:12px;color:var(--text);padding:8px 12px;background:#fefce8;border-left:3px solid #CA8A04;margin-bottom:8px;">${esc(q.instructionKo||'')}</div>
         <div style="font-size:13px;line-height:1.6;padding:10px 14px;background:#f5f5f5;border-radius:6px;color:#444;margin-bottom:6px;">${esc(preview)}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;">
           <span style="background:#e0f2fe;padding:3px 10px;border-radius:10px;color:#0369a1;font-weight:600;">📄 ${q.pageCount||1} Page</span>
-          <span style="background:#fce7f3;padding:3px 10px;border-radius:10px;color:#be185d;font-weight:600;">🎯 ${q.accuracyThreshold||70}점</span>
-          <span style="background:#dcfce7;padding:3px 10px;border-radius:10px;color:#166534;font-weight:600;">⏱ ${q.evaluationSeconds||60}초</span>
-          <span style="background:#f3e8ff;padding:3px 10px;border-radius:10px;color:#6b21a8;font-weight:600;">🔁 3회 반복</span>
+          <span style="font-size:10px;color:var(--gray);">⚙️ 통과점수·평가시간·녹음횟수는 시험 배정 시 설정</span>
         </div>
       </div>`;
     }
