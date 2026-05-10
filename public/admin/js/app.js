@@ -4481,6 +4481,31 @@ window.showScoreDetail = async(scoreId, testId) => {
     `);
   }catch(e){ showToast('상세 불러오기 실패: '+e.message); }
 };
+
+// 학생별 카드 클릭 → testId+uid 로 가장 최신 scores doc 찾아 showScoreDetail 호출.
+// 시험 목록 / 시험관리 양쪽 학생 카드에서 사용.
+window.tpOpenStudentScoreDetail = async (testId, uid) => {
+  if (!testId || !uid) return;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'scores'),
+      where('testId', '==', testId),
+      where('uid', '==', uid)
+    ));
+    if (snap.empty) { showToast('점수 기록 없음'); return; }
+    // client-side 정렬 (composite index 불필요)
+    const docs = snap.docs.sort((a, b) => {
+      const ta = a.data().createdAt?.toMillis?.() || 0;
+      const tb = b.data().createdAt?.toMillis?.() || 0;
+      return tb - ta;
+    });
+    window.showScoreDetail(docs[0].id, testId);
+  } catch (e) {
+    console.warn('[tpOpenStudentScoreDetail]', e);
+    showToast('상세 불러오기 실패: ' + e.message);
+  }
+};
+
 // 학생 목록 캐시 (검색·트리 재렌더 시 재사용)
 let _personalStudents = [];
 const _personalGroupOpen = new Set();   // 펼쳐진 반 이름들
@@ -12678,7 +12703,8 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                   const cardBg = isPassed ? 'white' : '#fffbeb';
                   const cardBorder = isPassed ? '#e5e7eb' : '#fbbf24';
                   // 회차별 audio 리스트 (성실도 + 시간 + 마지막 회차에는 점수)
-                  const roundsHtml = recs.map((r, i) => {
+                  // audio 에 stopPropagation — 재생 클릭이 카드 onclick (모달 열기) 과 충돌 방지
+                  const roundsHtmlClickSafe = recs.map((r, i) => {
                     const isLast = i === recs.length - 1;
                     const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
                     const dur = r.duration ? r.duration + '초' : '-';
@@ -12689,20 +12715,20 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                         <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">
                           ${i+1}회차 · ${dur} · 성실도 ${va}${scoreBadge}${isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
                         </div>
-                        <audio src="${esc(r.audioUrl||'')}" controls preload="none" style="width:100%;height:30px;"></audio>
+                        <audio src="${esc(r.audioUrl||'')}" controls preload="none" onclick="event.stopPropagation()" style="width:100%;height:30px;"></audio>
                       </div>`;
                   }).join('');
                   return `
-                    <div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;">
+                    <div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;cursor:pointer;">
                       <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
                       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding-right:24px;">
                         <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
                         <span style="color:${headColor};font-weight:700;font-size:11px;">${headLabel}</span>
                       </div>
                       <div style="font-size:10px;color:var(--gray);margin-bottom:2px;">${esc(dateStr)} · 총 ${recs.length}회</div>
-                      ${roundsHtml}
+                      ${roundsHtmlClickSafe}
                       ${fb ? `
-                        <details style="margin-top:8px;">
+                        <details onclick="event.stopPropagation()" style="margin-top:8px;">
                           <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
                           <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
                             ${fb.missedWords?.length ? `<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
@@ -12746,7 +12772,7 @@ window.tpToggleTestProgress = async (testId, prefix) => {
               const passScore = c.passScore || t.passScore || 80;
               const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
               if (passed) {
-                return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                   ${xBtn}
                   <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                   <div style="color:#2e7d32;">✓ ${score}점 · ${esc(dateStr)}</div>
