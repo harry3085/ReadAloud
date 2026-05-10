@@ -265,7 +265,7 @@ const pageLabels = {
   'test-word':'단어시험',
   'test-unscramble':'언스크램블',
   'test-blank':'빈칸채우기',
-  'test-mcq':'본문이해, 문법_객관식',
+  'test-mcq':'본문이해 · 문법_객관식',
   'test-subj':'해석하기_주관식',
   'test-rec-ai':'녹음숙제',
 };
@@ -8121,7 +8121,7 @@ const QG_TYPE_OPTIONS = {
     ],
   },
   'mcq': {
-    label: '내용이해, 문법_객관식',
+    label: '내용이해 · 문법_객관식',
     icon: '📖',
     enabled: true,
     phaseLabel: null,
