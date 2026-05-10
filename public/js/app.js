@@ -826,7 +826,7 @@ function makeTestCard(t, isCompleted, onclick, completedScore){
     </div>`;
 }
 
-// ─── 교재이해 (Reading MCQ) 카드 — Phase 2 구현 ───
+// ─── 본문이해·문법 (Reading MCQ) 카드 — Phase 2 구현 ───
 window.goReadingMcq = async () => {
   show('readingMcqList');
   await loadReadingMcqList();
@@ -839,7 +839,7 @@ window.goFillBlank = async () => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 교재이해 (Reading MCQ) - Phase 2
+// 본문이해·문법 (Reading MCQ) - Phase 2
 // ═══════════════════════════════════════════════════════════════════════════
 
 let _mcqTakeState = {

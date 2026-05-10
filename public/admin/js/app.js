@@ -10996,7 +10996,7 @@ const _TEST_TYPE_CONFIG = {
     phaseLabel: null,
     actions: ['assign', 'print'],
     gradingMode: 'auto',
-    hint: '교재이해(객관식)를 학생앱에 배정하거나 시험지로 출력합니다.',
+    hint: '본문이해·문법(객관식)을 학생앱에 배정하거나 시험지로 출력합니다.',
   },
   'subj': {
     rootId: 'subjAssignRoot',
