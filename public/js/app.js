@@ -3135,15 +3135,48 @@ window.goRanking=async()=>{
   document.getElementById('rankingGroupTitle').textContent='🏫 '+(userProfile?.group||'그룹');
   await renderRanking();show('ranking');
 };
+// 랭킹 기간 — 'week' | 'month' | 'all' (default: week)
+let _rankPeriod = 'week';
+
+// KST 기준 기간 시작 YYYY-MM-DD 반환. 'all' 이면 빈 문자열.
+function _rankPeriodStartYmd(period) {
+  if (period === 'all') return '';
+  const now = new Date(Date.now() + 9 * 3600 * 1000); // KST 변환
+  if (period === 'month') {
+    return now.toISOString().slice(0, 7) + '-01'; // YYYY-MM-01
+  }
+  // week — 이번 주 월요일까지 빼기 (월=1, 일=0)
+  const dow = now.getUTCDay();
+  const diff = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(now.getTime() - diff * 86400000);
+  return monday.toISOString().slice(0, 10);
+}
+
+window.rankingSetPeriod = async (period) => {
+  if (!['week','month','all'].includes(period)) return;
+  _rankPeriod = period;
+  // 토글 버튼 활성/비활성 시각 갱신
+  document.querySelectorAll('#rankPeriodToggle button').forEach(b => {
+    const active = b.dataset.period === period;
+    b.style.background = active ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.18)';
+    b.style.color = active ? 'white' : 'rgba(255,255,255,0.8)';
+    b.style.fontWeight = active ? '700' : '600';
+  });
+  await renderRanking();
+};
+
 async function renderRanking(){
   const group=userProfile?.group,meUid=currentUser?.uid;
   const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
 
   const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
+  const startYmd = _rankPeriodStartYmd(_rankPeriod);
   const scoresMap={};
   scoresSnap.docs.forEach(d=>{
     const s=d.data();
+    // 기간 필터 (startYmd 빈 문자열 = 누적)
+    if (startYmd && (s.date || '') < startYmd) return;
     if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
     if(s.score > scoresMap[s.uid].best) scoresMap[s.uid].best = s.score;
     scoresMap[s.uid].count++;

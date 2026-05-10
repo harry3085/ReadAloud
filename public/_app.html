@@ -608,10 +608,15 @@
   <div id="ranking" class="screen theme-rose">
     <!-- 코럴 히어로 헤더 + TOP3 포디움 -->
     <div style="background:var(--brand-header-gradient);padding:48px 20px 16px;flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="goHome()">‹</button>
         <span style="font-size:16px;font-weight:800;color:white;flex:1;">랭킹</span>
         <span id="rankingGroupTitle" style="font-size:11px;color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.18);padding:4px 12px;border-radius:12px;">🏫 그룹</span>
+      </div>
+      <div id="rankPeriodToggle" style="display:flex;gap:6px;justify-content:center;margin-bottom:14px;">
+        <button data-period="week" onclick="rankingSetPeriod('week')" style="font-size:11px;padding:5px 14px;border-radius:14px;border:none;background:rgba(255,255,255,0.4);color:white;font-weight:700;cursor:pointer;">이번 주</button>
+        <button data-period="month" onclick="rankingSetPeriod('month')" style="font-size:11px;padding:5px 14px;border-radius:14px;border:none;background:rgba(255,255,255,0.18);color:rgba(255,255,255,0.8);font-weight:600;cursor:pointer;">이번 달</button>
+        <button data-period="all" onclick="rankingSetPeriod('all')" style="font-size:11px;padding:5px 14px;border-radius:14px;border:none;background:rgba(255,255,255,0.18);color:rgba(255,255,255,0.8);font-weight:600;cursor:pointer;">누적</button>
       </div>
       <!-- TOP3 포디움 -->
       <div id="rankPodium" style="display:flex;align-items:flex-end;justify-content:center;gap:10px;margin-bottom:4px;">
