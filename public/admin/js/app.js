@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -143,10 +143,14 @@ async function _loadMyAcademyContext(user, userDocData) {
     const acData = acSnap.exists() ? acSnap.data() : null;
     window.MY_ACADEMY_NAME = (acData && acData.name) || '';
     window.LEXIAI_BRANDING = (lexiSnap && lexiSnap.exists?.()) ? lexiSnap.data() : null;
+    // 학원장 커스텀 AI 프롬프트 — Firestore 동기화 (다른 PC 에서도 적용)
+    window.MY_CUSTOM_PROMPTS = (acData && acData.customPrompts) || {};
     _applyAdminBranding(acData);
     // PWA manifest 학원별 갱신 (바로가기 추가 시 학원 로고로 등록)
     if (typeof window.updateAdminManifest === 'function') window.updateAdminManifest(academyId);
-  } catch(_) { window.MY_ACADEMY_NAME = ''; }
+    // localStorage 잔여 → Firestore 1회 마이그레이션 (background)
+    _migrateLocalStoragePromptsToFirestore(academyId).catch(e => console.warn('[customPrompts] migration:', e.message));
+  } catch(_) { window.MY_ACADEMY_NAME = ''; window.MY_CUSTOM_PROMPTS = {}; }
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
 }
 
@@ -12939,16 +12943,54 @@ window._qgPreviewUnscrambleChunks = (idx, value) => {
 const _qgAiPromptDefaults = {};  // API GET 으로 로드 후 캐시
 let _qgPromptEditingType = 'mcq';
 
+// 학원장 커스텀 AI 프롬프트 — Firestore academies/{id}.customPrompts 저장 (다른 PC 동기화).
+// 메모리 cache: window.MY_CUSTOM_PROMPTS (loadMyAcademyContext 진입 시 채움)
 function _qgGetCustomPrompt(type) {
-  try { return localStorage.getItem('ai_prompt_custom_' + type) || ''; }
-  catch { return ''; }
+  const map = window.MY_CUSTOM_PROMPTS || {};
+  return map[type] || '';
 }
 
 function _qgSetCustomPrompt(type, value) {
-  try {
-    if (value && value.trim()) localStorage.setItem('ai_prompt_custom_' + type, value);
-    else localStorage.removeItem('ai_prompt_custom_' + type);
-  } catch(e) { console.warn(e); }
+  const v = (value && value.trim()) ? value.trim() : '';
+  if (!window.MY_CUSTOM_PROMPTS) window.MY_CUSTOM_PROMPTS = {};
+  // 메모리 cache 즉시 갱신 (UI 반영 빠름)
+  if (v) window.MY_CUSTOM_PROMPTS[type] = v;
+  else delete window.MY_CUSTOM_PROMPTS[type];
+  // Firestore 비동기 저장 (실패해도 cache 는 유지 — 다음 PC 에선 반영 X 가능)
+  if (window.MY_ACADEMY_ID) {
+    const acRef = doc(db, 'academies', window.MY_ACADEMY_ID);
+    const update = v
+      ? { ['customPrompts.' + type]: v }
+      : { ['customPrompts.' + type]: deleteField() };
+    updateDoc(acRef, update).catch(e => console.warn('[customPrompts] save failed:', e.message));
+  }
+  // 옛 localStorage 잔여 정리
+  try { localStorage.removeItem('ai_prompt_custom_' + type); } catch {}
+}
+
+// 1회성 마이그레이션 — localStorage 'ai_prompt_custom_*' → Firestore academies/{id}.customPrompts
+async function _migrateLocalStoragePromptsToFirestore(academyId) {
+  if (!academyId) return;
+  let keys = [];
+  try { keys = Object.keys(localStorage).filter(k => k.startsWith('ai_prompt_custom_')); } catch { return; }
+  if (!keys.length) return;
+  const updates = {};
+  for (const k of keys) {
+    const type = k.replace(/^ai_prompt_custom_/, '');
+    const value = localStorage.getItem(k);
+    if (value && value.trim()) {
+      updates['customPrompts.' + type] = value;
+      // 메모리 cache 도 즉시 (Firestore 미반영 케이스 안전망)
+      if (!window.MY_CUSTOM_PROMPTS) window.MY_CUSTOM_PROMPTS = {};
+      window.MY_CUSTOM_PROMPTS[type] = value;
+    }
+  }
+  if (Object.keys(updates).length === 0) return;
+  const acRef = doc(db, 'academies', academyId);
+  await updateDoc(acRef, updates);
+  // 성공 시 localStorage 정리
+  keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+  console.log('[customPrompts] migrated', Object.keys(updates).length, 'prompts to Firestore');
 }
 
 async function _qgFetchDefaultPrompt(type, { forceRefresh = false } = {}) {
