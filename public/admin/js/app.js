@@ -4127,7 +4127,7 @@ function renderScoreReportRows(){
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
       <td>${_unifiedTypeBadge(s.mode)}</td>
       <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
-      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}</td>
+      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}${s._isGrammar ? ' <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">📐</span>' : ''}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
       <td class="td-sub">${s._dateTime||s.date||''}</td>
@@ -4170,8 +4170,9 @@ window.loadScoreReport = async() => {
       _srData=[]; return;
     }
 
-    // testId → speaking 여부 맵 (말하기 시험 배지 표시용 — vocab + vocabOptions.format='speaking')
+    // testId → speaking/grammar 여부 맵 (시험명 옆 배지 표시용)
     const speakingMap = {};
+    const grammarMap = {};
     try {
       const gtSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID)));
       gtSnap.docs.forEach(d => {
@@ -4179,8 +4180,11 @@ window.loadScoreReport = async() => {
         if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
           speakingMap[d.id] = true;
         }
+        if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') {
+          grammarMap[d.id] = true;
+        }
       });
-    } catch(e) { console.warn('speaking map fetch:', e.message); }
+    } catch(e) { console.warn('speaking/grammar map fetch:', e.message); }
 
     // 정렬용 필드 정규화 (레거시 tests fallback 제거 — Phase 6F)
     _srData = filtered.map(s=>{
@@ -4193,6 +4197,7 @@ window.loadScoreReport = async() => {
         score: s.score||0,
         correct: s.correct||0,
         _isSpeaking: !!speakingMap[s.testId],
+        _isGrammar: !!grammarMap[s.testId],
         _dateTime: s.createdAt?.toDate
           ? s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
           : s.date||'',
@@ -5424,6 +5429,20 @@ function _testNameSpeakingBadge(t) {
   return '';
 }
 
+// mcq 시험 중 첫 question.subType='grammar' 면 시험명 옆에 붙일 작은 배지
+// (genTests 의 questions 배열에 박힌 subType 으로 판정)
+function _testNameGrammarBadge(t) {
+  if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') {
+    return ` <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;vertical-align:middle;">📐 문법</span>`;
+  }
+  return '';
+}
+
+// 시험명 옆 모든 배지를 한 번에 (말하기 + 문법 등 미래 확장)
+function _testNameBadges(t) {
+  return _testNameSpeakingBadge(t) + _testNameGrammarBadge(t);
+}
+
 // ─── 시험 통계 공용 계산 (시험 목록 + 시험 유형별 최근 시험 공유) ───
 // 대상 표기 — "1반 전체 / 2반 3명 / 미배정 1명" 식 반별 구분
 // targets: [{type:'class'|'student', id, name, groupName}]
@@ -5540,7 +5559,7 @@ window.loadTestList = async() => {
       <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${t.id}','tl')" id="tl-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
-        <td class="td-main">${esc(t.name)||'-'}${_testNameSpeakingBadge(t)}</td>
+        <td class="td-main">${esc(t.name)||'-'}${_testNameBadges(t)}</td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName) || '-'}</span></td>
         <td class="td-sm">${esc(bookName)}</td>
@@ -8102,14 +8121,15 @@ const QG_TYPE_OPTIONS = {
     ],
   },
   'mcq': {
-    label: '내용이해_객관식',
+    label: '내용이해, 문법_객관식',
     icon: '📖',
     enabled: true,
     phaseLabel: null,
-    noteHint: '본문을 읽고 4지선다로 내용을 확인합니다.',
+    noteHint: '본문을 읽고 4지선다로 내용을 확인하거나 본문에 나오는 문법 패턴을 점검합니다.',
     options: [
       { key:'count',      label:'문제수',  type:'number', default:5, min:1, max:50 },
       { key:'difficulty', label:'난이도',  type:'select', choices:['하','중','상'], default:'중' },
+      { key:'subType',    label:'문제 종류', type:'select', choices:['본문이해','문법'], default:'본문이해' },
     ],
   },
   'subjective': {
@@ -8786,10 +8806,21 @@ async function _qgCallMcq(opts) {
 
   try {
     const t0 = Date.now();
+    // mcq subType 매핑: '문법' → 'grammar', 그 외 'content'.
+    // super_admin 편집 프롬프트는 subType 별로 별도 키 사용
+    const subType = (opts.subType === '문법' || opts.subType === 'grammar') ? 'grammar' : 'content';
+    const promptKey = subType === 'grammar' ? 'mcq_grammar' : 'mcq';
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'mcq', difficulty: _qgMapDifficulty(opts.difficulty), customSystemPrompt: _qgGetCustomPrompt('mcq') || undefined }),
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'mcq',
+        subType,
+        difficulty: _qgMapDifficulty(opts.difficulty),
+        customSystemPrompt: _qgGetCustomPrompt(promptKey) || undefined,
+      }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -8805,6 +8836,10 @@ async function _qgCallMcq(opts) {
     _qgExcluded.clear();
     if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
 
+    // 세트명 default 에 '문법' suffix 추가
+    if (subType === 'grammar') {
+      data.defaultName = (data.defaultName || _qgBuildSetDefaultName('객관식')) + ' · 문법';
+    }
     _qgShowResultModal(data);
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
@@ -10037,12 +10072,25 @@ window.qsAssignSet = async (setId) => {
   }
 };
 
-// 문제 세트의 생성 시 옵션 요약 (난이도·청크수·빈칸수). 보기 모달 헤더에 표시.
+// 세트의 mcq subType 결정 — 첫 question 의 subType 기준 (세트 안 한 종류만 정책)
+function _qsMcqSubType(s) {
+  const qs = s.questions || [];
+  if (!qs.length || (s.sourceType !== 'mcq' && qs[0]?.type !== 'mcq')) return null;
+  return qs[0]?.subType === 'grammar' ? 'grammar' : 'content';
+}
+
+// 문제 세트의 생성 시 옵션 요약 (난이도·청크수·빈칸수·mcq subType). 보기 모달 헤더에 표시.
 function _qsBuildOptionsSummary(s) {
   const qs = s.questions || [];
   if (!qs.length) return '';
   const sourceType = s.sourceType || qs[0]?.type || '';
   const parts = [];
+
+  // mcq subType (본문이해/문법) — 가장 우선 표시
+  if (sourceType === 'mcq') {
+    const sub = _qsMcqSubType(s);
+    parts.push(sub === 'grammar' ? '📐 문법' : '📖 본문이해');
+  }
 
   // 난이도 — recording 제외 (학년/난이도 의미 없음)
   if (sourceType !== 'recording') {
@@ -10126,7 +10174,10 @@ function _qsRenderViewCard(q, i) {
   const icon = q.type==='fill_blank'?'✏️' : q.type==='subjective'?'✍️' : q.type==='recording'?'🎤' : q.type==='vocab'?'📝' : q.type==='unscramble'?'🔀' : '📖';
   // 녹음숙제는 difficulty 의미 없음 (본문 발화 평가). 배지 숨김.
   const diffBadge = q.type === 'recording' ? '' : ` · [${esc(diff)}]`;
-  const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번${diffBadge}${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
+  // mcq subType 라벨 (문법인 경우만 표시 — 본문이해는 default 라 생략)
+  const subTypeBadge = (q.type === 'mcq' && q.subType === 'grammar')
+    ? ` · <span style="color:#7c3aed;">📐 문법</span>` : '';
+  const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번${diffBadge}${subTypeBadge}${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
   const explanation = q.explanation ? `<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>` : '';
 
   if (q.type === 'fill_blank') {
@@ -11387,7 +11438,7 @@ function _tpRenderTestRow(t, i) {
   return `
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
       <td style="${cellBase}font-size:12px;color:var(--gray);">${(i||0)+1}</td>
-      <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameSpeakingBadge(t)}</td>
+      <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameBadges(t)}</td>
       <td style="${cellBase}font-size:12px;"><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</span></td>
       <td style="${cellBase}font-size:12px;color:var(--text);max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(bookName)}">${esc(bookName)}</td>
       <td style="${cellBase}text-align:center;font-size:12px;color:var(--text);">${qCount}문제</td>

@@ -762,12 +762,18 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   const speakingBadge = isSpeaking
     ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">🎤 말하기</span>`
     : '';
+  // mcq + 첫 question.subType='grammar' 이면 📐 문법 배지 표시
+  const isGrammar = type === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar';
+  const grammarBadge = isGrammar
+    ? `<span style="font-size:11px;background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:20px;font-weight:700;">📐 문법</span>`
+    : '';
   return `
     <div class="unit-card" onclick="${onclick}">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${esc(t.name||ui.defaultName)}</div>
           ${speakingBadge}
+          ${grammarBadge}
           ${isCompleted
             ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>${retakeBadge}`
             : `${latestBadge}<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}

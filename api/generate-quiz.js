@@ -118,6 +118,65 @@ RULES:
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
+  mcq_grammar: `You are an English grammar quiz generator for Korean middle/high school students.
+
+Your task is to create 4-choice multiple-choice GRAMMAR questions inspired by the given English passages.
+
+RULES:
+1. Questions should test grammar comprehension drawn from grammar patterns in the passage:
+   - Verb tenses (past/present/future, perfect, progressive)
+   - Subject-verb agreement
+   - Articles (a/an/the), prepositions, pronouns, conjunctions
+   - Modal verbs (can/could/may/might/should/must)
+   - Relative clauses, conditionals, passive voice
+   - Comparatives/superlatives, gerunds/infinitives
+   - Word forms, parts of speech
+   AVOID pure vocabulary or reading comprehension questions (those are separate quiz types).
+
+2. The PASSAGE is your reference for which grammar patterns to test. Pick patterns that actually appear in the passage. You may construct test sentences that demonstrate the same pattern (do not need to be verbatim from the passage).
+
+3. For each question:
+   - Write the question stem in English (clear, focused on ONE grammar point)
+   - Provide a Korean translation/instruction (questionKo) explaining what to choose
+   - Create exactly 4 answer choices in English
+   - Exactly ONE choice must be grammatically correct
+   - Wrong choices (distractors) should be plausible but contain a clear grammatical error
+   - Wrong choices should be similar in length/structure to the correct answer
+   - Provide a brief Korean explanation (explanation) of the grammar rule
+
+4. Question stem patterns (vary across questions):
+   - Fill-in-the-blank: "She ___ to school every day." (correct: goes)
+   - Choose the correct: "Which sentence is grammatically correct?"
+   - Identify the error: "Which option contains a grammatical error?"
+   - Best transformation: "Which of the following correctly transforms the sentence into passive voice?"
+
+5. Difficulty:
+   - Include a mix of easy / medium / hard when possible.
+   - Exact distribution is NOT required.
+
+6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "mcq",
+      "question": "She ___ to school every day.",
+      "questionKo": "빈칸에 알맞은 동사 형태를 고르시오.",
+      "choices": [
+        { "text": "go", "isAnswer": false },
+        { "text": "goes", "isAnswer": true },
+        { "text": "going", "isAnswer": false },
+        { "text": "gone", "isAnswer": false }
+      ],
+      "explanation": "주어 She (3인칭 단수) + 현재시제 → 동사에 -s/-es 추가",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+
   subjective: `You are an English-to-Korean translation exercise generator for Korean middle/high school students.
 Your task is to create "translate this sentence" questions from given English passages for a printed test paper (no auto-grading — students write by hand).
 
@@ -468,7 +527,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { idToken, pages, count, type, customSystemPrompt, mode, words } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType } = req.body || {};
 
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
@@ -497,6 +556,9 @@ module.exports = async function handler(req, res) {
         error: `Type "${quizType}" not supported. Supported: ${Object.keys(SYSTEM_PROMPTS).join(', ')}`,
       });
     }
+    // mcq subType: 'content' (default) | 'grammar'. 프롬프트·검증 분기.
+    const mcqSubType = (quizType === 'mcq' && subType === 'grammar') ? 'grammar' : 'content';
+    const promptKey = (quizType === 'mcq' && mcqSubType === 'grammar') ? 'mcq_grammar' : quizType;
 
     const requestedCount = parseInt(count) || 5;
     if (requestedCount < 1) {
@@ -529,8 +591,8 @@ module.exports = async function handler(req, res) {
     //   3. SYSTEM_PROMPTS (코드 fallback, 1·2 다 비었거나 짧을 때)
     const systemPrompt = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim().length >= 20)
       ? customSystemPrompt.trim()
-      : (await getEffectivePrompt(quizType));
-    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, req.body || {});
+      : (await getEffectivePrompt(promptKey));
+    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, { ...(req.body || {}), mcqSubType });
 
     // ─── Gemini API 호출 (폴백 체인 + 동일 모델 1회 재시도) ───
     let lastError = null;
@@ -603,7 +665,7 @@ module.exports = async function handler(req, res) {
       vocab: validateVocab,
       unscramble: validateUnscramble,
     };
-    let validated = validators[quizType](parsed.questions || [], normalizedPages);
+    let validated = validators[quizType](parsed.questions || [], normalizedPages, { mcqSubType });
 
     // ─── 부족분 재시도 (1회 한정) ───
     // 1차 응답이 목표 개수에 못 미치면, 이미 채택된 문장을 제외 지시하고 부족분만 재요청.
@@ -624,7 +686,7 @@ module.exports = async function handler(req, res) {
           retryUsage = retryResult.usage;
           const retryParsed = parseAIResponse(retryResult.text);
           if (retryParsed) {
-            const retryValidated = validators[quizType](retryParsed.questions || [], normalizedPages);
+            const retryValidated = validators[quizType](retryParsed.questions || [], normalizedPages, { mcqSubType });
             const existingKeys = new Set(
               validated.map(q => _keyOf(q, quizType).toLowerCase()).filter(Boolean)
             );
@@ -840,7 +902,15 @@ function buildUserPrompt(pages, count, type, opts) {
   const blanksPerSentence = Math.min(Math.max(parseInt(opts?.blanksPerSentence) || 1, 1), 5);
 
   const typeInstructions = {
-    mcq: `Please generate ${count} 4-choice multiple-choice questions.
+    mcq: opts?.mcqSubType === 'grammar'
+      ? `Please generate ${count} 4-choice multiple-choice GRAMMAR questions.
+- Identify grammar patterns that appear in the passage (verb tenses, articles, prepositions, modals, conditionals, etc.) and test them.
+- Test sentences may be constructed (do NOT need to be verbatim from the passage); they only need to demonstrate the same grammar pattern.
+- Each question tests ONE clear grammar point.
+- Distribute questions across all passages (if multiple); include sourcePageId matching the passage that inspired the grammar pattern.
+- Vary difficulty (per-question easy/medium/hard tag).
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — calibrate grammar complexity accordingly.`
+      : `Please generate ${count} 4-choice multiple-choice questions.
 - Distribute questions across all passages (if multiple)
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels (per-question easy/medium/hard tag)
@@ -988,11 +1058,12 @@ function _findHostPage(sentence, pages) {
   return null;
 }
 
-function validateMCQ(questions, pages) {
+function validateMCQ(questions, pages, opts) {
   if (!Array.isArray(questions)) return [];
 
   const validPageIds = new Set(pages.map(p => p.id));
   const pageTitleMap = new Map(pages.map(p => [p.id, p.title]));
+  const subType = (opts && opts.mcqSubType === 'grammar') ? 'grammar' : 'content';
 
   return questions
     .map(q => {
@@ -1034,6 +1105,7 @@ function validateMCQ(questions, pages) {
 
       return {
         type: 'mcq',
+        subType,  // 'content' | 'grammar' — 학생앱·학원장 화면 표시 분기
         question,
         questionKo,
         choices,
