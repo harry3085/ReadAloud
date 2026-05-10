@@ -17,7 +17,7 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // 모드 라벨 매핑 — 학생앱·학원장앱 표준 5분류
 const MODE_LABELS = {
   vocab: '단어시험',
-  mcq: '내용이해 객관식',
+  mcq: '본문이해·문법 객관식',
   fill_blank: '빈칸채우기',
   unscramble: '언스크램블',
   recording: '녹음숙제',
