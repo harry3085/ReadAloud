@@ -1570,8 +1570,9 @@ function _renderPromptsTabs() {
   tabs.innerHTML = PROMPT_TYPES.map(t => {
     const active = t === _promptsActiveType;
     const filled = !!_promptsCache[t];
+    // 미정의 = Firestore appConfig/aiPrompts 에 키 없음. 코드 default fallback 으로 학원장 측은 정상 작동 중.
     return `<button onclick="switchPromptsType('${t}')" class="btn ${active ? 'btn-primary' : 'btn-secondary'}" style="font-size:12px;padding:6px 12px;${!filled ? 'opacity:0.5;' : ''}">
-      ${PROMPT_LABELS[t]}${filled ? '' : ' (미정의)'}
+      ${PROMPT_LABELS[t]}${filled ? '' : ' (코드 default)'}
     </button>`;
   }).join('');
 }
@@ -1596,10 +1597,20 @@ window.switchPromptsType = async (t) => {
   _showPromptsType(t);
 };
 
-function _showPromptsType(t) {
+async function _showPromptsType(t) {
   const ta = document.getElementById('promptsText');
   if (!ta) return;
-  ta.value = _promptsCache[t] || '';
+  let value = _promptsCache[t];
+  // Firestore 미정의 시 서버 default (코드 SYSTEM_PROMPTS) fetch — super_admin 도 default 보면서 편집 가능
+  if (!value) {
+    ta.value = '(코드 default 로딩 중...)';
+    try {
+      const res = await fetch('/api/generate-quiz?type=' + encodeURIComponent(t));
+      const data = await res.json();
+      if (data.success && data.prompt) value = data.prompt;
+    } catch (e) { console.warn('[super] default prompt fetch:', e.message); }
+  }
+  ta.value = value || '';
   ta.oninput = () => {
     _promptsDirty = true;
     document.getElementById('promptsSaveBtn').style.display = '';
