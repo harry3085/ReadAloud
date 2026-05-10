@@ -1074,7 +1074,11 @@ window.mcqViewPreviousResult = async (testId, testName) => {
     }
     const test = { id: testId, ...testSnap.data() };
     const comp = compSnap.data();
-    const questions = test.questions || [];
+    // 응시 시 매번 q.choices 셔플됨 → comp.answers idx 와 매칭되는 셔플 순서는 comp.questions 에 박힘.
+    // test.questions (원본) 사용 시 셔플 mismatch 로 정답이 오답으로 표시되는 버그 fix.
+    const questions = (Array.isArray(comp.questions) && comp.questions.length)
+      ? comp.questions
+      : (test.questions || []);
     _mcqTakeState = { test, questions, currentIdx: 0, answers: comp.answers || [] };
 
     _screenSnapshotOnce('readingMcq');
