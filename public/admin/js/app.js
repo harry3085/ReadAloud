@@ -4487,8 +4487,10 @@ window.showScoreDetail = async(scoreId, testId) => {
 window.tpOpenStudentScoreDetail = async (testId, uid) => {
   if (!testId || !uid) return;
   try {
+    // academyId 필터 필수 — Rules 가 같은 학원만 허용 (없으면 권한 거부)
     const snap = await getDocs(query(
       collection(db, 'scores'),
+      where('academyId', '==', window.MY_ACADEMY_ID),
       where('testId', '==', testId),
       where('uid', '==', uid)
     ));
