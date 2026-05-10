@@ -7,6 +7,7 @@
 // 인증: idToken 검증 + 학원 AI 월 쿼터 체크 (Phase 3)
 
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
+const { postProcessMCQ } = require('./_lib/quiz-post-process');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
@@ -118,12 +119,24 @@ RULES:
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
-  mcq_grammar: `You are an English grammar quiz generator for Korean middle/high school students.
+  mcq_grammar: `You generate English grammar MCQs for Korean middle/high school students.
+Use the passage ONLY to detect grammar patterns and difficulty level.
+Output: valid JSON only. No markdown, no prose.
 
-Your task is to create 4-choice multiple-choice GRAMMAR questions inspired by the given English passages.
+==========================================
+CORE RULES
+==========================================
+1. NEW CONTENT: Do NOT reuse passage sentences/names/specific vocabulary. Construct fresh test sentences using everyday topics (school, family, food, weather, hobbies, pets). The passage is your reference for which grammar patterns and difficulty level to target — NOT a source for verbatim sentences.
 
-RULES:
-1. Questions should test grammar comprehension drawn from grammar patterns in the passage:
+2. SHORT (mobile-friendly): question ≤12 words. Each choice ≤5 words. questionKo ≤30자. explanation ≤60자.
+
+3. RANDOM ANSWER POSITION: Spread correct answers evenly across positions 1–4 (~25% each). NEVER default to position 1. (Server post-processing will also shuffle as a safety net.)
+
+4. ONE GRAMMAR POINT PER QUESTION: 4 choices, exactly 1 correct, distractors plausible with clear grammatical errors, similar length/structure.
+
+5. AVOID pure vocabulary or reading comprehension (those are separate quiz types).
+
+6. Grammar topics to test:
    - Verb tenses (past/present/future, perfect, progressive)
    - Subject-verb agreement
    - Articles (a/an/the), prepositions, pronouns, conjunctions
@@ -131,30 +144,47 @@ RULES:
    - Relative clauses, conditionals, passive voice
    - Comparatives/superlatives, gerunds/infinitives
    - Word forms, parts of speech
-   AVOID pure vocabulary or reading comprehension questions (those are separate quiz types).
 
-2. The PASSAGE is your reference for which grammar patterns to test. Pick patterns that actually appear in the passage. You may construct test sentences that demonstrate the same pattern (do not need to be verbatim from the passage).
+==========================================
+QUESTIONKO FORMAT (CRITICAL)
+==========================================
+Type A — Context-dependent grammar (modals, articles, tenses without time markers, ambiguous pronouns):
+→ questionKo MUST include Korean translation showing intended meaning.
+  Format: "[한글 번역]. 빈칸에 알맞은 것을 고르시오."
+  Example: "그는 매우 빠를 것이다. 빈칸에 알맞은 것을 고르시오." (for "He ___ be very fast." with answer must)
 
-3. For each question:
-   - Write the question stem in English (clear, focused on ONE grammar point)
-   - Provide a Korean translation/instruction (questionKo) explaining what to choose
-   - Create exactly 4 answer choices in English
-   - Exactly ONE choice must be grammatically correct
-   - Wrong choices (distractors) should be plausible but contain a clear grammatical error
-   - Wrong choices should be similar in length/structure to the correct answer
-   - Provide a brief Korean explanation (explanation) of the grammar rule
+Type B — Context-independent grammar (subject-verb agreement, comparatives, passive, relative clauses, gerund/infinitive, word forms):
+→ questionKo is a short instruction only.
+  Example: "빈칸에 알맞은 동사 형태를 고르시오."
 
-4. Question stem patterns (vary across questions):
-   - Fill-in-the-blank: "She ___ to school every day." (correct: goes)
-   - Choose the correct: "Which sentence is grammatically correct?"
-   - Identify the error: "Which option contains a grammatical error?"
-   - Best transformation: "Which of the following correctly transforms the sentence into passive voice?"
+==========================================
+a / an RULE (AI 가 자주 실수하는 영역)
+==========================================
+"an" goes before VOWEL SOUNDS, not vowel letters.
+- Words starting with a, e, i, o → "an" (an apple, an artificial, an egg, an honest)
+- "u" with [yoo] sound → "a" (a university, a uniform, a useful tool)
+- "u" with [uh/oo] sound → "an" (an umbrella, an uncle)
+- Silent "h" → "an" (an hour, an honor, an heir)
+- Pronounced "h" → "a" (a house, a hat)
+⚠️ NEVER answer "a" before: artificial, athletic, academic, animal, apple, egg, hour, honest, honor.
+⚠️ NEVER answer "an" before: university, uniform, useful, unique, year, young, one, once.
 
-5. Difficulty:
-   - Include a mix of easy / medium / hard when possible.
-   - Exact distribution is NOT required.
+==========================================
+QUESTION STEM PATTERNS (vary across questions)
+==========================================
+- Fill-in-the-blank: "She ___ to school every day." (correct: goes)
+- Choose the correct: "Which sentence is grammatically correct?"
+- Identify the error: "Which option contains a grammatical error?"
+- Best transformation: "Which correctly transforms to passive voice?"
 
-6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+==========================================
+DIFFICULTY
+==========================================
+Include a mix of easy / medium / hard when possible. Exact distribution NOT required.
+
+==========================================
+OUTPUT FORMAT
+==========================================
 {
   "questions": [
     {
@@ -167,7 +197,7 @@ RULES:
         { "text": "going", "isAnswer": false },
         { "text": "gone", "isAnswer": false }
       ],
-      "explanation": "주어 She (3인칭 단수) + 현재시제 → 동사에 -s/-es 추가",
+      "explanation": "주어 She (3인칭 단수) + 현재시제 → -s/-es 추가",
       "sourcePageId": "the id you were given",
       "sourcePageTitle": "the title you were given",
       "difficulty": "easy"
@@ -707,6 +737,14 @@ module.exports = async function handler(req, res) {
     // 목표 초과는 잘라냄
     if (validated.length > targetCount) validated = validated.slice(0, targetCount);
 
+    // mcq 후처리 — a/an 자동 보정 + 선택지 셔플 (위치 편향 제거)
+    let autoFixedCount = 0;
+    if (quizType === 'mcq') {
+      const post = postProcessMCQ(validated);
+      validated = post.questions;
+      autoFixedCount = post.autoFixedCount;
+    }
+
     return res.status(200).json({
       success: true,
       type: quizType,
@@ -714,6 +752,7 @@ module.exports = async function handler(req, res) {
       requestedCount: targetCount,
       returnedCount: validated.length,
       retried,
+      autoFixedCount,
       questions: validated,
       usage,
       retryUsage,

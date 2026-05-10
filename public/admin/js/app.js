@@ -8838,7 +8838,8 @@ async function _qgCallMcq(opts) {
 
     _qgGenerated = data.questions || [];
     _qgExcluded.clear();
-    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제</span>`;
+    const fixNote = data.autoFixedCount > 0 ? ` · 🔧 ${data.autoFixedCount}건 자동 보정 (a/an)` : '';
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문제${fixNote}</span>`;
 
     // 세트명 default 에 '문법' suffix 추가
     if (subType === 'grammar') {
