@@ -8838,7 +8838,8 @@ async function _qgCallMcq(opts) {
 
     // 세트명 default 에 '문법' suffix 추가
     if (subType === 'grammar') {
-      data.defaultName = (data.defaultName || _qgBuildSetDefaultName('객관식')) + ' · 문법';
+      // 본문이해 모드와 동일 base 이름 + ' · 문법' suffix 만 (유형 컬럼에 객관식 표시되니 이름 중복 X)
+      data.defaultName = (data.defaultName || _qgBuildDefaultName()) + ' · 문법';
     }
     _qgShowResultModal(data);
   } catch(e) {
