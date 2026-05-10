@@ -4126,8 +4126,8 @@ function renderScoreReportRows(){
       <td>${esc(s.group)||'-'}</td>
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
       <td>${_unifiedTypeBadge(s.mode)}</td>
-      <td style="font-size:12px;max-width:100px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
-      <td style="font-size:12px;max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}</td>
+      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
+      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
       <td class="td-sub">${s._dateTime||s.date||''}</td>

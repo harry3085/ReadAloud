@@ -598,7 +598,19 @@
         <input type="text" id="scoreSearch" placeholder="🔍 이름 검색..." onkeyup="searchScoreReport()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
       </div>
       <div class="tbl-wrap">
-        <table>
+        <table style="table-layout:fixed;width:100%;">
+          <colgroup>
+            <col style="width:36px;">
+            <col style="width:60px;">
+            <col style="width:70px;">
+            <col style="width:60px;">
+            <col style="width:130px;">
+            <col>
+            <col style="width:56px;">
+            <col style="width:50px;">
+            <col style="width:76px;">
+            <col style="width:56px;">
+          </colgroup>
           <thead><tr>
             <th>No</th>
             <th class="sortable" onclick="sortScoreReport('group')">반 <span id="srSort-group"></span></th>
