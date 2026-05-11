@@ -317,7 +317,7 @@ module.exports = async (req, res) => {
         ],
       }],
       generationConfig: {
-        temperature: 0.5,  // 0.1 → 0.5 — 학생별 audio 차이를 점수에 반영하도록 결정성 ↓
+        temperature: 0.7,  // 0.5 → 0.7 — 78점 디폴트 패턴 잔존 → 학생별 응답 다양성 더 강화
         topP: 0.95,
         maxOutputTokens: 3000,
         responseMimeType: 'application/json',
