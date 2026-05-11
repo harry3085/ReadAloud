@@ -12306,7 +12306,7 @@ function _tpBuildPrintHtml(questions, meta) {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
           ${(testId && window._ssQrCache && window._ssQrCache[testId])
-            ? `<img src="${window._ssQrCache[testId]}" alt="" aria-label="ScoreSnap" title="ScoreSnap: ${esc(testId)}" style="width:46px;height:46px;object-fit:contain;background:white;border:1px solid #ddd;border-radius:4px;padding:2px;">`
+            ? `<img src="${window._ssQrCache[testId]}" alt="" aria-label="ScoreSnap" title="ScoreSnap: ${esc(testId)}" style="width:80px;height:80px;object-fit:contain;background:white;border:1px solid #ddd;border-radius:4px;padding:3px;">`
             : ''}
           <div style="font-size:16px;text-align:right;line-height:1.8;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
             이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>

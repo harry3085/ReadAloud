@@ -21,7 +21,10 @@
   }
 
   // ─── T1. QR 코드 생성 (qrcode-generator) ───
-  window._ssQrCache = window._ssQrCache || {};
+  // 캐시 버전 — 모듈 크기·에러보정 변경 시 bump 해서 옛 데이터URL 무효화
+  const _SS_QR_CACHE_KEY = '_ssQrCache_v2';
+  window[_SS_QR_CACHE_KEY] = window[_SS_QR_CACHE_KEY] || {};
+  window._ssQrCache = window[_SS_QR_CACHE_KEY];
   let _ssQrLibLoading = null;
 
   function _ssEnsureQrLib() {
@@ -43,10 +46,12 @@
     const key = String(testId);
     if (window._ssQrCache[key]) return window._ssQrCache[key];
     await _ssEnsureQrLib();
-    const qr = window.qrcode(0, 'M');
+    // 에러보정 'L' (7%) — 모듈 수 줄임 → 같은 픽셀 크기에서 모듈 더 큼 = 카메라 인식 ↑
+    const qr = window.qrcode(0, 'L');
     qr.addData(key);
     qr.make();
-    const dataUrl = qr.createDataURL(4, 0);
+    // moduleSize=8 (이전 4), margin=2 (조용 영역) → 약 1.8배 큰 PNG
+    const dataUrl = qr.createDataURL(8, 2);
     window._ssQrCache[key] = dataUrl;
     return dataUrl;
   };
@@ -173,26 +178,44 @@
   }
 
   // ── 카메라 시작 + QR 스캔 루프 ──
+  // 우선순위:
+  //   1) BarcodeDetector (브라우저 네이티브, OS 디텍터 사용 — 모바일 시스템 카메라 수준 인식)
+  //      · iOS 17+ Safari / Android Chrome 90+ / 데스크 Chrome 88+
+  //   2) jsQR (CDN 폴백, 인식률 낮지만 어디서나 동작)
   async function _startCameraScan() {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('이 브라우저는 카메라 미지원');
     }
     const status = document.getElementById('ssCamStatus');
     const setStatus = (html) => { if (status) status.innerHTML = html; };
-    setStatus(`<span style="color:#bbb;">📚 jsQR 라이브러리 로드 중…</span>`);
-    try {
-      await _ensureJsQR();
-    } catch (e) {
-      setStatus(`<span style="color:#ff8a80;">⚠ jsQR 로드 실패 — ${esc(e.message)}</span><br><span style="color:#999;font-size:11px;">[수동 선택] 으로 진행하세요</span>`);
-      throw e;
+
+    // BarcodeDetector 지원 검증
+    let nativeDetector = null;
+    if ('BarcodeDetector' in window) {
+      try {
+        const formats = await window.BarcodeDetector.getSupportedFormats();
+        if (formats.includes('qr_code')) {
+          nativeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        }
+      } catch (_) {}
+    }
+
+    if (!nativeDetector) {
+      setStatus(`<span style="color:#bbb;">📚 jsQR 라이브러리 로드 중…</span>`);
+      try {
+        await _ensureJsQR();
+      } catch (e) {
+        setStatus(`<span style="color:#ff8a80;">⚠ jsQR 로드 실패 — ${esc(e.message)}</span><br><span style="color:#999;font-size:11px;">[수동 선택] 으로 진행하세요</span>`);
+        throw e;
+      }
     }
 
     setStatus(`<span style="color:#bbb;">📷 카메라 시작 중…</span>`);
     _stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280 },
-        height: { ideal: 720 },
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 },
       },
       audio: false,
     });
@@ -207,11 +230,11 @@
     let lastDetectedAt = 0;
     let frameCount = 0;
     let lastStatusAt = 0;
+    const decoderName = nativeDetector ? 'BarcodeDetector' : 'jsQR';
 
-    const tick = () => {
+    const tick = async () => {
       if (!_stream) return;
       if (!video.videoWidth || video.videoWidth === 0) {
-        // 영상 첫 프레임 대기
         const now = Date.now();
         if (now - lastStatusAt > 1500) {
           lastStatusAt = now;
@@ -221,26 +244,36 @@
         return;
       }
       frameCount++;
-      // 다운샘플 — 1280px (작은 QR 도 인식)
-      const maxSide = 1280;
-      const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
-      canvas.width = Math.round(video.videoWidth * scale);
-      canvas.height = Math.round(video.videoHeight * scale);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      // attemptBoth — 인쇄 QR / 반전 QR 양쪽 시도 (인식률 ↑)
-      const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+      let decoded = null;
+      try {
+        if (nativeDetector) {
+          // 네이티브 — video element 를 직접 받음 (canvas 불필요)
+          const barcodes = await nativeDetector.detect(video);
+          if (barcodes.length > 0) decoded = barcodes[0].rawValue || '';
+        } else {
+          // jsQR 폴백
+          const maxSide = 1280;
+          const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+          if (code && code.data) decoded = code.data;
+        }
+      } catch (_) { /* 한 프레임 실패 무시, 다음 프레임 */ }
+
       const now = Date.now();
-      // 상태 갱신 (500ms 마다, 너무 자주 X)
       if (now - lastStatusAt > 500) {
         lastStatusAt = now;
-        setStatus(`<span style="color:#bbb;">📷 스캔 중… ${video.videoWidth}×${video.videoHeight} · ${frameCount}f · ${canvas.width}×${canvas.height}</span><br><span style="color:#999;font-size:11px;">QR 을 화면 중앙에 가까이</span>`);
+        setStatus(`<span style="color:#bbb;">📷 스캔 중… ${decoderName} · ${video.videoWidth}×${video.videoHeight} · ${frameCount}f</span><br><span style="color:#999;font-size:11px;">QR 을 화면 중앙에, 15~25cm 거리</span>`);
       }
-      if (code && code.data) {
-        if (code.data !== lastDetected || now - lastDetectedAt > 1000) {
-          lastDetected = code.data;
+
+      if (decoded) {
+        if (decoded !== lastDetected || now - lastDetectedAt > 1000) {
+          lastDetected = decoded;
           lastDetectedAt = now;
-          _onQrDetected(code.data);
+          _onQrDetected(decoded);
           return;
         }
       }
