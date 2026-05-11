@@ -12099,6 +12099,18 @@ window.tpOpenPrintModal = () => {
   window._tpPrintState = { questions, sourceType, perKey };
   window._tpPrintContext = { questions, bookName, chapName, sourceType };
 
+  // ScoreSnap — 단일 세트 인쇄 시 QR 자동 박힘 (featureFlag ON + 묶음 X)
+  // QR 에 박힐 ID = setId. 채점 시 genQuestionSets/{setId} 에서 questions·정답 가져옴.
+  if (window.MY_FEATURE_FLAGS?.scoreSnap === true && _tpSelectedSets.size === 1) {
+    const ssSetId = Array.from(_tpSelectedSets)[0];
+    window._tpPrintContext.testId = ssSetId;
+    if (typeof window._ssGenerateQR === 'function') {
+      window._ssGenerateQR(ssSetId)
+        .then(() => { if (typeof tpPrintRefreshPreview === 'function') tpPrintRefreshPreview(); })
+        .catch(e => console.warn('[scoresnap] QR 생성 실패:', e.message));
+    }
+  }
+
   // 섞기 버튼 노출 — vocab/mcq = 선지, unscramble = 청크
   setTimeout(() => {
     const btn = document.getElementById('tpBtnShuffleC');
@@ -13401,22 +13413,22 @@ window._brandingSave = async () => {
 // ─── ScoreSnap — Firestore 헬퍼 (T3) ─────────────────────────────
 // scoresnap.js 는 일반 script (module 아님) 이라 Firestore SDK 를 직접 못 씀.
 // 여기서 window 에 노출해 scoresnap.js 가 호출.
-window._ssLoadTest = async function (testId) {
-  if (!testId || typeof testId !== 'string') throw new Error('잘못된 시험 코드');
-  const snap = await getDoc(doc(db, 'genTests', testId));
-  if (!snap.exists()) throw new Error('시험을 찾을 수 없어요');
+// ScoreSnap 채점 — QR 에 박힌 ID = setId (genQuestionSets).
+// 문제세트 단계에서 인쇄·채점 (시험 배정 안 거침).
+window._ssLoadTest = async function (setId) {
+  if (!setId || typeof setId !== 'string') throw new Error('잘못된 세트 ID');
+  const snap = await getDoc(doc(db, 'genQuestionSets', setId));
+  if (!snap.exists()) throw new Error('문제세트를 찾을 수 없어요');
   const data = snap.data();
-  if (data.academyId !== window.MY_ACADEMY_ID) throw new Error('다른 학원의 시험이에요');
+  if (data.academyId !== window.MY_ACADEMY_ID) throw new Error('다른 학원의 세트예요');
   if (!Array.isArray(data.questions) || data.questions.length === 0) {
-    throw new Error('이 시험에는 문제가 비어있어요');
+    throw new Error('이 세트에는 문제가 비어있어요');
   }
   return {
-    testId,
-    title: data.title || data.name || '시험',
+    testId: setId,
+    title: data.name || '문제 세트',
     questions: data.questions,
-    testMode: data.testMode || data.mode || '',
-    date: data.date || '',
-    targets: data.targets || [],
+    sourceType: data.sourceType || '',
   };
 };
 
@@ -13426,11 +13438,12 @@ window._ssGetIdToken = async function () {
   return await currentUser.getIdToken();
 };
 
-// 최근 N일 시험 목록 (수동 선택 폴백)
+
+// 최근 N일 문제세트 목록 (수동 선택 폴백)
 window._ssLoadRecentTests = async function (days = 30) {
   const startMs = Date.now() - days * 24 * 3600 * 1000;
   const q = query(
-    collection(db, 'genTests'),
+    collection(db, 'genQuestionSets'),
     where('academyId', '==', window.MY_ACADEMY_ID),
     orderBy('createdAt', 'desc'),
     limit(100)

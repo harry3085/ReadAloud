@@ -126,21 +126,24 @@ module.exports = async (req, res) => {
   if (q.error) return res.status(q.status || 401).json({ error: q.error });
   if (!q.academyId) return res.status(403).json({ error: '학원 식별 실패' });
 
-  // ── 2. 시험 정보 로드 + academyId 검증 ──
-  let testDoc;
+  // ── 2. 문제세트 로드 + academyId 검증 ──
+  // testId 인자 이름은 호환성 유지하되, 실제로는 setId (genQuestionSets doc id).
+  // 인쇄 모달이 문제세트 기반이라 QR 에 박히는 ID 도 setId.
+  const setId = testId;
+  let setDoc;
   try {
-    testDoc = await db.doc('genTests/' + testId).get();
+    setDoc = await db.doc('genQuestionSets/' + setId).get();
   } catch (e) {
-    return res.status(500).json({ error: '시험 조회 실패: ' + e.message });
+    return res.status(500).json({ error: '문제세트 조회 실패: ' + e.message });
   }
-  if (!testDoc.exists) return res.status(404).json({ error: '시험을 찾을 수 없어요' });
-  const testData = testDoc.data();
+  if (!setDoc.exists) return res.status(404).json({ error: '문제세트를 찾을 수 없어요' });
+  const testData = setDoc.data();
   if (testData.academyId !== q.academyId) {
-    return res.status(403).json({ error: '다른 학원의 시험이에요' });
+    return res.status(403).json({ error: '다른 학원의 세트예요' });
   }
   const questions = Array.isArray(testData.questions) ? testData.questions : [];
   if (questions.length === 0) {
-    return res.status(400).json({ error: '시험에 문제가 없어요' });
+    return res.status(400).json({ error: '세트에 문제가 없어요' });
   }
 
   // ── 3. 프롬프트 생성 ──
@@ -207,7 +210,7 @@ module.exports = async (req, res) => {
   return res.status(200).json({
     success: true,
     model: usedModel,
-    testTitle: testData.title || testData.name || '시험',
+    testTitle: testData.name || '문제 세트',
     ...processed,
     tokenUsage: usage,
   });
