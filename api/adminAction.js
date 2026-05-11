@@ -88,10 +88,9 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
 
   // check-recording self-call (caller 학원 한도 차감)
-  // VERCEL_URL: 배포된 deployment 의 도메인 (개발 환경에선 비어있을 수 있음)
-  const host = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : (process.env.SELF_HOST || 'https://raloud.vercel.app');
+  // public alias (raloud.vercel.app) 사용 — VERCEL_URL (deployment-specific) 는
+  // Vercel Authentication 보호로 HTML 응답 받을 수 있어 회피
+  const host = process.env.SELF_HOST || 'https://raloud.vercel.app';
   let data;
   try {
     const cr = await fetch(`${host}/api/check-recording`, {
@@ -105,6 +104,16 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
         evaluationSeconds: evalSec,
       }),
     });
+    // HTML 응답 방어 (Vercel Auth 보호 등) — JSON 파싱 전 Content-Type 검사
+    const ct = cr.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const text = await cr.text().catch(() => '');
+      console.error('[adminAction] non-JSON response from check-recording:', cr.status, text.slice(0, 200));
+      return {
+        status: 502,
+        body: { success: false, error: `평가 서버 응답 이상 (${cr.status}). 잠시 후 다시 시도해주세요.` },
+      };
+    }
     data = await cr.json();
     if (!cr.ok || !data.success) {
       return {
