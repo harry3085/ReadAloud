@@ -4007,16 +4007,19 @@ function _vqNormStr(s) {
     .normalize('NFKC')
     .replace(/[   ]/g, ' ')        // NBSP / 좁은 공백 → 일반 공백
     .replace(/[​‌‍﻿]/g, '')   // zero-width 제거
+    .replace(/[^\p{L}\p{N}\s]/gu, '')             // 영숫자·한글·공백만 — 특수문자(~>()등) 제거
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
 }
-// per-character 비교용 (길이 유지)
+// per-character 비교용 (길이 유지). 특수문자는 빈 문자열 반환 → 박스 비교에서 무시 처리.
 function _vqNormCh(ch) {
   if (!ch) return '';
   const cp = ch.codePointAt(0);
   if (cp === 0x00A0 || cp === 0x2009 || cp === 0x202F) return ' ';
   if (cp === 0x200B || cp === 0x200C || cp === 0x200D || cp === 0xFEFF) return '';
+  // 영숫자·한글·공백 외 (~ > ( ) , . 등) → 빈 문자열 (채점 무시)
+  if (!/[\p{L}\p{N}\s]/u.test(ch)) return '';
   return ch.toLowerCase();
 }
 
@@ -4079,12 +4082,16 @@ function _vqRenderSpellFeedback(ans, isCorrect) {
   boxes.innerHTML = Array.from({length:len},(_,i)=>{
     const userCh = val[i] || '';
     const correctCh = target[i] || '';
-    const match = !!userCh && _vqNormCh(userCh) === _vqNormCh(correctCh);
+    const correctNorm = _vqNormCh(correctCh);
+    const userNorm = _vqNormCh(userCh);
+    // 정답이 특수문자 (~>()등) 라 정규화 시 빈 문자열 → 학생 입력 무관 정답 처리
+    const isOptional = correctCh !== '' && correctNorm === '';
+    const match = isOptional || (!!userCh && userNorm === correctNorm);
     const bg = match ? '#d1fae5' : (userCh ? '#fee2e2' : '#fef3c7');
     const color = match ? '#047857' : (userCh ? '#b91c1c' : '#92400e');
     const border = match ? '#10b981' : (userCh ? '#ef4444' : '#f59e0b');
-    // mismatch 박스: 학생이 실제 친 글자 표시 (빈 입력이면 '_' + 정답 작은 회색)
-    const mainCh = match ? userCh : (userCh || '_');
+    // 표시: optional 박스 = 정답 char (~ 등) / match = 학생 입력 / mismatch = 학생 친 글자 + 정답 작은 회색
+    const mainCh = isOptional ? correctCh : (match ? userCh : (userCh || '_'));
     const subCh = (!match && userCh) ? correctCh : '';
     const subHtml = subCh ? `<div style="font-size:9px;line-height:1;margin-top:1px;color:#6b7280;font-weight:600;">→${esc(subCh)}</div>` : '';
     return `<div class="spell-box" style="width:${boxW}px;height:${boxW+18}px;font-size:${fontSize}px;border-radius:6px;background:${bg};border:2px solid ${border};color:${color};display:flex;flex-direction:column;align-items:center;justify-content:center;">${esc(mainCh)}${subHtml}</div>`;
@@ -4775,7 +4782,9 @@ function _vqBindSpellInput(){
     const q = s.questions[s.currentIdx];
     const target = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
     let v = this.value;
-    if (ans.direction === 'ko2en') v = v.toLowerCase().replace(/[^a-z\s'-]/g,'');
+    // 영단어 입력 — 영숫자·공백·자주 쓰이는 특수문자 (단어장 형식 ~ > ( ) , .) 만 허용.
+    // 대소문자는 학생 입력 그대로 (채점·박스 비교 시 _vqNormCh 가 lowercase 처리).
+    if (ans.direction === 'ko2en') v = v.replace(/[^a-zA-Z0-9\s'\-~>()\[\]{}.,]/g, '');
     if (v.length > target.length) v = v.slice(0, target.length);
     this.value = v;
     ans.input = v;
