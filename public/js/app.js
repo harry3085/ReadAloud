@@ -3274,9 +3274,22 @@ function _rv2BuildRoundMessage(round, idx, fullText) {
 }
 
 // 인포 모달 — 녹음 화면 ⓘ 클릭 시 용어 설명
+// 학생앱은 학원장 앱의 동적 showModal 패턴이 없어 자체 overlay 생성/제거
+window.closeRecordingTermsModal = () => {
+  const el = document.getElementById('recTermsOverlay');
+  if (el) el.remove();
+};
 window.showRecordingTermsModal = () => {
-  const html = `
-    <div style="padding:18px 22px;max-width:520px;">
+  // 이미 떠 있으면 다시 안 띄움
+  if (document.getElementById('recTermsOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'recTermsOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) window.closeRecordingTermsModal();
+  });
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:14px;width:min(520px,94vw);max-height:88vh;overflow-y:auto;padding:18px 22px;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
       <div style="font-size:18px;font-weight:800;margin-bottom:14px;color:var(--text);">📖 용어 안내</div>
 
       <div style="margin-bottom:18px;">
@@ -3306,10 +3319,10 @@ window.showRecordingTermsModal = () => {
       </div>
 
       <div style="margin-top:16px;text-align:right;">
-        <button onclick="closeModal()" style="padding:10px 18px;background:var(--c-brand);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">확인</button>
+        <button onclick="closeRecordingTermsModal()" style="padding:10px 18px;background:var(--c-brand);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">확인</button>
       </div>
     </div>`;
-  showModal(html);
+  document.body.appendChild(overlay);
 };
 
 // 결과 화면 — "제출 완료" 단일 헤드라인 + 회차별 audio·성실도 메시지 + AI 피드백
