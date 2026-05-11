@@ -3150,3 +3150,255 @@ commit `6a538cb` 후 stale 두 버그:
 - ✅ 시험관리 운영 개선 (가짜 메타 제거, 옵션 요약, 본문 textarea flex)
 - ✅ 라벨 통일 ('교재이해'/'내용이해' → '본문이해', 콤마 → 가운데점, 컴팩트)
 - ✅ 세트 default 이름 정리 (유형 suffix 제거 — 컬럼 표시 중복 회피)
+
+---
+
+## 2026-05-12: 녹음숙제 시스템 대규모 정비 — 4.5MB 한도 + UX 전환 + AI 피드백 확장 + 점수 비공개
+
+당일 SW v404 → v437 (~40 commit). 녹음숙제 시스템의 비용·UX·정책·평가를 종합 정비.
+
+### 1) eval 실패 원인 진단 + Storage URL 패턴 fix
+오늘 default 학원 녹음숙제 11건 중 5건 eval 단계 실패 — 학원장 보고.
+
+**진단** (`scripts/diag/analyze-recording-failures-today.js` 신규):
+- 5건 모두 `latestErrorStage='eval'`
+- 에러 메시지 `"Unexpected token 'R', \"Request En\"..."` → Vercel **"Request Entity Too Large"** HTML 응답을 JSON parse 시도해서 깨짐
+- 결정적 원인: **Vercel serverless 4.5MB body 한도**. iOS Safari AAC 128kbps × 5분 = base64 후 ~6MB → 거부
+
+**Fix — audioUrl 패턴 도입** (commit `55c065b`):
+- `api/check-recording.js`: audioUrl 받기 분기 추가 — server-side `fetch(audioUrl)` → buffer → base64 → Gemini inlineData
+- `public/js/app.js _rv2Submit`: base64 변환·전송 제거 → audioUrl 만 전송 (학생 폰 메모리·CPU 부담 ↓)
+- `_rv2BlobToBase64` 헬퍼 제거 (사용처 0)
+- 옛 audioBase64 분기 유지 (점진 호환)
+- 효과: Vercel body 한도 무관, 모든 폰·녹음 길이 일관 작동
+
+### 2) 학원장 [🔁 재평가] 시스템 — adminAction dispatcher 신규
+**신규 `api/adminAction.js`** — 학원장 전용 dispatcher (Vercel 함수 수 우회 패턴, superAdmin.js 와 동일):
+- `action: 'reEvaluateRecording'` — userCompleted.recordings[last].audioUrl 으로 check-recording self-call
+- 권한 체크: `caller.role === 'academy_admin' || 'admin' || 'super_admin'` (시스템 표준 'academy_admin', 'admin' 폴백)
+- 학원 격리 검증 + 학생 users fetch (group·name 누락 방지)
+- self-call URL: **`raloud.vercel.app` public alias 사용** (VERCEL_URL deployment-specific URL 은 Vercel Auth 보호로 HTML 반환)
+- HTML 응답 방어: Content-Type 검사 + 친화적 메시지
+- userCompleted + scores admin SDK 갱신 (Rules `uid==request.auth.uid` 우회)
+
+**학원장 카드 [🔁 재평가] 버튼** (`public/admin/js/app.js`):
+- 미통과 + recordings 있는 케이스, 에러 + recordings 있는 케이스, 통과 케이스 (Phase B 후) — 모든 제출 카드에 노출
+- `tpReEvaluateRecording` 함수 신규
+
+**catch 블록 보강** (`_rv2Submit`): 이미 업로드된 recordings 를 catch 블록에서도 박음 → 학원장 재평가 가능
+
+**1회용 복구 스크립트** (`scripts/admin/recover-recording-errors.js`): Storage list 로 옛 에러 (recordings 없음) 케이스 복구. 오늘 7건 일괄 처리 (모두 통과 85~95점, 1명 미통과 78점 — 정하연).
+
+### 3) Phase A — 학생 점수 비공개 + "제출 완료" UX 정책
+사용자 요구: "녹음숙제는 점수평가의 객관성·정확성이 아직은 부족 — 통과점수 개념 없애고 학생에게는 '제출 완료'만"
+
+**학생 결과 화면** (`_rv2RenderResult`):
+- 통과/불통 헤드라인 폐기 → **"📤 제출 완료"** 단일
+- 회차별 audio + 성실도·속도 메시지 (`_rv2BuildRoundMessage`)
+- AI 피드백 위 안내: "마지막 회차 (충분히 연습된 녹음) 기준"
+- 30일 보관 안내 박스
+- [마지막 녹음 다시] 버튼 제거
+- 호출부 3곳 fullText 전달 (속도 계산용)
+
+**회차별 메시지 (`_rv2BuildRoundMessage`)**:
+- 우선순위: 성실도 < 40% → 속도 (< 0.8 wps 느림 / > 3.5 wps 빠름) → 격려
+- 반환에 `vaPct` (말소리 비율) + `wpm` (분당 단어) 포함
+
+### 4) Phase A+ — 자동 중간 저장 (쉬었다 이어서 진행)
+사용자 요구: "2회 녹음 시험 중 1회만 하고 다음에 이어서 — 로그아웃해도 유지"
+
+- **`_rv2UploadRound`** (신규): 회차 즉시 Storage 업로드 + `userCompleted.inProgress` 갱신
+- **`rv2SaveRound`**: 회차 push 후 즉시 upload + 💾 토스트 (마지막 회차는 _rv2Submit 흐름)
+- **`_raStartV2`** async + inProgress 복원 (savedRounds 채움, currentRound 설정)
+  - 모든 회차 저장된 edge case 진입 시 자동 _rv2Submit
+- **`_rv2Submit`**: 이미 업로드된 회차 skip + `inProgress: deleteField()`
+- **`rv2Quit`**: "자동 저장됨, 이어서 진행 가능" 친근한 안내
+- **`startRecAi` v2 분기**: `completedAt`/`latestFailedAt` 있을 때만 결과 보기 우회 (inProgress 만이면 진행)
+- **`loadRecAiList` 시험 카드**: "▶ 이어서 N/M" 파란 배지 + 화살표
+- **`deleteField` import** 추가
+
+### 5) Phase A2 — 회차 메시지 즉시 + 영단어 클릭 발음 + 음역 멘트 제거
+- **`_rv2.lastRoundFeedback`** 필드 + `_rv2Render` 상단 컬러 박스 (새 회차 시작해도 유지 — 다음 녹음 참고)
+- **마지막 회차 카드 아래 항상 "ℹ️ AI 피드백은 마지막 회차 기준" 안내** (회차 카드 그리드 하단, 모든 회차 화면에서)
+- **결과 화면 보관 안내 단순화**: "30일 동안 다시 들을 수 있어요" 만 (60일 자동 삭제 학생에게 안 알림)
+- **"X처럼 들렸어요" 음역 멘트 제거**:
+  - 클라 `_cleanIssue` 정규식 (즉시 효과)
+  - 프롬프트 BAD/GOOD 예시 강화 (다음 평가부터)
+- **영단어 클릭 → 발음 재생** (Web Speech API en-US, rate 0.85)
+  - `_playEnglishWord` + `_renderInlineWithTTS` (정규식 wrap)
+  - 적용: 생략된 단어 칩 / 발음 개선 word 큰 버튼 / issue·tip 안 모든 영단어 점선 underline
+- 학생앱 자체 overlay 패턴 (showModal 동적 함수 없음 — 학원장 앱과 다름)
+
+### 6) Phase A3 — "말소리 비율" 통일 + WPM 노출 + 40% 차단 폐기
+- **용어 통일**: "성실도" → **"말소리 비율"** (학생·학원장 양쪽)
+- **회차 라벨 한 줄**: `1회차 · 45초 · 말소리 72% · 속도 152 WPM` (결과 화면 + 응시 중 카드)
+- **녹음 화면 ⓘ 인포 뱃지** (헤더 우측 + 결과 화면 회차 헤더 옆):
+  - `showRecordingTermsModal` 신규 (자체 overlay)
+  - 말소리 비율 정의·임계값 + WPM 정의·영어 평균 읽기 속도 안내
+- **40% 미만 차단 폐기**: pre-check 의 VAD 검사 제거 (음악·단조로움 검사는 유지)
+- **시험 배정 모달 "성실도 임계값" 옵션 폐기** + `accuracyThreshold` 안 박음
+
+### 7) Phase B — passScore (통과점수) 완전 폐기
+- **`_rv2Submit`**: passed 분기 → 단일 흐름. `completedAt` 박음. passed:true 일관
+- **scores 컬렉션**: `passed: true` 일관, `correct=1/wrong=0`
+- **학원장 카드**: "✅ 통과" / "⚠ 미통과" → **"📤 제출됨 · N점"** 단일 (파란색 #0369a1)
+- **`isPassed`/`isFailedWithRecs` 분기 → `isSubmittedWithRecs` 단일**
+- **옛 미통과 데이터** (latestFailedScore + recs 없음): "제출됨" 라벨로 통일
+- **시험 배정 모달**: 녹음숙제 통과점수 input → **"제출 완료 (통과/불통 X)" 안내 박스**
+- **tpPublish 저장**: 녹음숙제는 `passScore` 필드 안 박음
+- **시험관리 진행 현황**: "통과점수 N점" → "📤 제출 완료 방식 (통과/불통 X)"
+- **`_computeTestStats`**: 녹음숙제 응시 = 제출 카운트 (passedCount = attemptedCount)
+- **`showScoreDetail`** 녹음숙제 분기: 통과/불통 검사 우회 (recordings 있으면 무조건 _adminBuildDetail)
+- **`_adminRecBuildDetail`**: Phase B/C 반영 (통과/불통 배경색 폐기, 카테고리 + positives 추가)
+
+### 8) Phase C — AI 피드백 확장 (잘한 점·억양·강세·카테고리)
+사용자 요구: "좀더 다양한 피드백" + "카테고리별 점수는 학원장만, 정성 코멘트는 둘 다"
+
+**신규 AI 응답 항목**:
+- `feedback.positives`: 잘한 점 (최대 2개, 격려)
+- `feedback.intonation`: 억양 한 줄 코멘트
+- `feedback.stress`: 강세 한 줄 코멘트
+- `categoryScores`: { pronunciation, intonation, pace, accuracy } 각 0~100
+- `categoryComments`: 같은 4종 한 줄 코멘트
+
+**responseSchema 강화**:
+- `categoryScores.required = [pronunciation, intonation, pace, accuracy]` (4종 모두 강제)
+- `categoryComments.required` 동일
+- 최상위 required 에 `categoryScores`/`categoryComments` 추가
+- `maxOutputTokens 1000 → 3000` (truncation 방지)
+- `_salvageTruncated`: 잘려도 마지막 정상 닫힘까지 살림 + 부족한 brace/bracket 자동 채움
+
+**프롬프트 강화**:
+- 카테고리별 의미 명시 (pronunciation/intonation/pace/accuracy)
+- 한 줄 60자 이내 CRITICAL (토큰 절약)
+- "4 카테고리 모두 채워야 함" CRITICAL
+
+**학생 결과 화면**:
+- 📊 항목별 코멘트 4종 (점수 X) — 학습 가이드
+- 👍 잘한 점 (positives)
+
+**학원장 화면** (`tpToggleTestProgress` details + `_adminRecBuildDetail`):
+- 📊 항목별 **점수+코멘트** (학원장만 점수)
+- 👍 잘한 점
+
+### 9) AI 점수 패턴화 진단 + temperature 조정
+**진단**: 학생별 audio 진짜 다른데 score 78 / 카테고리 75-70-85-80 통일 — AI 안전 디폴트 패턴
+- `compare-reeval-scores.js` / `compare-audio-urls.js` / `test-length-vs-scores.js` 진단 도구
+- 본문 길이 가설 검증 → 짧은 본문도 78점 통일 → 본문 길이 무관
+- 결정적 진단: audio 다름, missedWords/note 다름, **score 와 4 카테고리만 디폴트**
+
+**조정 (점진 상향)**:
+- temperature **0.1 → 0.5** (Phase C 적용 직후)
+- temperature **0.5 → 0.7** (78점 3개 잔존)
+- temperature **0.7 → 0.9** (피드백 다양성 우선 — 점수보다 표현·지적 다양성)
+- topP 0.9 → 0.95
+- 프롬프트 CRITICAL: "학생별 차이 명확히 반영, 78점 디폴트 회피, 0-100 전체 활용, 한국 학생 영어 = 78점 일반화 패턴 회피"
+
+효과: 동일 시험 4명 점수 분포 88/78/85/78 (이전 78 통일 → 다양화). 그러나 일부 잔존 (Flash 한계).
+
+### 10) showScoreDetail 누락 필드 fix
+재평가 결과 성적 리포트 모달에 반·교재명 누락 보고.
+- 원인: `adminAction.js` scores add 가 학생 group / bookName / unitName 안 박음
+- 수정: users/{uid} fetch → group/name 추출 + t.bookName / unitName 박음
+- 학생앱 _rv2Submit scoresPayload 와 동일 필드 구조
+
+### 11) Phase D — 30일 학생 재생 차단 + 60일 자동 삭제
+**1단계 — 학생앱 코드**:
+- `_rv2IsAudioExpired`: `completedAt`/`latestFailedAt` 기준 30일 초과 판정
+- `viewRecAiResult`: `audioExpired` 계산 → `_rv2RenderResult` 전달
+- `_rv2RenderResult`: audioExpired 면 audio 영역 → **"🔒 녹음 다시 듣기 만료"** 박스
+  - AI 피드백 영역은 계속 표시 (만료 무관)
+- 학원장 화면 영향 없음 (60일까지 audio 접근)
+
+**2단계 — GCS Lifecycle Rule** (`scripts/admin/set-recording-lifecycle.js`):
+- `recordings/genTests/*` 경로 age 60 days delete
+- DRY-RUN/--apply 패턴
+- 학원 무관 일괄 적용 — readaloud-51113.firebasestorage.app 버킷에 적용 완료
+- 매일 GCS 자동 검사 + 삭제
+
+### 12) maxDurationSec 정책 정비
+사용자 요구: "600초 자동 종료, 업로드 가능, 재녹음 X. 학원장 입력 600초 cap. 학생앱에 제한시간 명시"
+
+- **학생앱 자동 종료 타이머**: `q.maxDurationSec` 우선 (Math.min 600 cap). 학원 default 폴백
+- **학생앱 녹음 화면 헤더**: 숙제 내용 옆 **"⏱️ 60~600초"** 안내 배지
+- **자동 종료 토스트**: "제출하거나 다시 녹음하세요" 친화적
+- **학원장 시험 배정 모달**: max 1800 → 600 cap + "최대 600초 (10분)" 안내문
+- **저장 검증**: maxDur > 600 무시
+- pre-check `duration > maxDur + 5` 안전망 그대로 (자동 종료가 600초 안에서 끝남)
+- `_trimAudioForGemini` (wav 변환 → 용량 5~10배 ↑) — 호출 0건 죽은 코드 (그대로 둠)
+
+### 13) Custom Claims 권한 fix
+- `adminAction.js` 초기 코드가 `caller.role === 'admin'` 만 체크
+- 시스템 표준은 **`'academy_admin'`** (createAcademy/createStudent/deleteUser/sendPush 모두 이걸 사용)
+- 수정: `'academy_admin' || 'admin' || 'super_admin'` 다 허용 (안전망 폴백)
+- 진단 도구 `scripts/diag/check-admin-claims.js` (usernameLookup → uid → Claims 확인)
+
+### 14) 진단 도구 신규 (11종)
+- `analyze-recording-failures-today.js` — 일별 실패 분포 (A/B/C 분류)
+- `check-error-recordings.js` — 에러 케이스 recordings 진단
+- `compare-reeval-scores.js` — 재평가 점수 학생 간 비교 (점수 동일 그룹 탐지)
+- `compare-audio-urls.js` — 학생별 audioUrl 비교 (audio 진짜 다른지)
+- `check-test-params.js` — 시험 옵션 (evalSec, passScore, fullText 등)
+- `test-length-vs-scores.js` — 본문 길이 vs 점수 다양성
+- `check-all-eval-seconds.js` — 학원별 evaluationSeconds 분포
+- `check-admin-claims.js` — Custom Claims 진단
+- `recover-recording-errors.js` (admin) — Storage list → 일괄 재평가 (1회용)
+- `set-recording-lifecycle.js` (admin) — GCS Lifecycle Rule 설정
+
+---
+
+## 작업 규칙 추가 (2026-05-12)
+
+신규:
+- **Vercel serverless 4.5MB body 한도** — 큰 파일 (audio/video/이미지) 인라인 base64 전송 금지. **Storage URL 패턴** 사용 — 클라가 Storage 업로드 후 URL 만 전송, 서버가 fetch. 클라 메모리·CPU 부담도 ↓.
+- **adminAction.js self-call URL** — `VERCEL_URL` (deployment-specific) 는 Vercel Authentication 보호로 HTML 응답 가능. **`raloud.vercel.app` public alias 사용**. `SELF_HOST` env 로 override.
+- **HTML 응답 방어** — `cr.headers.get('content-type')` 검사 후 JSON parse. `Unexpected token '<', "<!doctype..."` 같은 깨진 응답 친화적 메시지로 변환.
+- **Custom Claims 표준** — 학원장은 **`'academy_admin'`** (createAcademy 가 박는 값). API 권한 체크 시 `'academy_admin'` 우선, `'admin'` 폴백 허용. `'admin'` 단독 체크 X.
+- **사용자 시도 기준 보수적 카운트** (2026-05-02 작업 규칙 보강) — `incrementUsage` 위치는 quota gate 직후. Gemini 파서 실패해도 시도 카운트.
+- **녹음숙제 정책 — 통과/불통 폐기** — `mode='recording'` 인 scores 는 `passed:true` 일관. `passScore` 시험 doc 에 박지 않음. 학원장 화면도 "📤 제출됨 · N점" 단일 카드. 학생에게는 점수 비공개 ("📤 제출 완료" 만).
+- **녹음숙제 maxDurationSec 600초 cap** — 학원장 입력도 600 이하. 학생앱 자동 종료 타이머가 `q.maxDurationSec` 우선 (Math.min 600 cap). 학생 화면 헤더에 제한시간 명시.
+- **truncated JSON 복구 패턴** (`_salvageTruncated`) — Gemini maxOutputTokens 초과 시 응답 잘림. 마지막 정상 `}`/`]` 위치 찾아 부족한 brace/bracket 채워서 살림. trailing comma 제거.
+- **AI 점수 다양성 — temperature 0.7~0.9** — 평가형 AI 호출 (Gemini check-recording) 은 결정성 (0.1) 보다 다양성 우선. 학생별 응답·표현·지적 단어 다양화 효과. 단점: 같은 학생 재평가 시 점수 ±10~15점 변동 — 학원장 안내.
+- **녹음 audio 보관 정책** — 학생 30일 (UI 차단), GCS 60일 (Storage 자동 삭제). 학원장은 60일까지 접근. AI 피드백·점수는 영구 보존.
+- **GCS Lifecycle Rule** — `bucket.setMetadata({lifecycle:{rule:[...]}})` admin SDK. 매일 GCS 가 자동 검사. 60일 age 기준 객체 삭제. 학원 무관 일괄 적용.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-12)
+- `public/admin/js/app.js`: ~13800줄 (변동 ~+300)
+- `public/js/app.js`: ~5500줄 (변동 ~+500 — Phase A/A+/A2/A3/B/C/D 누적)
+- `api/check-recording.js`: ~430줄 (+~140 — audioUrl 분기·responseSchema 확장·prompt 강화·_salvageTruncated)
+- `api/adminAction.js`: 신규 ~210줄 (학원장 dispatcher)
+- `scripts/admin/`: 신규 2개 (recover-recording-errors / set-recording-lifecycle)
+- `scripts/diag/`: 신규 9개 (오늘 진단 도구)
+- SW 캐시: `kunsori-v437`
+
+## 진행률 (2026-05-12)
+- **녹음숙제 시스템: ~100%** (Phase A/A+/A2/A3/B/C/D 완료, AI 점수 다양화, 4.5MB fix, 권한 fix, 누락 필드 fix)
+- 학원장 [🔁 재평가]: ~100%
+- 보안: ~95% (변동 없음)
+- 멀티테넌시·super_admin·결제: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-12 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **학원장 대시보드 달력 보강** — 생일 카테고리
+3. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **AI 평가 실패율 (SuperAdmin Phase B T9)** — Cloud Function 일일 집계
+5. **AI 점수 정확도 추가 개선** — Gemini Pro 모델 전환 검토 (호출당 10배 비용, 학생별 미세 차이 인식력 ↑)
+6. **wav 변환 죽은 코드 정리** — `_trimAudioForGemini` / `_audioBufferToWav` 제거 (안전 cleanup)
+
+**완료 (이 세션, 2026-05-12)**:
+- ✅ Vercel 4.5MB body 한도 fix (audioUrl 패턴, 모든 폰 안정 작동)
+- ✅ 학원장 [🔁 재평가] 시스템 (adminAction dispatcher + 권한·누락 필드 fix + 일괄 복구 7건)
+- ✅ Phase A — 학생 점수 비공개 + "📤 제출 완료" + 회차별 메시지
+- ✅ Phase A+ — 자동 중간 저장 (이어서 진행, 로그아웃 무관)
+- ✅ Phase A2 — 회차 메시지 즉시 + 영단어 클릭 발음 + 음역 멘트 제거
+- ✅ Phase A3 — "말소리 비율" 통일 + WPM + ⓘ 인포 + 40% 차단 폐기
+- ✅ Phase B — passScore 완전 폐기 ("📤 제출됨 N점" 단일)
+- ✅ Phase C — AI 피드백 확장 (positives·intonation·stress + categoryScores/Comments)
+- ✅ AI 점수 다양화 (temperature 0.1 → 0.9, 프롬프트 강화)
+- ✅ Phase D — 30일 학생 재생 차단 + 60일 GCS 자동 삭제
+- ✅ maxDurationSec 600초 cap + 학생 화면 안내 배지
+- ✅ Custom Claims 표준 (academy_admin) 권한 fix
+- ✅ 진단 도구 11종 신규
