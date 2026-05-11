@@ -11811,6 +11811,18 @@ window._tpVocabFormatChanged = () => {
   }
 };
 
+// Fisher-Yates 셔플 (편향 없음). `sort(() => Math.random() - 0.5)` 는 V8 안정정렬과
+// 충돌해 첫 위치 ~30% 편중 등 비균등 분포 발생 → 객관식 정답 한쪽 치우침 문제 fix.
+function _tpFisherYates(arr) {
+  if (!Array.isArray(arr) || arr.length < 2) return arr;
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 window.tpPublish = async () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled) return;
@@ -11828,12 +11840,12 @@ window.tpPublish = async () => {
   let questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
-  // 출제 문제수 — 입력값이 전체보다 작으면 랜덤 셔플 후 N개만 픽
+  // 출제 문제수 — 입력값이 전체보다 작으면 Fisher-Yates 셔플 후 N개만 픽
   const poolTotal = questions.length;
   const qcRaw = parseInt(document.getElementById('tpQuestionCount')?.value);
   const desiredCount = isFinite(qcRaw) ? Math.max(1, Math.min(poolTotal, qcRaw)) : poolTotal;
   if (desiredCount < poolTotal) {
-    questions = questions.slice().sort(() => Math.random() - 0.5).slice(0, desiredCount);
+    questions = _tpFisherYates(questions.slice()).slice(0, desiredCount);
   }
 
   // 녹음숙제: 시험 배정 모달에서 5개 옵션 override (시험별·학년별 조정)
@@ -12061,7 +12073,7 @@ window.tpOpenPrintModal = () => {
     questions.forEach((q, i) => {
       if (canMcq) {
         const others = questions.filter((_, j) => j !== i);
-        const wrongs = others.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+        const wrongs = _tpFisherYates(others).slice(0, 3);
         q._printSlots = [q, ...wrongs];  // 0=정답, 1~3=오답 (초기 순서)
       }
       // 혼합(랜덤) 용 사전 결정 rank (0~1) — 옵션 변경 시에도 유지
@@ -12074,7 +12086,7 @@ window.tpOpenPrintModal = () => {
   } else if (sourceType === 'unscramble') {
     questions.forEach(q => {
       const chunks = (q.chunkedSentence || '').split('/').map(s => s.trim()).filter(Boolean);
-      q._printChunks = chunks.slice().sort(() => Math.random() - 0.5);
+      q._printChunks = _tpFisherYates(chunks);
     });
   }
   // localStorage 키 — 같은 세트 조합이면 동일 키 (정렬해서 순서 무관)
@@ -12167,7 +12179,7 @@ function _tpSavePrintOpts() {
 window.tpPrintShuffleQuestions = () => {
   const s = window._tpPrintState;
   if (!s) return;
-  s.questions = s.questions.slice().sort(() => Math.random() - 0.5);
+  s.questions = _tpFisherYates(s.questions);
   if (window._tpPrintContext) window._tpPrintContext.questions = s.questions;
   tpPrintRefreshPreview();
 };
@@ -12182,19 +12194,19 @@ window.tpPrintShuffleChoices = () => {
   if (s.sourceType === 'vocab') {
     s.questions.forEach(q => {
       if (Array.isArray(q._printSlots) && q._printSlots.length >= 2) {
-        q._printSlots = q._printSlots.slice().sort(() => Math.random() - 0.5);
+        q._printSlots = _tpFisherYates(q._printSlots);
       }
     });
   } else if (s.sourceType === 'mcq') {
     s.questions.forEach(q => {
       if (Array.isArray(q.choices) && q.choices.length >= 2) {
-        q.choices = q.choices.slice().sort(() => Math.random() - 0.5);
+        q.choices = _tpFisherYates(q.choices);
       }
     });
   } else if (s.sourceType === 'unscramble') {
     s.questions.forEach(q => {
       if (Array.isArray(q._printChunks) && q._printChunks.length >= 2) {
-        q._printChunks = q._printChunks.slice().sort(() => Math.random() - 0.5);
+        q._printChunks = _tpFisherYates(q._printChunks);
       }
     });
   }

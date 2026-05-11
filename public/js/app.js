@@ -861,10 +861,19 @@ window.startReadingMcq = async (testId, testName) => {
     const rawQuestions = test.questions || [];
     if(rawQuestions.length === 0){ showToast('문제가 비어있습니다.'); return; }
 
-    // 매 응시마다 선지(①②③④) 위치 셔플 — 객체에 isAnswer 마커가 있어 자동 추적
+    // 매 응시마다 선지(①②③④) 위치 셔플 — Fisher-Yates (편향 없음).
+    // 객체에 isAnswer 마커가 있어 자동 추적.
+    const _shuf = (arr) => {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
     const questions = rawQuestions.map(q => {
       if (!Array.isArray(q.choices) || q.choices.length < 2) return { ...q };
-      return { ...q, choices: q.choices.slice().sort(() => Math.random() - 0.5) };
+      return { ...q, choices: _shuf(q.choices) };
     });
 
     _mcqTakeState = {
