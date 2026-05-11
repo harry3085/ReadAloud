@@ -80,11 +80,10 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
     return { status: 400, body: { success: false, error: '마지막 회차 audioUrl 없음' } };
   }
 
-  // 질문 정보
+  // 질문 정보 (Phase B: passScore 폐기)
   const q = (Array.isArray(t.questions) && t.questions[0]) || {};
   const fullText = q.fullText || '';
   if (!fullText) return { status: 400, body: { success: false, error: 'fullText 없음' } };
-  const passScore = t.passScore || q.accuracyThreshold || 80;
   const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
 
   // check-recording self-call (caller 학원 한도 차감)
@@ -125,56 +124,47 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
     return { status: 502, body: { success: false, error: 'check-recording 호출 실패: ' + (e.message || 'unknown') } };
   }
 
-  // 결과 정리
+  // 결과 정리 — Phase C 신규 필드 (positives/intonation/stress) + categoryScores/Comments
   const score = Math.max(0, Math.min(100, parseInt(data.score) || 0));
   const missedWords = Array.isArray(data.missedWords) ? data.missedWords : [];
   const note = String(data.note || '');
-  const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [] };
-  const passed = score >= passScore;
+  const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [], positives: [], intonation: '', stress: '' };
+  const categoryScores = data.categoryScores || null;
+  const categoryComments = data.categoryComments || null;
   const today = _ymdKST();
 
-  // 마지막 회차에 평가 결과 박음
+  // 마지막 회차에 평가 결과 박음 (Phase C 카테고리 정보 포함)
   const newRecs = recs.slice();
-  newRecs[newRecs.length - 1] = {
-    ...last,
-    score, missedWords, note, feedback,
-  };
+  const newLast = { ...last, score, missedWords, note, feedback };
+  if (categoryScores) newLast.categoryScores = categoryScores;
+  if (categoryComments) newLast.categoryComments = categoryComments;
+  newRecs[newRecs.length - 1] = newLast;
 
-  // userCompleted 업데이트 (통과/미통과 분기 + 옛 에러 마커 cleanup)
-  if (passed) {
-    await ucRef.set({
-      uid, userName: c.userName || '',
-      score, passed: true, passScore, date: today,
-      recordings: newRecs,
-      completedAt: FieldValue.serverTimestamp(),
-      latestFailedScore: null,
-      latestFailedAt: null,
-      latestErrorStage: null,
-      latestErrorMessage: null,
-      latestAttemptAt: null,
-      reEvaluatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  } else {
-    await ucRef.set({
-      uid, userName: c.userName || '',
-      passScore,
-      latestFailedScore: score,
-      latestFailedAt: FieldValue.serverTimestamp(),
-      recordings: newRecs,
-      latestErrorStage: null,
-      latestErrorMessage: null,
-      latestAttemptAt: null,
-      reEvaluatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  }
+  // userCompleted 업데이트 — Phase B: 통과/불통 폐기, completedAt 단일 흐름
+  await ucRef.set({
+    uid, userName: c.userName || '',
+    score,
+    passed: true,
+    date: today,
+    recordings: newRecs,
+    completedAt: FieldValue.serverTimestamp(),
+    // cleanup 옛 미통과/에러 마커
+    latestFailedScore: FieldValue.delete(),
+    latestFailedAt: FieldValue.delete(),
+    latestErrorStage: null,
+    latestErrorMessage: null,
+    latestAttemptAt: null,
+    reEvaluatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 
-  // scores 컬렉션 add (성적 리포트 반영용)
+  // scores 컬렉션 add (성적 리포트 반영용) — Phase B: passed=true 일관
   await db.collection('scores').add({
     uid,
     userName: c.userName || '',
     testId,
     testName: t.name || '',
-    score, passed, passScore,
+    score,
+    passed: true,
     mode: 'recording',
     date: today,
     academyId: t.academyId,
@@ -185,7 +175,7 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
 
   return {
     status: 200,
-    body: { success: true, score, passed, missedWords, note, feedback },
+    body: { success: true, score, missedWords, note, feedback, categoryScores, categoryComments },
   };
 }
 
