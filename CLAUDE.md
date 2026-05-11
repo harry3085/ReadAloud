@@ -3402,3 +3402,124 @@ commit `6a538cb` 후 stale 두 버그:
 - ✅ maxDurationSec 600초 cap + 학생 화면 안내 배지
 - ✅ Custom Claims 표준 (academy_admin) 권한 fix
 - ✅ 진단 도구 11종 신규
+
+---
+
+## 2026-05-11 ~ 12: ScoreSnap MVP — 종이 시험지 OCR 채점 (No-Storage, 숨김 베타)
+
+featureFlags.scoreSnap=true 학원에서만 활성화되는 hidden 기능. 학원장이 종이 시험지를 모바일 카메라로 찍어 AI 가 자동 채점. **Firestore·Storage 영구 저장 X** (가설 검증 단계 MVP).
+
+가설: AI 채점이 학원장 시기 채점 시간을 절반 이상 줄이는가. 베타 검증 후 가치 입증되면 Phase 2 (영구 저장 + 학생 데이터 통합) 결정.
+
+### 1) 1차 설계 (T1~T6) → 폐기 (5월 11일 오후)
+QR / setId / 인덱스 추적 기반:
+- T1 인쇄 모달 QR 박힘 (testId / setId)
+- T2 헤더 더블클릭 진입점 + featureFlag 가드
+- T3 풀스크린 오버레이 + 카메라 QR 인식 (BarcodeDetector → jsQR 폴백) + 수동 폴백
+- T4 학생 답안지 촬영 + 클라 리사이즈
+- T5 Gemini Vision 채점 API + 결과 카드 + PNG 다운로드
+- T6 시험 출제 후 인쇄 진입점
+
+**한계 발견** (사용자 피드백):
+- 인쇄 모달은 문제세트 기반이라 testId 박히지 않음 → setId 박았더니 셔플·픽 처리 어려움
+- 선지 셔플은 추적 불가. 채점 매칭 깨짐
+- QR 인식 정확도가 인쇄·카메라 환경 좌우 (광학 한계)
+
+### 2) 재설계 (T7-A~E) — 정답지 먼저 OCR 패턴 (사용자 제안)
+> "정답포함된 인쇄된 걸 먼저 촬영해서 정답지를 확보하고, 이후 학생들시험지를 촬영해서 채점" — 사용자
+
+QR / setId / 인덱스 추적 모두 불필요. 시험지 종이만 있으면 채점 가능.
+
+**T7-A — 롤백** (~720줄 제거 / ~60줄 추가)
+QR 관련 코드 모두 폐기. 남긴 것: 헤더 진입점, 풀스크린 오버레이, 카메라 자원 해제, `_ssProcessImage` 헬퍼.
+
+**T7-B — 정답지 OCR + 검토 화면**
+- [api/_lib/scoresnap-prompt.js](api/_lib/scoresnap-prompt.js) 전면 재작성
+  - `buildAnswerKeyPrompt` — 시험지 사진 → questions JSON OCR (문제·정답·MCQ 보기 4개 추출)
+  - `buildStudentGradePrompt` — 정답지 questions + 학생 사진 → 학생답 OCR + 채점 + 이름란 OCR
+- [api/scoresnap-grade.js](api/scoresnap-grade.js) mode 분기 (`'answerKey'` / `'student'`)
+- 검토 화면 — 학원장이 각 문항 정답 input 으로 직접 수정 가능. confidence<0.8 빨간 ⚠ 마크
+- **정밀 모드 재촬영** — 선지·문제 텍스트 인식 부족 시 [🎯 정밀 모드 재촬영] 버튼. 클라 리사이즈 1536→2048px + Gemini maxOutputTokens 8192→16384 + temperature 0.2→0.1
+
+**T7-C — 학생 답안지 일괄 촬영 + 동시 채점**
+- [📷 사진 추가 촬영] (단일) + [🖼 갤러리 다중 선택] (multiple) — 모바일 capture+multiple 동시 지원 불안정 회피
+- 썸네일 그리드 (auto-fill 120px) + ✕ 삭제
+- worker pool 3 동시 처리 (`BATCH_CONCURRENCY=3`) — Gemini rate limit + 학원 quota 안전. cursor++ race 없는 작업 분배
+- 실시간 진행 표시 (`✓ N명 · ✗ X명`)
+- 정밀 모드 토글 (정답지에서 켰으면 학생도 자동 적용)
+
+**T7-D — 학생별 카드 그리드 + 상세 + PNG**
+- 결과 그리드 (auto-fill 180px) — 학생 이름·점수·정답/전체. 색: 80↑ 초록 / 60↑ 노랑 / 60↓ 빨강. 실패 카드 빨간 배경 + 클릭 시 재시도
+- 상세 화면 — 흰 카드 (PNG 출력용). 학원명·시험명·날짜·학생 이름 input·점수 박스·틀린 문항·검토 카드(conf<0.9)·전체 문항 details
+- 헤더 세로 스택 — 학원명·시험명·날짜 상단 / 학생 이름 박스 하단. 시험명 줄바꿈 자연스럽게 (`word-break:keep-all`, `line-height:1.4`)
+- 전체 문항 ✓/✗ 자체가 토글 버튼. 토글로 AI 원본 상태 복귀 시 "수정" 라벨 자동 제거 (`_aiIsCorrect` 비교)
+- 학생 이름 input 직접 수정 (이름란 OCR 미인식 시)
+- [📥 PNG] — html2canvas 동적 로드, 파일명 `{학생}_{시험}_{날짜}.png` sanitize
+- [← 이전] / [다음 →] 네비. [+ 답안지 추가] → 학생 입력 복귀 (기존 students 유지)
+
+**T7-E — localStorage 임시 보관**
+- 키 `scoresnap_session_v1`, TTL 24h
+- 저장 대상: `answerKey` + `students[].result` (image 제외 — 용량 한도)
+- 저장 시점: 채점 완료 / 정답 토글 / 이름 수정 모두 자동
+- `openScoreSnap` 진입 시 이전 세션 있으면 "N분 전 채점한 X (M명) 이어서?" 확인 → [확인] 결과 그리드 직행 / [취소] 새로 시작
+- 복원 후 한계: image 없어 재채점 X. PNG 다운로드·정답 수정·결과 확인만
+
+### 3) 운영 정책
+- **featureFlag 부여**: super_admin 만. `node scripts/admin/toggle-feature-flag.js --academy=X --flag=scoreSnap --enable`
+- **AI 비용 추적**: 기존 `quotaKind='generator'` 재사용 (베타 동안 통합 카운터). `apiUsage/{academyId}_{date}.byEndpoint['scoresnap-grade']` 로 일자별 호출 수 추적
+- **시험당 호출 = 정답지 1 + 학생 N**. 학생 1명당 ~7,000 토큰 ≈ ₩9. 한 시험 15명 ≈ ₩135
+- **모델 폴백 체인** (Vision): `gemini-2.5-flash → 2.5-flash-lite → 3.1-flash-lite-preview`. Vision 인식 강한 flash 우선
+
+### 4) 아키텍처 메모
+- `scoresnap.js` (일반 script) 가 `app.js` (ES module) 의 Firestore SDK 직접 못 씀 → `window._ssGetIdToken` 헬퍼만 노출
+- `firebase-admin` 초기화는 분리 환경변수 (`FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`) — generate-quiz.js 와 동일 패턴
+- 인증: 매 호출 `verifyAndCheckQuota({idToken, quotaKind:'generator'})`. CORS 헬퍼 `api/_lib/cors.js` 경유
+- 이미지 압축 패턴 재사용 — `_ssProcessImage(file, {precision})` 가 max 1536/2048 분기 + JPEG q=0.85
+
+---
+
+## 작업 규칙 추가 (2026-05-11~12)
+
+신규:
+- **No-Storage MVP 가설 검증** — 새 기능을 본격 인프라 (Firestore/Storage) 박기 전에, 임시 보관 (localStorage) + 외부 다운로드 (PNG) 만으로 가설 검증. 가치 입증 후 영구 저장 도입. ScoreSnap 이 표본.
+- **사용자 워크플로우 가정 검증 우선** — "인쇄지에 QR 박으면 채점" 같은 기술적 가정이 사용자의 실제 워크플로우 ("문제세트에서 직접 인쇄, 시험 배정 안 거침") 와 다를 수 있음. 초기 검증 단계에 사용자 워크플로우 정확히 파악. 5월 11일 ScoreSnap 1차 설계 (T1~T6) 의 ~720줄 폐기가 비용 사례.
+- **AI OCR — 학원장 검토·수정 가능하게 설계** — Gemini Vision 인식률은 환경 (시험지 인쇄 품질·카메라·조명) 에 좌우. AI 자신감 (confidence) 표시 + 학원장 직접 수정 input + 정밀 모드 재촬영 옵션. 모든 OCR 흐름 표준.
+- **AI 원본 vs 학원장 수정 추적** — 토글로 정답/오답 바꾼 후 다시 원래대로 돌리면 "수정 안 한 것". 채점 응답 받은 시점에 `_aiIsCorrect` 보존하고 토글 시 현재 값과 비교. ScoreSnap `_ssToggleAnswer` 가 표본.
+- **모바일 카메라 + 다중 선택 호환성** — `<input capture="environment" multiple>` 동시 지원 모바일 불안정. 두 input 분리 (단일 + 다중). 사용자가 선택.
+- **동시 호출 throttle 패턴** — 일괄 처리 시 Promise.all 전체 동시 X. worker pool (3개) + `cursor++` race 없는 작업 분배. Gemini rate limit·학원 quota·모바일 네트워크 안정.
+- **localStorage 용량 한도 의식** — 5~10MB 보통. 큰 데이터 (이미지 base64) 는 제외하고 메타만 저장. 복원 후 한계 명시.
+- **지시하지 않은 작업 임의 추가 금지** ([feedback_answer_before_work.md](memory/feedback_answer_before_work.md) 강화) — 5월 11일 두 차례 위반 ("최근시험 행에 버튼 달기", "갤러리 버튼 제거"). 사용자 거부 후 즉시 롤백.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-12 이어서)
+- `public/admin/js/scoresnap.js`: ~900줄 (신규)
+- `api/scoresnap-grade.js`: ~190줄 (신규)
+- `api/_lib/scoresnap-prompt.js`: ~145줄 (신규)
+- `scripts/admin/toggle-feature-flag.js`: ~70줄 (신규)
+- `public/admin/js/app.js`: 변동 적음 (`window._ssGetIdToken` 만 영구 유지)
+- SW 캐시: `kunsori-v438`
+
+## 진행률 (2026-05-12 종료)
+- **ScoreSnap MVP: ~95%** (No-Storage 워크플로우 완료. 베타 운영 후 가치 입증 시 Phase 2)
+- 녹음숙제 시스템: ~100% (변동 없음)
+- 멀티테넌시·super_admin·결제·인쇄·브랜딩: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-12 종료 갱신)
+1. **ScoreSnap 베타 운영 + 가치 검증** — 학원장 사용 패턴 수집, 채점 시간 단축 실제 측정. 가치 입증 시 Phase 2 (Firestore 영구 저장 + 학생 데이터 통합)
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **AI 평가 실패율 (SuperAdmin Phase B T9)** — Cloud Function 일일 집계
+
+**완료 (ScoreSnap MVP, 2026-05-11~12)**:
+- ✅ T1~T6 1차 설계 (QR/setId 기반) + 사용자 피드백 받아 폐기 결정
+- ✅ T7-A 롤백 (~720줄 제거)
+- ✅ T7-B 정답지 OCR + 학원장 검토·수정 + 정밀 모드 재촬영
+- ✅ T7-C 학생 답안지 다중 입력 + worker pool 3개 동시 채점
+- ✅ T7-D 학생별 카드 그리드 + 상세 + PNG + 헤더 세로 스택 + 전체 문항 ✓/✗ 토글
+- ✅ T7-E localStorage 임시 보관 (24h TTL) + 이전 세션 이어서 보기
+- ✅ AI 원본 vs 학원장 수정 정확 추적 (`_aiIsCorrect`)
+- ✅ featureFlag 토글 스크립트
+- ✅ CLAUDE.md ScoreSnap MVP 작업 이력
