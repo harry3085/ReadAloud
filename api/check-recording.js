@@ -134,6 +134,7 @@ Category meanings:
 - pace: 자연스러운 읽기 속도 (너무 빠르거나 느리지 않음)
 - accuracy: 단어 누락·순서·완독률
 
+CRITICAL: 반드시 categoryScores 와 categoryComments 의 4 카테고리 (pronunciation, intonation, pace, accuracy) 를 모두 채워야 합니다. 하나라도 누락하면 학원장 화면에 빈 칸이 보입니다.
 CRITICAL: Keep all comments SHORT (한 줄, 60자 이내). 짧고 명확하게.
 Examples for category comments:
 - pronunciation: "또렷하게 잘 읽었어요" / "단어 끝 자음을 흐리지 마세요"
@@ -277,6 +278,7 @@ module.exports = async (req, res) => {
             pace: { type: 'integer' },
             accuracy: { type: 'integer' },
           },
+          required: ['pronunciation', 'intonation', 'pace', 'accuracy'],
         },
         categoryComments: {
           type: 'object',
@@ -286,9 +288,10 @@ module.exports = async (req, res) => {
             pace: { type: 'string' },
             accuracy: { type: 'string' },
           },
+          required: ['pronunciation', 'intonation', 'pace', 'accuracy'],
         },
       },
-      required: ['score', 'missedWords', 'note', 'feedback'],
+      required: ['score', 'missedWords', 'note', 'feedback', 'categoryScores', 'categoryComments'],
     };
 
     const reqBody = {
@@ -302,7 +305,7 @@ module.exports = async (req, res) => {
       generationConfig: {
         temperature: 0.1,  // 더 결정적
         topP: 0.9,
-        maxOutputTokens: 2000,  // Phase C: 1000 → 2000 (카테고리 + positives/intonation/stress 추가로 응답 길어짐)
+        maxOutputTokens: 3000,  // Phase C: 2000 → 3000 안전망 (카테고리 4종 누락 방지)
         responseMimeType: 'application/json',
         responseSchema,
       },
