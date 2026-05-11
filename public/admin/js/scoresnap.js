@@ -97,17 +97,23 @@
     _setHeader('📋 ScoreSnap · 1단계: 정답지 촬영');
     const body = document.getElementById('ssBody');
     if (!body) return;
+    const precision = _state.precision === true;
+    const precisionBadge = precision
+      ? '<span style="display:inline-block;background:#5a3a1a;color:#ffc107;border:1px solid #ffc107;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin-left:6px;">🎯 정밀 모드</span>'
+      : '';
     body.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid #333;flex-shrink:0;">
         <div style="font-size:13px;color:#bbb;line-height:1.6;">
           정답이 표시된 시험지 1장을 먼저 촬영해 주세요. AI 가 문제·정답을 자동으로 인식합니다.
           (시험지 출력 시 <b style="color:#fff;">[답지 보기]</b> 옵션 켜고 인쇄한 것 권장)
+          ${precisionBadge}
         </div>
       </div>
       <div id="ssAkBody" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 30px;gap:18px;overflow-y:auto;min-height:0;">
         <div style="font-size:48px;">📋</div>
         <div style="font-size:14px;color:#bbb;text-align:center;line-height:1.5;">
           정답이 포함된 시험지 1장 촬영
+          ${precision ? '<br><span style="font-size:11px;color:#ffc107;">정밀 모드 — 해상도·정확도 ↑, 응답 +3~5초</span>' : ''}
         </div>
         <input id="ssAkCamIn" type="file" accept="image/*" capture="environment" style="display:none;">
         <input id="ssAkGalIn" type="file" accept="image/*" style="display:none;">
@@ -134,9 +140,10 @@
     const body = document.getElementById('ssAkBody');
     if (body) body.innerHTML = `<div style="color:#bbb;text-align:center;font-size:14px;padding:40px;">⏳ 이미지 처리 중…</div>`;
     try {
-      const processed = await window._ssProcessImage(file);
+      const precision = _state.precision === true;
+      const processed = await window._ssProcessImage(file, { precision });
       _state.answerKeyImage = processed;
-      _renderAnswerKeyOcr(processed);
+      _renderAnswerKeyOcr(processed, precision);
     } catch (e) {
       if (body) body.innerHTML = `
         <div style="color:#ff8a80;text-align:center;font-size:14px;line-height:1.5;padding:30px;">
@@ -148,15 +155,15 @@
   }
 
   // 정답지 OCR 호출 + 진행 표시
-  async function _renderAnswerKeyOcr(processed) {
+  async function _renderAnswerKeyOcr(processed, precision = false) {
     _state.phase = 'answerKey-ocr';
     const body = document.getElementById('ssBody');
     if (!body) return;
     body.innerHTML = `
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:18px;">
         <div style="width:48px;height:48px;border:4px solid #333;border-top-color:var(--c-brand,#E8714A);border-radius:50%;animation:ssSpin 1s linear infinite;"></div>
-        <div style="font-size:15px;color:#fff;font-weight:600;">AI 가 정답지 분석 중…</div>
-        <div style="font-size:12px;color:#888;line-height:1.5;text-align:center;">보통 5~10초<br>문제·정답 자동 추출</div>
+        <div style="font-size:15px;color:#fff;font-weight:600;">AI 가 정답지 분석 중…${precision ? ' (정밀 모드)' : ''}</div>
+        <div style="font-size:12px;color:#888;line-height:1.5;text-align:center;">${precision ? '보통 8~13초' : '보통 5~10초'}<br>문제·정답 자동 추출</div>
       </div>
       <style>@keyframes ssSpin { to { transform: rotate(360deg); } }</style>
     `;
@@ -170,6 +177,7 @@
           mode: 'answerKey',
           imageBase64: processed.base64,
           imageMimeType: processed.mimeType,
+          precision,
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -197,12 +205,17 @@
     const k = _state.answerKey || {};
     const qs = k.questions || [];
     body.innerHTML = `
-      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:12px;">
+      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:12px;flex-wrap:wrap;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${qs.length}문항 인식됨</div>
-          <div style="font-size:11px;color:#888;margin-top:2px;">오류 있으면 직접 수정. 학생 답안지 채점은 이 정답을 기준으로</div>
+          <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${qs.length}문항 인식됨 ${_state.precision === true ? '<span style="font-size:10px;color:#ffc107;font-weight:400;">🎯 정밀</span>' : ''}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">정답만 직접 수정 가능. 보기·문제 텍스트 인식 부족하면 [🎯 정밀 모드] 재촬영</div>
         </div>
-        <button onclick="window._ssAkRestart()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;">🔄 정답지 다시 촬영</button>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button onclick="window._ssAkRestart()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;">🔄 다시 촬영</button>
+          ${_state.precision === true
+            ? ''
+            : '<button onclick="window._ssAkPrecisionRetry()" style="background:#5a3a1a;color:#ffc107;border:1px solid #ffc107;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;" title="해상도 ↑ + AI 보수 모드. 응답 +3~5초">🎯 정밀 모드 재촬영</button>'}
+        </div>
       </div>
       <div id="ssAkReviewList" style="flex:1;overflow-y:auto;padding:14px;background:#0a0a0a;">
         ${qs.map((q, i) => _buildAnswerKeyRow(q, i)).join('') || '<div style="color:#888;text-align:center;padding:40px;">문항이 인식되지 않았어요. 다시 촬영해 주세요.</div>'}
@@ -259,6 +272,15 @@
   window._ssAkRestart = function () {
     _state.answerKey = null;
     _state.answerKeyImage = null;
+    _state.precision = false;  // 다시 촬영은 기본 모드로
+    _renderAnswerKeyCapture();
+  };
+
+  // 정밀 모드로 재촬영 — 해상도 + maxTokens + temperature 조정
+  window._ssAkPrecisionRetry = function () {
+    _state.answerKey = null;
+    _state.answerKeyImage = null;
+    _state.precision = true;
     _renderAnswerKeyCapture();
   };
 
@@ -301,8 +323,9 @@
   }
 
   // ─── 이미지 처리 헬퍼 (T4 — T7-B/C 에서 재사용) ───
-  // file → 1536px max JPEG 0.85 → { dataUrl, base64, mimeType, sizeKB, width, height }
-  window._ssProcessImage = async function (file) {
+  // file → max-size JPEG 0.85 → { dataUrl, base64, mimeType, sizeKB, width, height }
+  // opts.precision=true → 2048px (정밀 모드, OCR 인식률 ↑), 기본 1536px
+  window._ssProcessImage = async function (file, opts = {}) {
     if (!/^image\//.test(file.type) && file.type !== '') {
       throw new Error('이미지 파일만 가능해요');
     }
@@ -313,7 +336,7 @@
       i.onerror = () => reject(new Error('이미지 로드 실패 (지원하지 않는 형식일 수 있어요)'));
       i.src = imgUrl;
     });
-    const maxSide = 1536;
+    const maxSide = opts.precision ? 2048 : 1536;
     const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(img.width * scale);

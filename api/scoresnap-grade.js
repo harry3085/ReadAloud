@@ -36,7 +36,7 @@ const GEMINI_MODELS = [
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-async function _callVision(model, apiKey, prompt, base64, mimeType) {
+async function _callVision(model, apiKey, prompt, base64, mimeType, precision = false) {
   const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
     contents: [{
@@ -47,9 +47,9 @@ async function _callVision(model, apiKey, prompt, base64, mimeType) {
       ],
     }],
     generationConfig: {
-      temperature: 0.2,
+      temperature: precision ? 0.1 : 0.2,         // 정밀: 더 보수적
       topP: 0.95,
-      maxOutputTokens: 8192,
+      maxOutputTokens: precision ? 16384 : 8192,  // 정밀: 긴 응답 잘림 방지
       responseMimeType: 'application/json',
     },
   };
@@ -85,7 +85,7 @@ function _parseJSON(text) {
 }
 
 // 폴백 체인 실행 — 호출자에 raw text 반환
-async function _callWithFallback(apiKey, prompt, base64, mimeType) {
+async function _callWithFallback(apiKey, prompt, base64, mimeType, precision = false) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const isTransient = (s) => s === 503 || s === 429;
   let usedModel = null, rawText = null, usage = null, lastError = null, lastStatus = null;
@@ -94,7 +94,7 @@ async function _callWithFallback(apiKey, prompt, base64, mimeType) {
   for (const model of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const result = await _callVision(model, apiKey, prompt, base64, mimeType);
+        const result = await _callVision(model, apiKey, prompt, base64, mimeType, precision);
         if (result.ok) {
           usedModel = model;
           rawText = result.text;
@@ -131,7 +131,7 @@ module.exports = async (req, res) => {
 
   let body;
   try { body = req.body || {}; } catch (_) { return res.status(400).json({ error: '요청 형식 오류' }); }
-  const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions } = body;
+  const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions, precision } = body;
 
   if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
   if (mode !== 'answerKey' && mode !== 'student') {
@@ -161,7 +161,7 @@ module.exports = async (req, res) => {
     prompt = buildStudentGradePrompt(answerKeyQuestions);
   }
 
-  const r = await _callWithFallback(apiKey, prompt, imageBase64, imageMimeType || 'image/jpeg');
+  const r = await _callWithFallback(apiKey, prompt, imageBase64, imageMimeType || 'image/jpeg', precision === true);
   if (!r.ok) {
     return res.status(r.status || 502).json({ error: 'AI 호출 실패', detail: r.error });
   }
