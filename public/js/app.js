@@ -2385,13 +2385,10 @@ function _rv2Render() {
       </div>`
     : '';
 
-  // Phase A+ : 마지막 회차 화면에 AI 피드백 기준 안내 (항상 표시)
-  const isLastRound = cur === N - 1;
-  const lastInfoHtml = isLastRound
-    ? `<div style="background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#075985;line-height:1.5;">
-        ℹ️ AI 피드백은 충분히 연습된 <strong>마지막 회차</strong>를 기준으로 합니다.
-      </div>`
-    : '';
+  // Phase A+ : AI 피드백 기준 안내 — 마지막 회차 카드 아래에 항상 표시 (모든 회차 화면)
+  const lastInfoHtml = `<div style="background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:11px;color:#075985;line-height:1.5;">
+      ℹ️ AI 피드백은 충분히 연습된 <strong>마지막 회차</strong>를 기준으로 합니다.
+    </div>`;
 
   screen.innerHTML = `
     <!-- 코랄 히어로 헤더 + 숙제 내용 -->
@@ -2413,7 +2410,6 @@ function _rv2Render() {
 
         ${alertHtml}
         ${lastRoundHtml}
-        ${lastInfoHtml}
 
         <!-- N단계 진행 표시 -->
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">
@@ -2422,6 +2418,9 @@ function _rv2Render() {
 
         <!-- N개 회차 카드 -->
         ${Array.from({length: N}, (_, i) => _rv2RenderRoundCard(i, cur)).join('')}
+
+        <!-- AI 피드백 기준 안내 — 마지막 회차 카드 아래 항상 표시 -->
+        ${lastInfoHtml}
 
       </div>
     </div>
