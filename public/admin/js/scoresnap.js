@@ -305,26 +305,150 @@
     _renderIdentifyScreen();
   };
 
-  // ── 촬영 화면 (T4 자리표시자) ──
+  // ── T4. 촬영 화면 (시험지·갤러리 입력 → 클라 리사이즈 → 미리보기) ──
   function _renderCaptureScreen() {
     _state.phase = 'capture';
     _setHeader(`📷 ScoreSnap · ${_state.testTitle}`);
     const body = document.getElementById('ssBody');
     if (!body) return;
     body.innerHTML = `
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:14px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#fff;">✓ 시험 확정</div>
-        <div style="font-size:14px;color:#bbb;">${esc(_state.testTitle)}</div>
-        <div style="font-size:12px;color:#888;">총 ${_state.questions.length} 문항</div>
-        <div style="font-size:12px;color:#888;font-family:monospace;background:#1a1a1a;padding:6px 10px;border-radius:4px;">testId: ${esc(_state.testId)}</div>
-        <div style="margin-top:30px;padding:16px 20px;background:#1a1a1a;border:1px dashed #444;border-radius:8px;color:#bbb;font-size:13px;line-height:1.6;max-width:420px;">
-          학생 답안지 촬영·채점 화면은 <b style="color:#fff;">T4 ~ T5 작업</b> 에서 채워집니다.<br>
-          현재는 시험 식별 (T3) 까지만 작동 검증.
+      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_state.testTitle)}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">총 ${_state.questions.length}문항 · 학생 ${_state.studentCount + 1}번째</div>
         </div>
-        <button onclick="window.closeScoreSnap()" style="margin-top:20px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer;">
-          종료
+        <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;">채점 종료</button>
+      </div>
+      <div id="ssCaptureBody" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:18px;">
+        <div style="font-size:14px;color:#bbb;text-align:center;line-height:1.5;">
+          학생 답안지를 카메라로 찍거나<br>갤러리에서 선택하세요
+        </div>
+        <input id="ssCameraInput" type="file" accept="image/*" capture="environment" style="display:none;">
+        <input id="ssGalleryInput" type="file" accept="image/*" style="display:none;">
+        <button id="ssCamBtn"
+          style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:18px 40px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.3);">
+          📷 사진 촬영
+        </button>
+        <button id="ssGalBtn"
+          style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #444;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">
+          🖼 갤러리에서 선택
         </button>
       </div>
     `;
+    const camIn = document.getElementById('ssCameraInput');
+    const galIn = document.getElementById('ssGalleryInput');
+    document.getElementById('ssCamBtn').onclick = () => camIn.click();
+    document.getElementById('ssGalBtn').onclick = () => galIn.click();
+    camIn.onchange = (e) => _handleCapturedFile(e.target.files?.[0]);
+    galIn.onchange = (e) => _handleCapturedFile(e.target.files?.[0]);
   }
+
+  async function _handleCapturedFile(file) {
+    if (!file) return;
+    const body = document.getElementById('ssCaptureBody');
+    if (body) body.innerHTML = `<div style="color:#bbb;text-align:center;font-size:14px;">⏳ 이미지 처리 중…</div>`;
+    try {
+      const processed = await _processImage(file);
+      _state.captured = processed;
+      _renderPreviewScreen(processed.dataUrl, processed.sizeKB);
+    } catch (e) {
+      if (body) body.innerHTML = `
+        <div style="color:#ff8a80;text-align:center;font-size:14px;line-height:1.5;">
+          이미지 처리 실패<br><span style="color:#999;font-size:12px;">${esc(e.message)}</span>
+        </div>
+        <button onclick="window._ssReshoot()" style="margin-top:14px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">다시 시도</button>
+      `;
+    }
+  }
+
+  // 클라 리사이즈 — max 1536px + JPEG q=0.85 → Vercel 4.5MB 한도 안전
+  async function _processImage(file) {
+    if (!/^image\//.test(file.type) && file.type !== '') {
+      throw new Error('이미지 파일만 가능해요');
+    }
+    const imgUrl = URL.createObjectURL(file);
+    let img;
+    try {
+      img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('이미지 로드 실패 (지원하지 않는 형식일 수 있어요)'));
+        i.src = imgUrl;
+      });
+    } finally {
+      // load 후엔 src 만 있으면 되니 URL 해제 미리 안 함 (Safari 종종 race)
+    }
+    const maxSide = 1536;
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(imgUrl);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('JPEG 변환 실패');
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('FileReader 실패'));
+      r.readAsDataURL(blob);
+    });
+    const base64 = String(dataUrl).split(',')[1] || '';
+    return {
+      dataUrl,
+      base64,
+      mimeType: 'image/jpeg',
+      sizeKB: Math.round(blob.size / 1024),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  }
+
+  function _renderPreviewScreen(dataUrl, sizeKB) {
+    _state.phase = 'preview';
+    const body = document.getElementById('ssCaptureBody');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="width:100%;max-width:520px;display:flex;flex-direction:column;gap:14px;">
+        <img src="${dataUrl}" alt="답안지 미리보기" style="width:100%;border-radius:8px;background:#000;max-height:70vh;object-fit:contain;">
+        <div style="font-size:11px;color:#888;text-align:center;">처리된 이미지 · ${sizeKB} KB</div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="window._ssReshoot()"
+            style="flex:1;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:13px;border-radius:8px;font-size:14px;cursor:pointer;">
+            🔄 재촬영
+          </button>
+          <button onclick="window._ssStartGrading()"
+            style="flex:2;background:var(--c-brand,#E8714A);color:#fff;border:none;padding:13px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+            ✓ 채점 진행
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  window._ssReshoot = function () {
+    _state.captured = null;
+    _renderCaptureScreen();
+  };
+
+  // T5 채점 API 호출 자리표시자 — 현재는 검증용 메시지만
+  window._ssStartGrading = function () {
+    if (!_state.captured) {
+      if (typeof window.showAlert === 'function') window.showAlert('오류', '먼저 답안지를 촬영해주세요');
+      return;
+    }
+    const c = _state.captured;
+    if (typeof window.showAlert === 'function') {
+      window.showAlert(
+        '채점 단계 (T5 작업 대기)',
+        `학생 ${_state.studentCount + 1}번째 답안지 처리 완료\n` +
+        `· 시험: ${_state.testTitle}\n` +
+        `· 이미지: ${c.width}×${c.height} · ${c.sizeKB} KB\n` +
+        `· base64 길이: ${c.base64.length} chars\n\n` +
+        `T5 에서 Gemini Vision 채점 API 호출.`
+      );
+    }
+  };
 })();
