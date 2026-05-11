@@ -5494,6 +5494,17 @@ function _resolveTestTargetUids(targets, students) {
 function _computeTestStats(t, scoresArr, students) {
   const avg = scoresArr.length ? Math.round(scoresArr.reduce((sum,s)=>sum+(s.score||0),0)/scoresArr.length) : null;
   const attemptedSet = new Set(scoresArr.map(s => s.uid).filter(Boolean));
+  const targetSet = _resolveTestTargetUids(t.targets, students);
+  const tMode = (t.testMode || t.mode || '').toLowerCase();
+  // Phase B: 녹음숙제는 통과/불통 폐기 → 모든 응시 = 제출 (통과 카운트 = 응시 카운트)
+  if (tMode === 'recording') {
+    return {
+      avg,
+      attemptedCount: attemptedSet.size,
+      passedCount: attemptedSet.size,
+      targetCount: targetSet.size,
+    };
+  }
   const passScore = t.passScore || 80;
   const maxByUid = new Map();
   scoresArr.forEach(s => {
@@ -5504,7 +5515,6 @@ function _computeTestStats(t, scoresArr, students) {
   });
   let passedCount = 0;
   maxByUid.forEach(v => { if (v >= passScore) passedCount++; });
-  const targetSet = _resolveTestTargetUids(t.targets, students);
   return {
     avg,
     attemptedCount: attemptedSet.size,
@@ -5672,12 +5682,14 @@ window.toggleTestProgress = async(testId, source='genTests') => {
       groupMap[g].push(s);
     });
 
+    // Phase B: 녹음숙제는 통과/불통 폐기 → "통과점수" 표시 안 함
+    const tIsRec = (t.testMode || t.mode || '').toLowerCase() === 'recording';
     let html = `<div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
       <span>총 <b>${students.length}</b>명</span>
       <span style="color:#059669;">✅ 완료 <b>${done.length}</b>명</span>
       <span style="color:#b45309;">🔄 응시중 <b>${tried.length}</b>명</span>
       <span style="color:#aaa;">⬜ 미시작 <b>${notYet.length}</b>명</span>
-      <span style="color:var(--blue);">통과점수 <b>${t.passScore||80}점</b></span>
+      ${tIsRec ? '<span style="color:var(--blue);">📤 제출 완료 방식 (통과/불통 X)</span>' : `<span style="color:var(--blue);">통과점수 <b>${t.passScore||80}점</b></span>`}
     </div>`;
 
     Object.keys(groupMap).sort((a,b)=>a.localeCompare(b,'ko')).forEach(g=>{
@@ -11691,7 +11703,10 @@ window.tpOpenPublishModal = async () => {
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">통과점수</label>
-              <input type="number" id="tpPassScore" value="80" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
+              ${cfg.testMode === 'recording'
+                ? `<div style="padding:8px 10px;font-size:11px;color:var(--gray);margin-top:3px;background:#f9fafb;border-radius:6px;border:1px solid var(--border);line-height:1.3;">제출 완료<br><span style="font-size:9px;">(통과/불통 X)</span></div>`
+                : `<input type="number" id="tpPassScore" value="80" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">`
+              }
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">출제 문제수</label>
@@ -11925,7 +11940,9 @@ window.tpPublish = async () => {
   const qcLine = questions.length < poolTotal
     ? `${selectedSets.length}개 세트 · ${questions.length}문제 (전체 ${poolTotal} 중 랜덤)`
     : `${selectedSets.length}개 세트 · ${questions.length}문제`;
-  const summary = `${qcLine}\n대상 ${targets.length}명/반\n통과점수 ${passScore}점`;
+  // Phase B: 녹음숙제는 통과/불통 폐기 → "제출 완료" 표시
+  const scoreLine = cfg.testMode === 'recording' ? '평가 방식: 제출 완료' : `통과점수 ${passScore}점`;
+  const summary = `${qcLine}\n대상 ${targets.length}명/반\n${scoreLine}`;
   if (!(await showConfirm(`"${name}" 시험을 배정할까요?`, summary))) return;
 
   const targetType = (targets.length===1 && targets[0].type==='class') ? 'class' : 'mixed';
@@ -11949,7 +11966,8 @@ window.tpPublish = async () => {
       questionCount: questions.length,
       sourceSetIds: selectedSets.map(s => s.id),
       sourceSetNames: selectedSets.map(s => s.name || ''),
-      passScore,
+      // Phase B: 녹음숙제는 통과/불통 폐기 — passScore 안 박음
+      ...(cfg.testMode === 'recording' ? {} : { passScore }),
       bookName,
       ...(vocabOptions ? { vocabOptions } : {}),
       createdAt: serverTimestamp(),
@@ -12828,20 +12846,22 @@ window.tpToggleTestProgress = async (testId, prefix) => {
               const recs = c.recordings || [];
               const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
               // ── 녹음숙제 분기 — 회차별 audio + 마지막 AI 피드백 ──
-              // 우선순위: 통과(completedAt) > 미통과(latestFailedAt + recordings) > 옛 미통과(latestFailedScore만) > 에러 > 대기
+              // Phase B: 통과/불통 폐기. 응시 흔적 있으면 모두 "📤 제출됨" 단일 카드
+              // (옛 데이터 호환: completedAt 또는 latestFailedAt 있으면 응시)
               if (tMode === 'recording') {
-                const passScore = c.passScore || t.passScore || 80;
-                const isPassed = !!c.completedAt;
-                const isFailedWithRecs = !c.completedAt && c.latestFailedAt && recs.length > 0;
-                if (isPassed || isFailedWithRecs) {
+                const isSubmittedWithRecs = (!!c.completedAt || !!c.latestFailedAt) && recs.length > 0;
+                if (isSubmittedWithRecs) {
                   const last = recs[recs.length - 1];
                   const fb = last?.feedback;
-                  const failAt = c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '';
-                  const dateStr = isPassed ? (c.date || '') : failAt;
-                  const headColor = isPassed ? '#059669' : '#CA8A04';
-                  const headLabel = isPassed ? '✅ 통과' : `⚠ 미통과 (통과 ${passScore})`;
-                  const cardBg = isPassed ? 'white' : '#fffbeb';
-                  const cardBorder = isPassed ? '#e5e7eb' : '#fbbf24';
+                  const submittedAt = c.completedAt?.toDate?.()
+                    ? _ymdKST(c.completedAt.toDate())
+                    : (c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '');
+                  const dateStr = c.date || submittedAt || '';
+                  const lastScore = (typeof last?.score === 'number') ? last.score : (c.score ?? c.latestFailedScore);
+                  const headColor = '#0369a1';
+                  const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
+                  const cardBg = 'white';
+                  const cardBorder = '#bae6fd';
                   // 회차별 audio 리스트 (말소리 비율 + 속도 + 시간 + 마지막 회차에는 점수)
                   // audio 에 stopPropagation — 재생 클릭이 카드 onclick (모달 열기) 과 충돌 방지
                   const tq = (Array.isArray(t.questions) && t.questions[0]) || {};
@@ -12863,10 +12883,8 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                         <audio src="${esc(r.audioUrl||'')}" controls preload="none" onclick="event.stopPropagation()" style="width:100%;height:30px;"></audio>
                       </div>`;
                   }).join('');
-                  // 미통과 케이스만 [🔁 재평가] 노출 (통과는 재평가 불필요)
-                  const reBtnRec = isFailedWithRecs
-                    ? `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가합니다 (학원 녹음 한도 +1)" style="position:absolute;top:6px;right:32px;width:20px;height:20px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`
-                    : '';
+                  // Phase B: 모든 제출 카드에 [🔁 재평가] 노출 (학원장이 점수 의심 시 재시도)
+                  const reBtnRec = `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가합니다 (학원 녹음 한도 +1)" style="position:absolute;top:6px;right:32px;width:20px;height:20px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`;
                   return `
                     <div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;cursor:pointer;">
                       ${reBtnRec}
@@ -12890,13 +12908,17 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                     </div>
                   `;
                 }
-                // 옛 미통과 데이터 (recordings 없이 latestFailedScore 만 — 이번 작업 전 데이터)
-                if (c.latestFailedScore !== undefined && c.latestFailedScore !== null) {
-                  const failAt = c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '';
-                  return `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                // 옛 데이터 (recordings 없이 latestFailedScore 또는 score 만)
+                // Phase B: 통과/불통 폐기 — "제출됨" 으로 통일
+                const oldScore = c.score ?? c.latestFailedScore;
+                if (typeof oldScore === 'number') {
+                  const submittedAt = c.completedAt?.toDate?.()
+                    ? _ymdKST(c.completedAt.toDate())
+                    : (c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '');
+                  return `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
                     ${xBtnRec}
                     <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
-                    <div style="color:#92400e;">⚠ ${c.latestFailedScore}점 (통과 ${passScore})${failAt ? ' · ' + esc(failAt) : ''}</div>
+                    <div style="color:#0369a1;">📤 제출됨 · ${oldScore}점${submittedAt ? ' · ' + esc(submittedAt) : ''}</div>
                   </div>`;
                 }
                 // AI/네트워크 에러 (catch 진입) — 빨간 ⚠️ 카드

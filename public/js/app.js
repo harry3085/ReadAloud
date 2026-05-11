@@ -3013,10 +3013,10 @@ async function _rv2Submit() {
     recordingsDetail[lastIdx].note = note;
     recordingsDetail[lastIdx].feedback = feedback;
 
-    const passed = score >= passScore;
+    // Phase B : 통과/불통 개념 폐기 — 모든 응시는 "제출 완료" 단일 흐름
     const today = _ymdKST();
 
-    // 공통 scores doc 페이로드
+    // scores doc — passed 일관 true (학원장은 점수만 본다)
     const scoresPayload = {
       academyId: window.MY_ACADEMY_ID || 'default',
       uid: currentUser.uid,
@@ -3031,84 +3031,48 @@ async function _rv2Submit() {
       bookName: t.bookName || '',
       mode: 'recording',
       score,
-      correct: passed ? 1 : 0,
-      wrong: passed ? 0 : 1,
+      correct: 1,
+      wrong: 0,
       total: 1,
-      passed,
-      passScore,
+      passed: true,
       recordings: recordingsDetail,
       date: today,
       createdAt: serverTimestamp(),
     };
 
-    if (passed) {
-      // 통과 → scores + userCompleted 저장 + 옛 마커 cleanup
-      _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
-      stage = 'firestore';
+    _rv2ShowSubmitting('💾 결과 저장 중...', '곧 결과 화면으로 이동해요');
+    stage = 'firestore';
 
-      await addDoc(collection(db,'scores'), scoresPayload);
+    await addDoc(collection(db,'scores'), scoresPayload);
 
-      try {
-        await setDoc(
-          doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-          {
-            uid: currentUser.uid,
-            userName: userProfile?.name || '',
-            score,
-            passed: true,
-            passScore,
-            date: today,
-            recordings: recordingsDetail,
-            completedAt: serverTimestamp(),
-            // cleanup — 옛 미통과/에러 마커 제거 (분기 충돌 방지)
-            latestFailedScore: null,
-            latestFailedAt: null,
-            latestErrorStage: null,
-            latestErrorMessage: null,
-            latestAttemptAt: null,
-            // Phase A+ : 중간 저장 진행 상태 정리
-            inProgress: deleteField(),
-          },
-          { merge: true }
-        );
-      } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+    try {
+      await setDoc(
+        doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
+        {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          score,
+          passed: true,
+          date: today,
+          recordings: recordingsDetail,
+          completedAt: serverTimestamp(),
+          // cleanup — 옛 미통과/에러 마커 제거 (Phase B: 통과/불통 폐기)
+          latestFailedScore: deleteField(),
+          latestFailedAt: deleteField(),
+          latestErrorStage: null,
+          latestErrorMessage: null,
+          latestAttemptAt: null,
+          // Phase A+ : 중간 저장 진행 상태 정리
+          inProgress: deleteField(),
+        },
+        { merge: true }
+      );
+    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
 
-      _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
-      console.log('[rv2Submit] DONE (passed)');
-      _rv2._submitted = true;
-      _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings: recordingsDetail, fullText: q.fullText });
-    } else {
-      // 미통과 — recordings + AI feedback 모두 저장 (학원장이 회차별 audio + 피드백 보도록)
-      try {
-        await addDoc(collection(db,'scores'), scoresPayload);
-      } catch(e) { console.warn('failed scores 기록 실패', e); }
-
-      try {
-        await setDoc(
-          doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-          {
-            uid: currentUser.uid,
-            userName: userProfile?.name || '',
-            passScore,
-            latestFailedScore: score,
-            latestFailedAt: serverTimestamp(),
-            // 회차별 audio + 마지막 AI feedback — 학원장 미통과 카드에서 표시
-            recordings: recordingsDetail,
-            // cleanup — 옛 에러 마커 제거 (이번엔 정상 평가까지 끝났음)
-            latestErrorStage: null,
-            latestErrorMessage: null,
-            latestAttemptAt: null,
-            // Phase A+ : 중간 저장 진행 상태 정리
-            inProgress: deleteField(),
-          },
-          { merge: true }
-        );
-      } catch(e) { console.warn('failed score 기록 실패', e); }
-
-      console.log('[rv2Submit] DONE (failed) — retry available');
-      _rv2._submitting = false;
-      _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings: recordingsDetail, fullText: q.fullText });
-    }
+    _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
+    console.log('[rv2Submit] DONE');
+    _rv2._submitted = true;
+    _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings: recordingsDetail, fullText: q.fullText });
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
     _rv2._submitting = false;  // 재시도 가능하도록
