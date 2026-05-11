@@ -194,6 +194,7 @@ module.exports = async (req, res) => {
       try {
         const r = await fetch(audioUrl);
         if (!r.ok) {
+          console.error(`[check-rec][diag] fetch failed ${r.status} url=${audioUrl.slice(0,80)}`);
           res.status(400).json({ success: false, error: `audio fetch failed: ${r.status}` });
           return;
         }
@@ -204,6 +205,8 @@ module.exports = async (req, res) => {
         }
         audioBase64 = Buffer.from(ab).toString('base64');
         fetchedMime = r.headers.get('content-type') || '';
+        // 진단 — 학생별 audio 가 진짜 다른지 확인용 (Vercel 로그에서 비교)
+        console.log(`[check-rec][diag] audio fetched: bytes=${ab.byteLength} mime="${fetchedMime}" b64.head=${audioBase64.slice(0,32)} b64.tail=${audioBase64.slice(-32)}`);
       } catch (e) {
         console.error('[check-recording] audioUrl fetch failed:', e);
         res.status(502).json({ success: false, error: 'audio fetch failed: ' + (e.message || 'unknown') });
@@ -294,6 +297,9 @@ module.exports = async (req, res) => {
       required: ['score', 'missedWords', 'note', 'feedback', 'categoryScores', 'categoryComments'],
     };
 
+    // 진단 — Gemini 에 보내는 audio 메타 (Vercel 로그에서 학생별 비교)
+    console.log(`[check-rec][diag] gemini.send: mimeType="${mimeType}" b64.len=${audioBase64?.length || 0} promptLen=${prompt.length}`);
+
     const reqBody = {
       contents: [{
         role: 'user',
@@ -347,6 +353,8 @@ module.exports = async (req, res) => {
           }
           const textPart = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
           lastRaw = textPart;
+          // 진단 — Gemini 응답 raw 학생별 비교 (audio 영향 받았나)
+          console.log(`[check-rec][diag] ${model} response.head=${textPart.slice(0, 220).replace(/\n/g, ' ')}`);
           const j = extractJson(textPart);
           if (j) { parsed = j; break outer; }  // 성공
           // 파싱 실패 → 같은 모델로 1회 재시도

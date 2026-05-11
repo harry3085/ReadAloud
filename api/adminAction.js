@@ -97,6 +97,9 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   // public alias (raloud.vercel.app) 사용 — VERCEL_URL (deployment-specific) 는
   // Vercel Authentication 보호로 HTML 응답 받을 수 있어 회피
   const host = process.env.SELF_HOST || 'https://raloud.vercel.app';
+  // 진단 로그 — 학생별 재평가 비교 (Vercel 로그에서 확인)
+  console.log(`[reEval][${uid.slice(0,8)}] start: testId=${testId.slice(0,8)} audioUrl=${last.audioUrl.slice(0, 80)}... mime=${last.mimeType || 'audio/webm'} evalSec=${evalSec} fullTextLen=${fullText.length}`);
+
   let data;
   try {
     const cr = await fetch(`${host}/api/check-recording`, {
@@ -122,11 +125,15 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
     }
     data = await cr.json();
     if (!cr.ok || !data.success) {
+      console.error(`[reEval][${uid.slice(0,8)}] check-recording 실패: ${cr.status} ${data?.error || ''}`);
       return {
         status: cr.status || 502,
         body: { success: false, error: '평가 실패: ' + (data?.error || cr.status) },
       };
     }
+    // 진단 로그 — 학생별 응답 비교 (audio 영향 받았나)
+    const csLog = data.categoryScores || {};
+    console.log(`[reEval][${uid.slice(0,8)}] response: score=${data.score} cs=${csLog.pronunciation}/${csLog.intonation}/${csLog.pace}/${csLog.accuracy} note="${(data.note||'').slice(0,40)}..."`);
   } catch (e) {
     return { status: 502, body: { success: false, error: 'check-recording 호출 실패: ' + (e.message || 'unknown') } };
   }
