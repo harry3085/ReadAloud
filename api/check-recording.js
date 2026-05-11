@@ -78,15 +78,19 @@ Scoring guide (entire recording vs full text):
 - 0-39: Silent, noise only, or entirely different content
 
 CRITICAL — weakPronunciation.issue rules:
-- DO NOT use Korean phonetic transliteration alone (e.g., "유진처럼 발음했습니다" 같은 한글 음역 단독 금지). 한국어 음역은 영어 발음을 정확히 표기 못 하므로 학생이 무엇을 고쳐야 할지 모름.
-- ALWAYS include AT LEAST ONE specific, actionable instruction the student can follow:
+- DO NOT describe what the student's pronunciation sounded like in Korean. 학생이 영어를 한글로 어떻게 들렸는지 묘사는 금지 — 영어 발음을 한글로 정확히 표기 불가능하므로 의미 없음.
+  * 금지 패턴: "'마이티'처럼 들렸어요" / "'유진'처럼 발음했어요" / "'X'와 같이 들렸어요" / "'Y'로 들렸어요"
+  * 어떤 형태든 issue 의 첫 문장이 "~처럼 들렸어요" / "~로 들렸어요" 식 청취 묘사면 안 됨
+- ALWAYS start issue with a specific, actionable instruction the student can follow:
   * Stress placement (예: "두 번째 음절 -GENE 에 강세")
   * Specific consonant/vowel issue (예: "j 발음 [dʒ] 강하게, '쥐'와 '주' 사이")
   * Mouth/tongue position hint (예: "L 발음 시 혀를 윗니 뒤에")
   * Length/timing (예: "ee 모음 길게, '이-' 늘여서")
 - IPA notation in brackets is encouraged when helpful (예: "[ˈjuːdʒiːn], 영어 강세는 첫 음절").
-- BAD example (do NOT do this): "Eugene을 '유진'처럼 발음했어요. '유진'에 가깝게 연습하세요" — 음역만 있고 행동 지시 없음. 학생 이해 불가.
-- GOOD example: "Eugene [ˈjuːdʒiːn] — 첫 음절 'YOO' 길고 강하게, 두 번째 'gene' 짧게. 'jeen' 의 j 는 입술 둥글게."
+- BAD examples (do NOT do this):
+  * "Eugene을 '유진'처럼 발음했어요. '유진'에 가깝게 연습하세요" — 음역만 있고 행동 지시 없음
+  * "Mighty가 '마이티'처럼 들렸어요. 다시 연습해보세요" — 청취 묘사 + 모호한 지시
+- GOOD example: "Mighty [ˈmaɪti] — 첫 음절 'MIGH' 길고 강하게, t 는 받침처럼 짧게. '마이-티' 가 아니라 '마이리' 에 가깝게."
 - If you cannot produce a useful actionable instruction for a word, DO NOT include it in weakPronunciation. Empty array is better than vague feedback.
 
 Feedback Korean: natural, encouraging, appropriate for middle/high school students.`;

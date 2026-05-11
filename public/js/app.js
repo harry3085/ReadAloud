@@ -2373,6 +2373,22 @@ function _rv2Render() {
        </div>`
     : '';
 
+  // Phase A+ : 직전 회차 성실도·속도 피드백 (회차 끝나면 즉시 박힘, 새 회차 시작해도 유지)
+  const lrf = _rv2.lastRoundFeedback;
+  const lastRoundHtml = lrf
+    ? `<div style="background:${lrf.bg};border:1px solid ${lrf.color}33;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:${lrf.color};line-height:1.5;">
+        <span style="font-weight:700;">${lrf.emoji} 직전 회차</span> — ${esc(lrf.text)}
+      </div>`
+    : '';
+
+  // Phase A+ : 마지막 회차 화면에 AI 피드백 기준 안내 (항상 표시)
+  const isLastRound = cur === N - 1;
+  const lastInfoHtml = isLastRound
+    ? `<div style="background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#075985;line-height:1.5;">
+        ℹ️ AI 피드백은 충분히 연습된 <strong>마지막 회차</strong>를 기준으로 합니다.
+      </div>`
+    : '';
+
   screen.innerHTML = `
     <!-- 코랄 히어로 헤더 + 숙제 내용 -->
     <div style="background:var(--brand-header-gradient);padding:48px 20px 28px;flex-shrink:0;">
@@ -2391,6 +2407,8 @@ function _rv2Render() {
       <div class="scroll-content" style="padding:16px 16px 24px;">
 
         ${alertHtml}
+        ${lastRoundHtml}
+        ${lastInfoHtml}
 
         <!-- N단계 진행 표시 -->
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">
@@ -2748,8 +2766,10 @@ window.rv2SaveRound = async () => {
   const idx = _rv2.savedRounds.length - 1;
   const isLast = _rv2.currentRound === _rv2.totalRounds - 1;
 
-  // Phase A+ : 회차 즉시 Storage 업로드 (자동 중간 저장)
-  // 마지막 회차 외엔 백그라운드 식으로 보이도록 toast 만
+  // Phase A+ : 회차 즉시 성실도·속도 피드백 박음 (다음 회차 화면 상단에 표시)
+  _rv2.lastRoundFeedback = _rv2BuildRoundMessage(_rv2.savedRounds[idx], idx, _rv2.question?.fullText || '');
+
+  // 회차 즉시 Storage 업로드 (자동 중간 저장)
   if (!isLast) {
     try {
       showToast(`💾 ${idx+1}회차 저장 중...`);
@@ -3191,6 +3211,40 @@ window.viewRecAiResult = async (testId) => {
   }
 };
 
+// Phase A2 : 영어 단어 클릭 → 발음 재생 (Web Speech API, en-US)
+// weakPronunciation.word, issue, tips 안 모든 영단어에 적용
+window._playEnglishWord = (word) => {
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-US';
+    u.rate = 0.85;
+    u.pitch = 1.0;
+    window.speechSynthesis.speak(u);
+  } catch (e) { console.warn('TTS 실패', e); }
+};
+
+// "X처럼 들렸어요" 같은 한글 음역 멘트 제거 — 의미 없는 표현이라 학생 혼란
+// 패턴: "마이티처럼 들렸어요." / "X와 같이 들렸어요." 등
+function _cleanIssue(issue) {
+  let s = String(issue || '').trim();
+  // 앞쪽 음역 멘트 제거 (점·! 다음까지)
+  s = s.replace(/^[^.!?]{1,40}처럼\s*들렸[어어]?요[.!?\s]*/, '');
+  s = s.replace(/^[^.!?]{1,40}와\s*같[이게]\s*들렸[어어]?요[.!?\s]*/, '');
+  s = s.replace(/^[^.!?]{1,40}로\s*들렸[어어]?요[.!?\s]*/, '');
+  return s.trim();
+}
+
+// esc 한 텍스트 안 영단어를 클릭 가능한 발음 버튼으로 wrap
+function _renderInlineWithTTS(text) {
+  const escaped = esc(text);
+  return escaped.replace(
+    /\b([A-Za-z][A-Za-z']{1,})\b/g,
+    (m) => `<span onclick="_playEnglishWord('${m.replace(/'/g,"&#39;")}')" style="cursor:pointer;color:#0369a1;text-decoration:underline dotted;text-underline-offset:2px;font-weight:600;" title="발음 듣기">${m}</span>`
+  );
+}
+
 // 회차별 성실도·속도 분석 메시지
 // 우선순위: 성실도 < 40% → 속도 (느림 < 0.8 wps · 빠름 > 3.5 wps) → 격려
 function _rv2BuildRoundMessage(round, idx, fullText) {
@@ -3257,33 +3311,35 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
 
       ${(missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
         <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:6px;">🤖 AI 피드백</div>
-          <div style="font-size:10px;color:var(--gray);margin-bottom:10px;line-height:1.5;">AI 피드백은 ${hasMultiple ? '<strong>마지막 회차 (충분히 연습된 녹음)</strong>' : '제출된 녹음'} 을 기준으로 합니다.</div>
+          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백</div>
           ${(feedback?.missedWords?.length || missedWords?.length) ? `
             <div style="margin-bottom:12px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어</div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>
               <div style="font-size:12px;">
-                ${(feedback?.missedWords?.length ? feedback.missedWords : missedWords).map(w => `<span style="background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;">${esc(w)}</span>`).join('')}
+                ${(feedback?.missedWords?.length ? feedback.missedWords : missedWords).map(w => `<span onclick="_playEnglishWord('${esc(w).replace(/'/g,"&#39;")}')" style="cursor:pointer;background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;font-weight:600;" title="발음 듣기">🔊 ${esc(w)}</span>`).join('')}
               </div>
             </div>` : ''}
           ${feedback?.weakPronunciation?.length ? `
             <div style="margin-bottom:12px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">🔊 발음 개선</div>
-              ${feedback.weakPronunciation.map(p => `
-                <div style="font-size:12px;padding:6px 10px;background:#fef3c7;border-left:2px solid #CA8A04;margin-bottom:4px;border-radius:3px;">
-                  <strong>${esc(p.word)}</strong> → ${esc(p.issue)}
-                </div>`).join('')}
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">🔊 발음 개선 <span style="font-weight:400;color:#94a3b8;">(영단어 클릭 시 발음)</span></div>
+              ${feedback.weakPronunciation.map(p => {
+                const cleaned = _cleanIssue(p.issue);
+                if (!cleaned) return '';
+                return `<div style="font-size:12px;padding:6px 10px;background:#fef3c7;border-left:2px solid #CA8A04;margin-bottom:4px;border-radius:3px;">
+                  <span onclick="_playEnglishWord('${esc(p.word).replace(/'/g,"&#39;")}')" style="cursor:pointer;background:#fde68a;padding:1px 8px;border-radius:3px;font-weight:700;" title="발음 듣기">🔊 ${esc(p.word)}</span> → ${_renderInlineWithTTS(cleaned)}
+                </div>`;
+              }).join('')}
             </div>` : ''}
           ${feedback?.tips?.length ? `
             <div>
               <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">💡 개선 팁</div>
-              ${feedback.tips.map(t => `<div style="font-size:12px;color:var(--text);padding:5px 0;line-height:1.5;">• ${esc(t)}</div>`).join('')}
+              ${feedback.tips.map(t => `<div style="font-size:12px;color:var(--text);padding:5px 0;line-height:1.5;">• ${_renderInlineWithTTS(t)}</div>`).join('')}
             </div>` : ''}
         </div>
       ` : ''}
 
       <div style="padding:10px 14px;background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;margin-bottom:14px;font-size:11px;color:#075985;line-height:1.6;">
-        📅 <strong>녹음 보관 안내</strong> — 제출된 녹음은 <strong>30일</strong> 동안 다시 들을 수 있고, 60일 후 자동 삭제됩니다.
+        📅 제출된 녹음은 <strong>30일</strong> 동안 다시 들을 수 있어요.
       </div>
 
       <div style="display:flex;gap:10px;margin-top:16px;">
