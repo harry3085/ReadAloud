@@ -11567,6 +11567,46 @@ window.tpExcludeStudent = async (testId, uid, studentName) => {
   }
 };
 
+// 녹음숙제 AI 재평가 — eval 에러 / 미통과 케이스 구제
+// userCompleted.recordings 마지막 audioUrl 로 /api/adminAction (reEvaluateRecording) 호출
+// 서버가 check-recording 재호출 + userCompleted 갱신 + scores doc 추가 (admin SDK)
+// 학원 녹음 월 한도 +1 차감
+window.tpReEvaluateRecording = async (testId, uid, studentName) => {
+  if (!testId || !uid) return;
+  if (!(await showConfirm(
+    `"${studentName || '학생'}" AI 재평가`,
+    `Storage 에 저장된 마지막 녹음을 AI 가 다시 평가합니다.\n학원 녹음 월 한도가 +1 차감됩니다.\n\n결과는 통과/미통과 모두 학원장·학생 화면에 반영됩니다.`
+  ))) return;
+  try {
+    showToast('🤖 AI 재평가 중... (10~20초)');
+    const idToken = await currentUser.getIdToken();
+    if (!idToken) { showAlert('재평가 실패', '로그인 토큰 없음'); return; }
+    const r = await fetch('/api/adminAction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        action: 'reEvaluateRecording',
+        testId, uid,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) {
+      showAlert('재평가 실패', data.error || `HTTP ${r.status}`);
+      return;
+    }
+    const msg = data.passed
+      ? `✓ 재평가 완료 — ${data.score}점 (통과)`
+      : `⚠ 재평가 완료 — ${data.score}점 (미통과)`;
+    showToast(msg);
+    // 펼침 화면 다시 그리기 — 같은 행 다시 클릭하면 갱신된 상태 표시
+    await tpToggleTestProgress(testId);
+    await tpToggleTestProgress(testId);
+  } catch(e) {
+    showAlert('재평가 실패', e.message);
+  }
+};
+
 // 시험(genTests) 단건 삭제 — 하위 userCompleted 도 cascade 삭제. scores 는 보존(이력 가치).
 window.tpDeleteGenTest = async (testId) => {
   const t = _tpGenTests.find(x => x.id === testId);
@@ -12831,10 +12871,15 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                         <audio src="${esc(r.audioUrl||'')}" controls preload="none" onclick="event.stopPropagation()" style="width:100%;height:30px;"></audio>
                       </div>`;
                   }).join('');
+                  // 미통과 케이스만 [🔁 재평가] 노출 (통과는 재평가 불필요)
+                  const reBtnRec = isFailedWithRecs
+                    ? `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가합니다 (학원 녹음 한도 +1)" style="position:absolute;top:6px;right:32px;width:20px;height:20px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`
+                    : '';
                   return `
                     <div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;cursor:pointer;">
+                      ${reBtnRec}
                       <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
-                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding-right:24px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding-right:48px;">
                         <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
                         <span style="color:${headColor};font-weight:700;font-size:11px;">${headLabel}</span>
                       </div>
@@ -12867,7 +12912,13 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                   const stageLabel = { upload:'업로드', eval:'AI 평가', firestore:'저장' }[c.latestErrorStage] || c.latestErrorStage;
                   const errAt = c.latestAttemptAt?.toDate?.() ? _ymdKST(c.latestAttemptAt.toDate()) : '';
                   const errMsg = c.latestErrorMessage || '';
-                  return `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;" title="${esc(errMsg)}">
+                  // recordings 있는 에러 (catch 블록 보강 후 발생) — [🔁 재평가] 노출
+                  const reBtnErr = recs.length > 0
+                    ? `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가 (학원 녹음 한도 +1)" style="position:absolute;top:3px;right:26px;width:18px;height:18px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:10px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`
+                    : '';
+                  const rightPad = recs.length > 0 ? '44px' : '22px';
+                  return `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:5px ${rightPad} 5px 9px;font-size:11px;position:relative;" title="${esc(errMsg)}">
+                    ${reBtnErr}
                     ${xBtnRec}
                     <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                     <div style="color:#b91c1c;">⚠️ ${esc(stageLabel)} 실패${errAt ? ' · ' + esc(errAt) : ''}</div>

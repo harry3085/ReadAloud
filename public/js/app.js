@@ -2667,15 +2667,6 @@ window.rv2Quit = async () => {
   goHome();
 };
 
-function _rv2BlobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1] || '');
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
 // Gemini 전송 전 오디오 앞부분만 잘라 전송 (토큰 비용 절감)
 // 원본 blob 은 Storage 에 그대로 업로드 — Gemini 전송용 사본만 잘림
 // 실패 시 원본 blob 반환 (디코딩 불가 포맷 등 폴백)
@@ -2800,12 +2791,13 @@ async function _rv2Submit() {
 
   let stage = 'upload';
   let _retryCount = 0;
+  // catch 블록에서도 접근 가능하도록 try 밖에서 선언 (eval 실패 시 학원장 재평가용)
+  let recordingsDetail = [];
   try {
     console.log('[rv2Submit] START', { testId: t.id, totalRounds: _rv2.totalRounds });
     const storage = getStorage();
     // 모든 라운드 Storage 업로드 (학원장이 회차별 audio 다 들을 수 있도록).
     // AI 평가는 마지막 라운드만 (정책 그대로 — 비용·일관성).
-    const recordingsDetail = [];
     const tsBase = Date.now();
     for (let i = 0; i < _rv2.savedRounds.length; i++) {
       const r = _rv2.savedRounds[i];
@@ -2832,9 +2824,9 @@ async function _rv2Submit() {
     stage = 'eval';
 
     // 통합 호출 — score + feedback 한 번에
-    const base64 = await _rv2BlobToBase64(lastRound.blob);
+    // Vercel 4.5MB body 한도 회피: base64 인라인 대신 Storage URL 전송 (서버가 fetch)
     const sendMime = lastRound.mime;
-    console.log(`[rv2Submit] eval base64 len=${base64.length} mime=${sendMime}`);
+    console.log(`[rv2Submit] eval audioUrl=${audioUrl.slice(0, 60)}... mime=${sendMime}`);
     const idToken = currentUser ? await currentUser.getIdToken() : '';
     // 평가구간: q.evaluationSeconds 우선 (시험별), 없으면 0 (전체)
     const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
@@ -2844,7 +2836,7 @@ async function _rv2Submit() {
       body: JSON.stringify({
         idToken,
         originalText: q.fullText,
-        audioBase64: base64,
+        audioUrl,           // Storage URL — 서버가 fetch (4.5MB body 한도 회피)
         mimeType: sendMime,
         evaluationSeconds: evalSec,
       }),
@@ -2963,17 +2955,24 @@ async function _rv2Submit() {
 
     // (A) 시도 흔적 기록 — 학원장이 '학생 시도했지만 AI/네트워크 실패' 인 걸 볼 수 있도록
     // userCompleted 에 latestAttemptAt + latestErrorStage + latestErrorMessage 박기.
+    // 추가: 이미 업로드된 recordings 도 박음 → 학원장 [재평가] 가능
     if (currentUser && t?.id) {
       try {
+        const errPayload = {
+          uid: currentUser.uid,
+          userName: userProfile?.name || '',
+          latestAttemptAt: serverTimestamp(),
+          latestErrorStage: stage,  // 'upload' / 'eval' / 'firestore'
+          latestErrorMessage: (e?.message || String(e) || '').slice(0, 200),
+        };
+        // Storage 업로드 성공한 부분이라도 박아둠 (eval/firestore 단계 실패 시 모두 채워짐).
+        // 학원장이 [🔁 재평가] 누르면 이 audioUrl 로 재시도 가능.
+        if (recordingsDetail.length > 0) {
+          errPayload.recordings = recordingsDetail;
+        }
         await setDoc(
           doc(db,'genTests',t.id,'userCompleted',currentUser.uid),
-          {
-            uid: currentUser.uid,
-            userName: userProfile?.name || '',
-            latestAttemptAt: serverTimestamp(),
-            latestErrorStage: stage,  // 'upload' / 'eval' / 'firestore'
-            latestErrorMessage: (e?.message || String(e) || '').slice(0, 200),
-          },
+          errPayload,
           { merge: true }
         );
       } catch(_) {}

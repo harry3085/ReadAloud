@@ -108,7 +108,8 @@ module.exports = async (req, res) => {
     const body = req.body || {};
     const mode = body.mode === 'feedback' ? 'feedback' : 'check';
     const originalText = String(body.originalText || '').trim();
-    const audioBase64 = body.audioBase64;
+    let audioBase64 = body.audioBase64;
+    const audioUrl = body.audioUrl;  // 신규: Storage download URL 패턴 (Vercel 4.5MB body 한도 회피)
     const idToken = body.idToken;
 
     // 인증 + 녹음 월 쿼터 (Phase 3)
@@ -116,7 +117,31 @@ module.exports = async (req, res) => {
     if (q.error) { res.status(q.status).json({ success: false, error: q.error, limit: q.limit, currentCount: q.currentCount }); return; }
     // 쿼터 통과 시점에 카운트 — daily/monthly 단일 writer (서버) 통합
     await incrementUsage({ ...q, res, endpoint: 'check-recording' });
-    const rawMime = body.mimeType || 'audio/webm';
+
+    // audioUrl 받으면 server-side fetch → base64 변환 (Vercel body 한도 무관)
+    let fetchedMime = '';
+    if (audioUrl && typeof audioUrl === 'string' && !audioBase64) {
+      try {
+        const r = await fetch(audioUrl);
+        if (!r.ok) {
+          res.status(400).json({ success: false, error: `audio fetch failed: ${r.status}` });
+          return;
+        }
+        const ab = await r.arrayBuffer();
+        if (ab.byteLength > 20 * 1024 * 1024) {
+          res.status(413).json({ success: false, error: 'Audio too large (>20MB)' });
+          return;
+        }
+        audioBase64 = Buffer.from(ab).toString('base64');
+        fetchedMime = r.headers.get('content-type') || '';
+      } catch (e) {
+        console.error('[check-recording] audioUrl fetch failed:', e);
+        res.status(502).json({ success: false, error: 'audio fetch failed: ' + (e.message || 'unknown') });
+        return;
+      }
+    }
+
+    const rawMime = body.mimeType || fetchedMime || 'audio/webm';
     // Gemini 공식 지원: wav/mp3/aiff/aac/ogg/flac
     // 브라우저가 주로 내보내는 webm/mp4 는 거부되므로 호환 포맷으로 리라벨
     // (컨테이너 내부 opus/aac 코덱은 보통 파싱 가능)
