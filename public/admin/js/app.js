@@ -4331,33 +4331,45 @@ function _adminUqBuildDetail(questions, answers){
 }
 function _adminRecBuildDetail(recordings){
   if(!Array.isArray(recordings)||!recordings.length) return '';
+  // Phase B: 통과/불통 폐기 — 모든 회차 동일 배경. Phase C: 카테고리 점수+코멘트 표시
   return recordings.map((r,i)=>{
-    const score=typeof r.score==='number'?r.score:null;
-    const pass=score!=null?score>=80:null;
+    const score = (typeof r.score === 'number') ? r.score : null;
     const isLast = i === recordings.length - 1;
-    const bg=pass===true?'#F0FDF4':pass===false?'#FEF2F2':'#f8f9fa';
-    const border=pass===true?'#BBF7D0':pass===false?'#FECACA':'#e5e7eb';
-    // 필드명: audioUrl (신규) 우선, url (레거시) 폴백
     const audio = r.audioUrl || r.url || '';
     const fb = r.feedback;  // 마지막 회차에만 있음
+    const cs = r.categoryScores;
+    const cc = r.categoryComments;
+    const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
+    const positives = fb?.positives || [];
+    const catBadge = (label, color, scoreVal, comment) => {
+      if (typeof scoreVal !== 'number' && !comment) return '';
+      return `<div style="margin-top:3px;font-size:11px;line-height:1.5;"><span style="background:${color};color:white;padding:1px 7px;border-radius:3px;font-weight:700;margin-right:5px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
+    };
     return `
-      <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
+      <div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-          <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':'Q'+(i+1)}</span>
-          ${score!=null?`<span style="font-size:12px;color:${pass?'#059669':'#dc2626'};font-weight:700;">${score}점</span>`:''}
+          <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
+          ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
           ${r.duration?`<span style="font-size:10px;color:var(--gray);">${r.duration}초</span>`:''}
+          ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
         ${audio?`<audio src="${esc(audio)}" controls preload="none" style="width:100%;height:30px;"></audio>`:''}
-        ${Array.isArray(r.missedWords)&&r.missedWords.length?`<div style="font-size:11px;color:#dc2626;margin-top:6px;">놓친 단어: ${esc(r.missedWords.join(', '))}</div>`:''}
-        ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:4px;">${esc(r.note)}</div>`:''}
-        ${fb ? `
-          <details style="margin-top:8px;">
-            <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (3회차 통과)</summary>
+        ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:6px;">${esc(r.note)}</div>`:''}
+        ${(hasCat || positives.length || (Array.isArray(fb?.missedWords) && fb.missedWords.length) || (Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length) || (Array.isArray(fb?.tips) && fb.tips.length)) ? `
+          <details open style="margin-top:8px;">
+            <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
             <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:6px;font-size:11px;line-height:1.6;">
-              ${Array.isArray(fb.missedWords)&&fb.missedWords.length?`<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>`:''}
-              ${Array.isArray(fb.weakPronunciation)&&fb.weakPronunciation.length?`<div style="margin-top:4px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`${esc(p.word||'')} (${esc(p.issue||'')})`).join(' · ')}</div>`:''}
-              ${Array.isArray(fb.tips)&&fb.tips.length?`<div style="margin-top:4px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>`:''}
+              ${hasCat ? `<div style="margin-bottom:6px;"><strong>📊 항목별 점수·코멘트</strong>
+                ${catBadge('🔊 발음', '#3b82f6', cs?.pronunciation, cc?.pronunciation)}
+                ${catBadge('🎵 억양', '#22c55e', cs?.intonation, cc?.intonation)}
+                ${catBadge('🏃 속도', '#eab308', cs?.pace, cc?.pace)}
+                ${catBadge('🎯 정확도', '#a855f7', cs?.accuracy, cc?.accuracy)}
+              </div>` : ''}
+              ${positives.length ? `<div style="margin-top:4px;"><strong>👍 잘한 점:</strong> ${positives.map(esc).join(' · ')}</div>` : ''}
+              ${Array.isArray(fb?.missedWords) && fb.missedWords.length ? `<div style="margin-top:4px;"><strong>📝 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
+              ${Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length ? `<div style="margin-top:4px;"><strong>🔊 발음 개선:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word||'')}</strong> — ${esc(p.issue||'')}</div>`).join('')}</div>` : ''}
+              ${Array.isArray(fb?.tips) && fb.tips.length ? `<div style="margin-top:4px;"><strong>💡 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
             </div>
           </details>` : ''}
       </div>`;
