@@ -3163,6 +3163,9 @@ window.viewRecAiResult = async (testId) => {
 
     const test = testSnap.exists() ? testSnap.data() : {};
     const fullText = (Array.isArray(test.questions) && test.questions[0]?.fullText) || '';
+    // Phase D: 30일 만료 판정 (학생 재생 차단)
+    const completedTs = completed.completedAt || completed.latestFailedAt;
+    const audioExpired = _rv2IsAudioExpired(completedTs);
 
     show('recAiQuiz');
     _rv2RenderResult({
@@ -3173,6 +3176,7 @@ window.viewRecAiResult = async (testId) => {
       recordings,  // 회차별 audio + 성실도·속도 메시지
       fullText,
       categoryComments: lastRec.categoryComments || null,
+      audioExpired,
     });
   } catch(e) {
     console.error(e);
@@ -3242,6 +3246,17 @@ function _rv2BuildRoundMessage(round, idx, fullText) {
   return { emoji, text, color, bg, vaPct, wpm, idx: n };
 }
 
+// Phase D: 녹음 audio 만료 판정 (30일 이상 = 학생 재생 차단)
+// 기준: userCompleted.completedAt 또는 latestFailedAt
+// 학원장은 60일까지 그대로 (Storage 자동 삭제 전까지 접근)
+function _rv2IsAudioExpired(completedTs) {
+  if (!completedTs) return false;
+  const ms = completedTs.toMillis ? completedTs.toMillis() : (completedTs._seconds ? completedTs._seconds * 1000 : 0);
+  if (!ms) return false;
+  const daysSince = (Date.now() - ms) / (1000 * 60 * 60 * 24);
+  return daysSince > 30;
+}
+
 // 인포 모달 — 녹음 화면 ⓘ 클릭 시 용어 설명
 // 학생앱은 학원장 앱의 동적 showModal 패턴이 없어 자체 overlay 생성/제거
 window.closeRecordingTermsModal = () => {
@@ -3297,8 +3312,9 @@ window.showRecordingTermsModal = () => {
 // 결과 화면 — "제출 완료" 단일 헤드라인 + 회차별 audio·성실도 메시지 + AI 피드백
 // 학생에겐 점수·통과 라벨 비공개 (학원장만 봄). passScore 개념 폐기.
 // Phase C: 잘한 점·억양·강세·카테고리별 정성 코멘트 추가
+// Phase D: 30일 이상 = audio 재생 차단 (audioExpired=true)
 // 보관 정책 안내: 30일 재생
-function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, fullText, categoryComments }) {
+function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, fullText, categoryComments, audioExpired }) {
   _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
@@ -3323,7 +3339,17 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
       </div>
 
       <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        ${hasMultiple ? `
+        ${audioExpired ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--gray);">🎧 녹음 다시 듣기</div>
+            <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
+          </div>
+          <div style="padding:18px 14px;background:#f8f9fa;border:1px dashed #d1d5db;border-radius:8px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:6px;">🔒</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">녹음 다시 듣기 만료</div>
+            <div style="font-size:11px;color:var(--gray);line-height:1.5;">제출된 녹음은 30일 동안만 다시 들을 수 있어요.<br>AI 피드백은 계속 확인 가능합니다.</div>
+          </div>
+        ` : hasMultiple ? `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div style="font-size:11px;font-weight:700;color:var(--gray);">🎧 회차별 녹음 다시 듣기 (총 ${recordings.length}회)</div>
             <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
