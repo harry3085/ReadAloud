@@ -13420,6 +13420,12 @@ window._ssLoadTest = async function (testId) {
   };
 };
 
+// ID 토큰 — scoresnap.js 에서 fetch 인증용
+window._ssGetIdToken = async function () {
+  if (!currentUser) throw new Error('로그인 정보 없음');
+  return await currentUser.getIdToken();
+};
+
 // 최근 N일 시험 목록 (수동 선택 폴백)
 window._ssLoadRecentTests = async function (days = 30) {
   const startMs = Date.now() - days * 24 * 3600 * 1000;
