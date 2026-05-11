@@ -26,11 +26,15 @@ async function _verifyAdmin(auth, idToken) {
   let caller;
   try { caller = await auth.verifyIdToken(idToken); }
   catch (e) { return { error: '유효하지 않은 토큰', status: 401 }; }
-  if (caller.role !== 'admin' && caller.role !== 'super_admin') {
-    return { error: 'admin 만 가능', status: 403 };
+  // 시스템 표준 Custom Claims = 'academy_admin' (createAcademy.js 등 다른 API 와 일관)
+  // 'admin' 도 폴백 허용 (만일 다른 학원장이 다른 값으로 박혀있어도 통과)
+  const r = caller.role;
+  const isAdmin = (r === 'academy_admin' || r === 'admin');
+  if (!isAdmin && r !== 'super_admin') {
+    return { error: '학원장 권한 필요', status: 403 };
   }
-  if (caller.role === 'admin' && !caller.academyId) {
-    return { error: 'academyId 없음', status: 403 };
+  if (isAdmin && !caller.academyId) {
+    return { error: 'academyId 없음 (재로그인 필요)', status: 403 };
   }
   return { caller };
 }
@@ -57,7 +61,8 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   const tSnap = await db.doc(`genTests/${testId}`).get();
   if (!tSnap.exists) return { status: 404, body: { success: false, error: '시험 없음' } };
   const t = tSnap.data();
-  if (caller.role !== 'super_admin' && t.academyId !== caller.academyId) {
+  const isSuper = caller.role === 'super_admin';
+  if (!isSuper && t.academyId !== caller.academyId) {
     return { status: 403, body: { success: false, error: '다른 학원 시험' } };
   }
 
