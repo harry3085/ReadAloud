@@ -319,7 +319,7 @@
         </div>
         <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;">채점 종료</button>
       </div>
-      <div id="ssCaptureBody" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:18px;">
+      <div id="ssCaptureBody" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 30px;gap:18px;overflow-y:auto;min-height:0;">
         <div style="font-size:14px;color:#bbb;text-align:center;line-height:1.5;">
           학생 답안지를 카메라로 찍거나<br>갤러리에서 선택하세요
         </div>
