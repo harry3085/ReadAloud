@@ -72,6 +72,13 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   if (!ucSnap.exists) return { status: 404, body: { success: false, error: '응시 기록 없음' } };
   const c = ucSnap.data();
   const recs = Array.isArray(c.recordings) ? c.recordings : [];
+
+  // 학생 프로필 (group / name 등) — scores 누락 방지
+  let studentProfile = {};
+  try {
+    const uSnap = await db.doc(`users/${uid}`).get();
+    if (uSnap.exists) studentProfile = uSnap.data();
+  } catch (_) {}
   if (!recs.length) {
     return { status: 400, body: { success: false, error: 'audio 없음 — Storage 에서 찾아야 함' } };
   }
@@ -158,19 +165,31 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   }, { merge: true });
 
   // scores 컬렉션 add (성적 리포트 반영용) — Phase B: passed=true 일관
+  // 학생앱 _rv2Submit 의 scoresPayload 와 동일 필드 (성적 리포트 누락 방지)
+  const studentName = c.userName || studentProfile.name || '';
+  const studentGroup = studentProfile.group || '';
   await db.collection('scores').add({
+    academyId: t.academyId,
     uid,
-    userName: c.userName || '',
+    userId: uid,
+    userName: studentName,
+    name: studentName,
+    group: studentGroup,
     testId,
     testName: t.name || '',
-    score,
-    passed: true,
+    unitId: testId,
+    unitName: t.name || '',
+    bookName: t.bookName || '',
     mode: 'recording',
+    score,
+    correct: 1,
+    wrong: 0,
+    total: 1,
+    passed: true,
+    recordings: newRecs,
     date: today,
-    academyId: t.academyId,
     createdAt: FieldValue.serverTimestamp(),
     reEvaluated: true,
-    recordings: newRecs,
   });
 
   return {

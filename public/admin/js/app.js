@@ -4395,8 +4395,10 @@ window.showScoreDetail = async(scoreId, testId) => {
 
     const bookName = s.bookName || genTest?.bookName || s.unitName || '-';
     const testName = s.testName || genTest?.name || '-';
+    const isRecording = mode === 'recording';
     const passScore = s.passScore || genTest?.passScore || 80;
-    const passed = s.passed || (s.score>=passScore);
+    // Phase B: 녹음숙제는 통과/불통 폐기 — 무조건 passed 로 간주 (상세 차단 X)
+    const passed = isRecording ? true : (s.passed || (s.score>=passScore));
     const pct = s.score || 0;
     const badge = pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
 
@@ -4407,17 +4409,27 @@ window.showScoreDetail = async(scoreId, testId) => {
     //   - genTests 자체가 없는 진짜 레거시 → '레거시' 안내
     const hasDetail = comp && (
       (comp.questions && comp.answers) ||
-      (mode==='recording' && Array.isArray(comp.recordings) && comp.recordings.length)
+      (isRecording && Array.isArray(comp.recordings) && comp.recordings.length)
     );
     const isThisAttemptBest = hasDetail && comp.score === s.score && (comp.date||'') === (s.date||'');
 
     let detailHtml;
     if(isThisAttemptBest){
       detailHtml = _adminBuildDetail(mode, comp);
+    } else if(isRecording && hasDetail) {
+      // Phase B: 녹음숙제는 통과/불통 분기 폐기 — recordings 있으면 무조건 상세 표시
+      detailHtml = _adminBuildDetail(mode, comp);
     } else if(!genTest){
       detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
         <div style="font-size:24px;margin-bottom:6px;">📄</div>
         <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
+      </div>`;
+    } else if(isRecording) {
+      // 녹음숙제인데 recordings 없음 = 옛 미통과 데이터 (recordings 미저장)
+      detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+        <div style="font-size:24px;margin-bottom:6px;">📄</div>
+        <div style="font-weight:600;color:#888;">옛 응시 기록 - 녹음·피드백 데이터가 저장되지 않은 시험</div>
         <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
       </div>`;
     } else if(!passed){
@@ -4469,10 +4481,16 @@ window.showScoreDetail = async(scoreId, testId) => {
                 <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
                 <div style="font-size:11px;color:var(--gray);margin-top:2px;">전체</div>
               </div>
-              <div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:8px;padding:12px 6px;text-align:center;">
-                <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
-                <div style="font-size:11px;color:var(--gray);margin-top:2px;">기준 ${passScore}점</div>
-              </div>
+              ${isRecording
+                ? `<div style="background:#dbeafe;border-radius:8px;padding:12px 6px;text-align:center;">
+                    <div style="font-size:14px;font-weight:800;color:#1d4ed8;line-height:1.4;">📤<br>제출됨</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">통과/불통 X</div>
+                  </div>`
+                : `<div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:8px;padding:12px 6px;text-align:center;">
+                    <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">기준 ${passScore}점</div>
+                  </div>`
+              }
             </div>
           </div>
 
