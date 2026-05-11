@@ -284,33 +284,273 @@
     _renderAnswerKeyCapture();
   };
 
-  // 정답지 확정 → 학생 답안 단계 (T7-C 자리표시자)
+  // 정답지 확정 → 학생 답안 단계
   window._ssAkConfirm = function () {
     if (!_state.answerKey?.questions?.length) return;
-    _renderStudentPlaceholder();
+    _state.students = [];
+    _renderStudentCapture();
   };
 
-  function _renderStudentPlaceholder() {
-    _state.phase = 'student-placeholder';
+  // ─── T7-C. 학생 답안지 일괄 촬영 화면 ───
+  function _renderStudentCapture() {
+    _state.phase = 'student-capture';
     _setHeader('🎓 ScoreSnap · 2단계: 학생 답안지');
     const body = document.getElementById('ssBody');
     if (!body) return;
     const k = _state.answerKey;
+    const precision = _state.precision === true;
+    const precisionBadge = precision
+      ? '<span style="display:inline-block;background:#5a3a1a;color:#ffc107;border:1px solid #ffc107;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin-left:6px;">🎯 정밀</span>'
+      : '';
+
     body.innerHTML = `
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:14px;text-align:center;max-width:520px;margin:0 auto;">
-        <div style="font-size:48px;">🎓</div>
-        <div style="font-size:17px;font-weight:700;color:#fff;">정답지 확정됨</div>
-        <div style="font-size:13px;color:#bbb;line-height:1.6;">
-          ${esc(k.testName || '시험')} · ${k.questions.length}문항
+      <div style="padding:14px 18px;border-bottom:1px solid #333;flex-shrink:0;">
+        <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${k.questions.length}문항 ${precisionBadge}</div>
+        <div style="font-size:11px;color:#888;margin-top:3px;">학생 답안지 여러 장 추가 후 [🚀 일괄 채점] 누르세요. 이름란의 손글씨로 학생 자동 구분.</div>
+      </div>
+      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex-shrink:0;">
+        <input id="ssStCamIn" type="file" accept="image/*" capture="environment" style="display:none;">
+        <input id="ssStGalIn" type="file" accept="image/*" multiple style="display:none;">
+        <button id="ssStCamBtn"
+          style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+          📷 사진 추가 촬영
+        </button>
+        <button id="ssStGalBtn"
+          style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #444;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;">
+          🖼 갤러리 다중 선택
+        </button>
+        <div style="flex:1;"></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:${precision ? '#ffc107' : '#888'};cursor:pointer;">
+          <input type="checkbox" id="ssStPrecision" ${precision ? 'checked' : ''} onchange="window._ssStTogglePrecision(this.checked)" style="cursor:pointer;">
+          🎯 정밀 모드
+        </label>
+      </div>
+      <div id="ssStThumbs" style="flex:1;overflow-y:auto;padding:14px;background:#0a0a0a;min-height:0;">
+        ${_buildStudentThumbsHtml()}
+      </div>
+      <div style="padding:14px 18px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:10px;flex-wrap:wrap;">
+        <button onclick="window._ssBackToAnswerKey()" style="background:transparent;color:#bbb;border:1px solid #444;padding:10px 16px;border-radius:6px;font-size:12px;cursor:pointer;">← 정답지 검토로</button>
+        <div style="flex:1;text-align:center;font-size:12px;color:#888;" id="ssStCount">${_state.students.length}장 추가됨</div>
+        <button id="ssStGradeBtn" onclick="window._ssStartBatchGrade()"
+          ${_state.students.length === 0 ? 'disabled' : ''}
+          style="background:${_state.students.length === 0 ? '#444' : 'var(--c-brand,#E8714A)'};color:#fff;border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:${_state.students.length === 0 ? 'not-allowed' : 'pointer'};${_state.students.length === 0 ? 'opacity:0.5;' : ''}">
+          🚀 일괄 채점 (${_state.students.length}명)
+        </button>
+      </div>
+    `;
+    const camIn = document.getElementById('ssStCamIn');
+    const galIn = document.getElementById('ssStGalIn');
+    document.getElementById('ssStCamBtn').onclick = () => camIn.click();
+    document.getElementById('ssStGalBtn').onclick = () => galIn.click();
+    camIn.onchange = (e) => _handleStudentFiles(e.target.files);
+    galIn.onchange = (e) => _handleStudentFiles(e.target.files);
+  }
+
+  function _buildStudentThumbsHtml() {
+    const list = _state.students || [];
+    if (list.length === 0) {
+      return `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#666;text-align:center;gap:14px;padding:40px;">
+          <div style="font-size:48px;">🎓</div>
+          <div style="font-size:14px;">학생 답안지를 추가해 주세요</div>
+          <div style="font-size:11px;color:#555;line-height:1.6;">
+            한 장씩 촬영하거나, 갤러리에서 여러 장 한 번에 선택 가능.<br>
+            이름란 손글씨로 학생 자동 구분됩니다.
+          </div>
         </div>
-        <div style="font-size:13px;color:#bbb;line-height:1.7;background:#1a1a1a;border:1px dashed #444;border-radius:8px;padding:16px 20px;margin-top:10px;">
-          다음 단계: <b style="color:#fff;">학생 답안지 일괄 촬영</b><br>
-          (T7-C 작업에서 활성화 — 여러 장 추가 → 일괄 채점 → 학생별 결과)
-        </div>
-        <button onclick="window.closeScoreSnap()" style="margin-top:14px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">종료</button>
+      `;
+    }
+    const rows = list.map((s, i) => `
+      <div style="position:relative;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;">
+        <img src="${s.image.dataUrl}" alt="" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#000;">
+        <div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;">${i + 1}</div>
+        <button onclick="window._ssStRemove(${i})" title="삭제"
+          style="position:absolute;top:4px;right:4px;background:rgba(220,38,38,0.85);color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
+        <div style="font-size:10px;color:#888;padding:4px 6px;text-align:center;">${s.image.sizeKB} KB</div>
+      </div>
+    `).join('');
+    return `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
+        ${rows}
       </div>
     `;
   }
+
+  async function _handleStudentFiles(files) {
+    if (!files || files.length === 0) return;
+    const precision = _state.precision === true;
+    const thumbs = document.getElementById('ssStThumbs');
+    const before = _state.students.length;
+    // 다중 파일 처리 — 순차 (대량일 때 메모리 안전)
+    for (const file of files) {
+      try {
+        const processed = await window._ssProcessImage(file, { precision });
+        _state.students.push({ image: processed, status: 'pending', result: null, error: null });
+      } catch (e) {
+        console.warn('[scoresnap] image process 실패:', e.message);
+      }
+    }
+    if (_state.students.length > before) {
+      // 썸네일·카운트·버튼 갱신 (전체 다시 그림)
+      _renderStudentCapture();
+    }
+    // input value 비움 (같은 파일 재선택 가능)
+    const camIn = document.getElementById('ssStCamIn');
+    const galIn = document.getElementById('ssStGalIn');
+    if (camIn) camIn.value = '';
+    if (galIn) galIn.value = '';
+  }
+
+  window._ssStRemove = function (idx) {
+    if (!_state.students || idx < 0 || idx >= _state.students.length) return;
+    _state.students.splice(idx, 1);
+    _renderStudentCapture();
+  };
+
+  window._ssStTogglePrecision = function (checked) {
+    _state.precision = checked === true;
+  };
+
+  window._ssBackToAnswerKey = function () {
+    // 정답지 검토 화면으로 (재촬영 X — 그대로 유지)
+    if (!_state.answerKey?.questions?.length) {
+      _renderAnswerKeyCapture();
+      return;
+    }
+    _renderAnswerKeyReview();
+  };
+
+  // ─── 일괄 채점 — 동시 호출 3개 throttle ───
+  const BATCH_CONCURRENCY = 3;
+
+  window._ssStartBatchGrade = async function () {
+    const list = _state.students || [];
+    if (list.length === 0) return;
+    _state.phase = 'batch-grading';
+    _setHeader(`🚀 ScoreSnap · 일괄 채점 (${list.length}명)`);
+    _renderBatchProgress();
+
+    let done = 0;
+    const update = () => {
+      const el = document.getElementById('ssBatchProgress');
+      if (el) {
+        const success = list.filter(s => s.status === 'done').length;
+        const failed = list.filter(s => s.status === 'error').length;
+        el.innerHTML = `채점 중 ${done}/${list.length}<br><span style="font-size:11px;color:#888;">✓ ${success}명 · ${failed > 0 ? `<span style="color:#ff8a80;">✗ ${failed}명</span>` : '실패 없음'}</span>`;
+      }
+    };
+    update();
+
+    // worker pool
+    let cursor = 0;
+    async function worker() {
+      while (cursor < list.length) {
+        const myIdx = cursor++;
+        const s = list[myIdx];
+        s.status = 'grading';
+        try {
+          s.result = await _gradeOneStudent(s.image);
+          s.status = 'done';
+        } catch (e) {
+          s.error = e.message || '채점 실패';
+          s.status = 'error';
+        }
+        done++;
+        update();
+      }
+    }
+    await Promise.all(Array(Math.min(BATCH_CONCURRENCY, list.length)).fill(0).map(() => worker()));
+
+    // 전부 끝나면 결과 목록 (T7-D 자리표시자 — 현재는 간이 표시)
+    _renderBatchResults();
+  };
+
+  async function _gradeOneStudent(image) {
+    const idToken = await window._ssGetIdToken();
+    const r = await fetch('/api/scoresnap-grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        mode: 'student',
+        imageBase64: image.base64,
+        imageMimeType: image.mimeType,
+        answerKeyQuestions: _state.answerKey.questions,
+        precision: _state.precision === true,
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  }
+
+  function _renderBatchProgress() {
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:18px;">
+        <div style="width:48px;height:48px;border:4px solid #333;border-top-color:var(--c-brand,#E8714A);border-radius:50%;animation:ssSpin 1s linear infinite;"></div>
+        <div style="font-size:15px;color:#fff;font-weight:600;">학생 답안 채점 중…</div>
+        <div id="ssBatchProgress" style="font-size:13px;color:#bbb;line-height:1.6;text-align:center;"></div>
+        <div style="font-size:11px;color:#666;text-align:center;line-height:1.6;max-width:320px;">
+          동시 ${BATCH_CONCURRENCY}명 병렬 처리. 학생당 보통 5~10초.
+        </div>
+      </div>
+      <style>@keyframes ssSpin { to { transform: rotate(360deg); } }</style>
+    `;
+  }
+
+  // T7-D 자리표시자 — 채점된 학생 수·실패 수만 표시
+  function _renderBatchResults() {
+    _state.phase = 'batch-done';
+    _setHeader('📊 ScoreSnap · 결과');
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    const list = _state.students || [];
+    const done = list.filter(s => s.status === 'done');
+    const failed = list.filter(s => s.status === 'error');
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:30px;gap:14px;text-align:center;max-width:520px;margin:0 auto;overflow-y:auto;">
+        <div style="font-size:48px;">✅</div>
+        <div style="font-size:17px;font-weight:700;color:#fff;">채점 완료</div>
+        <div style="font-size:14px;color:#bbb;line-height:1.7;">
+          ✓ ${done.length}명 채점 성공<br>
+          ${failed.length > 0 ? `<span style="color:#ff8a80;">✗ ${failed.length}명 실패</span><br>` : ''}
+        </div>
+        <div style="font-size:13px;color:#bbb;line-height:1.7;background:#1a1a1a;border:1px dashed #444;border-radius:8px;padding:16px 20px;margin-top:10px;text-align:left;">
+          다음 단계: <b style="color:#fff;">학생별 결과 카드 목록</b><br>
+          (T7-D 작업에서 활성화 — 학생 카드 클릭 → 상세 + PNG)
+        </div>
+        ${done.length > 0 ? `
+          <details style="margin-top:10px;width:100%;max-width:420px;text-align:left;">
+            <summary style="font-size:12px;color:#888;cursor:pointer;padding:6px 0;">개별 결과 미리보기 (T7-D 전 임시)</summary>
+            <div style="margin-top:8px;background:#1a1a1a;border-radius:6px;padding:10px;font-size:12px;color:#ddd;">
+              ${done.map(s => {
+                const r = s.result || {};
+                return `<div style="padding:4px 0;border-bottom:1px solid #333;">${esc(r.studentName || '(이름 미인식)')} — ${r.correctCount}/${r.totalQuestions} (${r.scorePercent}점)</div>`;
+              }).join('')}
+            </div>
+          </details>
+        ` : ''}
+        ${failed.length > 0 ? `
+          <details style="margin-top:10px;width:100%;max-width:420px;text-align:left;">
+            <summary style="font-size:12px;color:#ff8a80;cursor:pointer;padding:6px 0;">실패 ${failed.length}건</summary>
+            <div style="margin-top:8px;background:#3a1a1a;border-radius:6px;padding:10px;font-size:11px;color:#ffb0b0;">
+              ${failed.map((s, i) => `<div style="padding:3px 0;">#${i + 1}: ${esc(s.error)}</div>`).join('')}
+            </div>
+          </details>
+        ` : ''}
+        <div style="display:flex;gap:10px;margin-top:18px;">
+          <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;">← 답안지 더 추가</button>
+          <button onclick="window.closeScoreSnap()" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">종료</button>
+        </div>
+      </div>
+    `;
+  }
+
+  window._ssBackToStudentCapture = function () {
+    _renderStudentCapture();
+  };
 
   // ─── 카메라 자원 해제 (T7-B/C 에서 재사용) ───
   function _releaseCamera() {
