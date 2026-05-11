@@ -5,26 +5,25 @@
 //   - 폴백 체인: 2.5-flash → 2.5-flash-lite → 3.1-flash-lite-preview
 //     (Vision 우선이라 generate-quiz 와 순서 다름 — flash 가 이미지 인식 강함)
 
-const { initializeApp, getApps, cert, applicationDefault } = require('firebase-admin/app');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const { buildGradingPrompt, postProcessGradingResult } = require('./_lib/scoresnap-prompt');
 const { setCors } = require('./_lib/cors');
 
+// 다른 API (generate-quiz 등) 와 동일 패턴 — 분리 환경변수.
 function _ensureAdminApp() {
   if (getApps().length > 0) return;
-  try {
-    if (process.env.FIREBASE_ADMIN_CREDENTIALS) {
-      const creds = JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS);
-      initializeApp({ credential: cert(creds) });
-    } else {
-      initializeApp({ credential: applicationDefault() });
-    }
-  } catch (e) {
-    console.error('[scoresnap-grade] firebase-admin init 실패:', e.message);
-    throw e;
-  }
+  let pk = process.env.FIREBASE_PRIVATE_KEY || '';
+  pk = pk.replace(/^"|"$/g, '').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+  initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: pk,
+    }),
+  });
 }
 
 const GEMINI_MODELS = [
