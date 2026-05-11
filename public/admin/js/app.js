@@ -12099,18 +12099,6 @@ window.tpOpenPrintModal = () => {
   window._tpPrintState = { questions, sourceType, perKey };
   window._tpPrintContext = { questions, bookName, chapName, sourceType };
 
-  // ScoreSnap — 단일 세트 인쇄 시 QR 자동 박힘 (featureFlag ON + 묶음 X)
-  // QR 에 박힐 ID = setId. 채점 시 genQuestionSets/{setId} 에서 questions·정답 가져옴.
-  if (window.MY_FEATURE_FLAGS?.scoreSnap === true && _tpSelectedSets.size === 1) {
-    const ssSetId = Array.from(_tpSelectedSets)[0];
-    window._tpPrintContext.testId = ssSetId;
-    if (typeof window._ssGenerateQR === 'function') {
-      window._ssGenerateQR(ssSetId)
-        .then(() => { if (typeof tpPrintRefreshPreview === 'function') tpPrintRefreshPreview(); })
-        .catch(e => console.warn('[scoresnap] QR 생성 실패:', e.message));
-    }
-  }
-
   // 섞기 버튼 노출 — vocab/mcq = 선지, unscramble = 청크
   setTimeout(() => {
     const btn = document.getElementById('tpBtnShuffleC');
@@ -12271,7 +12259,7 @@ function _tpBuildTypeOptionsUI(sourceType) {
 }
 
 function _tpBuildPrintHtml(questions, meta) {
-  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts, testId } = meta;
+  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts } = meta;
   const fontSize = meta.fontSize ?? _TP_PRINT_DEFAULTS.fontSize;
   const lineHeight = meta.lineHeight ?? _TP_PRINT_DEFAULTS.lineHeight;
   const qGap = meta.qGap ?? _TP_PRINT_DEFAULTS.qGap;
@@ -12316,14 +12304,9 @@ function _tpBuildPrintHtml(questions, meta) {
             </div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-          ${(testId && window._ssQrCache && window._ssQrCache[testId])
-            ? `<img src="${window._ssQrCache[testId]}" alt="" aria-label="ScoreSnap" title="ScoreSnap: ${esc(testId)}" style="width:80px;height:80px;object-fit:contain;background:white;border:1px solid #ddd;border-radius:4px;padding:3px;">`
-            : ''}
-          <div style="font-size:16px;text-align:right;line-height:1.8;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
-            이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>
-            반: <span style="display:inline-block;width:100px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span>
-          </div>
+        <div style="font-size:16px;text-align:right;line-height:1.8;flex-shrink:0;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
+          이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>
+          반: <span style="display:inline-block;width:100px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span>
         </div>
       </div>
     </div>`;
@@ -12622,8 +12605,6 @@ window.tpPrintRefreshPreview = () => {
     fontSize,
     lineHeight,
     qGap,
-    // ScoreSnap: testId 가 ctx 에 박혀있으면 QR 박힘 (사전에 _ssGenerateQR 로 캐시 채워둬야 함)
-    testId: ctx.testId || '',
   });
   // 주관식 답란 줄 수 맞추기 (subj 전용)
   if (ctx.sourceType === 'subjective') {
@@ -13410,49 +13391,10 @@ window._brandingSave = async () => {
   } catch (e) { showAlert('저장 실패', e.message); }
 };
 
-// ─── ScoreSnap — Firestore 헬퍼 (T3) ─────────────────────────────
-// scoresnap.js 는 일반 script (module 아님) 이라 Firestore SDK 를 직접 못 씀.
-// 여기서 window 에 노출해 scoresnap.js 가 호출.
-// ScoreSnap 채점 — QR 에 박힌 ID = setId (genQuestionSets).
-// 문제세트 단계에서 인쇄·채점 (시험 배정 안 거침).
-window._ssLoadTest = async function (setId) {
-  if (!setId || typeof setId !== 'string') throw new Error('잘못된 세트 ID');
-  const snap = await getDoc(doc(db, 'genQuestionSets', setId));
-  if (!snap.exists()) throw new Error('문제세트를 찾을 수 없어요');
-  const data = snap.data();
-  if (data.academyId !== window.MY_ACADEMY_ID) throw new Error('다른 학원의 세트예요');
-  if (!Array.isArray(data.questions) || data.questions.length === 0) {
-    throw new Error('이 세트에는 문제가 비어있어요');
-  }
-  return {
-    testId: setId,
-    title: data.name || '문제 세트',
-    questions: data.questions,
-    sourceType: data.sourceType || '',
-  };
-};
-
-// ID 토큰 — scoresnap.js 에서 fetch 인증용
+// ─── ScoreSnap — Firestore·인증 헬퍼 ────────────────────────────
+// scoresnap.js 는 일반 script (module 아님) 이라 module 안 currentUser·SDK 를
+// 직접 못 씀. 채점 API 호출용 idToken 만 window 노출.
 window._ssGetIdToken = async function () {
   if (!currentUser) throw new Error('로그인 정보 없음');
   return await currentUser.getIdToken();
-};
-
-
-// 최근 N일 문제세트 목록 (수동 선택 폴백)
-window._ssLoadRecentTests = async function (days = 30) {
-  const startMs = Date.now() - days * 24 * 3600 * 1000;
-  const q = query(
-    collection(db, 'genQuestionSets'),
-    where('academyId', '==', window.MY_ACADEMY_ID),
-    orderBy('createdAt', 'desc'),
-    limit(100)
-  );
-  const snap = await getDocs(q);
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => {
-      const t0 = t.createdAt?.toMillis?.() || 0;
-      return t0 >= startMs && Array.isArray(t.questions) && t.questions.length > 0;
-    });
 };
