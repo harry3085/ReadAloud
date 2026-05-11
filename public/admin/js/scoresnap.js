@@ -500,56 +500,309 @@
     `;
   }
 
-  // T7-D 자리표시자 — 채점된 학생 수·실패 수만 표시
+  // ─── T7-D. 학생별 결과 카드 그리드 ───
   function _renderBatchResults() {
-    _state.phase = 'batch-done';
-    _setHeader('📊 ScoreSnap · 결과');
+    _renderResultGrid();
+  }
+
+  function _renderResultGrid() {
+    _state.phase = 'result-grid';
+    _setHeader(`📊 ScoreSnap · 결과 (${_state.answerKey?.testName || '시험'})`);
     const body = document.getElementById('ssBody');
     if (!body) return;
     const list = _state.students || [];
-    const done = list.filter(s => s.status === 'done');
-    const failed = list.filter(s => s.status === 'error');
+    const done = list.filter(s => s.status === 'done').length;
+    const failed = list.filter(s => s.status === 'error').length;
+
     body.innerHTML = `
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:30px;gap:14px;text-align:center;max-width:520px;margin:0 auto;overflow-y:auto;">
-        <div style="font-size:48px;">✅</div>
-        <div style="font-size:17px;font-weight:700;color:#fff;">채점 완료</div>
-        <div style="font-size:14px;color:#bbb;line-height:1.7;">
-          ✓ ${done.length}명 채점 성공<br>
-          ${failed.length > 0 ? `<span style="color:#ff8a80;">✗ ${failed.length}명 실패</span><br>` : ''}
+      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#fff;">채점 완료 · ${esc(_state.answerKey?.testName || '시험')}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">총 ${list.length}명 · ✓ ${done}명 성공${failed > 0 ? ` · <span style="color:#ff8a80;">✗ ${failed}명 실패</span>` : ''} · 카드 클릭 → 상세</div>
         </div>
-        <div style="font-size:13px;color:#bbb;line-height:1.7;background:#1a1a1a;border:1px dashed #444;border-radius:8px;padding:16px 20px;margin-top:10px;text-align:left;">
-          다음 단계: <b style="color:#fff;">학생별 결과 카드 목록</b><br>
-          (T7-D 작업에서 활성화 — 학생 카드 클릭 → 상세 + PNG)
+        <div style="display:flex;gap:6px;">
+          <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">+ 답안지 추가</button>
+          <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">종료</button>
         </div>
-        ${done.length > 0 ? `
-          <details style="margin-top:10px;width:100%;max-width:420px;text-align:left;">
-            <summary style="font-size:12px;color:#888;cursor:pointer;padding:6px 0;">개별 결과 미리보기 (T7-D 전 임시)</summary>
-            <div style="margin-top:8px;background:#1a1a1a;border-radius:6px;padding:10px;font-size:12px;color:#ddd;">
-              ${done.map(s => {
-                const r = s.result || {};
-                return `<div style="padding:4px 0;border-bottom:1px solid #333;">${esc(r.studentName || '(이름 미인식)')} — ${r.correctCount}/${r.totalQuestions} (${r.scorePercent}점)</div>`;
-              }).join('')}
-            </div>
-          </details>
-        ` : ''}
-        ${failed.length > 0 ? `
-          <details style="margin-top:10px;width:100%;max-width:420px;text-align:left;">
-            <summary style="font-size:12px;color:#ff8a80;cursor:pointer;padding:6px 0;">실패 ${failed.length}건</summary>
-            <div style="margin-top:8px;background:#3a1a1a;border-radius:6px;padding:10px;font-size:11px;color:#ffb0b0;">
-              ${failed.map((s, i) => `<div style="padding:3px 0;">#${i + 1}: ${esc(s.error)}</div>`).join('')}
-            </div>
-          </details>
-        ` : ''}
-        <div style="display:flex;gap:10px;margin-top:18px;">
-          <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;">← 답안지 더 추가</button>
-          <button onclick="window.closeScoreSnap()" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">종료</button>
-        </div>
+      </div>
+      <div id="ssResultGrid" style="flex:1;overflow-y:auto;padding:16px;background:#0a0a0a;">
+        ${_buildResultGridHtml()}
       </div>
     `;
   }
 
+  function _buildResultGridHtml() {
+    const list = _state.students || [];
+    if (list.length === 0) return '<div style="color:#888;text-align:center;padding:40px;">결과 없음</div>';
+    const cards = list.map((s, i) => _buildStudentCardHtml(s, i)).join('');
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">${cards}</div>`;
+  }
+
+  function _buildStudentCardHtml(s, idx) {
+    if (s.status === 'error') {
+      return `
+        <div onclick="window._ssRetryOne(${idx})" style="background:#2a1a1a;border:1px solid #5a3030;border-radius:8px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:11px;color:#999;">#${idx + 1}</div>
+          <div style="font-size:24px;text-align:center;">⚠</div>
+          <div style="font-size:12px;color:#ff8a80;text-align:center;font-weight:600;">채점 실패</div>
+          <div style="font-size:10px;color:#888;text-align:center;line-height:1.4;max-height:32px;overflow:hidden;">${esc(s.error || '오류')}</div>
+          <div style="font-size:10px;color:#888;text-align:center;margin-top:4px;">↻ 클릭 재시도</div>
+        </div>
+      `;
+    }
+    const r = s.result || {};
+    const pct = r.scorePercent || 0;
+    const color = pct >= 80 ? '#22c55e' : pct >= 60 ? '#eab308' : '#ef4444';
+    const name = (r.studentName || '').trim() || `(이름 미인식 #${idx + 1})`;
+    return `
+      <div onclick="window._ssOpenStudentDetail(${idx})" style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:8px;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='#666'" onmouseout="this.style.borderColor='#333'">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:11px;color:#888;">#${idx + 1}</div>
+          <div style="font-size:10px;color:${color};font-weight:700;">${pct}점</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <span style="font-size:24px;font-weight:800;color:${color};line-height:1;">${r.correctCount || 0}</span>
+          <span style="font-size:13px;color:#888;">/ ${r.totalQuestions || 0}</span>
+        </div>
+        ${(r.uncertainQuestions || []).length > 0 ? `<div style="font-size:10px;color:#ffc107;">⚠ ${r.uncertainQuestions.length} 검토</div>` : ''}
+        <div style="font-size:10px;color:#666;text-align:center;margin-top:auto;">상세 보기 →</div>
+      </div>
+    `;
+  }
+
+  // 실패 카드 재시도
+  window._ssRetryOne = async function (idx) {
+    const s = _state.students?.[idx];
+    if (!s || s.status === 'grading') return;
+    s.status = 'grading';
+    s.error = null;
+    // 그리드 카드만 갱신 어려우니 전체 재렌더
+    _renderResultGrid();
+    try {
+      s.result = await _gradeOneStudent(s.image);
+      s.status = 'done';
+    } catch (e) {
+      s.error = e.message;
+      s.status = 'error';
+    }
+    _renderResultGrid();
+  };
+
+  // ─── 학생 상세 화면 ───
+  window._ssOpenStudentDetail = function (idx) {
+    const s = _state.students?.[idx];
+    if (!s || s.status !== 'done') return;
+    _state.detailIdx = idx;
+    _state.phase = 'student-detail';
+    _setHeader(`📊 ScoreSnap · ${esc(s.result.studentName || `학생 #${idx + 1}`)}`);
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="padding:12px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;">
+        <button onclick="window._ssCloseStudentDetail()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">← 목록</button>
+        <div style="font-size:11px;color:#888;">#${idx + 1} / ${_state.students.length}</div>
+      </div>
+      <div id="ssDetailRoot" style="flex:1;overflow-y:auto;background:#0a0a0a;padding:16px;">
+        <div id="ssDetailCard" style="background:#fff;color:#222;max-width:680px;margin:0 auto;padding:24px 28px;border-radius:10px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;">
+          ${_buildStudentDetailHtml(s, idx)}
+        </div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid #333;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;flex-shrink:0;">
+        <button onclick="window._ssDownloadStudentPng(${idx})" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📥 PNG 다운로드</button>
+        ${idx > 0 ? `<button onclick="window._ssOpenStudentDetail(${idx - 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">← 이전</button>` : ''}
+        ${idx < _state.students.length - 1 ? `<button onclick="window._ssOpenStudentDetail(${idx + 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">다음 →</button>` : ''}
+      </div>
+    `;
+  };
+
+  function _buildStudentDetailHtml(s, idx) {
+    const r = s.result || {};
+    const total = r.totalQuestions || 0;
+    const correct = r.correctCount || 0;
+    const pct = r.scorePercent || 0;
+    const wrongNos = r.wrongNumbers || [];
+    const uncertain = new Set(r.uncertainQuestions || []);
+    const ak = _state.answerKey?.questions || [];
+    const dateStr = _fmtDate(new Date());
+
+    // 검토 필요 카드 (confidence 낮음)
+    const reviewCards = (r.answers || []).filter(a => uncertain.has(a.no)).map(a => `
+      <div style="border:1px solid #ffc107;background:#fff8e1;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;">
+        <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Q${a.no} · ${a.isCorrect ? '✓' : '✗'} · conf ${Math.round((a.confidence||0)*100)}%</div>
+        <div style="color:#555;line-height:1.6;">
+          학생답: <b>${esc(a.studentAnswer || '(빈칸)')}</b> &nbsp;→&nbsp;
+          정답: <b>${esc(a.correctAnswer || '?')}</b>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:6px;">
+          ${a.isCorrect
+            ? `<button onclick="window._ssToggleAnswer(${idx}, ${a.no}, false)" style="font-size:11px;padding:4px 10px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;">✗ 오답으로 수정</button>`
+            : `<button onclick="window._ssToggleAnswer(${idx}, ${a.no}, true)" style="font-size:11px;padding:4px 10px;border:1px solid #2e7d32;background:#fff;color:#2e7d32;border-radius:4px;cursor:pointer;">✓ 정답으로 수정</button>`
+          }
+        </div>
+      </div>
+    `).join('');
+
+    // 전체 문항 — 한 줄 요약
+    const allRows = (r.answers || []).map(a => `
+      <div style="display:flex;gap:10px;padding:6px 8px;border-bottom:1px solid #eee;font-size:12px;align-items:center;">
+        <span style="width:30px;color:#888;font-weight:700;">Q${a.no}</span>
+        <span style="width:24px;color:${a.isCorrect ? '#2e7d32' : '#c62828'};font-weight:700;">${a.isCorrect ? '✓' : '✗'}</span>
+        <span style="flex:1;min-width:0;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.studentAnswer || '(빈칸)')}</span>
+        <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;color:#888;">${esc(window.MY_ACADEMY_NAME || '')}</div>
+          <div style="font-size:17px;font-weight:800;color:#111;margin-top:2px;">${esc(_state.answerKey?.testName || '시험')}</div>
+          <div style="font-size:11px;color:#555;margin-top:4px;">총 ${total}문항 · 채점일 ${esc(dateStr)}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;line-height:1.8;border:1px solid #999;padding:8px 14px;border-radius:6px;background:#fff;min-width:200px;">
+          <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
+            <span>학생:</span>
+            <input id="ssDetailNameIn" type="text" value="${esc(r.studentName || '')}"
+              placeholder="이름 직접 입력"
+              oninput="window._ssEditStudentName(${idx}, this.value)"
+              style="width:130px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;font-family:inherit;">
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:140px;background:#e8f5e9;border-left:4px solid #2e7d32;padding:12px 16px;border-radius:6px;">
+          <div style="font-size:11px;color:#666;">점수</div>
+          <div style="font-size:26px;font-weight:800;color:#2e7d32;line-height:1.1;margin-top:4px;">${correct} / ${total} <span style="font-size:14px;color:#777;">(${pct}점)</span></div>
+        </div>
+        <div style="flex:2;min-width:200px;background:#fff3e0;border-left:4px solid #e65100;padding:12px 16px;border-radius:6px;">
+          <div style="font-size:11px;color:#666;">틀린 문항</div>
+          <div style="font-size:15px;font-weight:700;color:#bf360c;line-height:1.4;margin-top:4px;">${wrongNos.length ? wrongNos.join(', ') : '없음 (만점!)'}</div>
+        </div>
+      </div>
+
+      ${reviewCards ? `
+        <div style="margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:8px;">⚠ 검토 필요 (AI 가 자신 없음)</div>
+          ${reviewCards}
+        </div>
+      ` : ''}
+
+      <details style="margin-bottom:6px;">
+        <summary style="font-size:13px;font-weight:700;color:#333;cursor:pointer;padding:6px 0;">📋 전체 문항 보기 (${total}개)</summary>
+        <div style="margin-top:8px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
+          ${allRows}
+        </div>
+      </details>
+    `;
+  }
+
+  function _fmtDate(d) {
+    if (!d) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+  }
+
+  window._ssCloseStudentDetail = function () {
+    _state.detailIdx = null;
+    _renderResultGrid();
+  };
+
   window._ssBackToStudentCapture = function () {
     _renderStudentCapture();
+  };
+
+  // 학생 이름 직접 수정
+  window._ssEditStudentName = function (idx, val) {
+    const s = _state.students?.[idx];
+    if (!s?.result) return;
+    s.result.studentName = String(val || '').trim();
+  };
+
+  // 학원장 정답 토글
+  window._ssToggleAnswer = function (idx, no, makeCorrect) {
+    const s = _state.students?.[idx];
+    if (!s?.result || !Array.isArray(s.result.answers)) return;
+    const a = s.result.answers.find(x => x.no === no);
+    if (!a) return;
+    a.isCorrect = makeCorrect === true;
+    a._adminOverride = true;
+    s.result.correctCount = s.result.answers.filter(x => x.isCorrect).length;
+    s.result.scorePercent = s.result.totalQuestions > 0
+      ? Math.round((s.result.correctCount / s.result.totalQuestions) * 100) : 0;
+    s.result.wrongNumbers = s.result.answers.filter(x => !x.isCorrect).map(x => x.no);
+    // 이름 input 보존
+    const nameIn = document.getElementById('ssDetailNameIn');
+    if (nameIn) s.result.studentName = nameIn.value || '';
+    // 카드만 재렌더
+    const card = document.getElementById('ssDetailCard');
+    if (card) card.innerHTML = _buildStudentDetailHtml(s, idx);
+  };
+
+  // ─── PNG 다운로드 (html2canvas 동적 로드) ───
+  let _html2canvasLoading = null;
+  function _ensureHtml2Canvas() {
+    if (typeof window.html2canvas === 'function') return Promise.resolve();
+    if (_html2canvasLoading) return _html2canvasLoading;
+    _html2canvasLoading = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => { _html2canvasLoading = null; reject(new Error('html2canvas 로드 실패')); };
+      document.head.appendChild(s);
+    });
+    return _html2canvasLoading;
+  }
+
+  window._ssDownloadStudentPng = async function (idx) {
+    const card = document.getElementById('ssDetailCard');
+    if (!card) return;
+    const s = _state.students?.[idx];
+    if (!s?.result) return;
+    // 이름 input 현재값 보존 + value 속성 박아 캡처에 반영
+    const nameIn = document.getElementById('ssDetailNameIn');
+    if (nameIn) {
+      s.result.studentName = nameIn.value || '';
+      nameIn.setAttribute('value', nameIn.value || '');
+    }
+    try {
+      await _ensureHtml2Canvas();
+    } catch (e) {
+      if (typeof window.showAlert === 'function') window.showAlert('PNG 라이브러리 로드 실패', e.message);
+      return;
+    }
+    try {
+      const canvas = await window.html2canvas(card, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      });
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const safe = v => String(v).replace(/[\\/:*?"<>|]/g, '_');
+        const name = safe(s.result.studentName || `student_${idx + 1}`);
+        const title = safe(_state.answerKey?.testName || 'test');
+        const date = _fmtDate(new Date()).replace(/[: ]/g, '_');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${name}_${title}_${date}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    } catch (e) {
+      if (typeof window.showAlert === 'function') window.showAlert('PNG 생성 실패', e.message);
+    }
   };
 
   // ─── 카메라 자원 해제 (T7-B/C 에서 재사용) ───
