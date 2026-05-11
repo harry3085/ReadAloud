@@ -12255,7 +12255,7 @@ function _tpBuildTypeOptionsUI(sourceType) {
 }
 
 function _tpBuildPrintHtml(questions, meta) {
-  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts } = meta;
+  const { title, academy, date, bookName, chapName, showAnswers, twoPerSheet, orientation, sourceType, typeOpts, testId } = meta;
   const fontSize = meta.fontSize ?? _TP_PRINT_DEFAULTS.fontSize;
   const lineHeight = meta.lineHeight ?? _TP_PRINT_DEFAULTS.lineHeight;
   const qGap = meta.qGap ?? _TP_PRINT_DEFAULTS.qGap;
@@ -12300,9 +12300,14 @@ function _tpBuildPrintHtml(questions, meta) {
             </div>
           </div>
         </div>
-        <div style="font-size:16px;text-align:right;line-height:1.8;flex-shrink:0;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
-          이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>
-          반: <span style="display:inline-block;width:100px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          ${(testId && window._ssQrCache && window._ssQrCache[testId])
+            ? `<img src="${window._ssQrCache[testId]}" alt="" aria-label="ScoreSnap" title="ScoreSnap: ${esc(testId)}" style="width:46px;height:46px;object-fit:contain;background:white;border:1px solid #ddd;border-radius:4px;padding:2px;">`
+            : ''}
+          <div style="font-size:16px;text-align:right;line-height:1.8;border:1px solid #999;padding:8px 14px;border-radius:6px;background:white;">
+            이름: <span style="display:inline-block;width:160px;border-bottom:1px solid #333;">&nbsp;</span><br>
+            반: <span style="display:inline-block;width:100px;border-bottom:1px solid #333;">&nbsp;</span> 점수: <span style="display:inline-block;width:90px;border-bottom:1px solid #333;">&nbsp;</span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -12601,6 +12606,8 @@ window.tpPrintRefreshPreview = () => {
     fontSize,
     lineHeight,
     qGap,
+    // ScoreSnap: testId 가 ctx 에 박혀있으면 QR 박힘 (사전에 _ssGenerateQR 로 캐시 채워둬야 함)
+    testId: ctx.testId || '',
   });
   // 주관식 답란 줄 수 맞추기 (subj 전용)
   if (ctx.sourceType === 'subjective') {
