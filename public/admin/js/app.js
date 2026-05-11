@@ -13397,3 +13397,43 @@ window._brandingSave = async () => {
     }
   } catch (e) { showAlert('저장 실패', e.message); }
 };
+
+// ─── ScoreSnap — Firestore 헬퍼 (T3) ─────────────────────────────
+// scoresnap.js 는 일반 script (module 아님) 이라 Firestore SDK 를 직접 못 씀.
+// 여기서 window 에 노출해 scoresnap.js 가 호출.
+window._ssLoadTest = async function (testId) {
+  if (!testId || typeof testId !== 'string') throw new Error('잘못된 시험 코드');
+  const snap = await getDoc(doc(db, 'genTests', testId));
+  if (!snap.exists()) throw new Error('시험을 찾을 수 없어요');
+  const data = snap.data();
+  if (data.academyId !== window.MY_ACADEMY_ID) throw new Error('다른 학원의 시험이에요');
+  if (!Array.isArray(data.questions) || data.questions.length === 0) {
+    throw new Error('이 시험에는 문제가 비어있어요');
+  }
+  return {
+    testId,
+    title: data.title || data.name || '시험',
+    questions: data.questions,
+    testMode: data.testMode || data.mode || '',
+    date: data.date || '',
+    targets: data.targets || [],
+  };
+};
+
+// 최근 N일 시험 목록 (수동 선택 폴백)
+window._ssLoadRecentTests = async function (days = 30) {
+  const startMs = Date.now() - days * 24 * 3600 * 1000;
+  const q = query(
+    collection(db, 'genTests'),
+    where('academyId', '==', window.MY_ACADEMY_ID),
+    orderBy('createdAt', 'desc'),
+    limit(100)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => {
+      const t0 = t.createdAt?.toMillis?.() || 0;
+      return t0 >= startMs && Array.isArray(t.questions) && t.questions.length > 0;
+    });
+};
