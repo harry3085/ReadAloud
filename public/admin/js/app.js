@@ -12895,16 +12895,33 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                       </div>
                       <div style="font-size:10px;color:var(--gray);margin-bottom:2px;">${esc(dateStr)} · 총 ${recs.length}회</div>
                       ${roundsHtmlClickSafe}
-                      ${fb ? `
-                        <details onclick="event.stopPropagation()" style="margin-top:8px;">
-                          <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
-                          <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
-                            ${fb.missedWords?.length ? `<div><strong>생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
-                            ${fb.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>발음:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word)}</strong> — ${esc(p.issue)}</div>`).join('')}</div>` : ''}
-                            ${fb.tips?.length ? `<div style="margin-top:3px;"><strong>팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
-                          </div>
-                        </details>
-                      ` : ''}
+                      ${(() => {
+                        const cs = last?.categoryScores;
+                        const cc = last?.categoryComments;
+                        const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
+                        if (!fb && !hasCat) return '';
+                        const positives = fb?.positives || [];
+                        const catBadge = (label, color, scoreVal, comment) => {
+                          if (typeof scoreVal !== 'number' && !comment) return '';
+                          return `<div style="margin-top:2px;font-size:10px;"><span style="background:${color};color:white;padding:1px 6px;border-radius:3px;font-weight:700;margin-right:4px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
+                        };
+                        return `
+                          <details onclick="event.stopPropagation()" style="margin-top:8px;">
+                            <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
+                            <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
+                              ${hasCat ? `<div style="margin-bottom:5px;"><strong>📊 항목별 점수·코멘트</strong>
+                                ${catBadge('🔊 발음', '#3b82f6', cs?.pronunciation, cc?.pronunciation)}
+                                ${catBadge('🎵 억양', '#22c55e', cs?.intonation, cc?.intonation)}
+                                ${catBadge('🏃 속도', '#eab308', cs?.pace, cc?.pace)}
+                                ${catBadge('🎯 정확도', '#a855f7', cs?.accuracy, cc?.accuracy)}
+                              </div>` : ''}
+                              ${positives.length ? `<div style="margin-top:3px;"><strong>👍 잘한 점:</strong> ${positives.map(esc).join(' · ')}</div>` : ''}
+                              ${fb?.missedWords?.length ? `<div style="margin-top:3px;"><strong>📝 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
+                              ${fb?.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>🔊 발음 개선:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word)}</strong> — ${esc(p.issue)}</div>`).join('')}</div>` : ''}
+                              ${fb?.tips?.length ? `<div style="margin-top:3px;"><strong>💡 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
+                            </div>
+                          </details>`;
+                      })()}
                     </div>
                   `;
                 }

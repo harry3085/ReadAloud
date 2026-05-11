@@ -3004,7 +3004,10 @@ async function _rv2Submit() {
     const score = data.score || 0;
     const missedWords = data.missedWords || [];
     const note = data.note || '';
-    const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [] };
+    const feedback = data.feedback || { missedWords: [], weakPronunciation: [], tips: [], positives: [], intonation: '', stress: '' };
+    // Phase C 신규: 카테고리별 점수·코멘트
+    const categoryScores = data.categoryScores || null;
+    const categoryComments = data.categoryComments || null;
     console.log(`[rv2Submit] eval done: score=${score}`);
 
     // 마지막 회차 detail 에 AI 평가 결과 추가 (회차별 audio + 마지막에만 평가)
@@ -3012,6 +3015,8 @@ async function _rv2Submit() {
     recordingsDetail[lastIdx].missedWords = missedWords;
     recordingsDetail[lastIdx].note = note;
     recordingsDetail[lastIdx].feedback = feedback;
+    if (categoryScores) recordingsDetail[lastIdx].categoryScores = categoryScores;
+    if (categoryComments) recordingsDetail[lastIdx].categoryComments = categoryComments;
 
     // Phase B : 통과/불통 개념 폐기 — 모든 응시는 "제출 완료" 단일 흐름
     const today = _ymdKST();
@@ -3072,7 +3077,7 @@ async function _rv2Submit() {
     _rv2.savedRounds.forEach(r => r?.url && URL.revokeObjectURL(r.url));
     console.log('[rv2Submit] DONE');
     _rv2._submitted = true;
-    _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings: recordingsDetail, fullText: q.fullText });
+    _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings: recordingsDetail, fullText: q.fullText, categoryComments });
   } catch(e) {
     console.error(`[rv2Submit] FAILED at stage=${stage}`, e);
     _rv2._submitting = false;  // 재시도 가능하도록
@@ -3167,6 +3172,7 @@ window.viewRecAiResult = async (testId) => {
       audioUrl: lastRec.audioUrl,
       recordings,  // 회차별 audio + 성실도·속도 메시지
       fullText,
+      categoryComments: lastRec.categoryComments || null,
     });
   } catch(e) {
     console.error(e);
@@ -3290,13 +3296,21 @@ window.showRecordingTermsModal = () => {
 
 // 결과 화면 — "제출 완료" 단일 헤드라인 + 회차별 audio·성실도 메시지 + AI 피드백
 // 학생에겐 점수·통과 라벨 비공개 (학원장만 봄). passScore 개념 폐기.
-// 보관 정책 안내: 30일 재생 / 60일 자동 삭제
-function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, fullText }) {
+// Phase C: 잘한 점·억양·강세·카테고리별 정성 코멘트 추가
+// 보관 정책 안내: 30일 재생
+function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, fullText, categoryComments }) {
   _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
   const ft = fullText || _rv2?.question?.fullText || '';
   const hasMultiple = Array.isArray(recordings) && recordings.length > 1;
+  // Phase C: feedback 의 새 필드들
+  const fbPositives = feedback?.positives || [];
+  const fbIntonation = feedback?.intonation || '';
+  const fbStress = feedback?.stress || '';
+  // 카테고리별 정성 코멘트 (학생에게는 점수 X, 코멘트만)
+  const cc = categoryComments || {};
+  const hasCategoryComments = !!(cc.pronunciation || cc.intonation || cc.pace || cc.accuracy);
 
   screen.innerHTML = `
     <div style="flex:1;overflow-y:auto;padding:20px 16px;">
@@ -3350,9 +3364,27 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
         `}
       </div>
 
-      ${(missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
+      ${(hasCategoryComments || fbPositives.length || missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
         <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
           <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백</div>
+
+          ${hasCategoryComments ? `
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📊 항목별 코멘트</div>
+              <div style="display:grid;grid-template-columns:1fr;gap:4px;">
+                ${cc.pronunciation ? `<div style="font-size:11px;padding:6px 10px;background:#eff6ff;border-left:2px solid #3b82f6;border-radius:3px;line-height:1.5;"><strong style="color:#1d4ed8;">🔊 발음</strong> · ${_renderInlineWithTTS(cc.pronunciation)}</div>` : ''}
+                ${cc.intonation ? `<div style="font-size:11px;padding:6px 10px;background:#f0fdf4;border-left:2px solid #22c55e;border-radius:3px;line-height:1.5;"><strong style="color:#15803d;">🎵 억양</strong> · ${_renderInlineWithTTS(cc.intonation)}</div>` : ''}
+                ${cc.pace ? `<div style="font-size:11px;padding:6px 10px;background:#fefce8;border-left:2px solid #eab308;border-radius:3px;line-height:1.5;"><strong style="color:#a16207;">🏃 속도</strong> · ${_renderInlineWithTTS(cc.pace)}</div>` : ''}
+                ${cc.accuracy ? `<div style="font-size:11px;padding:6px 10px;background:#faf5ff;border-left:2px solid #a855f7;border-radius:3px;line-height:1.5;"><strong style="color:#7e22ce;">🎯 정확도</strong> · ${_renderInlineWithTTS(cc.accuracy)}</div>` : ''}
+              </div>
+            </div>` : ''}
+
+          ${fbPositives.length ? `
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">👍 잘한 점</div>
+              ${fbPositives.map(t => `<div style="font-size:12px;padding:5px 10px;background:#ecfdf5;border-left:2px solid #10b981;margin-bottom:3px;border-radius:3px;color:#065f46;line-height:1.5;">${_renderInlineWithTTS(t)}</div>`).join('')}
+            </div>` : ''}
+
           ${(feedback?.missedWords?.length || missedWords?.length) ? `
             <div style="margin-bottom:12px;">
               <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>

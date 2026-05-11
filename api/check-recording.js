@@ -22,6 +22,42 @@ function extractJson(text) {
   if (firstBrace >= 0 && lastBrace > firstBrace) {
     try { return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)); } catch {}
   }
+  // truncated JSON 복구 — maxOutputTokens 초과로 응답이 잘린 경우
+  // 마지막 정상 닫힘 위치 찾아 그 지점까지만 살림
+  return _salvageTruncated(cleaned);
+}
+
+function _salvageTruncated(text) {
+  if (!text || text.indexOf('{') < 0) return null;
+  const start = text.indexOf('{');
+  let s = text.slice(start);
+  // 트레일링 쉼표 + 미완성 따옴표 / 배열 정리
+  // 1) 마지막 ":" 또는 "," 뒤가 미완성이면 그 직전까지 잘라냄
+  for (let i = s.length - 1; i > 0; i--) {
+    const ch = s[i];
+    if (ch === '}' || ch === ']') {
+      // 여기까지 살릴 시도
+      let candidate = s.slice(0, i + 1);
+      // 객체·배열 깊이 맞춤
+      let bDepth = 0, kDepth = 0, inStr = false, esc = false;
+      for (let j = 0; j < candidate.length; j++) {
+        const c = candidate[j];
+        if (esc) { esc = false; continue; }
+        if (c === '\\') { esc = true; continue; }
+        if (c === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (c === '{') bDepth++;
+        else if (c === '}') bDepth--;
+        else if (c === '[') kDepth++;
+        else if (c === ']') kDepth--;
+      }
+      // 부족한 닫힘 채워서 시도
+      let fixed = candidate.replace(/,\s*$/, '');
+      while (kDepth > 0) { fixed += ']'; kDepth--; }
+      while (bDepth > 0) { fixed += '}'; bDepth--; }
+      try { return JSON.parse(fixed); } catch {}
+    }
+  }
   return null;
 }
 
@@ -66,16 +102,45 @@ Return strictly JSON (no markdown):
     "weakPronunciation": [
       { "word": "<english word>", "issue": "<specific actionable Korean instruction>" }
     ],
-    "tips": [<up to 3 actionable Korean tips>]
+    "tips": [<up to 2 actionable Korean tips, short>],
+    "positives": [<up to 2 short Korean praise — what the student did well>],
+    "intonation": "<one-line Korean comment on intonation (sentence rise/fall, question tone, emphasis)>",
+    "stress": "<one-line Korean comment on word/sentence stress (which syllables/words to emphasize)>"
+  },
+  "categoryScores": {
+    "pronunciation": <integer 0-100>,
+    "intonation": <integer 0-100>,
+    "pace": <integer 0-100>,
+    "accuracy": <integer 0-100>
+  },
+  "categoryComments": {
+    "pronunciation": "<one short Korean line — overall pronunciation quality>",
+    "intonation": "<one short Korean line — intonation natural flow>",
+    "pace": "<one short Korean line — reading speed>",
+    "accuracy": "<one short Korean line — how many words read correctly>"
   }
 }
 
-Scoring guide (entire recording vs full text):
-- 90-100: Read almost every word clearly, in correct order
+Scoring guide (overall score & each category, 0-100):
+- 90-100: Read almost every word clearly, in correct order, natural rhythm
 - 75-89: Most words clear, minor omissions or unclear sections
 - 60-74: Noticeable omissions, mispronunciation, or rushed portions
 - 40-59: Many words missed or unclear; partial reading
 - 0-39: Silent, noise only, or entirely different content
+
+Category meanings:
+- pronunciation: 자음·모음 정확도, 단어 발음
+- intonation: 문장 끝 톤(올림/내림), 의문문 자연스러움
+- pace: 자연스러운 읽기 속도 (너무 빠르거나 느리지 않음)
+- accuracy: 단어 누락·순서·완독률
+
+CRITICAL: Keep all comments SHORT (한 줄, 60자 이내). 짧고 명확하게.
+Examples for category comments:
+- pronunciation: "또렷하게 잘 읽었어요" / "단어 끝 자음을 흐리지 마세요"
+- intonation: "문장 끝 톤이 평탄했어요. 마침표·물음표에 따라 변화 주세요"
+- pace: "자연스러운 속도였어요" / "조금 빨라서 단어가 뭉쳐졌어요"
+- accuracy: "단어 4개를 빠뜨렸어요" / "본문 거의 모두 읽었어요"
+positives 예: "발음이 또렷해요" / "끊김 없이 한 호흡으로 읽었어요"
 
 CRITICAL — weakPronunciation.issue rules:
 - DO NOT describe what the student's pronunciation sounded like in Korean. 학생이 영어를 한글로 어떻게 들렸는지 묘사는 금지 — 영어 발음을 한글로 정확히 표기 불가능하므로 의미 없음.
@@ -175,7 +240,7 @@ module.exports = async (req, res) => {
     const reqEvalSec = parseInt(body.evaluationSeconds);
     const prompt = buildEvalPrompt(originalText, isFinite(reqEvalSec) && reqEvalSec > 0 ? reqEvalSec : 0);
 
-    // responseSchema — 통합 응답 구조
+    // responseSchema — 통합 응답 구조 (Phase C: positives/intonation/stress + categoryScores/Comments)
     const responseSchema = {
       type: 'object',
       properties: {
@@ -198,8 +263,29 @@ module.exports = async (req, res) => {
               },
             },
             tips: { type: 'array', items: { type: 'string' } },
+            positives: { type: 'array', items: { type: 'string' } },
+            intonation: { type: 'string' },
+            stress: { type: 'string' },
           },
           required: ['missedWords', 'weakPronunciation', 'tips'],
+        },
+        categoryScores: {
+          type: 'object',
+          properties: {
+            pronunciation: { type: 'integer' },
+            intonation: { type: 'integer' },
+            pace: { type: 'integer' },
+            accuracy: { type: 'integer' },
+          },
+        },
+        categoryComments: {
+          type: 'object',
+          properties: {
+            pronunciation: { type: 'string' },
+            intonation: { type: 'string' },
+            pace: { type: 'string' },
+            accuracy: { type: 'string' },
+          },
         },
       },
       required: ['score', 'missedWords', 'note', 'feedback'],
@@ -216,7 +302,7 @@ module.exports = async (req, res) => {
       generationConfig: {
         temperature: 0.1,  // 더 결정적
         topP: 0.9,
-        maxOutputTokens: 1000,  // 통합 응답 — 점수 + 피드백
+        maxOutputTokens: 2000,  // Phase C: 1000 → 2000 (카테고리 + positives/intonation/stress 추가로 응답 길어짐)
         responseMimeType: 'application/json',
         responseSchema,
       },
@@ -319,13 +405,47 @@ module.exports = async (req, res) => {
           .filter(w => w.word && w.issue).slice(0, 3) : [];
     const fbTips = Array.isArray(fb.tips)
       ? fb.tips.map(t => String(t || '').trim().slice(0, 200)).filter(Boolean).slice(0, 3) : [];
+    // Phase C 신규: positives + intonation + stress
+    const fbPositives = Array.isArray(fb.positives)
+      ? fb.positives.map(t => String(t || '').trim().slice(0, 150)).filter(Boolean).slice(0, 2) : [];
+    const fbIntonation = String(fb.intonation || '').trim().slice(0, 200);
+    const fbStress = String(fb.stress || '').trim().slice(0, 200);
+
+    // Phase C 신규: 카테고리별 점수·코멘트
+    const _clampScore = (v) => {
+      const n = parseInt(v);
+      return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+    };
+    const cs = parsed.categoryScores || {};
+    const cc = parsed.categoryComments || {};
+    const categoryScores = {
+      pronunciation: _clampScore(cs.pronunciation),
+      intonation: _clampScore(cs.intonation),
+      pace: _clampScore(cs.pace),
+      accuracy: _clampScore(cs.accuracy),
+    };
+    const categoryComments = {
+      pronunciation: String(cc.pronunciation || '').trim().slice(0, 120),
+      intonation: String(cc.intonation || '').trim().slice(0, 120),
+      pace: String(cc.pace || '').trim().slice(0, 120),
+      accuracy: String(cc.accuracy || '').trim().slice(0, 120),
+    };
 
     res.status(200).json({
       success: true,
       score,
       missedWords,
       note,
-      feedback: { missedWords: fbMissed, weakPronunciation: fbWeak, tips: fbTips },
+      feedback: {
+        missedWords: fbMissed,
+        weakPronunciation: fbWeak,
+        tips: fbTips,
+        positives: fbPositives,
+        intonation: fbIntonation,
+        stress: fbStress,
+      },
+      categoryScores,
+      categoryComments,
       elapsedMs,
     });
   } catch (e) {
