@@ -144,18 +144,31 @@
     if (el) el.textContent = text;
   }
 
-  // ── jsQR 동적 로드 ──
+  // ── jsQR 동적 로드 (CDN 폴백) ──
   function _ensureJsQR() {
     if (typeof window.jsQR === 'function') return Promise.resolve();
     if (_jsQrLoading) return _jsQrLoading;
-    _jsQrLoading = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => { _jsQrLoading = null; reject(new Error('jsQR 로드 실패')); };
-      document.head.appendChild(s);
-    });
+    const cdns = [
+      'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
+      'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js',
+    ];
+    _jsQrLoading = (async () => {
+      for (const url of cdns) {
+        try {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = url;
+            s.async = true;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('script error'));
+            document.head.appendChild(s);
+          });
+          if (typeof window.jsQR === 'function') return;
+        } catch (_) { /* 다음 CDN 시도 */ }
+      }
+      _jsQrLoading = null;
+      throw new Error('모든 CDN 실패');
+    })();
     return _jsQrLoading;
   }
 
@@ -164,9 +177,23 @@
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('이 브라우저는 카메라 미지원');
     }
-    await _ensureJsQR();
+    const status = document.getElementById('ssCamStatus');
+    const setStatus = (html) => { if (status) status.innerHTML = html; };
+    setStatus(`<span style="color:#bbb;">📚 jsQR 라이브러리 로드 중…</span>`);
+    try {
+      await _ensureJsQR();
+    } catch (e) {
+      setStatus(`<span style="color:#ff8a80;">⚠ jsQR 로드 실패 — ${esc(e.message)}</span><br><span style="color:#999;font-size:11px;">[수동 선택] 으로 진행하세요</span>`);
+      throw e;
+    }
+
+    setStatus(`<span style="color:#bbb;">📷 카메라 시작 중…</span>`);
     _stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      },
       audio: false,
     });
     const video = document.getElementById('ssCamPreview');
@@ -178,29 +205,43 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     let lastDetected = '';
     let lastDetectedAt = 0;
+    let frameCount = 0;
+    let lastStatusAt = 0;
 
     const tick = () => {
       if (!_stream) return;
       if (!video.videoWidth || video.videoWidth === 0) {
+        // 영상 첫 프레임 대기
+        const now = Date.now();
+        if (now - lastStatusAt > 1500) {
+          lastStatusAt = now;
+          setStatus(`<span style="color:#bbb;">⏳ 영상 대기 중… ${frameCount} 프레임</span>`);
+        }
         _scanRaf = requestAnimationFrame(tick);
         return;
       }
-      // 다운샘플 — 너무 큰 frame 은 처리 비용 큼
-      const maxSide = 640;
+      frameCount++;
+      // 다운샘플 — 1280px (작은 QR 도 인식)
+      const maxSide = 1280;
       const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      // attemptBoth — 인쇄 QR / 반전 QR 양쪽 시도 (인식률 ↑)
+      const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
       const now = Date.now();
+      // 상태 갱신 (500ms 마다, 너무 자주 X)
+      if (now - lastStatusAt > 500) {
+        lastStatusAt = now;
+        setStatus(`<span style="color:#bbb;">📷 스캔 중… ${video.videoWidth}×${video.videoHeight} · ${frameCount}f · ${canvas.width}×${canvas.height}</span><br><span style="color:#999;font-size:11px;">QR 을 화면 중앙에 가까이</span>`);
+      }
       if (code && code.data) {
-        // 같은 코드 1초 내 재인식 무시
         if (code.data !== lastDetected || now - lastDetectedAt > 1000) {
           lastDetected = code.data;
           lastDetectedAt = now;
           _onQrDetected(code.data);
-          return;  // 스캔 중단 (다음 화면으로)
+          return;
         }
       }
       _scanRaf = requestAnimationFrame(tick);
