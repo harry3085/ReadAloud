@@ -1,18 +1,21 @@
-// ScoreSnap 채점 API — Gemini Vision 으로 학생 답안지 사진 채점
+// ScoreSnap 채점 API — Gemini Vision (정답지 OCR + 학생 채점 통합)
+// 모드 2개:
+//   mode: 'answerKey'  → 정답지 1장에서 questions·정답 OCR 추출 (시험당 1회)
+//   mode: 'student'    → 학생 답안지 + answerKey questions → 채점 (학생당 1회)
+//
 // 정책 (No-Storage MVP):
-//   - testId + 이미지 base64 받아 채점 결과만 응답 (Firestore/Storage 저장 X)
-//   - quota: generator 재사용 (베타 동안 AI 호출 통합 카운터)
+//   - 결과를 Firestore/Storage 에 저장 X. 응답으로만 반환
+//   - quota: 'generator' 재사용 (베타 동안 AI 호출 통합 카운터)
 //   - 폴백 체인: 2.5-flash → 2.5-flash-lite → 3.1-flash-lite-preview
-//     (Vision 우선이라 generate-quiz 와 순서 다름 — flash 가 이미지 인식 강함)
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const { getAuth } = require('firebase-admin/auth');
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
-const { buildGradingPrompt, postProcessGradingResult } = require('./_lib/scoresnap-prompt');
+const {
+  buildAnswerKeyPrompt, postProcessAnswerKey,
+  buildStudentGradePrompt, postProcessStudentGrade,
+} = require('./_lib/scoresnap-prompt');
 const { setCors } = require('./_lib/cors');
 
-// 다른 API (generate-quiz 등) 와 동일 패턴 — 분리 환경변수.
 function _ensureAdminApp() {
   if (getApps().length > 0) return;
   let pk = process.env.FIREBASE_PRIVATE_KEY || '';
@@ -27,7 +30,7 @@ function _ensureAdminApp() {
 }
 
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',           // Vision 우선 (이미지 인식 강함)
+  'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite-preview',
 ];
@@ -44,53 +47,78 @@ async function _callVision(model, apiKey, prompt, base64, mimeType) {
       ],
     }],
     generationConfig: {
-      temperature: 0.2,       // 채점은 보수적 — 환각 최소화
+      temperature: 0.2,
       topP: 0.95,
       maxOutputTokens: 8192,
       responseMimeType: 'application/json',
     },
   };
-
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
   if (!res.ok) {
     const errText = await res.text();
     console.error(`[scoresnap-grade] ${model} HTTP ${res.status}:`, errText.slice(0, 300));
     return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText.slice(0, 200)}` };
   }
-
   const data = await res.json();
-  const text = (data.candidates?.[0]?.content?.parts || [])
-    .map(p => p.text || '').join('');
+  const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   const finishReason = data.candidates?.[0]?.finishReason;
-  if (!text) {
-    return { ok: false, error: `Empty response (finishReason: ${finishReason || 'unknown'})` };
-  }
-  if (finishReason === 'MAX_TOKENS') {
-    return { ok: false, error: 'AI 응답이 잘렸어요 (문항 수가 너무 많을 수 있음)' };
-  }
+  if (!text) return { ok: false, error: `Empty response (finishReason: ${finishReason || 'unknown'})` };
+  if (finishReason === 'MAX_TOKENS') return { ok: false, error: 'AI 응답이 잘렸어요' };
   return { ok: true, text, usage: data.usageMetadata || null };
 }
 
-// JSON 파싱 + 마크다운 펜스 제거 폴백
 function _parseJSON(text) {
   if (!text) return null;
   let s = text.trim();
-  if (s.startsWith('```')) {
-    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  }
+  if (s.startsWith('```')) s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
   try { return JSON.parse(s); } catch (_) {}
-  // 첫 { ~ 마지막 } 구간 추출 폴백
   const first = s.indexOf('{');
   const last = s.lastIndexOf('}');
   if (first >= 0 && last > first) {
     try { return JSON.parse(s.slice(first, last + 1)); } catch (_) {}
   }
   return null;
+}
+
+// 폴백 체인 실행 — 호출자에 raw text 반환
+async function _callWithFallback(apiKey, prompt, base64, mimeType) {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (s) => s === 503 || s === 429;
+  let usedModel = null, rawText = null, usage = null, lastError = null, lastStatus = null;
+
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await _callVision(model, apiKey, prompt, base64, mimeType);
+        if (result.ok) {
+          usedModel = model;
+          rawText = result.text;
+          usage = result.usage;
+          break outer;
+        }
+        lastError = result.error;
+        lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return { ok: false, status: 502, error: lastError, model, lastStatus };
+        }
+        if (isTransient(lastStatus) && attempt === 0) {
+          await sleep(800);
+          continue;
+        }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+  if (!rawText) return { ok: false, status: 502, error: lastError || 'All models failed' };
+  return { ok: true, usedModel, rawText, usage };
 }
 
 module.exports = async (req, res) => {
@@ -101,116 +129,76 @@ module.exports = async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY 미설정' });
 
-  let idToken, testId, studentImageBase64, studentImageMimeType;
-  try {
-    ({ idToken, testId, studentImageBase64, studentImageMimeType } = req.body || {});
-  } catch (_) { return res.status(400).json({ error: '요청 형식 오류' }); }
+  let body;
+  try { body = req.body || {}; } catch (_) { return res.status(400).json({ error: '요청 형식 오류' }); }
+  const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions } = body;
 
   if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
-  if (!testId) return res.status(400).json({ error: 'testId 필요' });
-  if (!studentImageBase64 || typeof studentImageBase64 !== 'string') {
+  if (mode !== 'answerKey' && mode !== 'student') {
+    return res.status(400).json({ error: "mode 는 'answerKey' 또는 'student'" });
+  }
+  if (!imageBase64 || typeof imageBase64 !== 'string') {
     return res.status(400).json({ error: '이미지 데이터 필요' });
   }
-  // 4.5MB Vercel 한도 안전 — base64 는 원본의 ~133%
-  if (studentImageBase64.length > 6 * 1024 * 1024) {
+  if (imageBase64.length > 6 * 1024 * 1024) {
     return res.status(413).json({ error: '이미지가 너무 큼 (4MB 이하로)' });
   }
 
   _ensureAdminApp();
-  const db = getFirestore();
-  const auth = getAuth();
 
-  // ── 1. 인증 + 할당량 (generator 재사용) ──
+  // ── 인증 + 할당량 (generator 재사용) ──
   const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
   if (q.error) return res.status(q.status || 401).json({ error: q.error });
-  if (!q.academyId) return res.status(403).json({ error: '학원 식별 실패' });
 
-  // ── 2. 문제세트 로드 + academyId 검증 ──
-  // testId 인자 이름은 호환성 유지하되, 실제로는 setId (genQuestionSets doc id).
-  // 인쇄 모달이 문제세트 기반이라 QR 에 박히는 ID 도 setId.
-  const setId = testId;
-  let setDoc;
-  try {
-    setDoc = await db.doc('genQuestionSets/' + setId).get();
-  } catch (e) {
-    return res.status(500).json({ error: '문제세트 조회 실패: ' + e.message });
-  }
-  if (!setDoc.exists) return res.status(404).json({ error: '문제세트를 찾을 수 없어요' });
-  const testData = setDoc.data();
-  if (testData.academyId !== q.academyId) {
-    return res.status(403).json({ error: '다른 학원의 세트예요' });
-  }
-  const questions = Array.isArray(testData.questions) ? testData.questions : [];
-  if (questions.length === 0) {
-    return res.status(400).json({ error: '세트에 문제가 없어요' });
-  }
-
-  // ── 3. 프롬프트 생성 ──
-  const prompt = buildGradingPrompt(questions);
-
-  // ── 4. Gemini Vision 호출 (폴백 체인) ──
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const isTransient = (s) => s === 503 || s === 429;
-  let usedModel = null, rawText = null, usage = null, lastError = null, lastStatus = null;
-
-  outer:
-  for (const model of GEMINI_MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const result = await _callVision(model, apiKey, prompt, studentImageBase64, studentImageMimeType);
-        if (result.ok) {
-          usedModel = model;
-          rawText = result.text;
-          usage = result.usage;
-          break outer;
-        }
-        lastError = result.error;
-        lastStatus = result.status || null;
-        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
-          return res.status(502).json({ error: 'AI 서비스 오류', detail: lastError, model, status: lastStatus });
-        }
-        if (isTransient(lastStatus) && attempt === 0) {
-          console.warn(`[scoresnap-grade] ${model} ${lastStatus} → 800ms 후 재시도`);
-          await sleep(800);
-          continue;
-        }
-        console.warn(`[scoresnap-grade] ${model} 실패(${lastStatus}) → 다음 모델`);
-        continue outer;
-      } catch (e) {
-        lastError = e.message;
-        console.warn(`[scoresnap-grade] ${model} exception:`, e.message);
-        if (attempt === 0) { await sleep(800); continue; }
-      }
+  // ── 모드별 프롬프트 + 호출 ──
+  let prompt;
+  if (mode === 'answerKey') {
+    prompt = buildAnswerKeyPrompt();
+  } else {
+    if (!Array.isArray(answerKeyQuestions) || answerKeyQuestions.length === 0) {
+      return res.status(400).json({ error: '정답지 questions 필요 (mode=student)' });
     }
+    prompt = buildStudentGradePrompt(answerKeyQuestions);
   }
 
-  if (!rawText) {
-    return res.status(502).json({ error: '모든 AI 모델 실패', detail: lastError, triedModels: GEMINI_MODELS });
+  const r = await _callWithFallback(apiKey, prompt, imageBase64, imageMimeType || 'image/jpeg');
+  if (!r.ok) {
+    return res.status(r.status || 502).json({ error: 'AI 호출 실패', detail: r.error });
   }
 
-  // ── 5. JSON 파싱 + 후처리 ──
-  const parsed = _parseJSON(rawText);
+  const parsed = _parseJSON(r.rawText);
   if (!parsed) {
     return res.status(502).json({
       error: 'AI 응답 파싱 실패',
-      rawSnippet: rawText.slice(0, 500),
-      model: usedModel,
+      rawSnippet: r.rawText.slice(0, 500),
+      model: r.usedModel,
     });
   }
-  const processed = postProcessGradingResult(parsed, questions.length);
 
-  // ── 6. 사용량 카운트 (generator 합산, endpoint=scoresnap-grade 로 일자별 추적 가능) ──
+  // ── 후처리 + 사용량 ──
   try {
     await incrementUsage({ ...q, res, endpoint: 'scoresnap-grade' });
   } catch (e) {
-    console.warn('[scoresnap-grade] incrementUsage 실패 (응답은 진행):', e.message);
+    console.warn('[scoresnap-grade] incrementUsage 실패:', e.message);
   }
 
-  return res.status(200).json({
-    success: true,
-    model: usedModel,
-    testTitle: testData.name || '문제 세트',
-    ...processed,
-    tokenUsage: usage,
-  });
+  if (mode === 'answerKey') {
+    const processed = postProcessAnswerKey(parsed);
+    return res.status(200).json({
+      success: true,
+      mode,
+      model: r.usedModel,
+      ...processed,
+      tokenUsage: r.usage,
+    });
+  } else {
+    const processed = postProcessStudentGrade(parsed, answerKeyQuestions.length);
+    return res.status(200).json({
+      success: true,
+      mode,
+      model: r.usedModel,
+      ...processed,
+      tokenUsage: r.usage,
+    });
+  }
 };

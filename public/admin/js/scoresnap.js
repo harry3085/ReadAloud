@@ -54,7 +54,7 @@
     if (!ok) return;
     _state = { phase: 'init', answerKey: null, students: [] };
     _renderOverlay();
-    _renderPlaceholder();
+    _renderAnswerKeyCapture();
   };
 
   function _renderOverlay() {
@@ -91,26 +91,199 @@
     if (el) el.textContent = text;
   }
 
-  // ── T7-A 자리표시자 ──
-  function _renderPlaceholder() {
-    _state.phase = 'placeholder';
-    _setHeader('📷 ScoreSnap');
+  // ─── T7-B. 정답지 촬영 화면 ───
+  function _renderAnswerKeyCapture() {
+    _state.phase = 'answerKey-capture';
+    _setHeader('📋 ScoreSnap · 1단계: 정답지 촬영');
     const body = document.getElementById('ssBody');
     if (!body) return;
     body.innerHTML = `
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:14px;text-align:center;max-width:520px;margin:0 auto;">
-        <div style="font-size:48px;">📋</div>
-        <div style="font-size:17px;font-weight:700;color:#fff;">정답지 → 학생 답안지 워크플로우</div>
-        <div style="font-size:13px;color:#bbb;line-height:1.7;background:#1a1a1a;border:1px dashed #444;border-radius:8px;padding:16px 20px;text-align:left;">
-          1. 정답이 포함된 시험지 1장을 먼저 촬영 (정답지)<br>
-          2. AI 가 정답 추출 + 검토 화면<br>
-          3. 학생 답안지 여러 장 일괄 촬영<br>
-          4. 이름란 OCR 로 학생별 자동 구분 + 채점<br>
-          5. 학생별 카드 클릭 → 상세 + PNG 다운로드
+      <div style="padding:14px 18px;border-bottom:1px solid #333;flex-shrink:0;">
+        <div style="font-size:13px;color:#bbb;line-height:1.6;">
+          정답이 표시된 시험지 1장을 먼저 촬영해 주세요. AI 가 문제·정답을 자동으로 인식합니다.
+          (시험지 출력 시 <b style="color:#fff;">[답지 보기]</b> 옵션 켜고 인쇄한 것 권장)
         </div>
-        <div style="font-size:12px;color:#888;line-height:1.6;">
-          T7-B / T7-C / T7-D 작업 후 활성화됩니다.<br>
-          QR / setId / 인덱스 추적 모두 폐기 — 시험지 종이만 있으면 채점 가능.
+      </div>
+      <div id="ssAkBody" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 30px;gap:18px;overflow-y:auto;min-height:0;">
+        <div style="font-size:48px;">📋</div>
+        <div style="font-size:14px;color:#bbb;text-align:center;line-height:1.5;">
+          정답이 포함된 시험지 1장 촬영
+        </div>
+        <input id="ssAkCamIn" type="file" accept="image/*" capture="environment" style="display:none;">
+        <input id="ssAkGalIn" type="file" accept="image/*" style="display:none;">
+        <button id="ssAkCamBtn"
+          style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:18px 40px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.3);">
+          📷 정답지 촬영
+        </button>
+        <button id="ssAkGalBtn"
+          style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #444;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">
+          🖼 갤러리에서 선택
+        </button>
+      </div>
+    `;
+    const camIn = document.getElementById('ssAkCamIn');
+    const galIn = document.getElementById('ssAkGalIn');
+    document.getElementById('ssAkCamBtn').onclick = () => camIn.click();
+    document.getElementById('ssAkGalBtn').onclick = () => galIn.click();
+    camIn.onchange  = (e) => _handleAnswerKeyFile(e.target.files?.[0]);
+    galIn.onchange  = (e) => _handleAnswerKeyFile(e.target.files?.[0]);
+  }
+
+  async function _handleAnswerKeyFile(file) {
+    if (!file) return;
+    const body = document.getElementById('ssAkBody');
+    if (body) body.innerHTML = `<div style="color:#bbb;text-align:center;font-size:14px;padding:40px;">⏳ 이미지 처리 중…</div>`;
+    try {
+      const processed = await window._ssProcessImage(file);
+      _state.answerKeyImage = processed;
+      _renderAnswerKeyOcr(processed);
+    } catch (e) {
+      if (body) body.innerHTML = `
+        <div style="color:#ff8a80;text-align:center;font-size:14px;line-height:1.5;padding:30px;">
+          이미지 처리 실패<br><span style="color:#999;font-size:12px;">${esc(e.message)}</span>
+        </div>
+        <button onclick="window._ssAkRestart()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">다시 시도</button>
+      `;
+    }
+  }
+
+  // 정답지 OCR 호출 + 진행 표시
+  async function _renderAnswerKeyOcr(processed) {
+    _state.phase = 'answerKey-ocr';
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:18px;">
+        <div style="width:48px;height:48px;border:4px solid #333;border-top-color:var(--c-brand,#E8714A);border-radius:50%;animation:ssSpin 1s linear infinite;"></div>
+        <div style="font-size:15px;color:#fff;font-weight:600;">AI 가 정답지 분석 중…</div>
+        <div style="font-size:12px;color:#888;line-height:1.5;text-align:center;">보통 5~10초<br>문제·정답 자동 추출</div>
+      </div>
+      <style>@keyframes ssSpin { to { transform: rotate(360deg); } }</style>
+    `;
+    try {
+      const idToken = await window._ssGetIdToken();
+      const r = await fetch('/api/scoresnap-grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken,
+          mode: 'answerKey',
+          imageBase64: processed.base64,
+          imageMimeType: processed.mimeType,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      _state.answerKey = data;
+      _renderAnswerKeyReview();
+    } catch (e) {
+      body.innerHTML = `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:14px;text-align:center;max-width:420px;margin:0 auto;">
+          <div style="font-size:48px;">⚠</div>
+          <div style="font-size:15px;color:#ff8a80;font-weight:600;">정답지 분석 실패</div>
+          <div style="font-size:13px;color:#bbb;line-height:1.6;">${esc(e.message)}</div>
+          <button onclick="window._ssAkRestart()" style="margin-top:14px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">다시 촬영</button>
+        </div>
+      `;
+    }
+  }
+
+  // 추출된 정답지 검토 — 학원장이 오류 직접 수정
+  function _renderAnswerKeyReview() {
+    _state.phase = 'answerKey-review';
+    _setHeader('📋 ScoreSnap · 정답지 검토');
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    const k = _state.answerKey || {};
+    const qs = k.questions || [];
+    body.innerHTML = `
+      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:12px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${qs.length}문항 인식됨</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">오류 있으면 직접 수정. 학생 답안지 채점은 이 정답을 기준으로</div>
+        </div>
+        <button onclick="window._ssAkRestart()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;">🔄 정답지 다시 촬영</button>
+      </div>
+      <div id="ssAkReviewList" style="flex:1;overflow-y:auto;padding:14px;background:#0a0a0a;">
+        ${qs.map((q, i) => _buildAnswerKeyRow(q, i)).join('') || '<div style="color:#888;text-align:center;padding:40px;">문항이 인식되지 않았어요. 다시 촬영해 주세요.</div>'}
+      </div>
+      <div style="padding:14px 18px;border-top:1px solid #333;display:flex;justify-content:center;gap:10px;flex-shrink:0;">
+        <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:11px 22px;border-radius:8px;font-size:13px;cursor:pointer;">취소</button>
+        <button onclick="window._ssAkConfirm()" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:11px 30px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;${qs.length === 0 ? 'opacity:0.5;pointer-events:none;' : ''}">
+          ✓ 정답지 확정 → 학생 답안 채점
+        </button>
+      </div>
+    `;
+  }
+
+  function _buildAnswerKeyRow(q, idx) {
+    const isMcq = q.type === 'mcq';
+    const lowConf = q.confidence < 0.8;
+    const choicesHtml = isMcq && Array.isArray(q.choices) && q.choices.length
+      ? `<div style="font-size:11px;color:#bbb;margin-top:4px;">${q.choices.map((c, j) => `${['①','②','③','④','⑤'][j] || j+1} ${esc(c)}`).join(' &nbsp; ')}</div>`
+      : '';
+    return `
+      <div style="background:${lowConf ? '#3a2a1a' : '#1a1a1a'};border:1px solid ${lowConf ? '#ffc107' : '#333'};border-radius:6px;padding:10px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div style="font-size:13px;font-weight:700;color:#fff;">Q${q.no} <span style="font-size:10px;color:#888;font-weight:400;">[${isMcq ? '객관식' : '단답'}]</span> ${lowConf ? '<span style="font-size:10px;color:#ffc107;">⚠ 검토</span>' : ''}</div>
+          <div style="font-size:10px;color:#666;">conf ${Math.round((q.confidence || 0) * 100)}%</div>
+        </div>
+        <div style="font-size:12px;color:#ddd;margin-top:4px;line-height:1.5;">${esc(q.stem) || '<span style="color:#666;">(문제 없음)</span>'}</div>
+        ${choicesHtml}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <span style="font-size:11px;color:#888;flex-shrink:0;">정답:</span>
+          <input type="text" value="${esc(q.answer || '')}"
+            onchange="window._ssAkEditAnswer(${idx}, this.value)"
+            style="flex:1;padding:5px 8px;background:#0a0a0a;border:1px solid #555;border-radius:4px;color:#fff;font-size:12px;font-family:inherit;">
+        </div>
+      </div>
+    `;
+  }
+
+  // 학원장 정답 직접 수정
+  window._ssAkEditAnswer = function (idx, val) {
+    if (!_state.answerKey?.questions?.[idx]) return;
+    const q = _state.answerKey.questions[idx];
+    q.answer = String(val || '').trim();
+    // MCQ 면 choices 에서 매칭되는 인덱스 찾아 answerIdx 갱신
+    if (q.type === 'mcq' && Array.isArray(q.choices)) {
+      const matchIdx = q.choices.findIndex(c => c === q.answer);
+      if (matchIdx >= 0) q.answerIdx = matchIdx;
+    }
+    // confidence 높여서 회색으로 (수동 수정한 거니까)
+    q.confidence = 1.0;
+    // 해당 카드만 갱신은 어려우니 전체 다시 그림
+    _renderAnswerKeyReview();
+  };
+
+  window._ssAkRestart = function () {
+    _state.answerKey = null;
+    _state.answerKeyImage = null;
+    _renderAnswerKeyCapture();
+  };
+
+  // 정답지 확정 → 학생 답안 단계 (T7-C 자리표시자)
+  window._ssAkConfirm = function () {
+    if (!_state.answerKey?.questions?.length) return;
+    _renderStudentPlaceholder();
+  };
+
+  function _renderStudentPlaceholder() {
+    _state.phase = 'student-placeholder';
+    _setHeader('🎓 ScoreSnap · 2단계: 학생 답안지');
+    const body = document.getElementById('ssBody');
+    if (!body) return;
+    const k = _state.answerKey;
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:14px;text-align:center;max-width:520px;margin:0 auto;">
+        <div style="font-size:48px;">🎓</div>
+        <div style="font-size:17px;font-weight:700;color:#fff;">정답지 확정됨</div>
+        <div style="font-size:13px;color:#bbb;line-height:1.6;">
+          ${esc(k.testName || '시험')} · ${k.questions.length}문항
+        </div>
+        <div style="font-size:13px;color:#bbb;line-height:1.7;background:#1a1a1a;border:1px dashed #444;border-radius:8px;padding:16px 20px;margin-top:10px;">
+          다음 단계: <b style="color:#fff;">학생 답안지 일괄 촬영</b><br>
+          (T7-C 작업에서 활성화 — 여러 장 추가 → 일괄 채점 → 학생별 결과)
         </div>
         <button onclick="window.closeScoreSnap()" style="margin-top:14px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">종료</button>
       </div>
