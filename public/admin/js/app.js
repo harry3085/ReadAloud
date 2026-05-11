@@ -11770,9 +11770,10 @@ window.tpOpenPublishModal = async () => {
                 </div>
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">최대 시간(초)</label>
-                  <input type="number" id="tpRecMaxDur" min="60" max="1800" step="60"
-                    value="${q0.maxDurationSec ?? 600}"
+                  <input type="number" id="tpRecMaxDur" min="60" max="600" step="60"
+                    value="${Math.min(q0.maxDurationSec ?? 600, 600)}"
                     style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
+                  <div style="font-size:9px;color:var(--gray);margin-top:2px;">최대 600초 (10분)</div>
                 </div>
               </div>
               <div>
@@ -11941,7 +11942,7 @@ window.tpPublish = async () => {
     if (isFinite(minDur) && minDur >= 10 && minDur <= 300) {
       questions.forEach(q => { if (q.schemaV === 2) q.minDurationSec = minDur; });
     }
-    if (isFinite(maxDur) && maxDur >= 60 && maxDur <= 1800) {
+    if (isFinite(maxDur) && maxDur >= 60 && maxDur <= 600) {
       questions.forEach(q => { if (q.schemaV === 2) q.maxDurationSec = maxDur; });
     }
     if (isFinite(evalSec) && [0, 60, 90, 120, 180].includes(evalSec)) {

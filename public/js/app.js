@@ -2399,7 +2399,18 @@ function _rv2Render() {
         <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.35);color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
       </div>
       <div style="background:rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:600;margin-bottom:6px;">숙제 내용</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:600;">숙제 내용</div>
+          ${(() => {
+            const qMax = q?.maxDurationSec;
+            const cfgMax = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
+            const maxSec = (typeof qMax === 'number' && qMax > 0) ? Math.min(qMax, 600) : Math.min(cfgMax, 600);
+            const qMin = q?.minDurationSec;
+            const cfgMin = window.MY_ACADEMY_RECORDING_CFG?.minDurationSec || 60;
+            const minSec = (typeof qMin === 'number' && qMin > 0) ? qMin : cfgMin;
+            return `<div style="font-size:10px;color:rgba(255,255,255,0.85);font-weight:700;background:rgba(0,0,0,0.18);padding:3px 8px;border-radius:10px;">⏱️ ${minSec}~${maxSec}초</div>`;
+          })()}
+        </div>
         <div style="font-size:14px;color:white;line-height:1.7;white-space:pre-wrap;">${esc(q.instructionKo || '')}</div>
       </div>
     </div>
@@ -2534,10 +2545,12 @@ window.rv2StartRecord = async () => {
       const sec = Math.floor((Date.now() - _rv2.timerStart) / 1000);
       const el = document.getElementById('rv2Timer');
       if (el) el.textContent = _rv2FormatDuration(sec);
-      // 안전장치: maxDurationSec (기본 10분) 도달 시 자동 정지
-      const maxSec = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
+      // 학원장 입력 시험별 옵션 우선 (max 600 cap) — 없으면 학원 default
+      const qMax = _rv2.question?.maxDurationSec;
+      const cfgMax = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
+      const maxSec = (typeof qMax === 'number' && qMax > 0) ? Math.min(qMax, 600) : Math.min(cfgMax, 600);
       if (sec >= maxSec) {
-        showToast(`최대 녹음 시간 (${Math.round(maxSec/60)}분) 도달 — 자동 종료됐어요`);
+        showToast(`최대 녹음 시간 (${Math.round(maxSec/60)}분) 도달 — 자동 종료됐어요. 제출하거나 다시 녹음하세요.`);
         rv2StopRecord();
       }
     }, 250);
