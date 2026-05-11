@@ -48,6 +48,30 @@
 
   // ─── 풀스크린 오버레이 + 진입 ───
   window.openScoreSnap = async function () {
+    // 직전 세션 (localStorage) 있으면 이어서 보기 분기
+    const prev = _loadSession();
+    if (prev) {
+      const minutesAgo = Math.max(1, Math.round((Date.now() - prev.savedAt) / 60000));
+      const cont = (typeof window.showConfirm === 'function')
+        ? await window.showConfirm(
+            'ScoreSnap — 이전 채점 결과',
+            `${minutesAgo}분 전 채점한 "${prev.answerKey?.testName || '시험'}" (${prev.students?.length || 0}명) 이어서 보시겠어요?\n\n[확인] 이어서 / [취소] 새로 시작 (이전 결과 삭제)`
+          )
+        : true;
+      if (cont) {
+        _state = {
+          phase: 'init',
+          answerKey: prev.answerKey,
+          students: prev.students.map(s => ({ ...s, image: null })),  // image 는 없음 (재채점 불가)
+          precision: false,
+        };
+        _renderOverlay();
+        _renderResultGrid();
+        return;
+      } else {
+        _clearSession();
+      }
+    }
     const ok = (typeof window.showConfirm === 'function')
       ? await window.showConfirm('ScoreSnap', '시험지 채점을 시작할까요?')
       : true;
@@ -507,6 +531,7 @@
 
   function _renderResultGrid() {
     _state.phase = 'result-grid';
+    _saveSession();  // 진입 시점에 항상 최신 결과 localStorage 백업
     _setHeader(`📊 ScoreSnap · 결과 (${_state.answerKey?.testName || '시험'})`);
     const body = document.getElementById('ssBody');
     if (!body) return;
@@ -624,13 +649,12 @@
     const pct = r.scorePercent || 0;
     const wrongNos = r.wrongNumbers || [];
     const uncertain = new Set(r.uncertainQuestions || []);
-    const ak = _state.answerKey?.questions || [];
     const dateStr = _fmtDate(new Date());
 
-    // 검토 필요 카드 (confidence 낮음)
+    // 검토 필요 카드 (confidence 낮음) — AI 가 자신 없는 항목만 별도 강조
     const reviewCards = (r.answers || []).filter(a => uncertain.has(a.no)).map(a => `
       <div style="border:1px solid #ffc107;background:#fff8e1;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;">
-        <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Q${a.no} · ${a.isCorrect ? '✓' : '✗'} · conf ${Math.round((a.confidence||0)*100)}%</div>
+        <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Q${a.no} · ${a.isCorrect ? '✓' : '✗'} · conf ${Math.round((a.confidence||0)*100)}%${a._adminOverride ? ' · <span style="color:#1976d2;">수정됨</span>' : ''}</div>
         <div style="color:#555;line-height:1.6;">
           학생답: <b>${esc(a.studentAnswer || '(빈칸)')}</b> &nbsp;→&nbsp;
           정답: <b>${esc(a.correctAnswer || '?')}</b>
@@ -644,31 +668,30 @@
       </div>
     `).join('');
 
-    // 전체 문항 — 한 줄 요약
+    // 전체 문항 — ✓/✗ 자체가 토글 버튼 (학원장 직접 수정)
     const allRows = (r.answers || []).map(a => `
       <div style="display:flex;gap:10px;padding:6px 8px;border-bottom:1px solid #eee;font-size:12px;align-items:center;">
         <span style="width:30px;color:#888;font-weight:700;">Q${a.no}</span>
-        <span style="width:24px;color:${a.isCorrect ? '#2e7d32' : '#c62828'};font-weight:700;">${a.isCorrect ? '✓' : '✗'}</span>
+        <button onclick="window._ssToggleAnswer(${idx}, ${a.no}, ${!a.isCorrect})"
+          title="클릭 → ${a.isCorrect ? '오답' : '정답'}으로 변경"
+          style="width:30px;height:24px;border:1px solid ${a.isCorrect ? '#2e7d32' : '#c62828'};background:${a.isCorrect ? '#e8f5e9' : '#ffebee'};color:${a.isCorrect ? '#2e7d32' : '#c62828'};border-radius:4px;cursor:pointer;font-weight:700;font-size:13px;padding:0;line-height:1;">${a.isCorrect ? '✓' : '✗'}</button>
         <span style="flex:1;min-width:0;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.studentAnswer || '(빈칸)')}</span>
         <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
+        ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;flex-shrink:0;">수정</span>' : ''}
       </div>
     `).join('');
 
     return `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:10px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;color:#888;">${esc(window.MY_ACADEMY_NAME || '')}</div>
-          <div style="font-size:17px;font-weight:800;color:#111;margin-top:2px;">${esc(_state.answerKey?.testName || '시험')}</div>
-          <div style="font-size:11px;color:#555;margin-top:4px;">총 ${total}문항 · 채점일 ${esc(dateStr)}</div>
-        </div>
-        <div style="text-align:right;font-size:12px;line-height:1.8;border:1px solid #999;padding:8px 14px;border-radius:6px;background:#fff;min-width:200px;">
-          <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
-            <span>학생:</span>
-            <input id="ssDetailNameIn" type="text" value="${esc(r.studentName || '')}"
-              placeholder="이름 직접 입력"
-              oninput="window._ssEditStudentName(${idx}, this.value)"
-              style="width:130px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;font-family:inherit;">
-          </div>
+      <div style="margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:12px;">
+        <div style="font-size:11px;color:#888;">${esc(window.MY_ACADEMY_NAME || '')}</div>
+        <div style="font-size:17px;font-weight:800;color:#111;margin-top:2px;line-height:1.4;word-break:keep-all;">${esc(_state.answerKey?.testName || '시험')}</div>
+        <div style="font-size:11px;color:#555;margin-top:4px;">총 ${total}문항 · 채점일 ${esc(dateStr)}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 12px;border:1px solid #999;border-radius:6px;background:#fff;">
+          <span style="font-size:13px;color:#555;font-weight:600;flex-shrink:0;">학생:</span>
+          <input id="ssDetailNameIn" type="text" value="${esc(r.studentName || '')}"
+            placeholder="이름 직접 입력"
+            oninput="window._ssEditStudentName(${idx}, this.value)"
+            style="flex:1;min-width:0;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:14px;font-family:inherit;font-weight:600;">
         </div>
       </div>
 
@@ -690,8 +713,8 @@
         </div>
       ` : ''}
 
-      <details style="margin-bottom:6px;">
-        <summary style="font-size:13px;font-weight:700;color:#333;cursor:pointer;padding:6px 0;">📋 전체 문항 보기 (${total}개)</summary>
+      <details style="margin-bottom:6px;" open>
+        <summary style="font-size:13px;font-weight:700;color:#333;cursor:pointer;padding:6px 0;">📋 전체 문항 (${total}개) <span style="font-weight:400;color:#888;font-size:11px;">— ✓/✗ 클릭하여 직접 수정 가능</span></summary>
         <div style="margin-top:8px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
           ${allRows}
         </div>
@@ -718,14 +741,15 @@
     _renderStudentCapture();
   };
 
-  // 학생 이름 직접 수정
+  // 학생 이름 직접 수정 — 자동 localStorage 저장
   window._ssEditStudentName = function (idx, val) {
     const s = _state.students?.[idx];
     if (!s?.result) return;
     s.result.studentName = String(val || '').trim();
+    _saveSession();
   };
 
-  // 학원장 정답 토글
+  // 학원장 정답 토글 — 자동 localStorage 저장
   window._ssToggleAnswer = function (idx, no, makeCorrect) {
     const s = _state.students?.[idx];
     if (!s?.result || !Array.isArray(s.result.answers)) return;
@@ -740,10 +764,62 @@
     // 이름 input 보존
     const nameIn = document.getElementById('ssDetailNameIn');
     if (nameIn) s.result.studentName = nameIn.value || '';
+    _saveSession();
     // 카드만 재렌더
     const card = document.getElementById('ssDetailCard');
     if (card) card.innerHTML = _buildStudentDetailHtml(s, idx);
   };
+
+  // ─── localStorage 임시 보관 (새로고침까지 유지) ───
+  // image 는 너무 커서 제외 — result 메타만 저장. 복원 시 PNG 다운로드·정답 수정은 가능, 재채점은 불가.
+  const SS_LS_KEY = 'scoresnap_session_v1';
+  const SS_LS_MAX_AGE = 24 * 60 * 60 * 1000;  // 24 시간
+
+  function _saveSession() {
+    try {
+      if (!_state.answerKey?.questions?.length) {
+        localStorage.removeItem(SS_LS_KEY);
+        return;
+      }
+      const list = (_state.students || []).filter(s => s.status === 'done');
+      if (list.length === 0) {
+        // 학생 결과 없으면 저장 의미 없음 (정답지만 있는 상태)
+        localStorage.removeItem(SS_LS_KEY);
+        return;
+      }
+      const data = {
+        savedAt: Date.now(),
+        academyName: window.MY_ACADEMY_NAME || '',
+        answerKey: _state.answerKey,
+        students: list.map(s => ({ status: 'done', result: s.result })),
+      };
+      localStorage.setItem(SS_LS_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn('[scoresnap] localStorage 저장 실패:', e.message);
+    }
+  }
+
+  function _loadSession() {
+    try {
+      const raw = localStorage.getItem(SS_LS_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data?.answerKey?.questions?.length || !data?.students?.length) return null;
+      if (Date.now() - (data.savedAt || 0) > SS_LS_MAX_AGE) {
+        localStorage.removeItem(SS_LS_KEY);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _clearSession() {
+    try { localStorage.removeItem(SS_LS_KEY); } catch (_) {}
+  }
+
+  // _renderResultGrid 진입 시 자동 저장 (학원장 수정·이름 수정도 같은 함수 호출)
 
   // ─── PNG 다운로드 (html2canvas 동적 로드) ───
   let _html2canvasLoading = null;
