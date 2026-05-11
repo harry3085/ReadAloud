@@ -11708,7 +11708,6 @@ window.tpOpenPublishModal = async () => {
         ${cfg.testMode === 'recording' && selectedSets.some(s => s.questions?.[0]?.schemaV === 2)
           ? (() => {
               const q0 = selectedSets[0]?.questions?.[0] || {};
-              const curThPct = Math.round((q0.accuracyThreshold ?? 0.4) * (q0.accuracyThreshold > 1 ? 1 : 100));
               return `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
               <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 옵션 (시험별 조정)</div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -11731,23 +11730,15 @@ window.tpOpenPublishModal = async () => {
                     style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">평가구간</label>
-                  <select id="tpRecEvalSec" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                    ${[0,60,90,120,180].map(n => `<option value="${n}"${n === (q0.evaluationSeconds ?? 0) ? ' selected' : ''}>${n === 0 ? '전체 녹음' : '앞 ' + n + '초'}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">성실도 임계값 (%)</label>
-                  <input type="number" id="tpRecThreshold" min="20" max="80" step="5"
-                    value="${curThPct}"
-                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-                </div>
+              <div>
+                <label style="font-size:11px;font-weight:600;color:var(--gray);">평가구간</label>
+                <select id="tpRecEvalSec" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                  ${[0,60,90,120,180].map(n => `<option value="${n}"${n === (q0.evaluationSeconds ?? 0) ? ' selected' : ''}>${n === 0 ? '전체 녹음' : '앞 ' + n + '초'}</option>`).join('')}
+                </select>
               </div>
               <div style="font-size:10px;color:#8a6d1c;margin-top:8px;line-height:1.5;">
-                ※ 통과점수(상단)는 AI 가 마지막 녹음을 평가한 점수 기준 — 미달 시 학생이 마지막 라운드만 다시 녹음 가능<br>
-                ※ 평가구간 "전체" 가 가장 정확하지만 토큰 비용 높음 (5분 녹음 vs 60초)
+                ※ 평가구간 "전체" 가 가장 정확하지만 토큰 비용 높음 (5분 녹음 vs 60초)<br>
+                ※ 말소리 비율 차단 정책 폐기 — 모든 녹음은 제출 가능, 학원장이 카드에서 회차별 수치 확인
               </div>
             </div>`;
             })()
@@ -11898,7 +11889,6 @@ window.tpPublish = async () => {
     const minDur = parseInt(document.getElementById('tpRecMinDur')?.value);
     const maxDur = parseInt(document.getElementById('tpRecMaxDur')?.value);
     const evalSec = parseInt(document.getElementById('tpRecEvalSec')?.value);
-    const thresholdPct = parseInt(document.getElementById('tpRecThreshold')?.value);
 
     if (!isNaN(recCount) && recCount >= 1 && recCount <= 4) {
       questions.forEach(q => { if (q.schemaV === 2) q.recordingCount = recCount; });
@@ -11912,10 +11902,7 @@ window.tpPublish = async () => {
     if (isFinite(evalSec) && [0, 60, 90, 120, 180].includes(evalSec)) {
       questions.forEach(q => { if (q.schemaV === 2) q.evaluationSeconds = evalSec; });
     }
-    if (!isNaN(thresholdPct) && thresholdPct >= 20 && thresholdPct <= 80) {
-      // 임계값을 0~1 비율로 저장 (학생앱 _rv2PreCheckRecording 와 호환)
-      questions.forEach(q => { if (q.schemaV === 2) q.accuracyThreshold = thresholdPct / 100; });
-    }
+    // 말소리 비율 임계값 (accuracyThreshold) 옵션 폐기 — 차단 정책 제거
   }
 
   // Phase 6B: vocab 풀이 옵션 (학생앱에서 매번 적용)
@@ -12855,18 +12842,23 @@ window.tpToggleTestProgress = async (testId, prefix) => {
                   const headLabel = isPassed ? '✅ 통과' : `⚠ 미통과 (통과 ${passScore})`;
                   const cardBg = isPassed ? 'white' : '#fffbeb';
                   const cardBorder = isPassed ? '#e5e7eb' : '#fbbf24';
-                  // 회차별 audio 리스트 (성실도 + 시간 + 마지막 회차에는 점수)
+                  // 회차별 audio 리스트 (말소리 비율 + 속도 + 시간 + 마지막 회차에는 점수)
                   // audio 에 stopPropagation — 재생 클릭이 카드 onclick (모달 열기) 과 충돌 방지
+                  const tq = (Array.isArray(t.questions) && t.questions[0]) || {};
+                  const tqFullText = tq.fullText || '';
+                  const tqWords = tqFullText.trim().split(/\s+/).filter(Boolean).length;
                   const roundsHtmlClickSafe = recs.map((r, i) => {
                     const isLast = i === recs.length - 1;
                     const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
                     const dur = r.duration ? r.duration + '초' : '-';
+                    const wpm = (r.duration > 0 && tqWords > 0) ? Math.round((tqWords / r.duration) * 60) : 0;
+                    const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
                     const scoreBadge = isLast && typeof r.score === 'number'
                       ? `<span style="color:${headColor};font-weight:700;margin-left:6px;">${r.score}점</span>` : '';
                     return `
                       <div style="margin-top:6px;padding:6px 8px;background:#f9fafb;border-radius:4px;">
                         <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">
-                          ${i+1}회차 · ${dur} · 성실도 ${va}${scoreBadge}${isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
+                          ${i+1}회차 · ${dur} · 말소리 ${va}${wpmTxt}${scoreBadge}${isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
                         </div>
                         <audio src="${esc(r.audioUrl||'')}" controls preload="none" onclick="event.stopPropagation()" style="width:100%;height:30px;"></audio>
                       </div>`;

@@ -2373,11 +2373,15 @@ function _rv2Render() {
        </div>`
     : '';
 
-  // Phase A+ : 직전 회차 성실도·속도 피드백 (회차 끝나면 즉시 박힘, 새 회차 시작해도 유지)
+  // Phase A+ : 직전 회차 말소리 비율·속도 피드백 (회차 끝나면 즉시 박힘, 새 회차 시작해도 유지)
   const lrf = _rv2.lastRoundFeedback;
+  const lrfMetrics = lrf && (lrf.vaPct !== null || lrf.wpm > 0)
+    ? `${lrf.vaPct !== null ? `말소리 ${lrf.vaPct}%` : ''}${(lrf.vaPct !== null && lrf.wpm > 0) ? ' · ' : ''}${lrf.wpm > 0 ? `속도 ${lrf.wpm} WPM` : ''}`
+    : '';
   const lastRoundHtml = lrf
     ? `<div style="background:${lrf.bg};border:1px solid ${lrf.color}33;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:${lrf.color};line-height:1.5;">
-        <span style="font-weight:700;">${lrf.emoji} 직전 회차</span> — ${esc(lrf.text)}
+        <div><span style="font-weight:700;">${lrf.emoji} 직전 회차</span> — ${esc(lrf.text)}</div>
+        ${lrfMetrics ? `<div style="font-size:11px;margin-top:4px;opacity:0.85;font-weight:600;">${lrfMetrics}</div>` : ''}
       </div>`
     : '';
 
@@ -2394,7 +2398,8 @@ function _rv2Render() {
     <div style="background:var(--brand-header-gradient);padding:48px 20px 28px;flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="rv2Quit()">‹</button>
-        <span style="font-size:16px;font-weight:800;color:white;">🤖 AI 녹음숙제</span>
+        <span style="font-size:16px;font-weight:800;color:white;flex:1;">🤖 AI 녹음숙제</span>
+        <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.35);color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
       </div>
       <div style="background:rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:600;margin-bottom:6px;">숙제 내용</div>
@@ -2726,13 +2731,8 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
     return { ok: true, hash, _bypassed: 'analysis-error' };
   }
 
-  // VAD
-  if (vadRatio < minVA) {
-    return {
-      ok: false,
-      reason: `음성이 적게 들려요 (${(vadRatio * 100).toFixed(0)}%). 더 또렷이·꾸준히 읽어볼까요?`,
-    };
-  }
+  // VAD 차단 폐기 — 학생 차단 대신 수치 노출 + 메시지로 안내
+  // (참고: minVA 는 더 이상 사용 안 함. 코멘트는 _rv2BuildRoundMessage 가 처리)
 
   // 음성 대역 에너지 (C)
   if (voiceBandRatio !== null && voiceBandRatio < 0.40) {
@@ -3245,25 +3245,72 @@ function _renderInlineWithTTS(text) {
   );
 }
 
-// 회차별 성실도·속도 분석 메시지
-// 우선순위: 성실도 < 40% → 속도 (느림 < 0.8 wps · 빠름 > 3.5 wps) → 격려
+// 회차별 말소리 비율·속도 분석 메시지
+// 우선순위: 말소리 비율 < 40% → 속도 (느림 < 0.8 wps · 빠름 > 3.5 wps) → 격려
+// 반환에 vaPct(말소리 비율 %) + wpm(분당 단어 수) 포함 — 학생·학원장 노출용
 function _rv2BuildRoundMessage(round, idx, fullText) {
   const va = (typeof round.voiceActivity === 'number') ? round.voiceActivity : null;
   const dur = round.duration || 0;
   const words = (fullText || '').trim().split(/\s+/).filter(Boolean).length;
   const wps = (dur > 0 && words > 0) ? words / dur : 0;
+  const wpm = wps > 0 ? Math.round(wps * 60) : 0;
+  const vaPct = va !== null ? Math.round(va * 100) : null;
   const n = idx + 1;
+  let emoji, text, color, bg;
   if (va !== null && va < 0.4) {
-    return { emoji: '⚠', text: `${n}회차는 끊기거나 말소리가 적었어요. 또렷하게 한 호흡으로 읽어보세요.`, color: '#DC2626', bg: '#fef2f2' };
+    emoji = '⚠'; color = '#DC2626'; bg = '#fef2f2';
+    text = `${n}회차는 끊기거나 말소리가 적었어요. 또렷하게 한 호흡으로 읽어보세요.`;
+  } else if (wps > 0 && wps < 0.8) {
+    emoji = '🐢'; color = '#CA8A04'; bg = '#fef3c7';
+    text = `${n}회차는 천천히 읽었어요. 자연스러운 속도로 읽어보세요.`;
+  } else if (wps > 3.5) {
+    emoji = '🏃'; color = '#CA8A04'; bg = '#fef3c7';
+    text = `${n}회차는 빠르게 읽었어요. 한 단어씩 분명히 읽어주세요.`;
+  } else {
+    emoji = '👍'; color = '#059669'; bg = '#ecfdf5';
+    text = `${n}회차는 잘 읽었어요!`;
   }
-  if (wps > 0 && wps < 0.8) {
-    return { emoji: '🐢', text: `${n}회차는 천천히 읽었어요. 자연스러운 속도로 읽어보세요.`, color: '#CA8A04', bg: '#fef3c7' };
-  }
-  if (wps > 3.5) {
-    return { emoji: '🏃', text: `${n}회차는 빠르게 읽었어요. 한 단어씩 분명히 읽어주세요.`, color: '#CA8A04', bg: '#fef3c7' };
-  }
-  return { emoji: '👍', text: `${n}회차는 잘 읽었어요!`, color: '#059669', bg: '#ecfdf5' };
+  return { emoji, text, color, bg, vaPct, wpm, idx: n };
 }
+
+// 인포 모달 — 녹음 화면 ⓘ 클릭 시 용어 설명
+window.showRecordingTermsModal = () => {
+  const html = `
+    <div style="padding:18px 22px;max-width:520px;">
+      <div style="font-size:18px;font-weight:800;margin-bottom:14px;color:var(--text);">📖 용어 안내</div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:14px;font-weight:700;color:#0369a1;margin-bottom:6px;">📊 말소리 비율</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.7;">
+          녹음 시간 중 실제 말소리가 들린 비율입니다.<br>
+          <span style="color:#059669;font-weight:600;">70% 이상</span> : 잘 읽음<br>
+          <span style="color:#CA8A04;font-weight:600;">50~70%</span> : 보통<br>
+          <span style="color:#DC2626;font-weight:600;">40% 미만</span> : 끊기거나 작게 말함
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:14px;font-weight:700;color:#0369a1;margin-bottom:6px;">🏃 읽기 속도 (WPM)</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.7;">
+          1분 동안 읽은 단어 수 (Words Per Minute)<br>
+          <span style="color:#059669;font-weight:600;">100~180 WPM</span> : 학생 적정 학습 속도<br>
+          <span style="color:#94a3b8;font-weight:600;">150 WPM</span> : 영어 원어민 일상 대화<br>
+          <span style="color:#CA8A04;font-weight:600;">50 WPM 미만</span> : 너무 느림<br>
+          <span style="color:#CA8A04;font-weight:600;">210 WPM 이상</span> : 너무 빠름
+        </div>
+      </div>
+
+      <div style="padding:10px 12px;background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;font-size:11px;color:#075985;line-height:1.6;">
+        💡 두 수치는 각 회차마다 자동으로 측정되어 표시됩니다.<br>
+        다음 회차 녹음 시 참고해서 더 또렷하고 자연스러운 속도로 읽어보세요.
+      </div>
+
+      <div style="margin-top:16px;text-align:right;">
+        <button onclick="closeModal()" style="padding:10px 18px;background:var(--c-brand);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">확인</button>
+      </div>
+    </div>`;
+  showModal(html);
+};
 
 // 결과 화면 — "제출 완료" 단일 헤드라인 + 회차별 audio·성실도 메시지 + AI 피드백
 // 학생에겐 점수·통과 라벨 비공개 (학원장만 봄). passScore 개념 폐기.
@@ -3287,20 +3334,38 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
 
       <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
         ${hasMultiple ? `
-          <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 회차별 녹음 다시 듣기 (총 ${recordings.length}회)</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--gray);">🎧 회차별 녹음 다시 듣기 (총 ${recordings.length}회)</div>
+            <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
+          </div>
           ${recordings.map((r, i) => {
             const isLast = i === recordings.length - 1;
             const dur = r.duration ? r.duration + '초' : '';
             const msg = _rv2BuildRoundMessage(r, i, ft);
+            const vaTxt = msg.vaPct !== null ? `말소리 ${msg.vaPct}%` : '';
+            const wpmTxt = msg.wpm > 0 ? `속도 ${msg.wpm} WPM` : '';
+            const metricsTxt = [vaTxt, wpmTxt].filter(Boolean).join(' · ');
             const lastTag = isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 피드백 기준</span>' : '';
             return `<div style="margin-top:6px;padding:6px 10px;background:#f9fafb;border-radius:6px;">
-              <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">${i+1}회차${dur ? ' · ' + dur : ''}${lastTag}</div>
+              <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">${i+1}회차${dur ? ' · ' + dur : ''}${metricsTxt ? ' · ' + metricsTxt : ''}${lastTag}</div>
               <audio src="${esc(r.audioUrl||'')}" controls preload="none" style="width:100%;height:32px;"></audio>
               <div style="margin-top:5px;padding:5px 8px;background:${msg.bg};border-radius:4px;font-size:11px;color:${msg.color};line-height:1.4;">${msg.emoji} ${esc(msg.text)}</div>
             </div>`;
           }).join('')}
         ` : `
-          <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:8px;">🎧 마지막 녹음 다시 듣기</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--gray);">🎧 마지막 녹음 다시 듣기</div>
+            <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
+          </div>
+          ${(Array.isArray(recordings) && recordings.length === 1) ? (() => {
+            const r = recordings[0];
+            const dur = r.duration ? r.duration + '초' : '';
+            const msg = _rv2BuildRoundMessage(r, 0, ft);
+            const vaTxt = msg.vaPct !== null ? `말소리 ${msg.vaPct}%` : '';
+            const wpmTxt = msg.wpm > 0 ? `속도 ${msg.wpm} WPM` : '';
+            const metricsTxt = [vaTxt, wpmTxt].filter(Boolean).join(' · ');
+            return `<div style="font-size:10px;color:var(--gray);margin-bottom:5px;">1회차${dur ? ' · ' + dur : ''}${metricsTxt ? ' · ' + metricsTxt : ''}</div>`;
+          })() : ''}
           <audio src="${esc(audioUrl)}" controls preload="none" style="width:100%;height:36px;"></audio>
           ${(Array.isArray(recordings) && recordings.length === 1) ? (() => {
             const msg = _rv2BuildRoundMessage(recordings[0], 0, ft);
