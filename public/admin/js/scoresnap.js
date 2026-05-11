@@ -505,6 +505,10 @@
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    // 학원장 토글 후 "원상태 복귀" 감지용 — AI 원본 isCorrect 보존
+    if (Array.isArray(data.answers)) {
+      data.answers.forEach(a => { a._aiIsCorrect = a.isCorrect === true; });
+    }
     return data;
   }
 
@@ -756,7 +760,13 @@
     const a = s.result.answers.find(x => x.no === no);
     if (!a) return;
     a.isCorrect = makeCorrect === true;
-    a._adminOverride = true;
+    // AI 원본과 같으면 수정 마커 제거 (원상태 복귀)
+    if (typeof a._aiIsCorrect === 'boolean') {
+      a._adminOverride = (a.isCorrect !== a._aiIsCorrect);
+    } else {
+      // 옛 데이터 (복원 등) — _aiIsCorrect 없으면 무조건 수정으로 처리
+      a._adminOverride = true;
+    }
     s.result.correctCount = s.result.answers.filter(x => x.isCorrect).length;
     s.result.scorePercent = s.result.totalQuestions > 0
       ? Math.round((s.result.correctCount / s.result.totalQuestions) * 100) : 0;
