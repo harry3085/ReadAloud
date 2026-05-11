@@ -128,6 +128,14 @@ Scoring guide (overall score & each category, 0-100):
 - 40-59: Many words missed or unclear; partial reading
 - 0-39: Silent, noise only, or entirely different content
 
+CRITICAL — 학생별 점수 차이를 명확히 반영하라:
+- 모든 학생에게 같은 점수 (예: 78점 디폴트, 75/70/85/80 디폴트 카테고리) 를 부여하지 말 것.
+- 이 학생의 audio 가 가진 고유한 특성 (발음 정확도, 끊김, 속도, 단어 누락량) 을 분석해서 점수에 반영.
+- 학생 A 와 B 의 audio 가 다르면 점수도 달라야 함. 미세한 차이도 +/- 3~5점 변동 허용.
+- 0-100 전체 범위를 적극 활용. 잘하면 88, 92, 95 등으로 세분. 보통이면 72, 76, 80. 못하면 55, 62 등.
+- 카테고리별 점수도 동일 — 발음 잘하면 90, 보통이면 75, 약하면 60 등 다양하게.
+- "한국 학생 영어 = 78점" 같은 일반화 패턴 회피. 각 학생을 독립적으로 평가.
+
 Category meanings:
 - pronunciation: 자음·모음 정확도, 단어 발음
 - intonation: 문장 끝 톤(올림/내림), 의문문 자연스러움
@@ -309,9 +317,9 @@ module.exports = async (req, res) => {
         ],
       }],
       generationConfig: {
-        temperature: 0.1,  // 더 결정적
-        topP: 0.9,
-        maxOutputTokens: 3000,  // Phase C: 2000 → 3000 안전망 (카테고리 4종 누락 방지)
+        temperature: 0.5,  // 0.1 → 0.5 — 학생별 audio 차이를 점수에 반영하도록 결정성 ↓
+        topP: 0.95,
+        maxOutputTokens: 3000,
         responseMimeType: 'application/json',
         responseSchema,
       },
