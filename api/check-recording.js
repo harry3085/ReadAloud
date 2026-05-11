@@ -317,7 +317,7 @@ module.exports = async (req, res) => {
         ],
       }],
       generationConfig: {
-        temperature: 0.7,  // 0.5 → 0.7 — 78점 디폴트 패턴 잔존 → 학생별 응답 다양성 더 강화
+        temperature: 0.9,  // 0.7 → 0.9 — 점수보다 피드백 다양성 우선 (학생별 표현·지적이 다양해야 학습 가치)
         topP: 0.95,
         maxOutputTokens: 3000,
         responseMimeType: 'application/json',
