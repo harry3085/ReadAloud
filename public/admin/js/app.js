@@ -145,12 +145,16 @@ async function _loadMyAcademyContext(user, userDocData) {
     window.LEXIAI_BRANDING = (lexiSnap && lexiSnap.exists?.()) ? lexiSnap.data() : null;
     // 학원장 커스텀 AI 프롬프트 — Firestore 동기화 (다른 PC 에서도 적용)
     window.MY_CUSTOM_PROMPTS = (acData && acData.customPrompts) || {};
+    // featureFlags — scoreSnap 등 학원별 기능 토글 (super_admin 이 부여)
+    window.MY_FEATURE_FLAGS = (acData && acData.featureFlags) || {};
     _applyAdminBranding(acData);
     // PWA manifest 학원별 갱신 (바로가기 추가 시 학원 로고로 등록)
     if (typeof window.updateAdminManifest === 'function') window.updateAdminManifest(academyId);
     // localStorage 잔여 → Firestore 1회 마이그레이션 (background)
     _migrateLocalStoragePromptsToFirestore(academyId).catch(e => console.warn('[customPrompts] migration:', e.message));
-  } catch(_) { window.MY_ACADEMY_NAME = ''; window.MY_CUSTOM_PROMPTS = {}; }
+    // ScoreSnap 진입점 — featureFlags.scoreSnap=true 면 헤더 로고 더블클릭 활성화
+    if (typeof window._ssBindEntrypoint === 'function') window._ssBindEntrypoint();
+  } catch(_) { window.MY_ACADEMY_NAME = ''; window.MY_CUSTOM_PROMPTS = {}; window.MY_FEATURE_FLAGS = {}; }
   console.log('[academy] uid=' + user.uid.slice(0,8) + '… academyId=' + academyId + ' role=' + window.MY_ROLE + ' name=' + window.MY_ACADEMY_NAME);
 }
 
