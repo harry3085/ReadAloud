@@ -13730,13 +13730,13 @@ function _progFillGroupFilter() {
   _prog.students.forEach(s => { if (s.group) set.add(s.group); });
   _prog.groups.forEach(g => { if (g.name) set.add(g.name); });
   const groups = [...set].sort((a, b) => a.localeCompare(b));
-  const optHtml = `<option value="">전체 반</option>` +
-    groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  const optionsOnly = groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  // 학생별 패널 — 전체 반 default 유지 (학생 목록 필터)
   const sel = document.getElementById('progGroupFilter');
-  if (sel) sel.innerHTML = optHtml;
-  // 일자별 패널의 반 select 도 동일하게 채움
+  if (sel) sel.innerHTML = `<option value="">전체 반</option>` + optionsOnly;
+  // 일자별 패널 — placeholder 만 (전체 반 옵션 X). 명시 선택해야 결과 표시
   const dateSel = document.getElementById('progDateGroup');
-  if (dateSel) dateSel.innerHTML = optHtml;
+  if (dateSel) dateSel.innerHTML = `<option value="">반을 선택하세요</option>` + optionsOnly;
 }
 
 function _progApplyTab() {
@@ -13927,11 +13927,15 @@ window.progRenderByDate = async function () {
     if (summary) summary.textContent = '';
     return;
   }
+  if (!group) {
+    results.innerHTML = `<div style="text-align:center;padding:30px 20px;color:var(--gray);font-size:13px;">반을 선택하세요</div>`;
+    if (summary) summary.textContent = '';
+    return;
+  }
 
-  // 시험 필터 — date 일치 + (group 비어있으면 전체, 있으면 해당 반 대상이거나 전체 대상)
+  // 시험 필터 — date 일치 + 해당 반 대상 또는 전체 대상
   const matched = _prog.tests.filter(t => {
     if ((t.date || '') !== date) return false;
-    if (!group) return true;
     const ts = Array.isArray(t.targets) ? t.targets : [];
     if (ts.length === 0) return false;
     if (ts.some(x => x.type === 'all')) return true;
@@ -13939,7 +13943,7 @@ window.progRenderByDate = async function () {
   });
 
   if (summary) {
-    summary.textContent = `${date} · ${group || '전체 반'} · ${matched.length}건 출제`;
+    summary.textContent = `${date} · ${group} · ${matched.length}건 출제`;
   }
 
   if (matched.length === 0) {
