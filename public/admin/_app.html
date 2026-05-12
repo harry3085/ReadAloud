@@ -229,7 +229,7 @@
     </div>
     <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-      시험 목록
+      진도체크
     </div>
   </div>
 
@@ -543,31 +543,65 @@
     </div>
   </div>
 
-  <!-- 시험 목록 -->
+  <!-- 진도체크 -->
   <div class="page" id="page-test-list">
-    <div class="page-header"><div><div class="page-title">시험 목록</div><div class="page-sub">출제된 시험을 관리합니다</div></div></div>
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr>
-            <th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th>
-            <th onclick="sortTable('testListBody',0)" class="sortable">No</th>
-            <th onclick="sortTable('testListBody',1)" class="sortable">시험명</th>
-            <th onclick="sortTable('testListBody',6)" class="sortable">유형</th>
-            <th onclick="sortTable('testListBody',2)" class="sortable">대상</th>
-            <th onclick="sortTable('testListBody',3)" class="sortable">교재</th>
-            <th onclick="sortTable('testListBody',4)" class="sortable">문항수</th>
-            <th onclick="sortTable('testListBody',5)" class="sortable">출제일</th>
-            <th title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
-            <th>평균</th>
-          </tr></thead>
-          <tbody id="testListBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
-        </table>
-        <div class="tbl-toolbar">
-          <div class="tbl-actions">
-            <button class="action-btn danger" onclick="deleteSelectedTest()">🗑 삭제</button>
+    <div class="page-header"><div><div class="page-title">진도체크</div><div class="page-sub">학생별·시험별 진도 상황 확인</div></div></div>
+
+    <!-- 탭 -->
+    <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--border);">
+      <button id="progTabStudent" onclick="progSwitchTab('student')"
+        style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid var(--teal,#E8714A);color:var(--teal,#E8714A);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:-2px;">학생별 진도체크</button>
+      <button id="progTabTest" onclick="progSwitchTab('test')"
+        style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--gray);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:-2px;">시험별 진도체크</button>
+    </div>
+
+    <!-- 학생별 패널 (기본) -->
+    <div id="progPanelStudent" style="display:block;">
+      <div class="card" style="padding:14px 16px;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:140px 1fr 220px;gap:10px;align-items:center;">
+          <select id="progGroupFilter" onchange="progRenderStudentList()"
+            style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">
+            <option value="">전체 반</option>
+          </select>
+          <input id="progStudentSearch" type="text" placeholder="학생 이름 검색"
+            oninput="progRenderStudentList()"
+            style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+          <div id="progSelectedLabel" style="font-size:12px;color:var(--gray);text-align:right;">학생 선택 안 됨</div>
+        </div>
+        <div id="progStudentList" style="margin-top:10px;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;background:#fafafa;">
+          <div style="padding:20px;text-align:center;color:var(--gray);font-size:13px;">로딩 중...</div>
+        </div>
+      </div>
+      <div id="progStudentDetail">
+        <div style="text-align:center;padding:60px 20px;color:var(--gray);font-size:14px;">학생을 선택하면 5개 시험 유형별 진도가 표시됩니다</div>
+      </div>
+    </div>
+
+    <!-- 시험별 패널 (기존 시험 목록) -->
+    <div id="progPanelTest" style="display:none;">
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th style="width:36px;"><input type="checkbox" id="testCheckAll" onchange="toggleCheck('testListBody',this)"></th>
+              <th onclick="sortTable('testListBody',0)" class="sortable">No</th>
+              <th onclick="sortTable('testListBody',1)" class="sortable">시험명</th>
+              <th onclick="sortTable('testListBody',6)" class="sortable">유형</th>
+              <th onclick="sortTable('testListBody',2)" class="sortable">대상</th>
+              <th onclick="sortTable('testListBody',3)" class="sortable">교재</th>
+              <th onclick="sortTable('testListBody',4)" class="sortable">문항수</th>
+              <th onclick="sortTable('testListBody',5)" class="sortable">출제일</th>
+              <th title="통과자 / 응시자 / 대상자 (고유 학생 수)">통과/응시/대상</th>
+              <th>평균</th>
+            </tr></thead>
+            <tbody id="testListBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          </table>
+          <div class="tbl-toolbar">
+            <div class="tbl-actions">
+              <button class="action-btn danger" onclick="deleteSelectedTest()">🗑 삭제</button>
+            </div>
+            <div class="tbl-page" id="testPagination"></div>
           </div>
-          <div class="tbl-page" id="testPagination"></div>
         </div>
       </div>
     </div>

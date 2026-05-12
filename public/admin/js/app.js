@@ -263,7 +263,7 @@ const pageLabels = {
   dashboard:'초기화면', class:'클래스 관리',
   'student-active':'재원생 관리', 'student-pause':'휴원생 관리',
   'student-out':'퇴원생 관리', 'student-excel':'엑셀 등록',
-  'test-list':'시험 목록',
+  'test-list':'진도체크',
   'score-report':'성적 리포트', 'score-personal':'성장 리포트',
   message:'메시지 관리', notice:'공지 관리', hwfile:'자료실', payment:'결제 관리',
   quotaUsage:'AI 사용량',
@@ -296,7 +296,7 @@ window.goPage = async(id) => {
   else if(id==='quotaUsage') await loadQuotaUsage();
   else if(id==='branding') await loadBranding();
   else if(id==='message') await loadMessages();
-  else if(id==='test-list') await loadTestList();
+  else if(id==='test-list') await loadProgressCheck();
   else if(id==='score-report') initScoreReport();
   else if(id==='score-personal') await loadPersonalStudentList();
   else if(id==='generator') await loadGenerator();
@@ -13638,3 +13638,283 @@ window._ssGetIdToken = async function () {
   if (!currentUser) throw new Error('로그인 정보 없음');
   return await currentUser.getIdToken();
 };
+
+// ═══════════════════════════════════════════════════════════════
+// 진도체크 — 학생별 / 시험별 탭. 학생별이 기본.
+// ═══════════════════════════════════════════════════════════════
+
+// 진도체크 모듈 state
+let _prog = {
+  tab: 'student',       // 'student' | 'test'
+  groups: [],           // 반 목록
+  students: [],         // 재원 학생 [{ uid, name, group, ... }]
+  tests: [],            // 학원 active genTests (60일)
+  selectedUid: null,    // 선택된 학생 uid
+  userCompCache: {},    // { uid: { testId: comp } } — 학생별 userCompleted 캐시
+  loaded: false,
+};
+
+const _PROG_TYPES = [
+  { mode: 'vocab',       label: '단어시험'     },
+  { mode: 'fill_blank',  label: '빈칸채우기'   },
+  { mode: 'unscramble',  label: '언스크램블'   },
+  { mode: 'mcq',         label: '본문이해·문법' },
+  { mode: 'recording',   label: '녹음숙제'     },
+];
+const _PROG_DAYS = 60;   // 최근 60일 시험만
+
+async function loadProgressCheck() {
+  if (_prog.loaded) {
+    // 이미 로드됐으면 현재 탭만 렌더 (재진입)
+    _progApplyTab();
+    return;
+  }
+  // 병렬 로드
+  try {
+    const [usersSnap, testsSnap, groupsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'users'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('role', '==', 'student'),
+        where('status', '==', 'active'))),
+      getDocs(query(collection(db, 'genTests'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        orderBy('createdAt', 'desc'),
+        limit(300))),
+      getDocs(query(collection(db, 'groups'),
+        where('academyId', '==', window.MY_ACADEMY_ID))),
+    ]);
+    const startMs = Date.now() - _PROG_DAYS * 24 * 3600 * 1000;
+    _prog.students = usersSnap.docs
+      .map(d => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));
+    _prog.tests = testsSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(t => {
+        const t0 = t.createdAt?.toMillis?.() || 0;
+        return t0 >= startMs;
+      });
+    _prog.groups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _prog.loaded = true;
+    _progFillGroupFilter();
+    _progApplyTab();
+    progRenderStudentList();
+  } catch (e) {
+    console.warn('[progress] load failed:', e);
+    const list = document.getElementById('progStudentList');
+    if (list) list.innerHTML = `<div style="padding:20px;text-align:center;color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message)}</div>`;
+  }
+  // 기존 시험별 진도체크 (테이블) 도 백그라운드 로드
+  loadTestList().catch(e => console.warn('[testList]', e));
+}
+
+function _progFillGroupFilter() {
+  const sel = document.getElementById('progGroupFilter');
+  if (!sel) return;
+  // 학생 데이터에서 실제 반 추출 (groups 컬렉션 + students.group 합집합)
+  const set = new Set();
+  _prog.students.forEach(s => { if (s.group) set.add(s.group); });
+  _prog.groups.forEach(g => { if (g.name) set.add(g.name); });
+  const groups = [...set].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">전체 반</option>` +
+    groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+}
+
+function _progApplyTab() {
+  const isStudent = _prog.tab === 'student';
+  document.getElementById('progPanelStudent').style.display = isStudent ? 'block' : 'none';
+  document.getElementById('progPanelTest').style.display    = isStudent ? 'none' : 'block';
+  // 탭 버튼 스타일
+  const stBtn = document.getElementById('progTabStudent');
+  const tsBtn = document.getElementById('progTabTest');
+  if (stBtn && tsBtn) {
+    [[stBtn, isStudent], [tsBtn, !isStudent]].forEach(([btn, active]) => {
+      btn.style.color = active ? 'var(--teal,#E8714A)' : 'var(--gray)';
+      btn.style.fontWeight = active ? '700' : '500';
+      btn.style.borderBottomColor = active ? 'var(--teal,#E8714A)' : 'transparent';
+    });
+  }
+}
+
+window.progSwitchTab = function (tab) {
+  _prog.tab = (tab === 'test') ? 'test' : 'student';
+  _progApplyTab();
+};
+
+window.progRenderStudentList = function () {
+  const list = document.getElementById('progStudentList');
+  if (!list) return;
+  const group = (document.getElementById('progGroupFilter')?.value || '').trim();
+  const q = (document.getElementById('progStudentSearch')?.value || '').trim().toLowerCase();
+  const filtered = _prog.students.filter(s => {
+    if (group && (s.group || '') !== group) return false;
+    if (q && !((s.name || '').toLowerCase().includes(q))) return false;
+    return true;
+  });
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--gray);font-size:13px;">검색 결과 없음</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(s => {
+    const active = (s.uid === _prog.selectedUid);
+    return `
+      <div onclick="progSelectStudent('${esc(s.uid)}')"
+        style="padding:8px 14px;border-bottom:1px solid #eee;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;background:${active ? '#fff7f4' : 'transparent'};transition:.12s;"
+        onmouseover="this.style.background='${active ? '#fff7f4' : '#f5f5f5'}'"
+        onmouseout="this.style.background='${active ? '#fff7f4' : 'transparent'}'">
+        <span style="font-size:13px;color:${active ? 'var(--teal,#E8714A)' : 'var(--text)'};font-weight:${active ? '700' : '500'};">${esc(s.name || '이름 없음')}</span>
+        <span style="font-size:11px;color:var(--gray);">${esc(s.group || '')}</span>
+      </div>
+    `;
+  }).join('');
+};
+
+window.progSelectStudent = async function (uid) {
+  _prog.selectedUid = uid;
+  const s = _prog.students.find(x => x.uid === uid);
+  const label = document.getElementById('progSelectedLabel');
+  if (label) {
+    label.textContent = s ? `${s.name || '?'} (${s.group || '반 없음'})` : '학생 선택 안 됨';
+    label.style.color = 'var(--text)';
+  }
+  progRenderStudentList();  // 선택 강조 갱신
+  // 학생 userCompleted 캐시
+  if (!_prog.userCompCache[uid]) {
+    const detail = document.getElementById('progStudentDetail');
+    if (detail) detail.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray);font-size:14px;">진도 불러오는 중...</div>`;
+    try {
+      const fetches = _prog.tests.map(t =>
+        getDoc(doc(db, 'genTests', t.id, 'userCompleted', uid))
+          .then(snap => ({ testId: t.id, data: snap.exists() ? snap.data() : null }))
+          .catch(() => ({ testId: t.id, data: null }))
+      );
+      const results = await Promise.all(fetches);
+      const map = {};
+      results.forEach(r => { if (r.data) map[r.testId] = r.data; });
+      _prog.userCompCache[uid] = map;
+    } catch (e) {
+      console.warn('[progress] userCompleted:', e);
+      _prog.userCompCache[uid] = {};
+    }
+  }
+  _progRenderStudentDetail();
+};
+
+function _progRenderStudentDetail() {
+  const detail = document.getElementById('progStudentDetail');
+  if (!detail) return;
+  if (!_prog.selectedUid) {
+    detail.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--gray);font-size:14px;">학생을 선택하면 5개 시험 유형별 진도가 표시됩니다</div>`;
+    return;
+  }
+  const uid = _prog.selectedUid;
+  const userComps = _prog.userCompCache[uid] || {};
+
+  // 학생에게 배정된 시험만 (targets[].type='all' 또는 그 학생 uid·반)
+  const s = _prog.students.find(x => x.uid === uid);
+  const myGroup = s?.group || '';
+  const myTests = _prog.tests.filter(t => _progTestAssignedTo(t, uid, myGroup));
+
+  // 유형별 그룹화 + 진행상태 분류
+  const cols = _PROG_TYPES.map(type => {
+    const list = myTests.filter(t => (t.testMode || t.mode || '').toLowerCase() === type.mode);
+    // 본문이해·문법 (mcq) 은 subType 무관, 한 컬럼에 다 표시 (배지로 구분)
+    const inProgress = [], completed = [];
+    list.forEach(t => {
+      const comp = userComps[t.id];
+      const passed = comp?.passed === true || comp?.latestPassed === true;
+      if (passed) completed.push({ t, comp });
+      else inProgress.push({ t, comp });
+    });
+    return { type, inProgress, completed };
+  });
+
+  detail.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(200px,1fr));gap:12px;">
+      ${cols.map(c => _progBuildColumnHtml(c)).join('')}
+    </div>
+  `;
+}
+
+// 시험이 이 학생에게 배정됐는지
+function _progTestAssignedTo(test, uid, group) {
+  const ts = Array.isArray(test.targets) ? test.targets : [];
+  if (!ts.length) {
+    // 옛 데이터 — target 또는 targetUid 폴백
+    if (test.target === 'all') return true;
+    if (typeof test.target === 'string' && test.target.startsWith('uid:')) return test.target.slice(4) === uid;
+    if (test.targetUid === uid) return true;
+    return false;
+  }
+  // 제외 학생 체크
+  if (Array.isArray(test.excludedUids) && test.excludedUids.includes(uid)) return false;
+  return ts.some(t => {
+    if (t.type === 'all') return true;
+    if (t.type === 'student' && t.id === uid) return true;
+    if (t.type === 'class' && (t.groupName === group || t.name === group)) return true;
+    return false;
+  });
+}
+
+function _progBuildColumnHtml(col) {
+  const { type, inProgress, completed } = col;
+  const total = inProgress.length + completed.length;
+  return `
+    <div style="background:white;border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:200px;">
+      <div style="border-bottom:1px solid var(--border);padding-bottom:8px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(type.label)}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">총 ${total}건 · 완료 ${completed.length} / 진행 ${inProgress.length}</div>
+      </div>
+      ${total === 0 ? `
+        <div style="font-size:11px;color:var(--gray);text-align:center;padding:20px 0;">배정된 시험 없음</div>
+      ` : `
+        ${inProgress.length > 0 ? `
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#bf360c;margin-bottom:6px;">진행 · 신규</div>
+            ${inProgress.map(({t, comp}) => _progBuildTestCardHtml(t, comp, false)).join('')}
+          </div>
+        ` : ''}
+        ${completed.length > 0 ? `
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#2e7d32;margin-bottom:6px;">완료</div>
+            ${completed.map(({t, comp}) => _progBuildTestCardHtml(t, comp, true)).join('')}
+          </div>
+        ` : ''}
+      `}
+    </div>
+  `;
+}
+
+function _progBuildTestCardHtml(t, comp, isDone) {
+  const name = t.name || '시험';
+  const badges = (typeof _testNameBadges === 'function') ? _testNameBadges(t) : '';
+  const dateStr = _fmtTestDateTime ? _fmtTestDateTime(t) : '';
+  const qCount = t.questionCount || (Array.isArray(t.questions) ? t.questions.length : 0);
+  if (isDone) {
+    const score = comp?.score ?? comp?.latestScore ?? '-';
+    const correct = comp?.correct ?? '';
+    const total = qCount;
+    const completedAt = comp?.date || comp?.latestAt || '';
+    return `
+      <div style="background:#e8f5e9;border-left:3px solid #2e7d32;border-radius:4px;padding:8px 10px;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:600;color:#1b5e20;line-height:1.4;">${esc(name)}${badges}</div>
+        <div style="font-size:10px;color:#555;margin-top:3px;">${score}점 ${correct ? `(${correct}/${total})` : ''} · ${esc(completedAt)}</div>
+      </div>
+    `;
+  }
+  // 진행/신규
+  const tried = comp?.latestScore !== undefined && comp?.latestScore !== null;
+  if (tried) {
+    return `
+      <div style="background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;padding:8px 10px;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:600;color:#bf360c;line-height:1.4;">${esc(name)}${badges}</div>
+        <div style="font-size:10px;color:#555;margin-top:3px;">미통과 · 최고 ${comp.latestScore}점 · ${esc(dateStr)}</div>
+      </div>
+    `;
+  }
+  return `
+    <div style="background:#fafafa;border-left:3px solid #999;border-radius:4px;padding:8px 10px;margin-bottom:6px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.4;">${esc(name)}${badges}</div>
+      <div style="font-size:10px;color:var(--gray);margin-top:3px;">신규 · ${qCount}문항 · ${esc(dateStr)}</div>
+    </div>
+  `;
+}
