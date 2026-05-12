@@ -7533,18 +7533,34 @@ async function _cleanupGetGlobalDefaultsByName(forceRefresh = false) {
   return _cleanupGlobalDefaultsByName;
 }
 
+// 시드 race 회피 — 한 세션 안 중복 호출 차단
+let _cleanupSeeding = false;
 async function _cleanupSeedDefaults() {
-  const uid = auth.currentUser?.uid || '';
-  const defaults = await _getEffectiveCleanupDefaults();
-  await Promise.all(defaults.map(p =>
-    addDoc(collection(db, 'genCleanupPresets'), {
-      ...p,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdBy: uid,
-      academyId: window.MY_ACADEMY_ID || 'default',
-    })
-  ));
+  if (_cleanupSeeding) return;
+  _cleanupSeeding = true;
+  try {
+    const uid = auth.currentUser?.uid || '';
+    const defaults = await _getEffectiveCleanupDefaults();
+    // 시드 직전 다시 한 번 검사 (다른 탭/요청 race 회피) — 이미 있는 이름 skip
+    const existingSnap = await getDocs(query(
+      collection(db, 'genCleanupPresets'),
+      where('academyId', '==', window.MY_ACADEMY_ID || 'default')
+    ));
+    const existingNames = new Set(existingSnap.docs.map(d => d.data().name));
+    const toAdd = defaults.filter(p => p?.name && !existingNames.has(p.name));
+    if (toAdd.length === 0) return;
+    await Promise.all(toAdd.map(p =>
+      addDoc(collection(db, 'genCleanupPresets'), {
+        ...p,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: uid,
+        academyId: window.MY_ACADEMY_ID || 'default',
+      })
+    ));
+  } finally {
+    _cleanupSeeding = false;
+  }
 }
 
 // ─── 에디터 드롭다운 렌더 ───
