@@ -1486,6 +1486,19 @@ window.fbInputKey = (event, blankIdx) => {
     } else {
       fbNext();
     }
+    return;
+  }
+  // Backspace 자동 띄어쓰기 처리 — 커서 직전 공백이면 공백 + 앞 글자 함께 삭제
+  if (event.key === 'Backspace') {
+    const t = event.target;
+    if (!t || t.selectionStart !== t.selectionEnd) return;
+    const pos = t.selectionStart;
+    if (pos >= 2 && t.value[pos - 1] === ' ') {
+      event.preventDefault();
+      t.value = t.value.slice(0, pos - 2) + t.value.slice(pos);
+      t.selectionStart = t.selectionEnd = pos - 2;
+      t.dispatchEvent(new Event('input'));
+    }
   }
 };
 
@@ -5158,6 +5171,19 @@ function _vqBindSpellInput(){
       e.preventDefault();
       const ans = _vqState.answers[_vqState.currentIdx];
       if (ans && ans.input && String(ans.input).trim()) vqNext();
+      return;
+    }
+    // Backspace 가 자동 띄어쓰기 위에서 작동하도록:
+    // 커서 직전이 공백이면 공백 + 앞 글자 함께 삭제.
+    // (그렇지 않으면 _vqAutoSpaces 가 input 이벤트에서 공백 즉시 복원해 backspace 무효)
+    if (e.key === 'Backspace' && this.selectionStart === this.selectionEnd) {
+      const pos = this.selectionStart;
+      if (pos >= 2 && this.value[pos - 1] === ' ') {
+        e.preventDefault();
+        this.value = this.value.slice(0, pos - 2) + this.value.slice(pos);
+        this.selectionStart = this.selectionEnd = pos - 2;
+        this.dispatchEvent(new Event('input'));
+      }
     }
   });
   const boxes = document.getElementById('vqSpellBoxes');
