@@ -13024,6 +13024,14 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const lastScore = (typeof last?.score === 'number') ? last.score : (c.score ?? c.latestFailedScore);
                   const headColor = '#0369a1';
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
+                  // 일자별 진도체크 등 단순 모드 — 다른 유형 카드와 동일한 한 줄 카드
+                  if (opts?.simpleRec) {
+                    return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
+                      ${xBtnRec}
+                      <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
+                      <div style="color:${headColor};">${headLabel}${dateStr ? ' · ' + esc(dateStr) : ''}</div>
+                    </div>`;
+                  }
                   const cardBg = 'white';
                   const cardBorder = '#bae6fd';
                   // 회차별 audio 리스트 (말소리 비율 + 속도 + 시간 + 마지막 회차에는 점수)
@@ -13963,10 +13971,11 @@ window.progRenderByDate = async function () {
     `;
   }).join('');
 
-  // 모두 펼침 — keepOpen 으로 close-others 회피
+  // 모두 펼침 — keepOpen 으로 close-others 회피.
+  // simpleRec: 녹음숙제 카드를 다른 유형과 동일한 단순 한 줄 카드로 (회차 audio·AI 피드백 X)
   for (const t of matched) {
     try {
-      await window.tpToggleTestProgress(t.id, 'pd', { keepOpen: true });
+      await window.tpToggleTestProgress(t.id, 'pd', { keepOpen: true, simpleRec: true });
     } catch (_) {}
   }
 };
