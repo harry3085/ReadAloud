@@ -13751,20 +13751,14 @@ window.progRenderStudentList = function () {
     return true;
   });
   if (filtered.length === 0) {
-    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--gray);font-size:13px;">검색 결과 없음</div>`;
+    list.innerHTML = `<span style="color:var(--gray);font-size:13px;padding:0 8px;">검색 결과 없음</span>`;
     return;
   }
+  // 가로 한 줄 칩 — 단일 선택. 반은 활성 학생에서만 작게 노출
   list.innerHTML = filtered.map(s => {
     const active = (s.uid === _prog.selectedUid);
-    return `
-      <div onclick="progSelectStudent('${esc(s.uid)}')"
-        style="padding:8px 14px;border-bottom:1px solid #eee;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;background:${active ? '#fff7f4' : 'transparent'};transition:.12s;"
-        onmouseover="this.style.background='${active ? '#fff7f4' : '#f5f5f5'}'"
-        onmouseout="this.style.background='${active ? '#fff7f4' : 'transparent'}'">
-        <span style="font-size:13px;color:${active ? 'var(--teal,#E8714A)' : 'var(--text)'};font-weight:${active ? '700' : '500'};">${esc(s.name || '이름 없음')}</span>
-        <span style="font-size:11px;color:var(--gray);">${esc(s.group || '')}</span>
-      </div>
-    `;
+    return `<button onclick="progSelectStudent('${esc(s.uid)}')"
+      style="flex:0 0 auto;padding:5px 12px;border:1px solid ${active ? 'var(--teal,#E8714A)' : 'var(--border)'};background:${active ? 'var(--teal,#E8714A)' : 'white'};color:${active ? 'white' : 'var(--text)'};border-radius:14px;cursor:pointer;font-size:12px;font-weight:${active ? '700' : '500'};white-space:nowrap;transition:.12s;line-height:1.4;">${esc(s.name || '이름 없음')}${active && s.group ? ` <span style="opacity:.85;font-weight:500;">(${esc(s.group)})</span>` : ''}</button>`;
   }).join('');
 };
 
