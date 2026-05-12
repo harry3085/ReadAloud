@@ -549,14 +549,35 @@
 
     <!-- 탭 -->
     <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--border);">
+      <button id="progTabDate" onclick="progSwitchTab('date')"
+        style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid var(--teal,#E8714A);color:var(--teal,#E8714A);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:-2px;">일자별 반별 진도체크</button>
       <button id="progTabStudent" onclick="progSwitchTab('student')"
-        style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid var(--teal,#E8714A);color:var(--teal,#E8714A);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:-2px;">학생별 진도체크</button>
+        style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--gray);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:-2px;">학생별 진도체크</button>
       <button id="progTabTest" onclick="progSwitchTab('test')"
         style="padding:10px 18px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--gray);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:-2px;">시험별 진도체크</button>
     </div>
 
-    <!-- 학생별 패널 (기본) -->
-    <div id="progPanelStudent" style="display:block;">
+    <!-- 일자별 반별 패널 (기본) -->
+    <div id="progPanelDate" style="display:block;">
+      <div class="card" style="padding:14px 16px;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:180px 200px 1fr auto;gap:10px;align-items:center;">
+          <input id="progDateInput" type="date" onchange="progRenderByDate()"
+            style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+          <select id="progDateGroup" onchange="progRenderByDate()"
+            style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">
+            <option value="">전체 반</option>
+          </select>
+          <div id="progDateSummary" style="font-size:12px;color:var(--gray);"></div>
+          <button class="btn btn-secondary" onclick="progRenderByDate()" style="font-size:12px;padding:6px 14px;">새로고침</button>
+        </div>
+      </div>
+      <div id="progDateResults">
+        <div style="text-align:center;padding:40px 20px;color:var(--gray);font-size:13px;">일자·반 선택 후 표시됩니다</div>
+      </div>
+    </div>
+
+    <!-- 학생별 패널 -->
+    <div id="progPanelStudent" style="display:none;">
       <div class="card" style="padding:14px 16px;margin-bottom:12px;">
         <div style="display:grid;grid-template-columns:140px 1fr 220px;gap:10px;align-items:center;">
           <select id="progGroupFilter" onchange="progRenderStudentList()"

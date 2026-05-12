@@ -12919,20 +12919,26 @@ window.tpPrintNow = () => {
 // prefix: 'tp' (시험관리 6개 페이지) | 'tl' (시험 목록 페이지)
 // 다른 행 ID 가 같은 페이지에 동시에 존재하지 않도록 분리
 let _tpLastPrefix = 'tp';
-window.tpToggleTestProgress = async (testId, prefix) => {
+window.tpToggleTestProgress = async (testId, prefix, opts) => {
   if (prefix) _tpLastPrefix = prefix;
   const p = _tpLastPrefix;
   const prog = document.getElementById(p + '-progress-' + testId);
   if (!prog) return;
   const isOpen = prog.getAttribute('data-open') === '1';
 
-  document.querySelectorAll(`[id^="${p}-progress-"][data-open="1"]`).forEach(r => {
-    r.style.display = 'none';
-    r.setAttribute('data-open', '0');
-  });
-  if (isOpen) return;
+  // 진도체크 일자별 패널 등 "모두 펼침" 모드 — 다른 행 닫지 않음, 무조건 펼침
+  if (!opts?.keepOpen) {
+    document.querySelectorAll(`[id^="${p}-progress-"][data-open="1"]`).forEach(r => {
+      r.style.display = 'none';
+      r.setAttribute('data-open', '0');
+    });
+    if (isOpen) return;
+  } else if (isOpen) {
+    // 이미 펼쳐져 있고 keepOpen 모드면 다시 빌드 안 함
+    return;
+  }
 
-  prog.style.display = 'table-row';
+  prog.style.display = prog.tagName === 'TR' ? 'table-row' : 'block';
   prog.setAttribute('data-open', '1');
 
   const content = document.getElementById(p + '-progress-content-' + testId);
@@ -13645,13 +13651,14 @@ window._ssGetIdToken = async function () {
 
 // 진도체크 모듈 state
 let _prog = {
-  tab: 'student',       // 'student' | 'test'
+  tab: 'date',          // 'date' | 'student' | 'test'
   groups: [],           // 반 목록
   students: [],         // 재원 학생 [{ uid, name, group, ... }]
   tests: [],            // 학원 active genTests (60일)
   selectedUid: null,    // 선택된 학생 uid
   userCompCache: {},    // { uid: { testId: comp } } — 학생별 userCompleted 캐시
   loaded: false,
+  dateInited: false,    // 일자 input 초기 set (어제) 여부
 };
 
 const _PROG_TYPES = [
@@ -13696,8 +13703,11 @@ async function loadProgressCheck() {
     _prog.groups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     _prog.loaded = true;
     _progFillGroupFilter();
+    _progInitDateInput();
     _progApplyTab();
     progRenderStudentList();
+    // 기본 탭이 일자별이라 진입 시 한 번 렌더
+    if (_prog.tab === 'date') progRenderByDate();
   } catch (e) {
     console.warn('[progress] load failed:', e);
     const list = document.getElementById('progStudentList');
@@ -13708,36 +13718,42 @@ async function loadProgressCheck() {
 }
 
 function _progFillGroupFilter() {
-  const sel = document.getElementById('progGroupFilter');
-  if (!sel) return;
-  // 학생 데이터에서 실제 반 추출 (groups 컬렉션 + students.group 합집합)
   const set = new Set();
   _prog.students.forEach(s => { if (s.group) set.add(s.group); });
   _prog.groups.forEach(g => { if (g.name) set.add(g.name); });
   const groups = [...set].sort((a, b) => a.localeCompare(b));
-  sel.innerHTML = `<option value="">전체 반</option>` +
+  const optHtml = `<option value="">전체 반</option>` +
     groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  const sel = document.getElementById('progGroupFilter');
+  if (sel) sel.innerHTML = optHtml;
+  // 일자별 패널의 반 select 도 동일하게 채움
+  const dateSel = document.getElementById('progDateGroup');
+  if (dateSel) dateSel.innerHTML = optHtml;
 }
 
 function _progApplyTab() {
-  const isStudent = _prog.tab === 'student';
-  document.getElementById('progPanelStudent').style.display = isStudent ? 'block' : 'none';
-  document.getElementById('progPanelTest').style.display    = isStudent ? 'none' : 'block';
-  // 탭 버튼 스타일
-  const stBtn = document.getElementById('progTabStudent');
-  const tsBtn = document.getElementById('progTabTest');
-  if (stBtn && tsBtn) {
-    [[stBtn, isStudent], [tsBtn, !isStudent]].forEach(([btn, active]) => {
-      btn.style.color = active ? 'var(--teal,#E8714A)' : 'var(--gray)';
-      btn.style.fontWeight = active ? '700' : '500';
-      btn.style.borderBottomColor = active ? 'var(--teal,#E8714A)' : 'transparent';
-    });
-  }
+  const t = _prog.tab;
+  document.getElementById('progPanelDate').style.display    = (t === 'date')    ? 'block' : 'none';
+  document.getElementById('progPanelStudent').style.display = (t === 'student') ? 'block' : 'none';
+  document.getElementById('progPanelTest').style.display    = (t === 'test')    ? 'block' : 'none';
+  const btnMap = {
+    date:    document.getElementById('progTabDate'),
+    student: document.getElementById('progTabStudent'),
+    test:    document.getElementById('progTabTest'),
+  };
+  Object.entries(btnMap).forEach(([key, btn]) => {
+    if (!btn) return;
+    const active = (key === t);
+    btn.style.color = active ? 'var(--teal,#E8714A)' : 'var(--gray)';
+    btn.style.fontWeight = active ? '700' : '500';
+    btn.style.borderBottomColor = active ? 'var(--teal,#E8714A)' : 'transparent';
+  });
 }
 
 window.progSwitchTab = function (tab) {
-  _prog.tab = (tab === 'test') ? 'test' : 'student';
+  _prog.tab = (['date', 'student', 'test'].includes(tab)) ? tab : 'date';
   _progApplyTab();
+  if (_prog.tab === 'date') progRenderByDate();
 };
 
 window.progRenderStudentList = function () {
@@ -13877,6 +13893,83 @@ function _progBuildColumnHtml(col) {
     </div>
   `;
 }
+
+// 일자 input 초기화 — 기본 어제 (KST)
+function _progInitDateInput() {
+  if (_prog.dateInited) return;
+  const el = document.getElementById('progDateInput');
+  if (!el) return;
+  const d = new Date(Date.now() - 24 * 3600 * 1000 + 9 * 3600 * 1000);  // 어제 KST
+  el.value = d.toISOString().slice(0, 10);
+  _prog.dateInited = true;
+}
+
+// 일자별 반별 진도체크 렌더 — 조건 일치 시험 N개 자동 펼침
+window.progRenderByDate = async function () {
+  if (!_prog.loaded) return;
+  const dateEl = document.getElementById('progDateInput');
+  const groupEl = document.getElementById('progDateGroup');
+  const results = document.getElementById('progDateResults');
+  const summary = document.getElementById('progDateSummary');
+  if (!dateEl || !results) return;
+  const date = (dateEl.value || '').trim();
+  const group = (groupEl?.value || '').trim();
+  if (!date) {
+    results.innerHTML = `<div style="text-align:center;padding:30px 20px;color:var(--gray);font-size:13px;">일자를 선택해 주세요</div>`;
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  // 시험 필터 — date 일치 + (group 비어있으면 전체, 있으면 해당 반 대상이거나 전체 대상)
+  const matched = _prog.tests.filter(t => {
+    if ((t.date || '') !== date) return false;
+    if (!group) return true;
+    const ts = Array.isArray(t.targets) ? t.targets : [];
+    if (ts.length === 0) return false;
+    if (ts.some(x => x.type === 'all')) return true;
+    return ts.some(x => x.type === 'class' && (x.groupName === group || x.name === group));
+  });
+
+  if (summary) {
+    summary.textContent = `${date} · ${group || '전체 반'} · ${matched.length}건 출제`;
+  }
+
+  if (matched.length === 0) {
+    results.innerHTML = `<div style="text-align:center;padding:30px 20px;color:var(--gray);font-size:13px;">해당 일자·반에 출제된 시험이 없습니다</div>`;
+    return;
+  }
+
+  // 시험 카드 N개 — 각 카드 안에 즉시 펼친 학생 카드 그리드 (pd prefix + keepOpen)
+  results.innerHTML = matched.map(t => {
+    const badges = (typeof _testNameBadges === 'function') ? _testNameBadges(t) : '';
+    const dateStr = _fmtTestDateTime ? _fmtTestDateTime(t) : '';
+    const qCount = t.questionCount || (Array.isArray(t.questions) ? t.questions.length : 0);
+    const targetLabel = _buildTargetName ? _buildTargetName(t.targets) : (t.targetName || '');
+    const type = (t.testMode || t.mode || '').toLowerCase();
+    const typeLabel = ({ vocab:'단어시험', fill_blank:'빈칸채우기', unscramble:'언스크램블', mcq:'본문이해·문법', recording:'녹음숙제' })[type] || type;
+    return `
+      <div class="card" style="padding:14px 16px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:3px;">${esc(typeLabel)} · ${esc(targetLabel)} · ${qCount}문항 · ${esc(dateStr)}</div>
+          </div>
+        </div>
+        <!-- 학생 카드 그리드 자동 펼침 (table 외 div) -->
+        <div id="pd-progress-${t.id}" data-open="0" style="display:none;background:#f0faff;border-radius:6px;">
+          <div id="pd-progress-content-${t.id}" style="padding:10px 12px;font-size:12px;color:var(--gray);">로딩 중...</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 모두 펼침 — keepOpen 으로 close-others 회피
+  for (const t of matched) {
+    try {
+      await window.tpToggleTestProgress(t.id, 'pd', { keepOpen: true });
+    } catch (_) {}
+  }
+};
 
 function _progBuildTestCardHtml(t, comp, isDone) {
   const name = t.name || '시험';
