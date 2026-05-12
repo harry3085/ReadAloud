@@ -48,6 +48,27 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // ── 메시지 첨부 (학원장 → 학생 푸시 알림 첨부 파일) ────────
+    // 경로: messageAttachments/{academyId}/{timestamp}_{filename}
+    // GCS Lifecycle Rule 로 10일 후 자동 삭제 (set-message-attachments-lifecycle.js)
+    // 단일 파일 한도 20 MB, 자료실(hwFiles) 와 같은 타입 화이트리스트
+    match /messageAttachments/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024
+                   && (
+                     request.resource.contentType == 'application/pdf'
+                     || request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\..*')
+                     || request.resource.contentType == 'application/msword'
+                     || request.resource.contentType == 'application/vnd.ms-excel'
+                     || request.resource.contentType == 'application/vnd.ms-powerpoint'
+                     || request.resource.contentType.matches('application/.*hwp.*')
+                     || request.resource.contentType == 'application/vnd.hancom.hwp'
+                     || request.resource.contentType.matches('image/.*')
+                     || request.resource.contentType.matches('text/.*')
+                   );
+    }
+
     // ── 공지 첨부 (현재 미사용이지만 미래 보강) ──────────────
     match /notices/{allPaths=**} {
       allow read: if request.auth != null;

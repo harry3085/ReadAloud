@@ -3739,6 +3739,84 @@ async function _msgInitPicker(initialTargets = []) {
   });
 }
 
+// ── 메시지 첨부 파일 — 학원장 메시지 작성 시 선택 ──
+// 자료실(hwFiles) 과 동일 정책: 20MB + 화이트리스트
+let _msgPendingAttach = null;  // { file, status:'pending'|'uploading'|'done', url?, sizeKB? }
+
+const _MSG_ATTACH_ALLOWED_MIME = new Set([
+  'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint',
+  'application/vnd.hancom.hwp',
+]);
+const _MSG_ATTACH_ALLOWED_PREFIX = ['application/vnd.openxmlformats-officedocument.', 'application/hwp', 'application/x-hwp', 'image/', 'text/'];
+
+function _msgAttachAllowed(type) {
+  const t = String(type || '');
+  if (_MSG_ATTACH_ALLOWED_MIME.has(t)) return true;
+  return _MSG_ATTACH_ALLOWED_PREFIX.some(p => t.startsWith(p));
+}
+
+function _msgRenderAttachStatus(text, color) {
+  const el = document.getElementById('msgAttachStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color || 'var(--gray)';
+}
+
+window.msgPickAttach = (e) => {
+  const f = e.target.files?.[0];
+  if (!f) {
+    _msgPendingAttach = null;
+    _msgRenderAttachStatus('선택된 파일 없음');
+    return;
+  }
+  if (f.size > 20 * 1024 * 1024) {
+    showAlert('파일 크기 초과', '20 MB 이하 파일만 첨부 가능해요.');
+    e.target.value = '';
+    return;
+  }
+  if (!_msgAttachAllowed(f.type || '')) {
+    showAlert('허용되지 않는 형식', '영상·압축파일·실행파일 등은 첨부 불가.\nPDF·Office·한글·이미지·텍스트만 허용됩니다.');
+    e.target.value = '';
+    return;
+  }
+  _msgPendingAttach = { file: f, status: 'pending' };
+  _msgRenderAttachStatus(`${f.name} (${Math.round(f.size/1024)} KB) - 발송 시 업로드`, 'var(--text)');
+};
+
+window.msgClearAttach = () => {
+  _msgPendingAttach = null;
+  const input = document.getElementById('msgAttachInput');
+  if (input) input.value = '';
+  _msgRenderAttachStatus('선택된 파일 없음');
+};
+
+async function _msgUploadAttachIfAny() {
+  if (!_msgPendingAttach || _msgPendingAttach.status === 'done') {
+    return _msgPendingAttach?.status === 'done' ? {
+      url: _msgPendingAttach.url, name: _msgPendingAttach.file.name, sizeKB: _msgPendingAttach.sizeKB,
+    } : null;
+  }
+  const f = _msgPendingAttach.file;
+  _msgPendingAttach.status = 'uploading';
+  _msgRenderAttachStatus(`업로드 중… ${f.name}`, 'var(--text)');
+  try {
+    const safeName = f.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]+/g, '_');
+    const path = `messageAttachments/${window.MY_ACADEMY_ID || 'default'}/${Date.now()}_${safeName}`;
+    const r = ref(storage, path);
+    await uploadBytesResumable(r, f, { contentType: f.type || 'application/octet-stream' });
+    const url = await getDownloadURL(r);
+    _msgPendingAttach.status = 'done';
+    _msgPendingAttach.url = url;
+    _msgPendingAttach.sizeKB = Math.round(f.size / 1024);
+    _msgRenderAttachStatus(`업로드 완료: ${f.name} (${_msgPendingAttach.sizeKB} KB)`, 'var(--text)');
+    return { url, name: f.name, sizeKB: _msgPendingAttach.sizeKB };
+  } catch (e) {
+    _msgPendingAttach.status = 'pending';
+    _msgRenderAttachStatus(`업로드 실패: ${e.message}`, '#dc2626');
+    throw e;
+  }
+}
+
 window.sendMessage = async() => {
   const targets = pickerGetTargets();
   const title = document.getElementById('msgTitle').value.trim();
@@ -3746,15 +3824,25 @@ window.sendMessage = async() => {
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
   try{
+    let attachment = null;
+    if (_msgPendingAttach) {
+      attachment = await _msgUploadAttachIfAny();
+    }
     const idToken = await currentUser.getIdToken();
     const res = await fetch('/api/sendPush',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, body, targets, idToken }),
+      body: JSON.stringify({ title, body, targets, idToken, attachment }),
     });
     const result=await res.json();
-    showToast(result.success?'✅ '+result.message:'⚠️ '+(result.message||result.error));
-    if (result.success) await loadMessages();
-  }catch(e){showToast('❌ 발송 실패: '+e.message);}
+    showToast(result.success ? result.message : (result.message||result.error||'발송 실패'));
+    if (result.success) {
+      // 입력·첨부 초기화
+      document.getElementById('msgTitle').value = '';
+      document.getElementById('msgBody').value = '';
+      msgClearAttach();
+      await loadMessages();
+    }
+  }catch(e){showToast('발송 실패: '+e.message);}
 };
 
 window.saveMessage = async() => {
@@ -3835,7 +3923,7 @@ async function loadMessages(){
           onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
             <div style="flex:1 1 0;min-width:0;overflow:hidden;">
-              <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
+              <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
               ${_bodyPreview(n.body)}
               <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
             </div>

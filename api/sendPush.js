@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
 
     // 신 schema: targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]
     // 옛 schema: target 단일 ('all' | groupName | 'uid:UID') — 안전망 유지
-    const { title, body, target, targets, idToken } = req.body;
+    const { title, body, target, targets, idToken, attachment } = req.body;
     const hasTargets = Array.isArray(targets) && targets.length > 0;
     if (!title || !body || (!target && !hasTargets)) {
       return res.status(400).json({ error: '제목, 내용, 대상은 필수입니다.' });
@@ -137,6 +137,19 @@ module.exports = async (req, res) => {
     };
 
     const pushRef = db.collection('pushNotifications').doc();
+    // 첨부 파일 메타 검증 — 클라가 이미 Storage 에 업로드한 결과만 받음 (url·name·sizeKB)
+    let attachmentMeta = null;
+    if (attachment && typeof attachment === 'object' && attachment.url && attachment.name) {
+      const expiresMs = Date.now() + 10 * 24 * 60 * 60 * 1000;  // 10일 후 (GCS Lifecycle 과 일치)
+      attachmentMeta = {
+        url: String(attachment.url).slice(0, 1024),
+        name: String(attachment.name).slice(0, 256),
+        sizeKB: Number(attachment.sizeKB) || 0,
+        uploadedAt: new Date().toISOString(),
+        expiresAt: new Date(expiresMs).toISOString(),
+      };
+    }
+
     const pushDoc = {
       title, body,
       sent: true,
@@ -144,6 +157,7 @@ module.exports = async (req, res) => {
       createdAt: FieldValue.serverTimestamp(),
       academyId: callerAcademyId,
     };
+    if (attachmentMeta) pushDoc.attachment = attachmentMeta;
     if (hasTargets) {
       pushDoc.targets = targets;
       pushDoc.targetSummary = _summarize(targets);
@@ -162,7 +176,7 @@ module.exports = async (req, res) => {
     const now = FieldValue.serverTimestamp();
     users.forEach(u => {
       const ref = db.collection('userNotifications').doc();
-      batch.set(ref, {
+      const doc = {
         uid: u.uid,
         title,
         body,
@@ -170,7 +184,9 @@ module.exports = async (req, res) => {
         read: false,
         createdAt: now,
         academyId: callerAcademyId,
-      });
+      };
+      if (attachmentMeta) doc.attachment = attachmentMeta;
+      batch.set(ref, doc);
     });
     await batch.commit();
 

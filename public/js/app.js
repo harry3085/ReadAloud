@@ -5269,14 +5269,25 @@ function setupForegroundMessage() {
 // 알림 팝업 모달 (포그라운드 수신 전용)
 // 이전엔 checkUnreadNotifs 가 이걸로 미확인 알림 순차 노출했지만, 2026-04-29 부터
 // 로그인 시엔 합산 summary 모달 (showUnreadSummaryModal) 만 띄우고 개별 노출 안 함.
-function showNotifModal(title, body, docId){
+function showNotifModal(title, body, docId, attachment){
   const overlay = document.getElementById('notifModalOverlay');
   const titleEl = document.getElementById('notifModalTitle');
   const bodyEl  = document.getElementById('notifModalBody');
   const btn     = document.getElementById('notifModalBtn');
   if(!overlay) return;
   if(titleEl) titleEl.textContent = title;
-  if(bodyEl)  bodyEl.textContent  = body;
+  if(bodyEl) {
+    // body 텍스트 + 첨부 다운로드 영역
+    bodyEl.innerHTML = '';
+    const bodyDiv = document.createElement('div');
+    bodyDiv.style.whiteSpace = 'pre-wrap';
+    bodyDiv.style.wordBreak = 'break-word';
+    bodyDiv.textContent = body || '';
+    bodyEl.appendChild(bodyDiv);
+    if (attachment && attachment.url && attachment.name) {
+      bodyEl.appendChild(_buildNotifAttachmentEl(attachment));
+    }
+  }
   overlay.style.display='flex';
   if(btn){
     btn.onclick = async() => {
@@ -5287,6 +5298,44 @@ function showNotifModal(title, body, docId){
       await updateNotifBadge();
     };
   }
+}
+
+// 첨부 파일 표시 요소 — 다운로드 버튼 + 만료일 안내
+function _buildNotifAttachmentEl(att) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;padding:10px 12px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:8px;';
+  const now = Date.now();
+  const expMs = att.expiresAt ? new Date(att.expiresAt).getTime() : 0;
+  const expired = expMs > 0 && now > expMs;
+  const expDate = expMs > 0 ? new Date(expMs).toLocaleDateString('ko-KR') : '';
+
+  const nameRow = document.createElement('div');
+  nameRow.style.cssText = 'font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px;';
+  nameRow.textContent = att.name + (att.sizeKB ? ` (${att.sizeKB} KB)` : '');
+  wrap.appendChild(nameRow);
+
+  if (expired) {
+    const info = document.createElement('div');
+    info.style.cssText = 'font-size:12px;color:#888;';
+    info.textContent = '보관 기간 만료 (다운로드 불가)';
+    wrap.appendChild(info);
+  } else {
+    const a = document.createElement('a');
+    a.href = att.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.download = att.name;
+    a.style.cssText = 'display:inline-block;margin-top:4px;padding:8px 14px;background:var(--c-brand,#E8714A);color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;';
+    a.textContent = '파일 다운로드';
+    wrap.appendChild(a);
+    if (expDate) {
+      const info = document.createElement('div');
+      info.style.cssText = 'font-size:11px;color:var(--gray);margin-top:6px;';
+      info.textContent = `${expDate} 까지 다운로드 가능`;
+      wrap.appendChild(info);
+    }
+  }
+  return wrap;
 }
 
 // 미확인 알림 합산 모달 (로그인 직후 1회만 표시)
@@ -5380,12 +5429,30 @@ window.openNotifPanel = async() => {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
             <div style="font-size:12px;color:#777;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${esc(n.body||'')}</div>
+            ${(n.attachment && n.attachment.url && n.attachment.name) ? _renderNotifRowAttachment(n.attachment) : ''}
             <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
           </div>
         </div>
       </div>`).join('');
   }catch(e){ list.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패</div>'; }
 };
+
+// 알림 패널 행에 첨부 표시 (HTML 문자열 반환 — innerHTML 안에 박힘)
+function _renderNotifRowAttachment(att) {
+  const expMs = att.expiresAt ? new Date(att.expiresAt).getTime() : 0;
+  const expired = expMs > 0 && Date.now() > expMs;
+  const expDate = expMs > 0 ? new Date(expMs).toLocaleDateString('ko-KR') : '';
+  const sizeStr = att.sizeKB ? ` (${att.sizeKB} KB)` : '';
+  if (expired) {
+    return `<div style="margin-top:6px;padding:6px 8px;background:#f5f5f5;border-radius:6px;font-size:11px;color:#888;">${esc(att.name)}${sizeStr} - 보관 만료</div>`;
+  }
+  return `<div style="margin-top:6px;padding:6px 10px;background:#fff7f4;border:1px solid #f5d0c2;border-radius:6px;font-size:12px;">
+    <div style="font-weight:600;color:var(--text);">${esc(att.name)}${sizeStr}</div>
+    <a href="${esc(att.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
+      style="display:inline-block;margin-top:4px;padding:4px 10px;background:var(--c-brand,#E8714A);color:#fff;text-decoration:none;border-radius:4px;font-size:11px;font-weight:600;">파일 다운로드</a>
+    ${expDate ? `<span style="font-size:10px;color:var(--gray);margin-left:6px;">${esc(expDate)} 까지</span>` : ''}
+  </div>`;
+}
 
 window.readNotif = async(docId) => {
   try{
