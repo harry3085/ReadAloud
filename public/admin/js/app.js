@@ -3762,32 +3762,71 @@ function _msgRenderAttachStatus(text, color) {
   el.style.color = color || 'var(--gray)';
 }
 
-window.msgPickAttach = (e) => {
-  const f = e.target.files?.[0];
+// 파일 검증 + state 박음 + 상태 표시 (input change·drag drop 공용)
+function _msgAcceptFile(f) {
   if (!f) {
     _msgPendingAttach = null;
-    _msgRenderAttachStatus('선택된 파일 없음');
-    return;
+    _msgRenderAttachStatus('파일을 끌어다 놓거나 클릭하여 선택');
+    return false;
   }
   if (f.size > 20 * 1024 * 1024) {
     showAlert('파일 크기 초과', '20 MB 이하 파일만 첨부 가능해요.');
-    e.target.value = '';
-    return;
+    return false;
   }
   if (!_msgAttachAllowed(f.type || '')) {
     showAlert('허용되지 않는 형식', '영상·압축파일·실행파일 등은 첨부 불가.\nPDF·Office·한글·이미지·텍스트만 허용됩니다.');
-    e.target.value = '';
-    return;
+    return false;
   }
   _msgPendingAttach = { file: f, status: 'pending' };
-  _msgRenderAttachStatus(`${f.name} (${Math.round(f.size/1024)} KB) - 발송 시 업로드`, 'var(--text)');
+  _msgRenderAttachStatus(`${f.name} (${Math.round(f.size/1024)} KB) — 발송 시 업로드`, 'var(--text)');
+  return true;
+}
+
+window.msgPickAttach = (e) => {
+  const f = e.target.files?.[0];
+  const ok = _msgAcceptFile(f);
+  if (!ok && e.target) e.target.value = '';
 };
 
 window.msgClearAttach = () => {
   _msgPendingAttach = null;
   const input = document.getElementById('msgAttachInput');
   if (input) input.value = '';
-  _msgRenderAttachStatus('선택된 파일 없음');
+  _msgRenderAttachStatus('파일을 끌어다 놓거나 클릭하여 선택');
+};
+
+// 드래그&드롭 핸들러 — 영역 hover 강조 + 파일 단일 처리 (다중 드롭은 첫 파일만)
+window.msgDragOver = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const el = document.getElementById('msgAttachDrop');
+  if (el) {
+    el.style.borderColor = 'var(--teal, #E8714A)';
+    el.style.background = '#fff7f4';
+  }
+};
+
+window.msgDragLeave = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const el = document.getElementById('msgAttachDrop');
+  if (el) {
+    el.style.borderColor = 'var(--border)';
+    el.style.background = '#fafafa';
+  }
+};
+
+window.msgDrop = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const el = document.getElementById('msgAttachDrop');
+  if (el) {
+    el.style.borderColor = 'var(--border)';
+    el.style.background = '#fafafa';
+  }
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  _msgAcceptFile(files[0]);  // 여러 개 드롭해도 첫 파일만
 };
 
 async function _msgUploadAttachIfAny() {
