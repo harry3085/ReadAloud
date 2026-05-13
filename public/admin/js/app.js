@@ -993,15 +993,8 @@ async function loadApiUsage(){
         <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">📊 상세 →</a></span>
       </div>
 
-      <!-- 7줄: 학생 + 5분류 + Storage -->
+      <!-- 6줄: 5분류 AI + Storage (학생 수는 AI 사용량 X + 민감정보이라 제거, 2026-05-14) -->
       <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-            <span>👥 학생</span>
-            <span style="color:var(--gray);font-size:10px;">재원생 <b style="color:var(--text);">${studentCur}</b>/${studentLim}</span>
-          </div>
-          ${fracBar(studentCur, studentLim)}
-        </div>
         ${items.map(renderRow).join('')}
         ${renderStorageRow()}
       </div>
