@@ -3111,7 +3111,7 @@ async function loadQuotaChangeHistory() {
       collection(db, 'adminLogs'),
       where('action', 'in', ['update_plan_quota', 'update_custom_limits']),
       orderBy('at', 'desc'),
-      limit(50)
+      limit(20)
     ));
     if (snap.empty) {
       el.innerHTML = '<div style="color:var(--gray);padding:8px;">변경 이력 없음</div>';
