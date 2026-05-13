@@ -10365,10 +10365,12 @@ window.loadQuestionSets = async () => {
       _qsList = [];
       _qsSetsByBook = { __initialized: true };
     }
+    // 진입 시 활성 Book 복원 폐기 — 항상 미선택 상태로 시작
+    // (set pane 은 'Book 폴더를 클릭하세요' placeholder)
+    _qsActiveBookId = null;
     _qsRenderList();
-    // 진입 시 "전체 최근 20" 은 항상 fetch (상단 pane) + 활성 Book 있으면 그 폴더도
+    // 상단 pane 용 '최근 20' 만 fetch — Book 폴더 세트는 사용자가 클릭해야 fetch
     await _qsLazyFetch(null);
-    if (_qsActiveBookId != null) await _qsLazyFetch(_qsActiveBookId);
     _qsRenderList();
   } catch(e) {
     showToast('세트 목록 로드 실패: '+e.message);
@@ -10631,17 +10633,7 @@ function _qsRenderBookPane() {
     return a.name.localeCompare(b.name, 'ko');
   });
 
-  // "전체 (최근)" 가상 폴더 — 진입 default
-  const totalActive = _qsActiveBookId == null;
-  const recentCache = _qsSetsByBook['__all_recent__'];
-  const recentCount = Array.isArray(recentCache) ? recentCache.length : null;
-  const allRow = `
-    <div onclick="qsSelectBook(null)" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${totalActive?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
-      <span style="font-size:14px;">📋</span>
-      <div style="flex:1;font-weight:600;font-size:13px;color:${totalActive?'var(--teal)':'var(--text)'};">전체 <span style="font-size:10px;color:var(--gray);font-weight:400;">(최근)</span></div>
-      <span style="font-size:11px;color:var(--gray);">${recentCount == null ? '?' : recentCount}</span>
-    </div>`;
-
+  // ("전체" 가상 폴더는 폐기 — 최근 20개는 상단 pane 이 표시)
   const rows = items.map(it => {
     const active = _qsActiveBookId === it.id;
     const loading = _qsLoadingBook === it.id;
@@ -10661,7 +10653,6 @@ function _qsRenderBookPane() {
       <span style="font-size:11px;color:var(--gray);font-weight:400;">${items.length}개</span>
     </div>
     <div style="flex:1;overflow:auto;">
-      ${allRow}
       ${rows || '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">폴더가 없습니다</div>'}
     </div>
   `;
@@ -10669,13 +10660,22 @@ function _qsRenderBookPane() {
 
 // ─── 하단 오른쪽: 선택된 Book 의 세트 리스트 ───
 function _qsRenderSetPane() {
-  const cacheKey = _qsActiveBookId == null ? '__all_recent__' : _qsActiveBookId;
+  // active 가 null 이면 미선택 placeholder (상단 pane 이 '최근 20' 역할)
+  if (_qsActiveBookId == null) {
+    return `
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <span>📋 Book 폴더 선택</span>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:13px;">
+        ← 좌측에서 Book 폴더를 클릭하세요
+      </div>
+    `;
+  }
+  const cacheKey = _qsActiveBookId;
   const cache = _qsSetsByBook[cacheKey];
   const loaded = Array.isArray(cache);
   const loading = _qsLoadingBook === cacheKey;
-  const bookLabel = _qsActiveBookId == null
-    ? '전체 (최근 ' + _QS_RECENT_LIMIT + '개)'
-    : _qsBookName(_qsActiveBookId);
+  const bookLabel = _qsBookName(_qsActiveBookId);
 
   let body;
   if (loading && !loaded) {
