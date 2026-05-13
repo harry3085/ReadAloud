@@ -304,5 +304,15 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isAdminOfMyAcademy();
     }
+
+    // 학원 랭킹 일일 snapshot (2026-05-13)
+    // doc id 패턴: {academyId}_{group}_{ymd} — 학원의 그룹별 그날의 정렬 결과 미리 저장
+    // 첫 학생 진입 시 client 가 lazy 계산 + create. 다른 학생들은 read 1회 (~1/50 read 절감)
+    match /academyRankings/{rankId} {
+      allow read: if isSignedIn() && resource.data.academyId == myAcademyId();
+      allow create: if isSignedIn() && request.resource.data.academyId == myAcademyId();
+      allow update: if false;  // 한 번 생성 후 불변 (race 시 두 번째 학생 setDoc 거부 → catch 후 read)
+      allow delete: if isSuperAdmin();
+    }
   }
 }
