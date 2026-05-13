@@ -2786,6 +2786,10 @@ const QUOTA_FIELDS = [
   { key: 'recordingPerMonth',    label: '녹음' },
   { key: 'growthReportPerMonth', label: '리포트' },
   { key: 'storageGB',            label: 'Storage(GB)' },
+  // 콘텐츠 한도 — 학원당 doc 수 제한 (2026-05-14, appConfig/limits 글로벌 default override)
+  { key: 'noticesPerAcademy',    label: '📢 공지 수' },
+  { key: 'messagesPerAcademy',   label: '💬 메시지 수' },
+  { key: 'hwFilesPerAcademy',    label: '📁 자료실 수' },
 ];
 
 // T6 자체 캐시 — 위쪽 _plansCache (학원 모달용 객체) 와 별개. 정렬된 배열 형태.
@@ -3033,10 +3037,18 @@ window.openCustomLimitsModal = async (academyId) => {
   const tierLimits = byTier[tier] || byTier['30'] || byTier[Object.keys(byTier)[0]] || {};
   const cl = a.customLimits || {};
 
+  // 콘텐츠 한도 — appConfig/limits 글로벌 default fetch (2026-05-14)
+  let contentDefaults = {};
+  try {
+    const climSnap = await getDoc(doc(db, 'appConfig', 'limits'));
+    if (climSnap.exists()) contentDefaults = climSnap.data();
+  } catch(_) {}
+  const allDefaults = { ...tierLimits, ...contentDefaults };
+
   const rows = QUOTA_FIELDS.map(f => `
     <tr>
       <td style="padding:6px 4px;font-size:13px;">${esc(f.label)}</td>
-      <td style="padding:6px 4px;font-size:12px;color:var(--gray);text-align:right;">기본: ${tierLimits[f.key] ?? '-'}</td>
+      <td style="padding:6px 4px;font-size:12px;color:var(--gray);text-align:right;">기본: ${allDefaults[f.key] ?? '-'}</td>
       <td style="padding:6px 4px;">
         <input id="cl_${f.key}" type="number" min="0" value="${cl[f.key] !== undefined ? cl[f.key] : ''}"
           placeholder="기본값 사용"
