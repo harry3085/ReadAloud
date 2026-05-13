@@ -407,54 +407,33 @@ function renderCalendar(){
 
 // ── 큰 달력 (대시보드 통합 일정) ─────────────────────
 // 결제(billings) + 시험(genTests) 월별 통합 뷰. 학원별 academyId 필터.
-// billings: yearMonth 필드 (기존 인덱스 academyId+yearMonth 활용)
-// genTests: academyId+createdAt 기존 인덱스 → limit 300 fetch 후 클라에서 date 필터
+// 2026-05-14: 월별 캐시 (이미 받은 달 재방문 시 fetch X) + billings lazy (민감정보 토글 ON 시만 fetch)
 const _bigcalState = {
   cur: { year: new Date().getFullYear(), month: new Date().getMonth() },  // 0-indexed month
-  events: {},        // {'YYYY-MM-DD': { billings:[...], tests:[...] }}
+  events: {},        // 현재 표시 중인 events ({'YYYY-MM-DD': { billings:[...], tests:[...] }})
   selected: null,    // 'YYYY-MM-DD'
   loading: false,
+  cache: {},         // ym → { events, billingsLoaded, testsLoaded }
 };
 
 function _bigcalYM(y, m){ return `${y}-${String(m+1).padStart(2,'0')}`; }
 function _bigcalDateKey(y, m, d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
-async function _bigcalLoadEvents(year, month){
+function _bigcalInitEvents(year, month) {
+  const lastDay = new Date(year, month+1, 0).getDate();
+  const events = {};
+  for (let d=1; d<=lastDay; d++) events[_bigcalDateKey(year, month, d)] = { billings:[], tests:[] };
+  return events;
+}
+
+async function _bigcalFetchTests(year, month, entry) {
   const academyId = window.MY_ACADEMY_ID;
-  if (!academyId) return {};
+  if (!academyId) return;
   const ym = _bigcalYM(year, month);
   const lastDay = new Date(year, month+1, 0).getDate();
   const monthStart = `${ym}-01`;
   const monthEnd = `${ym}-${String(lastDay).padStart(2,'0')}`;
-  const events = {};
-  for (let d=1; d<=lastDay; d++) events[_bigcalDateKey(year, month, d)] = { billings:[], tests:[] };
-
   try {
-    // 결제 — billings.yearMonth 기준 (이번 달 청구서)
-    const bSnap = await getDocs(query(
-      collection(db, 'billings'),
-      where('academyId','==', academyId),
-      where('yearMonth','==', ym)
-    ));
-    bSnap.forEach(docSnap => {
-      const b = docSnap.data();
-      const due = b.dueDate?.toDate?.();
-      if (!due) return;
-      const key = _bigcalDateKey(due.getFullYear(), due.getMonth(), due.getDate());
-      if (!events[key]) events[key] = { billings:[], tests:[] };
-      events[key].billings.push({
-        billingId: docSnap.id,
-        userId: b.studentUid || '',
-        userName: b.studentName || '-',
-        groupName: b.groupName || '',
-        amount: b.totalAmount || 0,
-        paidAmount: b.paidAmount || 0,
-        status: b.status || 'unpaid',  // 'paid' | 'partial' | 'unpaid'
-      });
-    });
-
-    // 시험 — date server-side range filter (genTests + academyId + date 인덱스, 2026-05-13)
-    // 학원 전체 시험 fetch X — 그 달 시험만 (보통 20~50 doc)
     const tSnap = await getDocs(query(
       collection(db, 'genTests'),
       where('academyId','==', academyId),
@@ -465,19 +444,62 @@ async function _bigcalLoadEvents(year, month){
     tSnap.forEach(docSnap => {
       const t = docSnap.data();
       const date = t.date;
-      if (!date) return;
-      if (!events[date]) events[date] = { billings:[], tests:[] };
-      events[date].tests.push({
+      if (!date || !entry.events[date]) return;
+      entry.events[date].tests.push({
         id: docSnap.id,
         name: t.name || '-',
         mode: t.mode || t.testMode || 'vocab',
         speaking: !!(t.vocabOptions?.format === 'speaking'),
       });
     });
-  } catch (e) {
-    console.warn('[bigcal] load events 실패:', e);
+    entry.testsLoaded = true;
+  } catch(e) { console.warn('[bigcal] tests:', e); }
+}
+
+async function _bigcalFetchBillings(year, month, entry) {
+  const academyId = window.MY_ACADEMY_ID;
+  if (!academyId) return;
+  const ym = _bigcalYM(year, month);
+  try {
+    const bSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId','==', academyId),
+      where('yearMonth','==', ym)
+    ));
+    bSnap.forEach(docSnap => {
+      const b = docSnap.data();
+      const due = b.dueDate?.toDate?.();
+      if (!due) return;
+      const key = _bigcalDateKey(due.getFullYear(), due.getMonth(), due.getDate());
+      if (!entry.events[key]) return;
+      entry.events[key].billings.push({
+        billingId: docSnap.id,
+        userId: b.studentUid || '',
+        userName: b.studentName || '-',
+        groupName: b.groupName || '',
+        amount: b.totalAmount || 0,
+        paidAmount: b.paidAmount || 0,
+        status: b.status || 'unpaid',
+      });
+    });
+    entry.billingsLoaded = true;
+  } catch(e) { console.warn('[bigcal] billings:', e); }
+}
+
+async function _bigcalLoadEvents(year, month){
+  const academyId = window.MY_ACADEMY_ID;
+  if (!academyId) return {};
+  const ym = _bigcalYM(year, month);
+  let entry = _bigcalState.cache[ym];
+  if (!entry) {
+    entry = { events: _bigcalInitEvents(year, month), billingsLoaded: false, testsLoaded: false };
+    _bigcalState.cache[ym] = entry;
   }
-  return events;
+  // tests — 항상 fetch (미로드 시)
+  if (!entry.testsLoaded) await _bigcalFetchTests(year, month, entry);
+  // billings — 민감정보 토글 ON 시만 fetch
+  if (_dashSensitiveVisible && !entry.billingsLoaded) await _bigcalFetchBillings(year, month, entry);
+  return entry.events;
 }
 
 // 그리드 + 사이드 패널 렌더
@@ -848,9 +870,16 @@ window.toggleDashStats = async () => {
   if (!grid) return;
   _dashSensitiveVisible = !_dashSensitiveVisible;
   if (_dashSensitiveVisible) {
-    // 표시 — 첫 호출 시 fetch
+    // 표시 — 통계 lazy fetch
     if (!_dashStatsLoaded) {
       try { await loadDashStats(); _dashStatsLoaded = true; } catch(e) { console.error(e); }
+    }
+    // 현재 달 billings lazy fetch (cache 에 미로드면)
+    const cur = _bigcalState.cur;
+    const ym = _bigcalYM(cur.year, cur.month);
+    const entry = _bigcalState.cache[ym];
+    if (entry && !entry.billingsLoaded) {
+      try { await _bigcalFetchBillings(cur.year, cur.month, entry); _bigcalState.events = entry.events; } catch(e) {}
     }
     grid.style.display = '';
     if (btn) btn.textContent = '🙈 민감정보 숨기기';
@@ -858,7 +887,7 @@ window.toggleDashStats = async () => {
     grid.style.display = 'none';
     if (btn) btn.textContent = '📊 민감정보 보기';
   }
-  // 달력 결제 셀 + 사이드패널 결제 섹션 재렌더
+  // 달력 + 사이드패널 재렌더
   if (typeof _bigcalRender === 'function') _bigcalRender();
 };
 
