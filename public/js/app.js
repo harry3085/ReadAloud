@@ -3804,11 +3804,13 @@ async function renderRanking(){
 
   const startYmd = _rankPeriodStartYmd(_rankPeriod);
   // server-side date 필터 — 이번 주/이번 달 scores 만 fetch (한 반 누적 X)
+  // orderBy 명시 — 기존 deploy 한 index (date desc) 매칭 보장
   const scoresSnap=await getDocs(query(
     collection(db,'scores'),
     where('academyId','==', window.MY_ACADEMY_ID),
     where('group','==', group),
     where('date','>=', startYmd),
+    orderBy('date','desc'),
     limit(500)
   ));
   const scoresMap={};
