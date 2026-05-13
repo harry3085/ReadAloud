@@ -2779,7 +2779,8 @@ setTimeout(() => {
 // T6 — 한도 관리 탭
 // ════════════════════════════════════════════════════════════════
 
-// 플랜 × 구간별 한도 — plans/{planId}.byTier (AI 쿼터·녹음·storage)
+// 플랜 × 구간별 한도 — plans/{planId}.byTier (AI 쿼터·녹음·storage + 콘텐츠 한도)
+// 2026-05-14: 콘텐츠 한도 4개도 plan byTier 에 통합 (글로벌 default 폐기)
 const PLAN_FIELDS = [
   { key: 'ocrPerMonth',          label: 'OCR' },
   { key: 'cleanupPerMonth',      label: 'Cleanup' },
@@ -2787,15 +2788,13 @@ const PLAN_FIELDS = [
   { key: 'recordingPerMonth',    label: '녹음' },
   { key: 'growthReportPerMonth', label: '리포트' },
   { key: 'storageGB',            label: 'Storage(GB)' },
+  { key: 'noticesPerAcademy',      label: '📢 공지' },
+  { key: 'draftsPerAcademy',       label: '💾 초안' },
+  { key: 'sentMessagesPerAcademy', label: '📤 발송' },
+  { key: 'hwFilesPerAcademy',      label: '📁 자료실' },
 ];
-// 학원별 Override 한도 — customLimits (위 + 콘텐츠 한도, 2026-05-14)
-const QUOTA_FIELDS = [
-  ...PLAN_FIELDS,
-  { key: 'noticesPerAcademy',      label: '📢 공지 수' },
-  { key: 'draftsPerAcademy',       label: '💾 초안 수' },
-  { key: 'sentMessagesPerAcademy', label: '📤 발송이력 수' },
-  { key: 'hwFilesPerAcademy',      label: '📁 자료실 수' },
-];
+// 학원별 Override 한도 = PLAN_FIELDS 와 동일 (customLimits 키 통일)
+const QUOTA_FIELDS = PLAN_FIELDS;
 
 // T6 자체 캐시 — 위쪽 _plansCache (학원 모달용 객체) 와 별개. 정렬된 배열 형태.
 let _t6Plans = [];
@@ -2803,7 +2802,6 @@ let _t6Plans = [];
 async function loadQuotaAdmin() {
   await Promise.all([
     loadPlanQuotaCards(),
-    loadContentLimits(),
     loadQuotaChangeHistory(),
   ]);
   // 검색 결과는 사용자가 입력했을 때만 갱신
@@ -2812,48 +2810,8 @@ async function loadQuotaAdmin() {
   else document.getElementById('quotaAcademyResults').innerHTML = '<div style="color:var(--gray);padding:8px;">학원명을 입력하세요.</div>';
 }
 
-// 콘텐츠 한도 (글로벌 default) — appConfig/limits (2026-05-14)
-// 메시지는 초안/발송이력 각각 분리 한도
-const CONTENT_LIMITS_DEFAULTS = {
-  noticesPerAcademy: 20,
-  draftsPerAcademy: 50,
-  sentMessagesPerAcademy: 50,
-  hwFilesPerAcademy: 30,
-};
-async function loadContentLimits() {
-  try {
-    const snap = await getDoc(doc(db, 'appConfig', 'limits'));
-    const data = snap.exists() ? snap.data() : {};
-    document.getElementById('climNotices').value      = data.noticesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy;
-    document.getElementById('climDrafts').value       = data.draftsPerAcademy       ?? CONTENT_LIMITS_DEFAULTS.draftsPerAcademy;
-    document.getElementById('climSentMessages').value = data.sentMessagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.sentMessagesPerAcademy;
-    document.getElementById('climHwFiles').value      = data.hwFilesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy;
-  } catch(e) { console.warn('[contentLimits] load:', e.message); }
-}
-window.saveContentLimits = async() => {
-  const n = parseInt(document.getElementById('climNotices').value);
-  const d = parseInt(document.getElementById('climDrafts').value);
-  const s = parseInt(document.getElementById('climSentMessages').value);
-  const h = parseInt(document.getElementById('climHwFiles').value);
-  if (![n,d,s,h].every(v => isFinite(v) && v >= 1 && v <= 500)) {
-    document.getElementById('climStatus').textContent = '⚠️ 1~500 사이 값 입력';
-    document.getElementById('climStatus').style.color = '#dc2626';
-    return;
-  }
-  try {
-    await setDoc(doc(db, 'appConfig', 'limits'), {
-      noticesPerAcademy: n,
-      draftsPerAcademy: d,
-      sentMessagesPerAcademy: s,
-      hwFilesPerAcademy: h,
-    }, { merge: true });
-    document.getElementById('climStatus').textContent = '✓ 저장됨';
-    document.getElementById('climStatus').style.color = '#059669';
-  } catch(e) {
-    document.getElementById('climStatus').textContent = '✗ 저장 실패: ' + e.message;
-    document.getElementById('climStatus').style.color = '#dc2626';
-  }
-};
+// 콘텐츠 한도는 2026-05-14 부터 plan.byTier 에 통합 (글로벌 appConfig/limits 폐기).
+// 학원장 _loadContentLimits 가 plan.byTier[구간] 우선 + customLimits override.
 
 async function loadPlanQuotaCards() {
   const el = document.getElementById('planQuotaCards');

@@ -80,8 +80,7 @@ function _ymdMonthStartKST(){ return _ymdKST().slice(0,7) + '-01'; }
 function _ymdDaysAgoKST(n){ return _ymdKST(new Date(Date.now() - n*864e5)); }
 
 // 콘텐츠 한도 — 학원당 공지/초안/발송이력/자료실 doc 수 (2026-05-14)
-// super_admin 글로벌 default (appConfig/limits) + 학원별 customLimits override
-// 메시지는 초안(sent:false) + 발송이력(sent:true) 각각 분리 한도
+// 3단 fallback: customLimits.X (학원 override) > plan.byTier[구간].X > 코드 default
 const CONTENT_LIMITS_DEFAULTS = {
   noticesPerAcademy: 20,
   draftsPerAcademy: 50,
@@ -92,18 +91,20 @@ let _contentLimitsCache = null;
 async function _loadContentLimits() {
   if (_contentLimitsCache) return _contentLimitsCache;
   try {
-    const [gSnap, aSnap] = await Promise.all([
-      getDoc(doc(db, 'appConfig', 'limits')),
-      getDoc(doc(db, 'academies', window.MY_ACADEMY_ID)),
-    ]);
-    const global = gSnap.exists() ? gSnap.data() : {};
+    const aSnap = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID));
     const academy = aSnap.exists() ? aSnap.data() : {};
     const cl = academy.customLimits || {};
+    const planId = academy.planId || 'free';
+    const tier = String(academy.studentLimit || 10);
+    // plan byTier[구간] fetch (학원당 1회)
+    const pSnap = await getDoc(doc(db, 'plans', planId));
+    const plan = pSnap.exists() ? pSnap.data() : {};
+    const tierLimits = (plan.byTier || {})[tier] || (plan.byTier || {})[Object.keys(plan.byTier||{})[0]] || {};
     _contentLimitsCache = {
-      noticesPerAcademy:      cl.noticesPerAcademy      ?? global.noticesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy,
-      draftsPerAcademy:       cl.draftsPerAcademy       ?? global.draftsPerAcademy       ?? CONTENT_LIMITS_DEFAULTS.draftsPerAcademy,
-      sentMessagesPerAcademy: cl.sentMessagesPerAcademy ?? global.sentMessagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.sentMessagesPerAcademy,
-      hwFilesPerAcademy:      cl.hwFilesPerAcademy      ?? global.hwFilesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy,
+      noticesPerAcademy:      cl.noticesPerAcademy      ?? tierLimits.noticesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy,
+      draftsPerAcademy:       cl.draftsPerAcademy       ?? tierLimits.draftsPerAcademy       ?? CONTENT_LIMITS_DEFAULTS.draftsPerAcademy,
+      sentMessagesPerAcademy: cl.sentMessagesPerAcademy ?? tierLimits.sentMessagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.sentMessagesPerAcademy,
+      hwFilesPerAcademy:      cl.hwFilesPerAcademy      ?? tierLimits.hwFilesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy,
     };
   } catch(e) {
     console.warn('[limits] load fail:', e.message);
