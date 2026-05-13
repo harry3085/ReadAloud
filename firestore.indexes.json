@@ -180,6 +180,14 @@
       ]
     },
     {
+      "collectionGroup": "pushNotifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "sent", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "genCleanupPresets",
       "queryScope": "COLLECTION",
       "fields": [

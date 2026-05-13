@@ -79,9 +79,15 @@ function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*100
 function _ymdMonthStartKST(){ return _ymdKST().slice(0,7) + '-01'; }
 function _ymdDaysAgoKST(n){ return _ymdKST(new Date(Date.now() - n*864e5)); }
 
-// 콘텐츠 한도 — 학원당 공지/메시지/자료실 doc 수 (2026-05-14)
+// 콘텐츠 한도 — 학원당 공지/초안/발송이력/자료실 doc 수 (2026-05-14)
 // super_admin 글로벌 default (appConfig/limits) + 학원별 customLimits override
-const CONTENT_LIMITS_DEFAULTS = { noticesPerAcademy: 20, messagesPerAcademy: 50, hwFilesPerAcademy: 30 };
+// 메시지는 초안(sent:false) + 발송이력(sent:true) 각각 분리 한도
+const CONTENT_LIMITS_DEFAULTS = {
+  noticesPerAcademy: 20,
+  draftsPerAcademy: 50,
+  sentMessagesPerAcademy: 50,
+  hwFilesPerAcademy: 30,
+};
 let _contentLimitsCache = null;
 async function _loadContentLimits() {
   if (_contentLimitsCache) return _contentLimitsCache;
@@ -94,9 +100,10 @@ async function _loadContentLimits() {
     const academy = aSnap.exists() ? aSnap.data() : {};
     const cl = academy.customLimits || {};
     _contentLimitsCache = {
-      noticesPerAcademy: cl.noticesPerAcademy ?? global.noticesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy,
-      messagesPerAcademy: cl.messagesPerAcademy ?? global.messagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.messagesPerAcademy,
-      hwFilesPerAcademy: cl.hwFilesPerAcademy ?? global.hwFilesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy,
+      noticesPerAcademy:      cl.noticesPerAcademy      ?? global.noticesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy,
+      draftsPerAcademy:       cl.draftsPerAcademy       ?? global.draftsPerAcademy       ?? CONTENT_LIMITS_DEFAULTS.draftsPerAcademy,
+      sentMessagesPerAcademy: cl.sentMessagesPerAcademy ?? global.sentMessagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.sentMessagesPerAcademy,
+      hwFilesPerAcademy:      cl.hwFilesPerAcademy      ?? global.hwFilesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy,
     };
   } catch(e) {
     console.warn('[limits] load fail:', e.message);
@@ -104,19 +111,25 @@ async function _loadContentLimits() {
   }
   return _contentLimitsCache;
 }
+// 한도 검사 — kind: 'notices' | 'drafts' | 'sentMessages' | 'hwFiles'
 async function _checkContentLimit(kind) {
-  // kind: 'notices' | 'pushNotifications' | 'hwFiles'
   const limits = await _loadContentLimits();
-  const limitKey = { notices: 'noticesPerAcademy', pushNotifications: 'messagesPerAcademy', hwFiles: 'hwFilesPerAcademy' }[kind];
-  if (!limitKey) return { ok: true };
-  const maxCount = limits[limitKey];
+  const cfg = {
+    notices:      { col: 'notices',           extra: [], limitKey: 'noticesPerAcademy',      label: '공지' },
+    drafts:       { col: 'pushNotifications', extra: [where('sent','==',false)], limitKey: 'draftsPerAcademy',       label: '초안' },
+    sentMessages: { col: 'pushNotifications', extra: [where('sent','==',true)],  limitKey: 'sentMessagesPerAcademy', label: '발송이력' },
+    hwFiles:      { col: 'hwFiles',           extra: [], limitKey: 'hwFilesPerAcademy',      label: '자료실' },
+  }[kind];
+  if (!cfg) return { ok: true };
+  const maxCount = limits[cfg.limitKey];
   try {
-    const snap = await getCountFromServer(query(collection(db, kind), where('academyId','==', window.MY_ACADEMY_ID)));
+    const snap = await getCountFromServer(query(
+      collection(db, cfg.col),
+      where('academyId','==', window.MY_ACADEMY_ID),
+      ...cfg.extra,
+    ));
     const cur = snap.data().count;
-    if (cur >= maxCount) {
-      const label = { notices: '공지', pushNotifications: '메시지', hwFiles: '자료실' }[kind];
-      return { ok: false, cur, max: maxCount, label };
-    }
+    if (cur >= maxCount) return { ok: false, cur, max: maxCount, label: cfg.label };
     return { ok: true, cur, max: maxCount };
   } catch(e) {
     console.warn('[limits] count fail:', e.message);
@@ -3932,8 +3945,8 @@ window.sendMessage = async() => {
   const body  = document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
-  // 학원당 메시지 한도 검사 (2026-05-14)
-  const chk = await _checkContentLimit('pushNotifications');
+  // 학원당 발송이력 한도 검사 (2026-05-14)
+  const chk = await _checkContentLimit('sentMessages');
   if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 발송해주세요.`); return; }
   try{
     let attachment = null;
@@ -3963,6 +3976,9 @@ window.saveMessage = async() => {
   const body  = document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  // 학원당 초안 한도 검사 (2026-05-14)
+  const chk = await _checkContentLimit('drafts');
+  if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 저장해주세요.`); return; }
   await addDoc(collection(db,'pushNotifications'),{
     targets,
     targetSummary: pickerSummarize(targets),
@@ -3989,14 +4005,13 @@ async function loadMessages(){
     const drafts=[], sent=[];
     snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
 
-    // 한도 표시 (2026-05-14) — 메시지 = 초안 + 발송이력 합산 학원당 한도
+    // 한도 표시 (2026-05-14) — 초안 / 발송이력 각각 분리 한도
     try {
       const limits = await _loadContentLimits();
-      const max = limits.messagesPerAcademy;
-      const total = drafts.length + sent.length;
-      const txt = `(${total}/${max} 저장됨)`;
-      const dl = document.getElementById('msgDraftLimit'); if (dl) dl.textContent = txt;
-      const sl = document.getElementById('msgSentLimit');  if (sl) sl.textContent = txt;
+      const dl = document.getElementById('msgDraftLimit');
+      if (dl) dl.textContent = `(${drafts.length}/${limits.draftsPerAcademy} 저장됨)`;
+      const sl = document.getElementById('msgSentLimit');
+      if (sl) sl.textContent = `(${sent.length}/${limits.sentMessagesPerAcademy} 저장됨)`;
     } catch(_) {}
 
     // 옛/신 schema 모두에서 대상 라벨 뽑기

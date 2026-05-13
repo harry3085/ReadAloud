@@ -221,17 +221,21 @@
       <div class="card" style="padding:18px;margin-bottom:20px;">
         <div style="font-weight:700;margin-bottom:8px;">📝 콘텐츠 한도 (글로벌 default)</div>
         <div style="font-size:12px;color:var(--gray);margin-bottom:14px;">학원당 공지/메시지/자료실 보관 doc 수 제한. 학원장이 초과 시 작성 차단 + "기존 삭제" 안내. 학원별 override 는 아래 [학원별 Override].</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
           <div>
-            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">📢 공지 (notices)</label>
+            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">📢 공지</label>
             <input type="number" id="climNotices" min="1" max="500" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">💬 메시지 (pushNotifications)</label>
-            <input type="number" id="climMessages" min="1" max="500" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">💾 초안</label>
+            <input type="number" id="climDrafts" min="1" max="500" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">📁 자료실 (hwFiles)</label>
+            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">📤 발송이력</label>
+            <input type="number" id="climSentMessages" min="1" max="500" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:4px;">📁 자료실</label>
             <input type="number" id="climHwFiles" min="1" max="500" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
           </div>
         </div>

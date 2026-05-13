@@ -2787,9 +2787,10 @@ const QUOTA_FIELDS = [
   { key: 'growthReportPerMonth', label: '리포트' },
   { key: 'storageGB',            label: 'Storage(GB)' },
   // 콘텐츠 한도 — 학원당 doc 수 제한 (2026-05-14, appConfig/limits 글로벌 default override)
-  { key: 'noticesPerAcademy',    label: '📢 공지 수' },
-  { key: 'messagesPerAcademy',   label: '💬 메시지 수' },
-  { key: 'hwFilesPerAcademy',    label: '📁 자료실 수' },
+  { key: 'noticesPerAcademy',      label: '📢 공지 수' },
+  { key: 'draftsPerAcademy',       label: '💾 초안 수' },
+  { key: 'sentMessagesPerAcademy', label: '📤 발송이력 수' },
+  { key: 'hwFilesPerAcademy',      label: '📁 자료실 수' },
 ];
 
 // T6 자체 캐시 — 위쪽 _plansCache (학원 모달용 객체) 와 별개. 정렬된 배열 형태.
@@ -2808,21 +2809,29 @@ async function loadQuotaAdmin() {
 }
 
 // 콘텐츠 한도 (글로벌 default) — appConfig/limits (2026-05-14)
-const CONTENT_LIMITS_DEFAULTS = { noticesPerAcademy: 20, messagesPerAcademy: 50, hwFilesPerAcademy: 30 };
+// 메시지는 초안/발송이력 각각 분리 한도
+const CONTENT_LIMITS_DEFAULTS = {
+  noticesPerAcademy: 20,
+  draftsPerAcademy: 50,
+  sentMessagesPerAcademy: 50,
+  hwFilesPerAcademy: 30,
+};
 async function loadContentLimits() {
   try {
     const snap = await getDoc(doc(db, 'appConfig', 'limits'));
     const data = snap.exists() ? snap.data() : {};
-    document.getElementById('climNotices').value  = data.noticesPerAcademy  ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy;
-    document.getElementById('climMessages').value = data.messagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.messagesPerAcademy;
-    document.getElementById('climHwFiles').value  = data.hwFilesPerAcademy  ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy;
+    document.getElementById('climNotices').value      = data.noticesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy;
+    document.getElementById('climDrafts').value       = data.draftsPerAcademy       ?? CONTENT_LIMITS_DEFAULTS.draftsPerAcademy;
+    document.getElementById('climSentMessages').value = data.sentMessagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.sentMessagesPerAcademy;
+    document.getElementById('climHwFiles').value      = data.hwFilesPerAcademy      ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy;
   } catch(e) { console.warn('[contentLimits] load:', e.message); }
 }
 window.saveContentLimits = async() => {
   const n = parseInt(document.getElementById('climNotices').value);
-  const m = parseInt(document.getElementById('climMessages').value);
+  const d = parseInt(document.getElementById('climDrafts').value);
+  const s = parseInt(document.getElementById('climSentMessages').value);
   const h = parseInt(document.getElementById('climHwFiles').value);
-  if (![n,m,h].every(v => isFinite(v) && v >= 1 && v <= 500)) {
+  if (![n,d,s,h].every(v => isFinite(v) && v >= 1 && v <= 500)) {
     document.getElementById('climStatus').textContent = '⚠️ 1~500 사이 값 입력';
     document.getElementById('climStatus').style.color = '#dc2626';
     return;
@@ -2830,7 +2839,8 @@ window.saveContentLimits = async() => {
   try {
     await setDoc(doc(db, 'appConfig', 'limits'), {
       noticesPerAcademy: n,
-      messagesPerAcademy: m,
+      draftsPerAcademy: d,
+      sentMessagesPerAcademy: s,
       hwFilesPerAcademy: h,
     }, { merge: true });
     document.getElementById('climStatus').textContent = '✓ 저장됨';
