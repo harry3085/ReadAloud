@@ -6201,7 +6201,7 @@ window.loadTestList = async() => {
 
     _tlState.data = genTests.map(attachStats);
 
-    initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 20 });
+    initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 99999 });
     _tlRenderLoadMore();
   }catch(e){
     console.error(e);
@@ -6240,7 +6240,7 @@ window.loadMoreTestList = async() => {
         };
       });
       _tlState.data = _tlState.data.concat(attached);
-      initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 20 });
+      initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 99999 });
     }
     _tlRenderLoadMore();
   } catch(e) {
