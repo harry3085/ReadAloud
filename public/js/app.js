@@ -949,10 +949,41 @@ function _mcqRenderStep(){
   }
 }
 
-window.mcqSelect = (choiceIdx) => {
-  _mcqTakeState.answers[_mcqTakeState.currentIdx] = choiceIdx;
-  _mcqRenderStep();
+window.mcqSelect = async (choiceIdx) => {
+  const s = _mcqTakeState;
+  s._locked = s._locked || {};
+  if (s._locked[s.currentIdx]) return;  // 이미 잠긴 문제 무시
+  s._locked[s.currentIdx] = true;
+  s.answers[s.currentIdx] = choiceIdx;
+  // 정답 표시 — 정답 보기 초록·학생 오답 빨강
+  _mcqRenderFeedback();
+  // 1초 후 자동 다음 (객관식은 영문 보기 단독 발음 의미 적음 → TTS X)
+  await new Promise(r => setTimeout(r, 1000));
+  await window.mcqNext();
 };
+
+function _mcqRenderFeedback() {
+  const s = _mcqTakeState;
+  const q = s.questions[s.currentIdx];
+  if (!q) return;
+  const user = s.answers[s.currentIdx];
+  const correctIdx = (q.choices||[]).findIndex(c => c.isAnswer === true);
+  const choicesEl = document.getElementById('mcqChoices');
+  if (!choicesEl) return;
+  const labels = ['①','②','③','④'];
+  choicesEl.innerHTML = (q.choices||[]).map((c, i) => {
+    let bg = 'white', color = 'var(--teal)', border = 'var(--teal)';
+    if (i === correctIdx) { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; }
+    else if (i === user) { bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444'; }
+    return `<button disabled
+      style="padding:14px 16px;background:${bg};border:2px solid ${border};color:${color};border-radius:14px;font-size:15px;font-weight:700;cursor:default;font-family:inherit;text-align:left;display:flex;gap:10px;align-items:flex-start;opacity:1;">
+      <span style="flex-shrink:0;">${labels[i]}</span>
+      <span style="flex:1;line-height:1.4;font-weight:700;">${esc(c.text||'')}</span>
+    </button>`;
+  }).join('');
+  const btn = document.getElementById('mcqNextBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+}
 
 window.mcqNext = async () => {
   const s = _mcqTakeState;
@@ -1467,14 +1498,37 @@ window.fbUpdateAnswer = (blankIdx, value) => {
   if(inp && inp.value !== value) inp.value = value;
   _fbRefreshBoxesForBlank(blankIdx);
 
-  // 빈칸이 꽉 차면 다음 빈칸으로 자동 이동
+  // 빈칸이 꽉 차면 다음 빈칸으로 자동 이동, 마지막 빈칸이면 자동 다음 문제 (debounce 400)
   if(value.length === letterCount && letterCount > 0){
     const totalBlanks = (q.blanks||[]).length;
     if(blankIdx < totalBlanks - 1){
       setTimeout(() => fbFocusBlank(blankIdx + 1), 120);
+      _fbCancelAutoSubmit();
+    } else {
+      // 마지막 빈칸 — 모든 빈칸 다 채워졌는지 확인 후 자동 fbNext
+      const allFilled = (q.blanks||[]).every((t, i) => {
+        const a = (s.answers[qIdx] || [])[i] || '';
+        return a.length === (t||'').length && t.length > 0;
+      });
+      if (allFilled) _fbScheduleAutoSubmit();
     }
+  } else {
+    _fbCancelAutoSubmit();
   }
 };
+
+// 빈칸 자동 제출 debounce
+let _fbAutoSubmitTimer = null;
+function _fbScheduleAutoSubmit() {
+  _fbCancelAutoSubmit();
+  _fbAutoSubmitTimer = setTimeout(() => {
+    _fbAutoSubmitTimer = null;
+    if (typeof window.fbNext === 'function') window.fbNext();
+  }, 400);
+}
+function _fbCancelAutoSubmit() {
+  if (_fbAutoSubmitTimer) { clearTimeout(_fbAutoSubmitTimer); _fbAutoSubmitTimer = null; }
+}
 
 window.fbInputKey = (event, blankIdx) => {
   if(event.key === 'Enter' || event.key === 'Tab'){
@@ -1504,7 +1558,8 @@ window.fbInputKey = (event, blankIdx) => {
 
 window.fbNext = async () => {
   _fbStopTimer();
-  // 현재 문제 즉시 피드백 (1.5초 하이라이트)
+  _fbCancelAutoSubmit();
+  // 현재 문제 즉시 피드백 (정답 시 TTS 끝까지, 그 외 1초)
   await _fbShowQuestionFeedback();
   const s = _fbState;
   if(s.currentIdx < s.questions.length - 1){
@@ -1556,10 +1611,13 @@ function _fbShowQuestionFeedback(){
         : `<span style="color:#DC2626;font-weight:800;font-size:14px;">✗ 오답 · 정답: ${esc(blanks.join(', '))}</span>`;
     }
 
-    // 정답일 때 정답 단어(들) 음성 재생
-    if (allCorrect) _fbSpeakWords(blanks);
-
-    setTimeout(resolve, 1500);
+    // 정답 시 영단어 TTS — 끝까지 대기 후 진행 (그 외엔 1초 대기)
+    const isEnglish = blanks.some(b => /[a-zA-Z]/.test(String(b||'')));
+    if (allCorrect && isEnglish && blanks.length) {
+      _speakAndWait(blanks.join(' ')).then(resolve);
+    } else {
+      setTimeout(resolve, 1000);
+    }
   });
 }
 
@@ -1577,6 +1635,26 @@ function _fbSpeakWords(words){
     u.volume = 1;
     window.speechSynthesis.speak(u);
   } catch(e) { console.warn('speech error', e); }
+}
+
+// TTS 끝까지 대기 — 자동 진행용 (onend / onerror / 3초 fallback)
+function _speakAndWait(word) {
+  return new Promise(resolve => {
+    if (!word || !('speechSynthesis' in window)) { resolve(); return; }
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(String(word));
+      u.lang = 'en-US';
+      u.rate = 0.9;
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      u.onend = finish;
+      u.onerror = finish;
+      // 안전 fallback — TTS 미동작/엔진 hang 시 3초 후 강제 진행
+      setTimeout(finish, 3000);
+      window.speechSynthesis.speak(u);
+    } catch (e) { resolve(); }
+  });
 }
 
 async function _fbSubmit(){
@@ -4317,21 +4395,19 @@ function _vqSpkFinalize(correct, heard) {
 }
 
 // MCQ 선택 → 즉시 정답/오답 피드백 → 자동 다음 (구버전 운영 방식)
-window.vqSelectMcq = (choiceIdx) => {
+window.vqSelectMcq = async (choiceIdx) => {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
   if (ans._locked) return;
   ans.input = ans.choices[choiceIdx] || '';
   ans._locked = true;
   _vqStopTimer();
-  // 한→영 정답이면 영단어 TTS
   const q = s.questions[s.currentIdx];
-  const isCorrect = _vqIsAnsCorrect(q, ans);
-  if (isCorrect && ans.direction === 'ko2en' && q.word) _fbSpeakWords([q.word]);
   // 피드백 렌더 (배너 + 보기 색상)
   _vqRenderMcqFeedback(ans);
-  // 수동 진행: 제출 버튼을 '다음 ▶' 로 전환, 사용자 클릭 시 _vqAutoNext
-  _vqShowNextButton();
+  // 자동 진행
+  await _vqAutoAdvance(q, ans);
+  _vqAutoNext();
 };
 
 function _vqRenderMcqFeedback(ans) {
@@ -4418,19 +4494,31 @@ window.vqNext = async (opts) => {
   const q = s.questions[s.currentIdx];
   const isCorrect = _vqIsAnsCorrect(q, ans);
 
-  // TTS: 한글→영어 방향에서 정답이면 영단어 발음 재생
-  if (isCorrect && ans.direction === 'ko2en' && q.word) {
-    _fbSpeakWords([q.word]);
-  }
-
   if (ans.format === 'short') {
     _vqRenderSpellFeedback(ans, isCorrect);
   } else {
     _vqRenderMcqFeedback(ans);
   }
-  // 수동 진행: 제출 버튼을 '다음 ▶' 로 전환, 사용자 클릭 시 _vqAutoNext
-  _vqShowNextButton();
+  // 버튼 비활성화 (자동 진행 중)
+  const btn = document.getElementById('vqSubmitBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  // 자동 진행: TTS 또는 1초 후 _vqAutoNext
+  await _vqAutoAdvance(q, ans);
+  _vqAutoNext();
 };
+
+// 자동 진행 흐름 — TTS (있으면) 또는 1초 대기
+async function _vqAutoAdvance(q, ans) {
+  // 시작 시 영단어 TTS 있었던 경우 (en2ko): 추가 TTS X, 1초 대기
+  // 시작 시 TTS 없었던 경우 (ko2en, mcq): 정답 영단어 TTS → 끝나면 즉시
+  if (ans.direction === 'en2ko') {
+    await new Promise(r => setTimeout(r, 1000));
+  } else if (q.word) {
+    await _speakAndWait(q.word);
+  } else {
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
 
 function _vqShowNextButton(){
   const btn = document.getElementById('vqSubmitBtn');
@@ -4488,6 +4576,7 @@ function _vqHideFeedbackBanner(){
 }
 
 async function _vqAutoNext() {
+  _vqCancelAutoSubmit();  // 새 문제 진입 시 이전 타이머 정리
   const s = _vqState;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
@@ -5143,6 +5232,19 @@ window.updateTestBadge = updateVocabBadge;
 window.updateUnscBadge = updateUnscBadge2;
 
 // 스펠 input 이벤트 바인딩 (DOM 복원 시마다 재호출 필요)
+// 스펠링 답 완성 → debounce 자동 제출 (vqNext)
+let _vqAutoSubmitTimer = null;
+function _vqScheduleAutoSubmit() {
+  _vqCancelAutoSubmit();
+  _vqAutoSubmitTimer = setTimeout(() => {
+    _vqAutoSubmitTimer = null;
+    if (typeof window.vqNext === 'function') window.vqNext();
+  }, 400);
+}
+function _vqCancelAutoSubmit() {
+  if (_vqAutoSubmitTimer) { clearTimeout(_vqAutoSubmitTimer); _vqAutoSubmitTimer = null; }
+}
+
 function _vqBindSpellInput(){
   const inp = document.getElementById('vqSpellInput');
   if (!inp || inp._vqBound) return;
@@ -5152,6 +5254,7 @@ function _vqBindSpellInput(){
     if (!s.answers || !s.questions[s.currentIdx]) return;
     const ans = s.answers[s.currentIdx];
     if (ans.format !== 'short') return;
+    if (ans._locked) return;
     const q = s.questions[s.currentIdx];
     const target = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
     let v = this.value;
@@ -5165,6 +5268,12 @@ function _vqBindSpellInput(){
     ans.input = v;
     _vqRenderSpellBoxes(ans);
     _vqUpdateSubmitBtn();
+    // 답 완성 시 자동 진행 트리거 (debounce 400ms — 학생 정정 여유)
+    if (v.length === target.length && target.length > 0) {
+      _vqScheduleAutoSubmit();
+    } else {
+      _vqCancelAutoSubmit();
+    }
   });
   inp.addEventListener('keydown', function(e){
     if (e.key === 'Enter') {
