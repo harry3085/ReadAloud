@@ -4016,3 +4016,193 @@ v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
 - ✅ Firestore reads 계산 원리 정리 (사용자 질문 응답)
 - ✅ 스펠링 입력 정책 변경 — 화이트리스트 → 한글만 차단 (특수문자 자유)
 - ✅ 단어시험 ko2en + 빈칸채우기 동일 정책 적용
+
+---
+
+## 2026-05-14: Firebase reads 대규모 최적화 사이클 (대시보드·시험관리·진도체크·성적·성장·결제·문제세트)
+
+당일 SW v474 → v491 (~17 commit). 학원장앱 + 학생앱 reads 전방위 최적화. 큰 흐름은 (1) lazy load 패턴 (Book 폴더 클릭 시에만 fetch), (2) server-side filter (`array-contains` 평면 필드 마이그레이션), (3) 캐시 (월별·학생별·일자별 캐시 객체), (4) `getCountFromServer` (카운트만 필요한 곳).
+
+### 1) 문제세트목록 lazy load (commit `4fc16d5`)
+
+**마이그레이션** (`scripts/migrate/backfill-questionset-bookid.js`):
+- `genQuestionSets` 109개 doc 에 `bookId` top-level 필드 backfill (default 101 / orphan 5 / raloud2 3)
+- 기존엔 `sourcePages[].bookId` 안에만 있어 server-side filter 불가능
+
+**인덱스 추가** + deploy:
+- `genQuestionSets (academyId + bookId + createdAt desc)`
+
+**코드**:
+- `_qsSetsByBook = { bookId: [...] }` lazy 캐시 + `_qsLoadingBook` 중복 차단
+- `loadQuestionSets`: 진입 시 `_qsBooks` 만 fetch + "전체 최근 20" 자동 fetch (상단 pane)
+- `qsSelectBook` async — Book 폴더 클릭 시 그 폴더 sets fetch + 캐시
+- `qsRenameSet/qsDeleteSet/qsSaveEdits` 후 `_qsInvalidateCache()` 호출
+- Wordsnap + AI Generator addDoc 시 새 필드 stamp + 캐시 무효화
+
+**렌더 변경**:
+- 진입 시 활성 Book 복원 폐기 — 항상 미선택 상태 시작 (commit `a1313e0`)
+- "전체 (최근)" 가상 폴더 행 폐기
+- set pane: active==null 이면 "Book 폴더를 클릭하세요" placeholder
+- 폴더 정렬 — `lastTime` → **이름순 고정** (클릭해도 위치 변동 X, commit `be002fe`)
+- Book 폴더 이모지 통일: 📚/📂 → **📁** (시험관리 기준, commit `b7e771a`)
+
+**reads**: 101 sets 학원 매 진입 101 → 20 (80% 절감), 폴더 재클릭 0 reads.
+
+### 2) 시험관리 sets lazy load (commit `6639492`)
+
+- 폴더 키: `bookId::chapterId` → **`bookId` 만** (Chapter 무시, quiz-sets 와 일관)
+- 진입 시 sets fetch 폐기 — `_genBooks` 만으로 폴더 빌드
+- Book 폴더 클릭 시 `(academyId + bookId + sourceType)` server-side sets fetch + `_tpSetsByFolder` 캐시
+- "📁 전체" 가상 폴더 폐기 — 미선택 시 placeholder
+- 6개 시험관리 페이지 (vocab/blank/mcq/subj/unscramble/rec-ai) 동일 적용
+- 인덱스: `genQuestionSets (academyId + bookId + sourceType + createdAt desc)`
+
+### 3) 진도체크 일자별 탭 — 일자 조건 lazy (commit `7de0e2d`)
+
+**Before**: 진입 시 60일 시험 ~100개 일괄 fetch.
+**After**:
+- 진입 시 시험 fetch 폐기 (`users + groups` 만)
+- 일자 default = 어제 KST → 자동 fetch (`academyId + date == ymd`)
+- 일자 변경 → 캐시 hit / miss 검사 후 fetch
+- 반 select 변경 → 캐시 사용 (반/전체 대상 클라 필터)
+- 캐시: `_prog.testsByDate[ymd]`
+
+**reads**: 진입당 ~175 → ~80 (60% 절감), 일자 토글 캐시 hit 0.
+
+### 4) 진도체크 학생별 탭 — 10일 + 더보기 30일 cap (commit `b3bef64` → Phase 2 `cb40498`)
+
+**Phase 1** — 일수 누적:
+- `_prog.allTestsLoaded` → `_prog.studentTestDays` (0/10/20/30)
+- `_progLoadStudentTestsPage(daysTarget)`: createdAt 범위 fetch + dedup 누적
+- [+10일 더보기] 버튼 → 20일 → 30일 cap
+
+**Phase 2** — 학생별 server-side filter:
+- `_prog.tests` (학원 전체) → `_prog.studentCache[uid]` (학생별 캐시)
+- `_progLoadStudentTestsForUid(uid, group, daysTarget)`: 3 분리 쿼리 병렬 (`targetAll==true` / `targetUids array-contains uid` / `targetGroups array-contains group`) + dedup
+
+### 5) 시험별 진도체크 페이지네이션 제거 (commit `0a3d15b`)
+
+- `testPagination` DOM `display:none`
+- `initPagination` pageSize 20 → 99999 (한 페이지에 모두)
+- 정렬 (`sortTable`) 기능 유지
+
+### 6) `targetUids` 평면 필드 마이그레이션 + server-side filter [Phase 1+2 큰 작업]
+
+**Phase 1 (commit `0daff3b`)** — 데이터 모델 정비:
+
+마이그레이션 (`scripts/migrate/backfill-test-targets.js`):
+- 옛 시험 93개 backfill (default 86 / orphan 6 / raloud2 1)
+- `targets[]` 객체 배열 → `targetUids[]` + `targetGroups[]` + `targetAll` 평면 필드
+- 규칙: `type='all'` → targetAll, `type='class'` → targetGroups.push(groupName), `type='student'` → targetUids.push(id)
+
+`_buildTargetIndex(targets)` 헬퍼 + `tpPublish` + mcq publish 두 곳 stamp.
+
+**인덱스 6개 deploy**:
+- `academyId + targetAll + createdAt desc`
+- `academyId + targetUids + createdAt desc` (array-contains)
+- `academyId + targetGroups + createdAt desc` (array-contains)
+- `academyId + testMode + targetAll + createdAt desc`
+- `academyId + testMode + targetUids + createdAt desc`
+- `academyId + testMode + targetGroups + createdAt desc`
+
+**Phase 2 (commit `cb40498`)** — server-side filter 적용:
+
+학원장 진도체크 학생별 탭: 학원 전체 → 학생 대상만 (위 4번 참조).
+
+학생앱 3 곳:
+- `_loadTestListPage` (시험 유형 메뉴) — 학원 전체 → 본인 대상만 3 쿼리 병렬
+- `_loadRecAiListPage` (녹음숙제) — 동일
+- `_updateAllBadgesAtOnce` (5종 통합 배지) — `testMode in [...] + targets 3 분리`
+- `filterMyTests` 호출 폐기
+
+**reads 효과**:
+- 학생앱 단어시험 메뉴: 학원 20개 → 본인 3-5개 (~75% 절감)
+- 학생앱 5종 메뉴 + 배지: 누적 250 → 75 reads/학생/day
+- 학원장 진도체크 학생별 클릭: 학원 ~15 → 학생 ~5 (~65% 절감)
+
+### 7) 성적 리포트 — from default 어제 + 이름 검색 30일 cap (commit `bb12005`/`b29b7b5`)
+
+- `initScoreReport` / `loadScoreReport` / `loadMoreScoreReport` fallback: 월초 → **어제 KST**
+- 기존 server-side filter (group/mode/from~to + limit 20 + cursor 더보기) 유지
+- **이름 검색 시**: from 30일 전 자동 override + `limit(1000)` → `limit(300)`
+- 검색칸 우측 안내: "이름 검색 시 최근 30일만 조회됩니다"
+
+### 8) 성장 리포트 학생 detail — 30일 server-side + 응시내역 lazy (commit `378f64e`)
+
+- `scores` fetch 에 `where('date','>=', 30일전)` server-side filter 추가
+- 통계 카드 + 응시내역 **같은 데이터 소스** (fetch 1회)
+- 응시내역 페이지네이션 (40건씩) 폐기 → **20건 기본 + 더보기 +20**
+- `_personalScoreVisible / _personalScoreData` 모듈 상태
+- 새 학생 클릭 시 visible 20 으로 reset
+
+**reads**: 학생당 전체 누적 ~100-300 → 30일 ~20-50 (70%+ 절감).
+
+### 9) 결제관리 월별 캐시 + 결산·타임라인 캐시 재사용 (commit `b6592e0`/`14c867f`)
+
+`_billingsByMonth = { 'YYYY-MM': [...billings] }` 월별 캐시:
+- `_renderBillingGrid`: cache hit 시 fetch skip
+- **캐시는 reference 저장** — in-place mutation (체크박스 토글, 항목 추가/수정/삭제) 자동 반영
+- `_billingInvalidateCache(ym)` 헬퍼 — 청구서 삭제·`_ensureCurrentMonthBillings` 새 생성 시
+- 월간 결산: `_billingsByMonth[현재월]` 재사용 (그리드 다녀온 후 0 reads)
+- 타임라인 (3개월): 3개월 모두 cache hit 면 fetch skip / 일부 miss 면 `in 쿼리` 후 월별 분리 저장
+
+**reads**: 그리드→결산→타임라인 = 325 → 195. 모두 캐시되면 0 reads.
+
+### 10) 대시보드 `loadDashStats` getCountFromServer [P0] (commit `d2c1296`)
+
+- 학생 카운트 (active/pause/out): `users` 학원 전체 fetch → **`getCountFromServer` × 3 병렬** (65 → 3 reads)
+- 미납 카운트: `_billingsByMonth` 캐시 hit 면 0 reads / miss 면 일반 fetch + 캐시 저장
+- 오늘 시험: `genTests` fetch → `getCountFromServer` 1회 (5 → 1 read)
+
+**reads** (학원장 진입당):
+- Before: ~135 reads
+- After 첫 진입: ~69 reads
+- After 결제 다녀온 후 재진입: ~4 reads (97% 절감)
+
+---
+
+## 작업 규칙 추가 (2026-05-14)
+
+신규:
+- **`getCountFromServer` 패턴** — 카운트만 필요한 곳 (대시보드 위젯, 한도 표시 등) `getDocs` 대신 사용 → reads 1회. 같은 composite index 사용. doc 내용 안 받음. 카운트 + 데이터 둘 다 필요한 곳은 `getDocs` 만 (1회 호출이 더 효율).
+- **월별·학생별·일자별 캐시 객체 패턴** — `{ key: [...] }` 형태 모듈 변수. **reference 저장 → in-place mutation 자동 반영**. mutation 후엔 명시적 `invalidate` 호출 (또는 새 doc 추가 시점). 캐시 무효화 시점 명확히.
+- **server-side filter 가 가장 큰 효과** — `targets[]` 같은 객체 array 는 평면 필드 (`targetUids`/`targetGroups`/`targetAll`) 마이그레이션 후 `array-contains` 가능. 학원 전체 fetch 폐기 → 본인 대상만. 학생앱 큰 reads 절감.
+- **`array-contains` 쿼리는 한 쿼리에 1개만** — `where(field, 'array-contains', val)` 같은 필드 두 개 OR 시 분리 쿼리 병렬 + 클라 dedup. Firestore `or()` 도 가능하나 인덱스 동일.
+- **lazy load 후 카운트는 `?`** — Book 폴더별 sets 카운트 같이 lazy 되는 데이터는 캐시 hit 한 폴더만 정확. 미선택 폴더는 `?` 표시. UX 안내 필수.
+- **페이지네이션 vs 더보기 — 더보기 권장** — `initPagination` 의 페이지 분할 UI 는 사용자 클릭 부담. 단일 페이지에 모두 표시 + [더 보기] 버튼 (cursor 또는 클라 측 visible 누적) 이 학원장 UX 우수. `initPagination` 호출은 정렬 위해 유지하되 `pageSize: 99999` 로 사실상 폐기.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-14)
+- `public/admin/js/app.js`: ~14,000+ 줄
+- `public/js/app.js`: ~5,600 줄
+- `firestore.indexes.json`: +9 인덱스 (genQuestionSets×2, genTests×6, 등)
+- 신규 마이그레이션: `backfill-questionset-bookid.js` / `backfill-test-targets.js`
+- SW 캐시: `kunsori-v491`
+
+## 진행률 (2026-05-14 종료)
+- **Firebase reads 최적화: ~85%** (학생앱·학원장앱 광범위 적용, 큰 손실 영역 거의 해소)
+- 멀티테넌시 인프라·녹음숙제·결제·브랜딩: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-14 갱신)
+1. **P1 — 공지·자료실 페이지네이션** (`loadNotices`/`loadHwFileAdmin` 학원 전체 fetch → 20 + 더보기)
+2. **P2 — `loadPersonalStudentTree` 5분 캐시** (성장 리포트 진입 시 학원 전체 학생 fetch)
+3. **P3 — `groups` fetch 중복 제거** (학원 단위 5-6곳 fetch → 모듈 캐시)
+4. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+5. **학원장 대시보드 달력 보강** — 생일 카테고리
+6. **v1.0 Polish 사이클**
+
+**완료 (이 세션, 2026-05-14)**:
+- ✅ 문제세트목록 lazy load (Book 폴더 클릭 시 sets fetch + 캐시)
+- ✅ 시험관리 sets lazy load (Book 폴더 클릭 시 sourceType+bookId server-side)
+- ✅ 진도체크 일자별 — 일자 조건 lazy + 캐시
+- ✅ 진도체크 학생별 — 학생 대상 server-side + 10일 + 더보기 30일 cap
+- ✅ 시험별 진도체크 — 페이지네이션 폐기 (더보기 단일)
+- ✅ `targetUids/targetGroups/targetAll` 마이그레이션 + 6 인덱스 + 학원장·학생앱 server-side filter
+- ✅ 성적 리포트 — from default 어제 + 이름 검색 30일 cap + 안내문
+- ✅ 성장 리포트 학생 detail — 30일 server-side + 응시내역 20+더보기
+- ✅ 결제관리 월별 캐시 + 결산·타임라인 재사용
+- ✅ 대시보드 `loadDashStats` getCountFromServer + 결제 캐시 재사용 [P0]
+- ✅ Book 폴더 이모지 📁 통일
+- ✅ getCountFromServer / 월별 캐시 / server-side filter 작업 규칙 명문화
