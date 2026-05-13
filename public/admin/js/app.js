@@ -394,17 +394,19 @@ async function _bigcalLoadEvents(year, month){
       });
     });
 
-    // 시험 — genTests.date 문자열 (academyId+createdAt 기존 인덱스 후 클라 필터)
+    // 시험 — date server-side range filter (genTests + academyId + date 인덱스, 2026-05-13)
+    // 학원 전체 시험 fetch X — 그 달 시험만 (보통 20~50 doc)
     const tSnap = await getDocs(query(
       collection(db, 'genTests'),
       where('academyId','==', academyId),
-      orderBy('createdAt','desc'),
-      limit(300)
+      where('date','>=', monthStart),
+      where('date','<=', monthEnd),
+      limit(500)
     ));
     tSnap.forEach(docSnap => {
       const t = docSnap.data();
       const date = t.date;
-      if (!date || date < monthStart || date > monthEnd) return;
+      if (!date) return;
       if (!events[date]) events[date] = { billings:[], tests:[] };
       events[date].tests.push({
         id: docSnap.id,

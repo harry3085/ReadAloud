@@ -51,6 +51,14 @@
       ]
     },
     {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "genQuestionSets",
       "queryScope": "COLLECTION",
       "fields": [
