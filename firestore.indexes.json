@@ -98,6 +98,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "group", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scores",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
         { "fieldPath": "mode", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
