@@ -5085,6 +5085,8 @@ window.tpOpenStudentScoreDetail = async (testId, uid) => {
 let _personalStudents = [];
 const _personalGroupOpen = new Set();   // 펼쳐진 반 이름들
 let _personalSelectedUid = null;
+let _personalScoreVisible = 20;   // 응시내역 표시 개수 (학생 클릭 시 reset, 더보기 시 +20)
+let _personalScoreData = [];      // 학생 30일치 scores (응시내역 렌더용)
 
 async function loadPersonalStudentList(){
   try{
@@ -5168,19 +5170,23 @@ window.loadPersonalScore = async(uid) => {
   try{
     const userSnap=await getDoc(doc(db,'users',uid));
     const u=userSnap.data();
-    // uid 표준 키 + academyId 필터 (멀티테넌시 rules 통과). 정렬은 클라 측.
+    // 최근 30일치만 fetch (server-side filter — 통계 + 응시내역 같은 데이터 소스, 2026-05-14)
+    const _from30d = _ymdKST(new Date(Date.now() - 30*24*3600*1000));
     const scoresSnap=await getDocs(query(
       collection(db,'scores'),
       where('uid','==',uid),
       where('academyId','==',window.MY_ACADEMY_ID),
+      where('date','>=', _from30d),
     ));
     const scores=scoresSnap.docs.map(d=>d.data())
       .sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
-    // 통계 카드는 최근 30일 (AI 리포트 분석 기준과 일치)
-    const _from30d = _ymdKST(new Date(Date.now() - 30*24*3600*1000));
-    const scores30d = scores.filter(s => (s.date || '') >= _from30d);
+    // 통계 카드 (30일치 = 전체 데이터)
+    const scores30d = scores;
     const avg30d = scores30d.length ? Math.round(scores30d.reduce((s,r)=>s+(r.score||0),0)/scores30d.length) : 0;
     const passed30d = scores30d.filter(s => (s.score||0) >= 80).length;
+    // 응시내역 더보기 상태 (학생 새로 클릭 시 20 으로 reset)
+    _personalScoreVisible = 20;
+    _personalScoreData = scores;
 
     // 트리에서 활성 학생 마킹 + history 사전 로드
     _personalSelectedUid = uid;
@@ -5258,7 +5264,7 @@ window.loadPersonalScore = async(uid) => {
       </div>
       <div style="font-weight:700;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
         📊 응시 내역
-        <span style="font-size:11px;color:var(--gray);font-weight:400;">(전체 누적 · 40건씩 페이지)</span>
+        <span style="font-size:11px;color:var(--gray);font-weight:400;">(최근 30일 · 20건 단위 더보기)</span>
       </div>
       <div class="table-wrap">
         <table style="table-layout:fixed;width:100%;">
@@ -5274,7 +5280,7 @@ window.loadPersonalScore = async(uid) => {
           <thead><tr><th>No</th><th>유형</th><th>교재명</th><th>시험명</th><th>점수</th><th>정답/전체</th><th>날짜</th></tr></thead>
           <tbody id="personalScoreBody"></tbody>
         </table>
-        <div id="personalScorePag" class="tbl-pagination"></div>
+        <div id="personalScoreLoadMore" style="padding:12px;text-align:center;"></div>
       </div>
     `;
 
@@ -5301,8 +5307,27 @@ window.loadPersonalScore = async(uid) => {
       }, 'grHistoryPag', 6, { pageSize: 5 });
     }
 
-    // 페이지네이션 (40건씩)
-    initPagination('personalScoreBody', scores, (s, i) => {
+    // 응시내역 렌더 (20개 기본 + 더보기, 30일 데이터 안에서)
+    _renderPersonalScores();
+  }catch(e){
+    console.error('[loadPersonalScore]', e);
+    detail.innerHTML=`<div style="color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+  }
+};
+
+// 응시내역 렌더 — _personalScoreData (30일치) 중 _personalScoreVisible 건만 표시
+function _renderPersonalScores() {
+  const tbody = document.getElementById('personalScoreBody');
+  const wrap = document.getElementById('personalScoreLoadMore');
+  if (!tbody) return;
+  const data = _personalScoreData || [];
+  const total = data.length;
+  const visible = Math.min(_personalScoreVisible, total);
+  const slice = data.slice(0, visible);
+  if (slice.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#bbb;">최근 30일 응시 내역이 없습니다</td></tr>`;
+  } else {
+    tbody.innerHTML = slice.map((s, i) => {
       const modeHtml = _unifiedTypeBadge(s.mode || 'vocab');
       const bookName = s.bookName || s.unitName || '-';
       const testName = s.testName || '-';
@@ -5316,11 +5341,22 @@ window.loadPersonalScore = async(uid) => {
         <td>${s.correct||0}/${s.total||0}</td>
         <td class="td-sub">${s.date||''}</td>
       </tr>`;
-    }, 'personalScorePag', 7, { pageSize: 40 });
-  }catch(e){
-    console.error('[loadPersonalScore]', e);
-    detail.innerHTML=`<div style="color:#e05050;padding:20px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
+    }).join('');
   }
+  if (wrap) {
+    if (visible >= total) {
+      wrap.innerHTML = total > 20
+        ? `<div style="color:#bbb;font-size:11px;">최근 30일 ${total}건 모두 표시</div>`
+        : '';
+    } else {
+      wrap.innerHTML = `<button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="loadMorePersonalScores()">+ 20건 더 보기 (${visible} / ${total})</button>`;
+    }
+  }
+}
+
+window.loadMorePersonalScores = () => {
+  _personalScoreVisible += 20;
+  _renderPersonalScores();
 };
 
 // ── AI 성장 리포트 (api/growth-report 호출 + 모달 + PDF) ─────────────────
