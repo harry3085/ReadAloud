@@ -404,19 +404,35 @@ async function _updateAllBadgesAtOnce() {
       const myUid = currentUser.uid;
       const tenDaysAgo = new Date(Date.now() - 10*864e5);
 
-      // 1회 통합 fetch — 5종 + 10일 + limit (시험 유형 화면과 동일 limit 으로 카운트 일치)
-      const tSnap = await getDocs(query(
-        collection(db, 'genTests'),
+      // server-side filter — 그 학생 대상만 (3 분리 쿼리 병렬, 2026-05-14)
+      const tBase = [
         where('academyId', '==', window.MY_ACADEMY_ID),
         where('testMode', 'in', Object.keys(_BADGE_MAP)),
         where('createdAt', '>=', tenDaysAgo),
         orderBy('createdAt', 'desc'),
-        limit(200)
-      ));
-      const myTests = filterMyTests(
-        tSnap.docs.map(d => ({id:d.id, ...d.data()})),
-        myGroup, myUid
-      );
+        limit(200),
+      ];
+      const tQueries = [
+        query(collection(db,'genTests'), ...tBase, where('targetAll','==', true)),
+        query(collection(db,'genTests'), ...tBase, where('targetUids','array-contains', myUid)),
+      ];
+      if (myGroup) {
+        tQueries.push(query(collection(db,'genTests'), ...tBase, where('targetGroups','array-contains', myGroup)));
+      }
+      const tSnaps = await Promise.all(tQueries.map(q => getDocs(q)));
+      const tSeen = new Set();
+      const myTests = [];
+      tSnaps.forEach(snap => {
+        snap.docs.forEach(d => {
+          if (!tSeen.has(d.id)) {
+            tSeen.add(d.id);
+            const data = d.data();
+            if (data.active !== false && !(Array.isArray(data.excludedUids) && data.excludedUids.includes(myUid))) {
+              myTests.push({id: d.id, ...data});
+            }
+          }
+        });
+      });
 
       // userCompleted batch — collectionGroup 1회 (N+1 → 1)
       const completedSet = new Set();
@@ -759,17 +775,40 @@ async function _loadTestListPage(type) {
   const myUid = currentUser?.uid || '';
   const sinceDate = new Date(Date.now() - state.daysLoaded * 864e5);
 
-  // 학원 시험 fetch (캐시 없음 — 실시간성 우선)
-  const snap = await getDocs(query(
-    collection(db,'genTests'),
+  // server-side filter — 그 학생 대상만 (3 분리 쿼리 병렬, 2026-05-14)
+  const baseConstraints = [
     where('academyId','==', window.MY_ACADEMY_ID),
     where('testMode','==', type),
     where('createdAt', '>=', sinceDate),
     orderBy('createdAt','desc'),
-    limit(200)
-  ));
-  const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  const myTests = filterMyTests(allTests, myGroup, myUid);
+    limit(200),
+  ];
+  const queries = [
+    query(collection(db,'genTests'), ...baseConstraints, where('targetAll','==', true)),
+    query(collection(db,'genTests'), ...baseConstraints, where('targetUids','array-contains', myUid)),
+  ];
+  if (myGroup) {
+    queries.push(query(collection(db,'genTests'), ...baseConstraints, where('targetGroups','array-contains', myGroup)));
+  }
+  const snaps = await Promise.all(queries.map(q => getDocs(q)));
+  // dedup + createdAt desc 정렬
+  const seen = new Set();
+  const allTests = [];
+  snaps.forEach(snap => {
+    snap.docs.forEach(d => {
+      if (!seen.has(d.id)) {
+        seen.add(d.id);
+        allTests.push({id: d.id, ...d.data()});
+      }
+    });
+  });
+  allTests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  // active / excludedUids 클라 필터만 (대상 매칭은 server-side 완료)
+  const myTests = allTests.filter(t => {
+    if (t.active === false) return false;
+    if (Array.isArray(t.excludedUids) && t.excludedUids.includes(myUid)) return false;
+    return true;
+  });
 
   // userCompleted batch — 한 진입당 1회 (collectionGroup, N+1 → 1)
   if (!state.userCompMap) {
@@ -2023,17 +2062,38 @@ async function _loadRecAiListPage(){
   const myUid = currentUser?.uid || '';
   const sinceDate = new Date(Date.now() - state.daysLoaded * 864e5);
 
-  // 10일 default + 더보기 +10일 (30일 상한). 캐시 없음 (실시간성)
-  const snap = await getDocs(query(
-    collection(db,'genTests'),
+  // server-side filter — 그 학생 대상만 (3 분리 쿼리 병렬, 2026-05-14)
+  const baseConstraints = [
     where('academyId','==', window.MY_ACADEMY_ID),
     where('testMode','==', 'recording'),
     where('createdAt', '>=', sinceDate),
     orderBy('createdAt','desc'),
-    limit(200)
-  ));
-  const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  const myTests = filterMyTests(allTests, myGroup, myUid);
+    limit(200),
+  ];
+  const queries = [
+    query(collection(db,'genTests'), ...baseConstraints, where('targetAll','==', true)),
+    query(collection(db,'genTests'), ...baseConstraints, where('targetUids','array-contains', myUid)),
+  ];
+  if (myGroup) {
+    queries.push(query(collection(db,'genTests'), ...baseConstraints, where('targetGroups','array-contains', myGroup)));
+  }
+  const snaps = await Promise.all(queries.map(q => getDocs(q)));
+  const seen = new Set();
+  const allTests = [];
+  snaps.forEach(snap => {
+    snap.docs.forEach(d => {
+      if (!seen.has(d.id)) {
+        seen.add(d.id);
+        allTests.push({id: d.id, ...d.data()});
+      }
+    });
+  });
+  allTests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  const myTests = allTests.filter(t => {
+    if (t.active === false) return false;
+    if (Array.isArray(t.excludedUids) && t.excludedUids.includes(myUid)) return false;
+    return true;
+  });
 
   // userCompleted batch — 진입당 1회 (N+1 → 1)
   if (!state.userCompMap) {
