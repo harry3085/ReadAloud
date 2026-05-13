@@ -4280,7 +4280,19 @@ function renderScoreReportRows(){
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
 }
 
-window.searchScoreReport = () => renderScoreReportRows();
+// 이름 검색 — 빈 입력은 즉시 client filter (이전 fetch 결과), 입력 있으면 0.5초 debounce 후 server fetch (limit 1000)
+let _srSearchDebounce = null;
+window.searchScoreReport = () => {
+  clearTimeout(_srSearchDebounce);
+  const q = (document.getElementById('scoreSearch')?.value || '').trim();
+  if (!q) {
+    // 입력 지움 — 빠른 client 재렌더 (1000 받은 상태면 그대로, 20 받은 상태면 그대로)
+    // 직전 검색 후 입력 지운 경우 작은 limit 결과로 복귀하려면 loadScoreReport() 호출
+    loadScoreReport();
+    return;
+  }
+  _srSearchDebounce = setTimeout(() => loadScoreReport(), 500);
+};
 
 window.sortScoreReport = (col) => {
   if(_srSort.col===col){
@@ -4336,6 +4348,11 @@ async function _srLoadTestMeta(testIds) {
 function _srRenderLoadMore() {
   const wrap = document.getElementById('srLoadMoreWrap');
   if (!wrap) return;
+  const searchQ = (document.getElementById('scoreSearch')?.value || '').trim();
+  if (searchQ) {
+    wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:11px;">이름 검색 모드 — 기간 내 모든 응시에서 검색</div>';
+    return;
+  }
   if (_srState.exhausted) {
     wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨 · 더 보려면 시작일을 앞당겨 [조회]</div>';
   } else {
@@ -4344,6 +4361,7 @@ function _srRenderLoadMore() {
 }
 
 // scores 쿼리 빌더 — date/group/mode 조건부 추가 (composite index 활용)
+// 이름 검색 모드면 limit 1000 (기간 내 전체에서 client filter)
 function _srBuildConstraints(params, useCursor) {
   const constraints = [
     where('academyId', '==', window.MY_ACADEMY_ID),
@@ -4355,7 +4373,8 @@ function _srBuildConstraints(params, useCursor) {
   constraints.push(orderBy('date', 'desc'));
   constraints.push(orderBy('createdAt', 'desc'));
   if (useCursor && _srState.lastDoc) constraints.push(startAfter(_srState.lastDoc));
-  constraints.push(limit(SR_PAGE_SIZE));
+  const searchQ = (document.getElementById('scoreSearch')?.value || '').trim();
+  constraints.push(limit(searchQ ? 1000 : SR_PAGE_SIZE));
   return constraints;
 }
 
