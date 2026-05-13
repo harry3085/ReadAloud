@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, startAfter, documentId, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, startAfter, documentId, getCountFromServer, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -78,6 +78,51 @@ function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*100
 // 비용 최적화 — 기간 헬퍼 (Firestore read 절감, 2026-05-13)
 function _ymdMonthStartKST(){ return _ymdKST().slice(0,7) + '-01'; }
 function _ymdDaysAgoKST(n){ return _ymdKST(new Date(Date.now() - n*864e5)); }
+
+// 콘텐츠 한도 — 학원당 공지/메시지/자료실 doc 수 (2026-05-14)
+// super_admin 글로벌 default (appConfig/limits) + 학원별 customLimits override
+const CONTENT_LIMITS_DEFAULTS = { noticesPerAcademy: 20, messagesPerAcademy: 50, hwFilesPerAcademy: 30 };
+let _contentLimitsCache = null;
+async function _loadContentLimits() {
+  if (_contentLimitsCache) return _contentLimitsCache;
+  try {
+    const [gSnap, aSnap] = await Promise.all([
+      getDoc(doc(db, 'appConfig', 'limits')),
+      getDoc(doc(db, 'academies', window.MY_ACADEMY_ID)),
+    ]);
+    const global = gSnap.exists() ? gSnap.data() : {};
+    const academy = aSnap.exists() ? aSnap.data() : {};
+    const cl = academy.customLimits || {};
+    _contentLimitsCache = {
+      noticesPerAcademy: cl.noticesPerAcademy ?? global.noticesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy,
+      messagesPerAcademy: cl.messagesPerAcademy ?? global.messagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.messagesPerAcademy,
+      hwFilesPerAcademy: cl.hwFilesPerAcademy ?? global.hwFilesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy,
+    };
+  } catch(e) {
+    console.warn('[limits] load fail:', e.message);
+    _contentLimitsCache = { ...CONTENT_LIMITS_DEFAULTS };
+  }
+  return _contentLimitsCache;
+}
+async function _checkContentLimit(kind) {
+  // kind: 'notices' | 'pushNotifications' | 'hwFiles'
+  const limits = await _loadContentLimits();
+  const limitKey = { notices: 'noticesPerAcademy', pushNotifications: 'messagesPerAcademy', hwFiles: 'hwFilesPerAcademy' }[kind];
+  if (!limitKey) return { ok: true };
+  const maxCount = limits[limitKey];
+  try {
+    const snap = await getCountFromServer(query(collection(db, kind), where('academyId','==', window.MY_ACADEMY_ID)));
+    const cur = snap.data().count;
+    if (cur >= maxCount) {
+      const label = { notices: '공지', pushNotifications: '메시지', hwFiles: '자료실' }[kind];
+      return { ok: false, cur, max: maxCount, label };
+    }
+    return { ok: true, cur, max: maxCount };
+  } catch(e) {
+    console.warn('[limits] count fail:', e.message);
+    return { ok: true };
+  }
+}
 
 // fetch + idToken 자동주입 wrapper.
 // 일별/월별 사용량 카운트는 서버 quota.js incrementUsage 가 단일 writer 로 통합 처리
@@ -1566,6 +1611,9 @@ window.saveNotice = async() => {
   const targets = pickerGetTargets();
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  // 학원당 공지 한도 검사 (2026-05-14)
+  const chk = await _checkContentLimit('notices');
+  if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 추가해주세요.`); return; }
   await addDoc(collection(db,'notices'),{
     title, content,
     targets,
@@ -1775,6 +1823,10 @@ window.uploadHwFileAdmin = async() => {
   if (!name) { showAlert('입력 확인', '파일명을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
   if (!file) { showAlert('입력 확인', '파일을 선택하세요.'); return; }
+
+  // 학원당 자료실 한도 검사 (2026-05-14)
+  const chk = await _checkContentLimit('hwFiles');
+  if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 등록해주세요.`); return; }
 
   // 사이즈 사전 체크 (storage.rules: 20 MB)
   const MAX_BYTES = 20 * 1024 * 1024;
@@ -3868,6 +3920,9 @@ window.sendMessage = async() => {
   const body  = document.getElementById('msgBody').value.trim();
   if (!title||!body) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  // 학원당 메시지 한도 검사 (2026-05-14)
+  const chk = await _checkContentLimit('pushNotifications');
+  if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 발송해주세요.`); return; }
   try{
     let attachment = null;
     if (_msgPendingAttach) {

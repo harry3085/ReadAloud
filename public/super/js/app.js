@@ -2794,6 +2794,7 @@ let _t6Plans = [];
 async function loadQuotaAdmin() {
   await Promise.all([
     loadPlanQuotaCards(),
+    loadContentLimits(),
     loadQuotaChangeHistory(),
   ]);
   // 검색 결과는 사용자가 입력했을 때만 갱신
@@ -2801,6 +2802,40 @@ async function loadQuotaAdmin() {
   if (kw) searchAcademyForQuota(kw);
   else document.getElementById('quotaAcademyResults').innerHTML = '<div style="color:var(--gray);padding:8px;">학원명을 입력하세요.</div>';
 }
+
+// 콘텐츠 한도 (글로벌 default) — appConfig/limits (2026-05-14)
+const CONTENT_LIMITS_DEFAULTS = { noticesPerAcademy: 20, messagesPerAcademy: 50, hwFilesPerAcademy: 30 };
+async function loadContentLimits() {
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'limits'));
+    const data = snap.exists() ? snap.data() : {};
+    document.getElementById('climNotices').value  = data.noticesPerAcademy  ?? CONTENT_LIMITS_DEFAULTS.noticesPerAcademy;
+    document.getElementById('climMessages').value = data.messagesPerAcademy ?? CONTENT_LIMITS_DEFAULTS.messagesPerAcademy;
+    document.getElementById('climHwFiles').value  = data.hwFilesPerAcademy  ?? CONTENT_LIMITS_DEFAULTS.hwFilesPerAcademy;
+  } catch(e) { console.warn('[contentLimits] load:', e.message); }
+}
+window.saveContentLimits = async() => {
+  const n = parseInt(document.getElementById('climNotices').value);
+  const m = parseInt(document.getElementById('climMessages').value);
+  const h = parseInt(document.getElementById('climHwFiles').value);
+  if (![n,m,h].every(v => isFinite(v) && v >= 1 && v <= 500)) {
+    document.getElementById('climStatus').textContent = '⚠️ 1~500 사이 값 입력';
+    document.getElementById('climStatus').style.color = '#dc2626';
+    return;
+  }
+  try {
+    await setDoc(doc(db, 'appConfig', 'limits'), {
+      noticesPerAcademy: n,
+      messagesPerAcademy: m,
+      hwFilesPerAcademy: h,
+    }, { merge: true });
+    document.getElementById('climStatus').textContent = '✓ 저장됨';
+    document.getElementById('climStatus').style.color = '#059669';
+  } catch(e) {
+    document.getElementById('climStatus').textContent = '✗ 저장 실패: ' + e.message;
+    document.getElementById('climStatus').style.color = '#dc2626';
+  }
+};
 
 async function loadPlanQuotaCards() {
   const el = document.getElementById('planQuotaCards');
