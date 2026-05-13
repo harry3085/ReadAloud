@@ -524,14 +524,15 @@ function _bigcalRender(){
       dow===0 ? 'sun' : dow===6 ? 'sat' : ''
     ].filter(Boolean).join(' ');
 
-    const billItems = ev.billings.map(b => {
+    // 결제 셀 — 민감정보 토글 OFF 면 빈 배열 (외부 노출 차단)
+    const billItems = _dashSensitiveVisible ? ev.billings.map(b => {
       const cls = b.status === 'paid' ? 'evt-billing-paid'
               : b.status === 'partial' ? 'evt-billing-partial'
               : 'evt-billing-unpaid';
       const icon = b.status === 'paid' ? '✅' : b.status === 'partial' ? '⏳' : '💳';
       const statusLabel = b.status === 'paid' ? '납부' : b.status === 'partial' ? '일부' : '미납';
       return `<div class="bigcal-event ${cls}" title="${esc(b.userName)} ${b.amount.toLocaleString()}원 (${statusLabel})">${icon} ${esc(b.userName)}</div>`;
-    });
+    }) : [];
     const testItems = ev.tests.map(t => {
       const icon = t.speaking ? '🎤' : '📝';
       return `<div class="bigcal-event evt-test" title="${esc(t.name)}">${icon} ${esc(t.name)}</div>`;
@@ -577,7 +578,8 @@ function _bigcalRenderSide(){
 
   let html = `<div class="bigcal-side-date">${dateLabel}</div>`;
 
-  if (ev.billings.length){
+  // 결제 섹션 — 민감정보 토글 OFF 면 표시 X
+  if (_dashSensitiveVisible && ev.billings.length){
     const rows = ev.billings.map(b => {
       const statusBadge = b.status === 'paid'
         ? '<span class="badge badge-green">납부</span>'
@@ -628,6 +630,8 @@ function _bigcalRenderSide(){
 // 결제 상세 인라인 모달 (보기 전용 — 편집은 결제관리 페이지에서)
 const _BIGCAL_TYPE_LABELS = { tuition:'수강료', book:'교재비', test:'시험비', uniform:'교복·체육복', extra:'기타' };
 window._bigcalShowBillingDetail = async (billingId) => {
+  // 민감정보 토글 가드 — OFF 면 모달 안 열림
+  if (!_dashSensitiveVisible) { showToast('상단 [민감정보 보기] 를 먼저 누르세요'); return; }
   try {
     const snap = await getDoc(doc(db, 'billings', billingId));
     if (!snap.exists()){ showToast('청구서를 찾을 수 없습니다'); return; }
@@ -823,8 +827,9 @@ async function bigcalInit(){
 }
 
 // ── 대시보드 ──────────────────────────────────────────
-// 통계 카드 (민감 정보) — default 숨김. 토글 시만 fetch (lazy).
+// 민감 정보 (통계 카드 + 달력 결제) — default 숨김. 토글 시만 표시.
 let _dashStatsLoaded = false;
+let _dashSensitiveVisible = false;
 async function initDashboard(){
   const now = new Date();
   document.getElementById('dashDate').textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -841,18 +846,20 @@ window.toggleDashStats = async () => {
   const grid = document.getElementById('dashStatsGrid');
   const btn = document.getElementById('dashStatsToggleBtn');
   if (!grid) return;
-  const visible = grid.style.display !== 'none';
-  if (!visible) {
+  _dashSensitiveVisible = !_dashSensitiveVisible;
+  if (_dashSensitiveVisible) {
     // 표시 — 첫 호출 시 fetch
     if (!_dashStatsLoaded) {
       try { await loadDashStats(); _dashStatsLoaded = true; } catch(e) { console.error(e); }
     }
     grid.style.display = '';
-    if (btn) btn.textContent = '🙈 통계 숨기기';
+    if (btn) btn.textContent = '🙈 민감정보 숨기기';
   } else {
     grid.style.display = 'none';
-    if (btn) btn.textContent = '📊 통계 보기';
+    if (btn) btn.textContent = '📊 민감정보 보기';
   }
+  // 달력 결제 셀 + 사이드패널 결제 섹션 재렌더
+  if (typeof _bigcalRender === 'function') _bigcalRender();
 };
 
 async function loadApiUsage(){
