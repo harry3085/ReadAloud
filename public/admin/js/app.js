@@ -14426,12 +14426,13 @@ let _prog = {
   tab: 'date',          // 'date' | 'student' | 'test'
   groups: [],           // 반 목록
   students: [],         // 재원 학생 [{ uid, name, group, ... }]
-  tests: [],            // 학생별 탭용 60일 시험 (학생별 탭 첫 진입 시 lazy fetch)
+  tests: [],            // 학생별 탭용 시험 누적 (10일/20일/30일 점진 fetch)
   testsByDate: {},      // 일자별 탭용 — { 'YYYY-MM-DD': [...tests] }
   selectedUid: null,    // 선택된 학생 uid
   userCompCache: {},    // { uid: { testId: comp } } — 학생별 userCompleted 캐시
   loaded: false,        // users + groups 로드 여부
-  allTestsLoaded: false,// 학생별 탭용 60일 시험 fetch 여부
+  studentTestDays: 0,   // 학생별 탭 fetch 된 일수 (0=미로드, 10/20/30 — 학생앱 패턴)
+  studentLoading: false,// 학생 시험 fetch 중 (중복 호출 방지)
   dateInited: false,    // 일자 input 초기 set (어제) 여부
   dateLoading: null,    // 현재 fetch 중인 일자 (중복 호출 방지)
 };
@@ -14443,7 +14444,9 @@ const _PROG_TYPES = [
   { mode: 'mcq',         label: '본문이해·문법' },
   { mode: 'recording',   label: '녹음숙제'     },
 ];
-const _PROG_DAYS = 60;   // 최근 60일 시험만
+const _PROG_DAYS = 30;            // (deprecated — _PROG_STUDENT_DAYS_CAP 로 대체. 안전 폴백)
+const _PROG_STUDENT_DAYS_STEP = 10; // 학생별 탭 — 1차 + 더보기 1회당 일수
+const _PROG_STUDENT_DAYS_CAP = 30;  // 학생별 탭 — 최대 일수 (학생앱 패턴과 동일)
 
 async function loadProgressCheck() {
   if (_prog.loaded) {
@@ -14506,20 +14509,49 @@ async function _progFetchTestsByDate(ymd) {
   }
 }
 
-// 학생별 탭용 60일 시험 lazy fetch (학생 클릭 시 처음에만 한 번)
-async function _progEnsureAllTestsLoaded() {
-  if (_prog.allTestsLoaded) return;
-  const startMs = Date.now() - _PROG_DAYS * 24 * 3600 * 1000;
-  const snap = await getDocs(query(
-    collection(db, 'genTests'),
-    where('academyId', '==', window.MY_ACADEMY_ID),
-    orderBy('createdAt', 'desc'),
-    limit(300)
-  ));
-  _prog.tests = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(t => (t.createdAt?.toMillis?.() || 0) >= startMs);
-  _prog.allTestsLoaded = true;
+// 학생별 탭용 시험 점진 fetch (학생앱 패턴: 10일 → 20일 → 30일 cap)
+// daysTarget: 10 / 20 / 30. 이미 로드된 일수 (_prog.studentTestDays) 보다 작으면 skip.
+async function _progLoadStudentTestsPage(daysTarget) {
+  const currentDays = _prog.studentTestDays;
+  if (currentDays >= daysTarget) return;
+  if (_prog.studentLoading) return;
+  _prog.studentLoading = true;
+  try {
+    const sinceMs = Date.now() - daysTarget * 24 * 3600 * 1000;
+    const constraints = [
+      where('academyId', '==', window.MY_ACADEMY_ID),
+      where('createdAt', '>=', new Date(sinceMs)),
+    ];
+    // 이미 로드된 구간 (createdAt >= currentDays 전) 제외
+    if (currentDays > 0) {
+      const untilMs = Date.now() - currentDays * 24 * 3600 * 1000;
+      constraints.push(where('createdAt', '<', new Date(untilMs)));
+    }
+    constraints.push(orderBy('createdAt', 'desc'));
+    const snap = await getDocs(query(collection(db, 'genTests'), ...constraints));
+    const newTests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 누적 + dedup
+    const seen = new Set(_prog.tests.map(t => t.id));
+    newTests.forEach(t => { if (!seen.has(t.id)) _prog.tests.push(t); });
+    _prog.studentTestDays = daysTarget;
+  } finally {
+    _prog.studentLoading = false;
+  }
+}
+
+// 한 학생의 userCompleted batch fetch (학생 클릭 시 + 더보기 후 재구성)
+async function _progLoadUserCompleted(uid) {
+  if (!uid) return {};
+  const fetches = _prog.tests.map(t =>
+    getDoc(doc(db, 'genTests', t.id, 'userCompleted', uid))
+      .then(snap => ({ testId: t.id, data: snap.exists() ? snap.data() : null }))
+      .catch(() => ({ testId: t.id, data: null }))
+  );
+  const results = await Promise.all(fetches);
+  const map = {};
+  results.forEach(r => { if (r.data) map[r.testId] = r.data; });
+  _prog.userCompCache[uid] = map;
+  return map;
 }
 
 function _progFillGroupFilter() {
@@ -14592,30 +14624,18 @@ window.progSelectStudent = async function (uid) {
     label.style.color = 'var(--text)';
   }
   progRenderStudentList();  // 선택 강조 갱신
-  // 학생별 탭용 60일 시험 lazy fetch (이번 진입에 처음 1회만)
-  if (!_prog.allTestsLoaded) {
-    const detail = document.getElementById('progStudentDetail');
+  const detail = document.getElementById('progStudentDetail');
+  // 시험 첫 로드 — 10일치 (학생앱 패턴)
+  if (_prog.studentTestDays === 0) {
     if (detail) detail.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray);font-size:14px;">시험 목록 불러오는 중...</div>`;
-    try { await _progEnsureAllTestsLoaded(); } catch (e) { console.warn('[progress] allTests:', e); }
+    try { await _progLoadStudentTestsPage(_PROG_STUDENT_DAYS_STEP); }
+    catch (e) { console.warn('[progress] tests:', e); }
   }
-  // 학생 userCompleted 캐시
+  // 학생 userCompleted 캐시 (miss 시만)
   if (!_prog.userCompCache[uid]) {
-    const detail = document.getElementById('progStudentDetail');
     if (detail) detail.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray);font-size:14px;">진도 불러오는 중...</div>`;
-    try {
-      const fetches = _prog.tests.map(t =>
-        getDoc(doc(db, 'genTests', t.id, 'userCompleted', uid))
-          .then(snap => ({ testId: t.id, data: snap.exists() ? snap.data() : null }))
-          .catch(() => ({ testId: t.id, data: null }))
-      );
-      const results = await Promise.all(fetches);
-      const map = {};
-      results.forEach(r => { if (r.data) map[r.testId] = r.data; });
-      _prog.userCompCache[uid] = map;
-    } catch (e) {
-      console.warn('[progress] userCompleted:', e);
-      _prog.userCompCache[uid] = {};
-    }
+    try { await _progLoadUserCompleted(uid); }
+    catch (e) { console.warn('[progress] userCompleted:', e); _prog.userCompCache[uid] = {}; }
   }
   _progRenderStudentDetail();
 };
@@ -14649,12 +14669,46 @@ function _progRenderStudentDetail() {
     return { type, inProgress, completed };
   });
 
+  // 더보기 버튼 — 30일 cap 까지
+  const days = _prog.studentTestDays;
+  const atCap = days >= _PROG_STUDENT_DAYS_CAP;
+  const loadMoreHtml = atCap
+    ? `<div style="text-align:center;padding:12px;color:#bbb;font-size:11px;">최근 ${days}일 시험 전체 표시 (cap)</div>`
+    : `<div style="text-align:center;padding:12px;">
+        <button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="progLoadMoreStudentTests()">
+          +${_PROG_STUDENT_DAYS_STEP}일 더보기 (현재 ${days}일)
+        </button>
+      </div>`;
+
   detail.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(5,minmax(200px,1fr));gap:12px;">
       ${cols.map(c => _progBuildColumnHtml(c)).join('')}
     </div>
+    ${loadMoreHtml}
   `;
 }
+
+// 학생별 탭 — +10일 더보기 (학생앱 패턴, 30일 cap)
+window.progLoadMoreStudentTests = async function () {
+  const next = Math.min(_prog.studentTestDays + _PROG_STUDENT_DAYS_STEP, _PROG_STUDENT_DAYS_CAP);
+  if (next <= _prog.studentTestDays) return;
+  const detail = document.getElementById('progStudentDetail');
+  if (detail) {
+    const btn = detail.querySelector('button[onclick*="progLoadMoreStudentTests"]');
+    if (btn) { btn.textContent = '불러오는 중...'; btn.disabled = true; }
+  }
+  try {
+    await _progLoadStudentTestsPage(next);
+    // 새 일수 구간 시험에 대해 userCompleted 도 batch — 모든 캐시된 학생 cache 무효화
+    // (현재 선택 학생만 즉시 재 batch, 다른 학생은 클릭 시 재구성)
+    _prog.userCompCache = {};
+    if (_prog.selectedUid) await _progLoadUserCompleted(_prog.selectedUid);
+  } catch (e) {
+    console.warn('[progress] load more:', e);
+    showToast('더보기 실패: ' + e.message);
+  }
+  _progRenderStudentDetail();
+};
 
 // 시험이 이 학생에게 배정됐는지
 function _progTestAssignedTo(test, uid, group) {
