@@ -433,26 +433,27 @@
   <div class="page" id="page-student-pause">
     <div class="page-header">
       <div><div class="page-title">휴원생 관리</div><div class="page-sub">휴원 중인 학생을 관리합니다</div></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
-        <button class="btn btn-secondary" onclick="exportStudentExcel('pause')">📊 엑셀 내보내기</button>
-      </div>
+      <div></div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="pauseSearch" placeholder="🔍 이름, 아이디 검색..." onkeyup="searchStudentsPause()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
+        <select id="pauseClassFilter" onchange="filterStudentsPause()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+          <option value="">반을 선택하세요</option>
+        </select>
+        <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button class="action-btn primary" onclick="restoreSelectedStudent('pause')">✅ 재원처리</button>
+          <button class="action-btn danger" onclick="outSelectedStudent()">🚪 퇴원처리</button>
+          <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        </div>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th style="width:36px;"><input type="checkbox" id="pauseCheckAll" onchange="toggleCheck('pauseTableBody',this)"></th><th onclick="sortTable('pauseTableBody',0)" class="sortable">No</th><th onclick="sortTable('pauseTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('pauseTableBody',2)" class="sortable">이름</th><th onclick="sortTable('pauseTableBody',3)" class="sortable">생일</th><th onclick="sortTable('pauseTableBody',4)" class="sortable">학교</th><th onclick="sortTable('pauseTableBody',5)" class="sortable">학년</th><th onclick="sortTable('pauseTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('pauseTableBody',7)" class="sortable">휴원일</th><th onclick="sortTable('pauseTableBody',8)" class="sortable">수강료</th><th onclick="sortTable('pauseTableBody',9)" class="sortable">납부일</th></tr></thead>
-          <tbody id="pauseTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <tbody id="pauseTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr></tbody>
         </table>
-        <div class="tbl-toolbar">
-          <div class="tbl-actions">
-            <button class="action-btn primary" onclick="restoreSelectedStudent('pause')">✅ 재원처리</button>
-            <button class="action-btn danger" onclick="outSelectedStudent()">🚪 퇴원처리</button>
-            <button class="action-btn" onclick="exportStudentExcel('pause')">📊 엑셀내보내기</button>
-          </div>
-          <div class="tbl-page" id="pausePagination"></div>
-        </div>
       </div>
+      <div id="pauseLoadMoreWrap"></div>
     </div>
   </div>
 
@@ -460,26 +461,27 @@
   <div class="page" id="page-student-out">
     <div class="page-header">
       <div><div class="page-title">퇴원생 관리</div><div class="page-sub">퇴원한 학생을 관리합니다</div></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
-        <button class="btn btn-secondary" onclick="exportStudentExcel('out')">📊 엑셀 내보내기</button>
-      </div>
+      <div></div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="outSearch" placeholder="🔍 이름, 아이디 검색..." onkeyup="searchStudentsOut()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
+        <select id="outClassFilter" onchange="filterStudentsOut()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+          <option value="">반을 선택하세요</option>
+        </select>
+        <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button class="action-btn primary" onclick="restoreSelectedStudent('out')">✅ 재원처리</button>
+          <button class="action-btn danger" onclick="deleteSelectedOutStudent()">🗑 삭제</button>
+          <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        </div>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th style="width:36px;"><input type="checkbox" id="outCheckAll" onchange="toggleCheck('outTableBody',this)"></th><th onclick="sortTable('outTableBody',0)" class="sortable">No</th><th onclick="sortTable('outTableBody',1)" class="sortable">아이디</th><th onclick="sortTable('outTableBody',2)" class="sortable">이름</th><th onclick="sortTable('outTableBody',3)" class="sortable">생일</th><th onclick="sortTable('outTableBody',4)" class="sortable">학교</th><th onclick="sortTable('outTableBody',5)" class="sortable">학년</th><th onclick="sortTable('outTableBody',6)" class="sortable">등록일</th><th onclick="sortTable('outTableBody',7)" class="sortable">퇴원일</th><th onclick="sortTable('outTableBody',8)" class="sortable">수강료</th><th onclick="sortTable('outTableBody',9)" class="sortable">납부일</th></tr></thead>
-          <tbody id="outTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <tbody id="outTableBody"><tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr></tbody>
         </table>
-        <div class="tbl-toolbar">
-          <div class="tbl-actions">
-            <button class="action-btn primary" onclick="restoreSelectedStudent('out')">✅ 재원처리</button>
-            <button class="action-btn danger" onclick="deleteSelectedOutStudent()">🗑 삭제</button>
-            <button class="action-btn" onclick="exportStudentExcel('out')">📊 엑셀내보내기</button>
-          </div>
-          <div class="tbl-page" id="outPagination"></div>
-        </div>
       </div>
+      <div id="outLoadMoreWrap"></div>
     </div>
   </div>
 

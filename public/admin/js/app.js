@@ -1314,75 +1314,91 @@ window.deleteClass = async(id,name) => {
 };
 
 // ── 학생 관리 ──────────────────────────────────────
-// 재원생 페이지네이션 (2026-05-14 server-side 반 필터 + 더보기, 학원 전체 fetch X)
-let _stuState = { lastDoc: null, exhausted: false, group: null };
+// 학생관리 페이지네이션 (2026-05-14 server-side 반 필터 + 더보기, status 별 분리)
 const STU_PAGE_SIZE = 20;
+const _stuStates = {
+  active: { lastDoc: null, exhausted: false, group: null },
+  pause:  { lastDoc: null, exhausted: false, group: null },
+  out:    { lastDoc: null, exhausted: false, group: null },
+};
+const STU_TBODY  = { active:'studentTableBody',  pause:'pauseTableBody',  out:'outTableBody' };
+const STU_WRAP   = { active:'studentLoadMoreWrap', pause:'pauseLoadMoreWrap', out:'outLoadMoreWrap' };
+const STU_FILTER = { active:'studentClassFilter', pause:'pauseClassFilter', out:'outClassFilter' };
+const STU_SEARCH = { active:'studentSearch',     pause:'pauseSearch',     out:'outSearch' };
+const STU_COLSPAN= { active: 12, pause: 11, out: 11 };
 
 async function loadStudents(status='active'){
-  const elMap={'active':'studentTableBody','pause':'pauseTableBody','out':'outTableBody'};
-  const el=document.getElementById(elMap[status]);
-  if(!el)return;
-  if(status==='active'){
-    // 진입 시 표 비움 + groups fetch (반 select 채움). 학생 fetch 는 반 선택 시.
-    _stuState = { lastDoc: null, exhausted: false, group: null };
-    allStudents = [];
-    el.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>';
-    const wrap = document.getElementById('studentLoadMoreWrap');
-    if (wrap) wrap.innerHTML = '';
-    try {
-      const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
-      const sel=document.getElementById('studentClassFilter');
-      if(sel) sel.innerHTML='<option value="">반을 선택하세요</option>'
-        + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('')
-        + '<option value="__all__">전체 반</option>';
-      _syncTuitionToggleBtnLabel();
-    } catch(e) { el.innerHTML='<tr><td colspan="12" style="text-align:center;color:#e05050;">반 목록 로드 실패</td></tr>'; }
-    return;
-  }
-  // 휴원/퇴원 — 기존 동작 유지 (별도 세션)
-  try{
-    const snap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('role','==','student'),where('status','==',status)));
-    allStudents=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderStudentTable(status, allStudents);
+  const el = document.getElementById(STU_TBODY[status]);
+  if (!el) return;
+  // 진입 시 표 비움 + groups fetch (반 select 채움). 학생 fetch 는 반 선택 시.
+  _stuStates[status] = { lastDoc: null, exhausted: false, group: null };
+  allStudents = [];
+  el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>`;
+  const wrap = document.getElementById(STU_WRAP[status]); if (wrap) wrap.innerHTML = '';
+  try {
+    const classSnap = await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
+    const sel = document.getElementById(STU_FILTER[status]);
+    if (sel) sel.innerHTML = '<option value="">반을 선택하세요</option>'
+      + classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('')
+      + '<option value="__all__">전체 반</option>';
     _syncTuitionToggleBtnLabel();
-  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+  } catch(e) { el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#e05050;">반 목록 로드 실패</td></tr>`; }
 }
 
-async function _stuFetchPage(useCursor) {
-  const group = _stuState.group;
+async function _stuFetchPage(status, useCursor) {
+  const state = _stuStates[status];
   const constraints = [
     where('academyId','==', window.MY_ACADEMY_ID),
     where('role','==','student'),
-    where('status','==','active'),
+    where('status','==', status),
   ];
-  if (group && group !== '__all__') constraints.push(where('group','==', group));
-  if (useCursor && _stuState.lastDoc) constraints.push(startAfter(_stuState.lastDoc));
+  if (state.group && state.group !== '__all__') constraints.push(where('group','==', state.group));
+  if (useCursor && state.lastDoc) constraints.push(startAfter(state.lastDoc));
   constraints.push(limit(STU_PAGE_SIZE));
   const snap = await getDocs(query(collection(db,'users'), ...constraints));
   const docs = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  _stuState.lastDoc = snap.docs[snap.docs.length-1] || _stuState.lastDoc;
-  _stuState.exhausted = snap.size < STU_PAGE_SIZE;
+  state.lastDoc = snap.docs[snap.docs.length-1] || state.lastDoc;
+  state.exhausted = snap.size < STU_PAGE_SIZE;
   if (!useCursor) allStudents = docs;
   else allStudents = (allStudents || []).concat(docs);
-  renderStudentTable('active', allStudents);
-  _stuRenderLoadMore();
+  renderStudentTable(status, allStudents);
+  _stuRenderLoadMore(status);
 }
 
-function _stuRenderLoadMore() {
-  const wrap = document.getElementById('studentLoadMoreWrap');
+function _stuRenderLoadMore(status) {
+  const wrap = document.getElementById(STU_WRAP[status]);
   if (!wrap) return;
-  if (_stuState.exhausted) {
+  const state = _stuStates[status];
+  if (state.exhausted) {
     wrap.innerHTML = (allStudents?.length > 0)
       ? '<div style="text-align:center;color:#888;padding:10px;font-size:11px;">모두 표시됨</div>'
       : '';
   } else {
-    wrap.innerHTML = '<button class="btn btn-secondary" style="display:block;margin:10px auto;font-size:12px;padding:6px 16px;" onclick="loadMoreStudents()">+ 더 보기</button>';
+    wrap.innerHTML = `<button class="btn btn-secondary" style="display:block;margin:10px auto;font-size:12px;padding:6px 16px;" onclick="loadMoreStudents('${status}')">+ 더 보기</button>`;
   }
 }
 
-window.loadMoreStudents = async () => {
-  try { await _stuFetchPage(true); } catch(e) { console.error('loadMoreStudents:', e); }
+window.loadMoreStudents = async (status='active') => {
+  try { await _stuFetchPage(status, true); } catch(e) { console.error('loadMoreStudents:', e); }
 };
+
+async function _stuFilterChange(status) {
+  const val = document.getElementById(STU_FILTER[status])?.value || '';
+  _stuStates[status] = { lastDoc: null, exhausted: false, group: val || null };
+  allStudents = [];
+  if (!val) {
+    document.getElementById(STU_TBODY[status]).innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>`;
+    const wrap = document.getElementById(STU_WRAP[status]); if (wrap) wrap.innerHTML = '';
+    return;
+  }
+  try { await _stuFetchPage(status, false); } catch(e) { console.error(e); }
+}
+
+function _stuSearchInPage(status) {
+  const q = (document.getElementById(STU_SEARCH[status])?.value || '').toLowerCase();
+  const filtered = q ? allStudents.filter(u=>(u.name||'').toLowerCase().includes(q)||(u.username||'').toLowerCase().includes(q)) : allStudents;
+  renderStudentTable(status, filtered);
+}
 
 // 수강정보 가림/노출 토글 (재원생·휴원생·퇴원생 표 공통)
 let _tuitionVisible = false;
@@ -1445,7 +1461,14 @@ function renderStudentTable(status, students){
     </tr>`;
     }).join('');
   } else {
-    initPagination(tbodyId, students, (u,i)=>{
+    // 휴원/퇴원 — 페이지네이션 제거 (2026-05-14) 직접 innerHTML
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    if (!students.length) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>';
+      return;
+    }
+    tbody.innerHTML = students.map((u,i) => {
       const { amtCell, dueCell } = _tuitionCells(u);
       return `<tr>
       <td><input type="checkbox" value="${u.id}"></td>
@@ -1460,26 +1483,16 @@ function renderStudentTable(status, students){
       <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
       <td class="td-sm" style="text-align:center;">${dueCell}</td>
     </tr>`;
-    }, pgId, 11);
+    }).join('');
   }
 }
 
-window.filterStudents = async () => {
-  const val = document.getElementById('studentClassFilter').value;
-  _stuState = { lastDoc: null, exhausted: false, group: val || null };
-  allStudents = [];
-  if (!val) {
-    document.getElementById('studentTableBody').innerHTML = '<tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>';
-    const wrap = document.getElementById('studentLoadMoreWrap'); if (wrap) wrap.innerHTML = '';
-    return;
-  }
-  try { await _stuFetchPage(false); } catch(e) { console.error('filterStudents:', e); }
-};
-window.searchStudents = () => {
-  const q=document.getElementById('studentSearch').value.toLowerCase();
-  const filtered=q?allStudents.filter(u=>(u.name||'').toLowerCase().includes(q)||(u.username||'').toLowerCase().includes(q)):allStudents;
-  renderStudentTable('active',filtered);
-};
+window.filterStudents      = () => _stuFilterChange('active');
+window.filterStudentsPause = () => _stuFilterChange('pause');
+window.filterStudentsOut   = () => _stuFilterChange('out');
+window.searchStudents      = () => _stuSearchInPage('active');
+window.searchStudentsPause = () => _stuSearchInPage('pause');
+window.searchStudentsOut   = () => _stuSearchInPage('out');
 window.toggleCheckAll = (cb) => {
   document.querySelectorAll('#studentTableBody input[type=checkbox]').forEach(c=>c.checked=cb.checked);
 };
