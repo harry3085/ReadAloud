@@ -12224,15 +12224,12 @@ function _tpBuildFolders() {
     const cacheKey = _tpFolderCacheKey(sourceType, b.id);
     const cache = _tpSetsByFolder[cacheKey];
     const count = Array.isArray(cache) ? cache.length : null;
-    const lastTime = Array.isArray(cache)
-      ? cache.reduce((m, s) => Math.max(m, s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0), 0)
-      : (b.createdAt?.toMillis?.() || 0);
     return {
       key: b.id,
       name: b.name || '(이름 없음)',
       bookId: b.id,
       count,
-      lastTime,
+      isUnassigned: false,
     };
   });
   // 미지정 폴더 — 캐시 hit 시만 표시
@@ -12244,11 +12241,14 @@ function _tpBuildFolders() {
       name: '(책 없음)',
       bookId: '',
       count: unCache.length,
-      lastTime: unCache.reduce((m, s) => Math.max(m, s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0), 0),
+      isUnassigned: true,
     });
   }
-  // 최근 활동 폴더가 위로
-  return folders.sort((a, b) => b.lastTime - a.lastTime);
+  // 이름순 고정 (클릭해도 위치 변동 X), 미지정 폴더는 맨 마지막
+  return folders.sort((a, b) => {
+    if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
+    return a.name.localeCompare(b.name, 'ko');
+  });
 }
 
 function _tpFolderCacheKey(sourceType, bookId) {
