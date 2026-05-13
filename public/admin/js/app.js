@@ -1554,6 +1554,12 @@ async function loadNotices(){
   const el=document.getElementById('noticeTableBody');
   try{
     const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+    // 한도 표시 (2026-05-14)
+    try {
+      const limits = await _loadContentLimits();
+      const info = document.getElementById('noticeLimitInfo');
+      if (info) info.textContent = `${snap.size}/${limits.noticesPerAcademy} 저장됨 · 초과 시 기존 삭제 후 추가`;
+    } catch(_) {}
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
     const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
     const labelOf = (n) => {
@@ -1635,6 +1641,12 @@ async function loadHwFileAdmin(){
   const el = document.getElementById('hwfileTableBody'); if(!el) return;
   try{
     const snap = await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
+    // 한도 표시 (2026-05-14)
+    try {
+      const limits = await _loadContentLimits();
+      const info = document.getElementById('hwfileLimitInfo');
+      if (info) info.textContent = `${snap.size}/${limits.hwFilesPerAcademy} 저장됨 · 초과 시 기존 삭제 후 등록`;
+    } catch(_) {}
     const files = snap.docs.map(d=>({id:d.id,...d.data()}));
     const icons={pdf:'📄',docx:'📝',doc:'📝',jpg:'🖼',jpeg:'🖼',png:'🖼',hwp:'📋'};
     const labelOf = (f) => {
@@ -3976,6 +3988,16 @@ async function loadMessages(){
 
     const drafts=[], sent=[];
     snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
+
+    // 한도 표시 (2026-05-14) — 메시지 = 초안 + 발송이력 합산 학원당 한도
+    try {
+      const limits = await _loadContentLimits();
+      const max = limits.messagesPerAcademy;
+      const total = drafts.length + sent.length;
+      const txt = `(${total}/${max} 저장됨)`;
+      const dl = document.getElementById('msgDraftLimit'); if (dl) dl.textContent = txt;
+      const sl = document.getElementById('msgSentLimit');  if (sl) sl.textContent = txt;
+    } catch(_) {}
 
     // 옛/신 schema 모두에서 대상 라벨 뽑기
     const labelOf = (n) => {

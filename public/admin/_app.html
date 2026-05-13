@@ -756,7 +756,7 @@
       <div class="card" id="msgListCard" style="display:flex;flex-direction:column;padding:0;height:calc(100vh - 200px);min-height:400px;min-width:0;overflow:hidden;">
         <!-- 상단: 저장된 초안 -->
         <div id="msgDraftSection" style="display:flex;flex-direction:column;padding:14px 16px 8px;flex:0 0 35%;min-height:80px;overflow:hidden;">
-          <div class="card-title" style="margin-bottom:8px;">💾 메시지 관리 <span style="font-size:12px;color:var(--gray);font-weight:400;">저장된 초안 — 클릭하면 재활용</span></div>
+          <div class="card-title" style="margin-bottom:8px;">💾 메시지 관리 <span style="font-size:12px;color:var(--gray);font-weight:400;">저장된 초안 — 클릭하면 재활용</span><span id="msgDraftLimit" style="margin-left:8px;font-size:11px;color:#888;font-weight:400;"></span></div>
           <div id="savedMsgDrafts" style="flex:1;overflow-y:auto;overflow-x:hidden;"><div class="loading"><div class="spinner"></div>로딩 중</div></div>
         </div>
         <!-- 리사이저 -->
@@ -767,7 +767,7 @@
         </div>
         <!-- 하단: 발송 이력 -->
         <div id="msgSentSection" style="display:flex;flex-direction:column;padding:8px 16px 14px;flex:1;min-height:80px;overflow:hidden;">
-          <div class="card-title" style="margin-bottom:8px;">📤 발송 이력 <span style="font-size:12px;color:var(--gray);font-weight:400;">행을 클릭하면 읽음 현황이 펼쳐집니다</span></div>
+          <div class="card-title" style="margin-bottom:8px;">📤 발송 이력 <span style="font-size:12px;color:var(--gray);font-weight:400;">행을 클릭하면 읽음 현황이 펼쳐집니다</span><span id="msgSentLimit" style="margin-left:8px;font-size:11px;color:#888;font-weight:400;"></span></div>
           <div id="savedMsgSent" style="flex:1;overflow-y:auto;overflow-x:hidden;"></div>
         </div>
       </div>
@@ -777,7 +777,7 @@
   <!-- 공지 관리 -->
   <div class="page" id="page-notice">
     <div class="page-header">
-      <div><div class="page-title">공지 관리</div></div>
+      <div><div class="page-title">공지 관리</div><div class="page-sub" id="noticeLimitInfo" style="color:#888;font-size:12px;"></div></div>
       <button class="btn btn-primary" onclick="openNoticeModal()">+ 공지 작성</button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
@@ -801,7 +801,7 @@
   <!-- 자료실 -->
   <div class="page" id="page-hwfile">
     <div class="page-header">
-      <div><div class="page-title">자료실</div><div class="page-sub">반별·학생별로 자료를 업로드합니다</div></div>
+      <div><div class="page-title">자료실</div><div class="page-sub" id="hwfileLimitInfo" style="color:#888;font-size:12px;">반별·학생별로 자료를 업로드합니다</div></div>
       <button class="btn btn-primary" onclick="openHwFileModal()">+ 자료 등록</button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
