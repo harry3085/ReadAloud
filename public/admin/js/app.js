@@ -2144,9 +2144,16 @@ async function loadPayments(){
 // ── 그리드 UI (P1-5) ────────────────────────────────────
 let _billingTab = 'grid';       // 'grid' | 'summary' | 'timeline'
 let _billingMonth = null;       // 'YYYY-MM' 현재 보고있는 월
-let _billings = [];             // 현재 월 청구서
+let _billings = [];             // 현재 월 청구서 (캐시 reference)
+let _billingsByMonth = {};      // 월별 캐시 — { 'YYYY-MM': [...billings] } (2026-05-14)
 let _billingFilterGroup = '';   // 반 필터
 let _billingFilterStatus = '';  // 상태 필터
+
+// 결제 캐시 무효화 (학생 추가·삭제·결제 등 학원 단위 데이터 변경 후)
+function _billingInvalidateCache(ym) {
+  if (ym) delete _billingsByMonth[ym];
+  else _billingsByMonth = {};
+}
 
 // 탭 네비게이션 (P3) — 모든 결제 페이지 뷰 상단에 공통 표시
 function _billingTabsHtml() {
@@ -2188,15 +2195,21 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
   if (!main) return;
   const academyId = window.MY_ACADEMY_ID || 'default';
 
-  // 청구서 로드 — refetch=false 일 땐 in-memory _billings 사용 (Firestore eventual
-  // consistency 회피: 방금 updateDoc 한 데이터가 즉시 query 에 안 잡힐 수 있음)
+  // 청구서 로드 — refetch=false 일 땐 in-memory _billings 사용 (eventual consistency 회피)
+  // refetch=true 라도 월별 캐시 hit 면 fetch skip (2026-05-14)
   if (refetch) {
-    const billingSnap = await getDocs(query(
-      collection(db, 'billings'),
-      where('academyId', '==', academyId),
-      where('yearMonth', '==', _billingMonth),
-    ));
-    _billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const cached = _billingsByMonth[_billingMonth];
+    if (Array.isArray(cached)) {
+      _billings = cached;
+    } else {
+      const billingSnap = await getDocs(query(
+        collection(db, 'billings'),
+        where('academyId', '==', academyId),
+        where('yearMonth', '==', _billingMonth),
+      ));
+      _billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _billingsByMonth[_billingMonth] = _billings;  // reference 저장 — in-place mutation 자동 반영
+    }
   }
   _billings.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
 
@@ -2417,6 +2430,7 @@ window._billingDeleteRow = async (billingId, studentName, studentUid) => {
     // 2. 청구서 삭제
     await deleteDoc(doc(db, 'billings', billingId));
     showToast('✓ 청구서 삭제 + 자동 청구 OFF');
+    _billingInvalidateCache(_billingMonth);
     await _renderBillingGrid();
   } catch (e) {
     showAlert('삭제 실패', e.message);
@@ -3554,6 +3568,8 @@ async function _ensureCurrentMonthBillings() {
       });
       created++;
     }
+    // 새 billing 생성 시 그 월 캐시 무효화 (다음 _renderBillingGrid 가 fresh fetch)
+    if (created > 0 && typeof _billingInvalidateCache === 'function') _billingInvalidateCache(ym);
     return created;
   } catch (e) {
     console.warn('[ensureCurrentMonthBillings]', e.message);
