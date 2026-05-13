@@ -623,6 +623,7 @@
             </div>
             <div class="tbl-page" id="testPagination"></div>
           </div>
+          <div id="tlLoadMoreWrap"></div>
         </div>
       </div>
     </div>
@@ -636,8 +637,8 @@
         <input type="date" id="scoreFrom" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
         <span style="color:var(--gray);">~</span>
         <input type="date" id="scoreTo" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
-        <select id="scoreClassFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;"><option value="">전체 반</option></select>
-        <select id="scoreModeFilter" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+        <select id="scoreClassFilter" onchange="loadScoreReport()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;"><option value="">전체 반</option></select>
+        <select id="scoreModeFilter" onchange="loadScoreReport()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
           <option value="">전체 유형</option>
           <option value="vocab">단어</option>
           <option value="fill_blank">빈칸</option>
@@ -681,6 +682,8 @@
           <tbody id="scoreReportBody"><tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">기간을 선택하고 조회하세요</td></tr></tbody>
         </table>
       </div>
+      <div id="srLoadMoreWrap"></div>
+      <div style="text-align:center;color:#888;padding:6px 10px 10px;font-size:11px;">반/유형/기간 변경 시 자동 조회 · 이름 검색은 받은 데이터 안에서 즉시</div>
     </div>
   </div>
 

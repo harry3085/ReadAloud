@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -383,36 +383,85 @@ async function updateAllBadges(force=false){
     updateRecBadge(),
   ]);
 }
-// 공용 뱃지 업데이트 (genTests 기반, testMode 별칭 수용)
-async function _updateGenTestBadge(testModes, badgeId) {
-  const badge = document.getElementById(badgeId);
-  if (!badge || !currentUser || !userProfile) return;
-  try {
-    const myGroup = userProfile.group || '';
-    const myUid = currentUser.uid;
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
-    const myTests = filterMyTests(snap.docs.map(d => ({id:d.id,...d.data()})), myGroup, myUid)
-      .filter(t => testModes.includes(t.testMode));
-    const completedSet = new Set();
-    await Promise.all(myTests.map(async t => {
+// 5종 통합 badge 업데이트 — 10일 + collectionGroup batch + Promise dedup (2026-05-13, 비용 최적화)
+// 학원 전체 fetch 가 아닌 testMode in [...] + createdAt >= 10일 + limit
+// userCompleted N+1 → collectionGroup query 1회
+const _BADGE_MAP = {
+  vocab: 'testBadge',
+  unscramble: 'unscrambleBadge',
+  mcq: 'mcqBadge',
+  fill_blank: 'blankBadge',
+  recording: 'recBadge',
+};
+let _badgeUpdateInflight = null;
+
+async function _updateAllBadgesAtOnce() {
+  if (_badgeUpdateInflight) return _badgeUpdateInflight;
+  _badgeUpdateInflight = (async () => {
+    if (!currentUser || !userProfile) return;
+    try {
+      const myGroup = userProfile.group || '';
+      const myUid = currentUser.uid;
+      const tenDaysAgo = new Date(Date.now() - 10*864e5);
+
+      // 1회 통합 fetch — 5종 + 10일 + limit (시험 유형 화면과 동일 limit 으로 카운트 일치)
+      const tSnap = await getDocs(query(
+        collection(db, 'genTests'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('testMode', 'in', Object.keys(_BADGE_MAP)),
+        where('createdAt', '>=', tenDaysAgo),
+        orderBy('createdAt', 'desc'),
+        limit(200)
+      ));
+      const myTests = filterMyTests(
+        tSnap.docs.map(d => ({id:d.id, ...d.data()})),
+        myGroup, myUid
+      );
+
+      // userCompleted batch — collectionGroup 1회 (N+1 → 1)
+      const completedSet = new Set();
       try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists() && d.data().score !== undefined) completedSet.add(t.id);
-      } catch(e) {}
-    }));
-    const unfinished = myTests.filter(t => !completedSet.has(t.id)).length;
-    if (unfinished > 0) {
-      badge.textContent = unfinished > 99 ? '99+' : unfinished;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
+        const compSnap = await getDocs(query(
+          collectionGroup(db, 'userCompleted'),
+          where('uid', '==', myUid)
+        ));
+        compSnap.docs.forEach(d => {
+          if (d.data().score !== undefined) {
+            const testId = d.ref.parent.parent.id;
+            completedSet.add(testId);
+          }
+        });
+      } catch(e) { console.warn('[badge] userCompleted batch:', e.message); }
+
+      // 5종 badge 분배
+      Object.keys(_BADGE_MAP).forEach(mode => {
+        const badge = document.getElementById(_BADGE_MAP[mode]);
+        if (!badge) return;
+        const tests = myTests.filter(t => t.testMode === mode);
+        const unfinished = tests.filter(t => !completedSet.has(t.id)).length;
+        if (unfinished > 0) {
+          badge.textContent = unfinished > 99 ? '99+' : unfinished;
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      });
+    } catch(e) {
+      console.warn('[badge] _updateAllBadgesAtOnce:', e.message);
+      // 실패 시 모든 badge 숨김 (잘못된 큰 수 표시 방지)
+      Object.values(_BADGE_MAP).forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.style.display = 'none';
+      });
     }
-  } catch(e) { badge.style.display = 'none'; }
+  })();
+  try { await _badgeUpdateInflight; } finally { _badgeUpdateInflight = null; }
 }
 
-const updateTestBadge   = () => _updateGenTestBadge(['vocab'], 'testBadge');
-const updateMcqBadge    = () => _updateGenTestBadge(['mcq'], 'mcqBadge');
-const updateFbBadge     = () => _updateGenTestBadge(['fill_blank'], 'blankBadge');
+// 5개 단일 badge 함수 → 통합 호출로 redirect (어디서 호출하든 1회 통합 fetch)
+const updateTestBadge   = () => _updateAllBadgesAtOnce();
+const updateMcqBadge    = () => _updateAllBadgesAtOnce();
+const updateFbBadge     = () => _updateAllBadgesAtOnce();
 
 // 공지 1건이 이 학생에게 보이는지 — 신/구 schema 둘 다 처리
 function _noticeMatchesMe(n, group, uid) {
@@ -678,67 +727,92 @@ const TEST_TYPE_UI = {
 };
 
 // 공용 시험 목록 로더 (vocab / fill_blank / mcq / unscramble)
-// 시험 목록 캐시 — 메뉴 이동 시 같은 type 재사용 (5분 TTL)
-// reads ↓ 효과 큼 (메뉴 5종 순회 시 5번 fetch → 첫 1번만)
-const _testListCache = new Map();  // type → { tests, fetchedAt }
-const _TEST_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
-window._invalidateTestListCache = (type) => {
-  if (type) _testListCache.delete(type); else _testListCache.clear();
-};
+// 정책 (2026-05-13 비용 최적화):
+//   - 10일 default, 더보기 +10일씩, 30일 상한
+//   - 캐시 없음 (학원장 변경 즉시 반영, 학생앱 실시간성 우선)
+//   - userCompleted N+1 → collectionGroup batch 1회 (진입당)
+const _testListState = new Map();  // type → { daysLoaded, userCompMap }
+window._invalidateTestListCache = () => { _testListState.clear(); };  // 호환 NOP
 
 async function _loadTestListByType(type) {
   const ui = TEST_TYPE_UI[type];
   const elP = document.getElementById(ui.pendingElId);
-  const elC = document.getElementById(ui.completedElId);
   if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
+  // 새 진입 — state 리셋 (userCompMap 도 새로 fetch)
+  _testListState.set(type, { daysLoaded: 10, userCompMap: null });
   try {
-    const myGroup = userProfile?.group || '';
-    const myUid = currentUser?.uid || '';
-    // 캐시 검사 (5분 TTL)
-    let allTests;
-    const cached = _testListCache.get(type);
-    if (cached && (Date.now() - cached.fetchedAt < _TEST_LIST_CACHE_TTL_MS)) {
-      allTests = cached.tests;
-    } else {
-      // server-side testMode 필터 — 학원 전체 시험 fetch X (해당 유형만)
-      const snap = await getDocs(query(
-        collection(db,'genTests'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('testMode','==',type),
-        orderBy('createdAt','desc'),
-        limit(200)
-      ));
-      allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-      _testListCache.set(type, { tests: allTests, fetchedAt: Date.now() });
-    }
-    const myTests = filterMyTests(allTests, myGroup, myUid);
-
-    const userCompMap = new Map();
-    await Promise.all(myTests.map(async t => {
-      try {
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if (d.exists()) userCompMap.set(t.id, d.data());
-      } catch(e) {}
-    }));
-
-    const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
-    const pending = myTests.filter(t => !isCompleted(t));
-    const completed = myTests.filter(isCompleted);
-    const quote = v => String(v||'').replace(/'/g,"\\'");
-    const ocNew  = (id, name) => `${ui.startFn}('${id}','${quote(name)}')`;
-    const ocDone = (id, name) => `${ui.viewPrevFn}('${id}','${quote(name)}')`;
-
-    if (elP) elP.innerHTML = pending.length
-      ? pending.map(t => _makeTypeCard(type, t, false, ocNew(t.id,t.name), null, userCompMap.get(t.id)?.latestScore)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>';
-    if (elC) elC.innerHTML = completed.length
-      ? completed.map(t => _makeTypeCard(type, t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+    await _loadTestListPage(type);
   } catch(e) {
     console.error(e);
     if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
   }
 }
+
+async function _loadTestListPage(type) {
+  const ui = TEST_TYPE_UI[type];
+  const elP = document.getElementById(ui.pendingElId);
+  const elC = document.getElementById(ui.completedElId);
+  const state = _testListState.get(type);
+  if (!state) return;
+
+  const myGroup = userProfile?.group || '';
+  const myUid = currentUser?.uid || '';
+  const sinceDate = new Date(Date.now() - state.daysLoaded * 864e5);
+
+  // 학원 시험 fetch (캐시 없음 — 실시간성 우선)
+  const snap = await getDocs(query(
+    collection(db,'genTests'),
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('testMode','==', type),
+    where('createdAt', '>=', sinceDate),
+    orderBy('createdAt','desc'),
+    limit(200)
+  ));
+  const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  const myTests = filterMyTests(allTests, myGroup, myUid);
+
+  // userCompleted batch — 한 진입당 1회 (collectionGroup, N+1 → 1)
+  if (!state.userCompMap) {
+    const map = new Map();
+    try {
+      const compSnap = await getDocs(query(
+        collectionGroup(db, 'userCompleted'),
+        where('uid', '==', myUid)
+      ));
+      compSnap.docs.forEach(d => {
+        const testId = d.ref.parent.parent.id;
+        map.set(testId, d.data());
+      });
+    } catch(e) { console.warn('[testList] userCompleted batch:', e.message); }
+    state.userCompMap = map;
+  }
+  const userCompMap = state.userCompMap;
+
+  const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
+  const pending = myTests.filter(t => !isCompleted(t));
+  const completed = myTests.filter(isCompleted);
+  const quote = v => String(v||'').replace(/'/g,"\\'");
+  const ocNew  = (id, name) => `${ui.startFn}('${id}','${quote(name)}')`;
+  const ocDone = (id, name) => `${ui.viewPrevFn}('${id}','${quote(name)}')`;
+
+  const loadMoreHtml = state.daysLoaded < 30
+    ? `<div style="text-align:center;padding:14px;"><button class="btn btn-secondary" onclick="loadMoreTestList('${type}')" style="font-size:13px;">+ 10일 더 보기 (최근 ${state.daysLoaded}일)</button></div>`
+    : `<div style="text-align:center;padding:14px;color:#888;font-size:12px;">최근 30일까지만 표시됩니다</div>`;
+
+  if (elP) elP.innerHTML = (pending.length
+    ? pending.map(t => _makeTypeCard(type, t, false, ocNew(t.id,t.name), null, userCompMap.get(t.id)?.latestScore)).join('')
+    : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 시험이 없습니다.</div>') + loadMoreHtml;
+  if (elC) elC.innerHTML = completed.length
+    ? completed.map(t => _makeTypeCard(type, t, true, ocDone(t.id,t.name), userCompMap.get(t.id)?.score ?? null, null)).join('')
+    : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 시험이 없습니다.</div>';
+}
+
+window.loadMoreTestList = async(type) => {
+  const state = _testListState.get(type);
+  if (!state || state.daysLoaded >= 30) return;
+  state.daysLoaded = Math.min(30, state.daysLoaded + 10);
+  try { await _loadTestListPage(type); } catch(e) { console.error('loadMoreTestList:', e); }
+};
 
 // 공용 결과 화면 shell (헤더 + 점수 카드 + 문제별 상세 + 버튼)
 function _renderResultShell(type, {correct, wrong, total, score, passed, passScore, hintUsageCount, detailHtml}) {
@@ -810,6 +884,9 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
 
 // KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
 function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
+
+// 비용 최적화 — 기간 헬퍼 (Firestore read 절감, 2026-05-13)
+function _ymdDaysAgoKST(n){ return _ymdKST(new Date(Date.now() - n*864e5)); }
 
 // Gemini API 호출 카운트는 서버 quota.js incrementUsage 가 단일 writer 로 처리.
 // (이전 클라 _logApiCall 은 daily/monthly 드리프트 원인이라 폐기됨, 2026-05-02)
@@ -1926,51 +2003,73 @@ window.goRecAi = async () => {
 
 async function loadRecAiList(){
   const elP = document.getElementById('raListPending');
-  const elC = document.getElementById('raListCompleted');
   if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-  try{
-    const myGroup = userProfile?.group || '';
-    const myUid = currentUser?.uid || '';
-    // server-side testMode 필터 + 5분 캐시 (reads 80% ↓)
-    let allTests;
-    const cached = _testListCache.get('recording');
-    if (cached && (Date.now() - cached.fetchedAt < _TEST_LIST_CACHE_TTL_MS)) {
-      allTests = cached.tests;
-    } else {
-      const snap = await getDocs(query(
-        collection(db,'genTests'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('testMode','==','recording'),
-        orderBy('createdAt','desc'),
-        limit(200)
+  // state 리셋 — 10일 default, userCompMap 새로 fetch
+  _testListState.set('recording', { daysLoaded: 10, userCompMap: null });
+  try {
+    await _loadRecAiListPage();
+  } catch(e) {
+    console.error(e);
+    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
+  }
+}
+
+async function _loadRecAiListPage(){
+  const state = _testListState.get('recording');
+  if (!state) return;
+  const elP = document.getElementById('raListPending');
+  const elC = document.getElementById('raListCompleted');
+  const myGroup = userProfile?.group || '';
+  const myUid = currentUser?.uid || '';
+  const sinceDate = new Date(Date.now() - state.daysLoaded * 864e5);
+
+  // 10일 default + 더보기 +10일 (30일 상한). 캐시 없음 (실시간성)
+  const snap = await getDocs(query(
+    collection(db,'genTests'),
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('testMode','==', 'recording'),
+    where('createdAt', '>=', sinceDate),
+    orderBy('createdAt','desc'),
+    limit(200)
+  ));
+  const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  const myTests = filterMyTests(allTests, myGroup, myUid);
+
+  // userCompleted batch — 진입당 1회 (N+1 → 1)
+  if (!state.userCompMap) {
+    const map = new Map();
+    try {
+      const compSnap = await getDocs(query(
+        collectionGroup(db, 'userCompleted'),
+        where('uid', '==', myUid)
       ));
-      allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-      _testListCache.set('recording', { tests: allTests, fetchedAt: Date.now() });
+      compSnap.docs.forEach(d => {
+        const testId = d.ref.parent.parent.id;
+        map.set(testId, d.data());
+      });
+    } catch(e) { console.warn('[recAi] userCompleted batch:', e.message); }
+    state.userCompMap = map;
+  }
+  const userCompMap = state.userCompMap;
+
+  const completedMap = new Map();
+  const inProgressMap = new Map();
+  myTests.forEach(t => {
+    const cd = userCompMap.get(t.id);
+    if (!cd) return;
+    if (cd.completedAt || cd.latestFailedAt) {
+      completedMap.set(t.id, cd.score ?? null);
+    } else if (cd.inProgress?.rounds?.length) {
+      inProgressMap.set(t.id, {
+        done: cd.inProgress.rounds.length,
+        total: cd.inProgress.totalRounds || 0,
+      });
     }
-    const myTests = filterMyTests(allTests, myGroup, myUid);
+  });
 
-    const completedMap = new Map();
-    const inProgressMap = new Map();  // Phase A+ : 중간 저장된 시험
-    await Promise.all(myTests.map(async t => {
-      try{
-        const d = await getDoc(doc(db,'genTests',t.id,'userCompleted',myUid));
-        if(d.exists()) {
-          const cd = d.data();
-          if (cd.completedAt || cd.latestFailedAt) {
-            completedMap.set(t.id, cd.score ?? null);
-          } else if (cd.inProgress?.rounds?.length) {
-            inProgressMap.set(t.id, {
-              done: cd.inProgress.rounds.length,
-              total: cd.inProgress.totalRounds || 0,
-            });
-          }
-        }
-      }catch(e){}
-    }));
-
-    const pending = myTests.filter(t => !completedMap.has(t.id));
-    const completed = myTests.filter(t => completedMap.has(t.id));
-    const mk = (t, done, score) => {
+  const pending = myTests.filter(t => !completedMap.has(t.id));
+  const completed = myTests.filter(t => completedMap.has(t.id));
+  const mk = (t, done, score) => {
       const qCount = t.questionCount || t.questions?.length || 0;
       const name = (t.name||'AI 녹음 시험').replace(/'/g,"\\'");
       const onc = done ? `viewRecAiResult('${t.id}')` : `startRecAi('${t.id}','${name}')`;
@@ -1992,19 +2091,26 @@ async function loadRecAiList(){
       </div>`;
     };
 
-    if(elP) elP.innerHTML = pending.length
-      ? pending.map(t => mk(t,false,null)).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 숙제가 없습니다.</div>';
-    if(elC) elC.innerHTML = completed.length
-      ? completed.map(t => mk(t,true,completedMap.get(t.id))).join('')
-      : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div>';
-  }catch(e){
-    console.error(e);
-    if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">불러오기 실패</div>';
-  }
+  const loadMoreHtml = state.daysLoaded < 30
+    ? `<div style="text-align:center;padding:14px;"><button class="btn btn-secondary" onclick="loadMoreRecAi()" style="font-size:13px;">+ 10일 더 보기 (최근 ${state.daysLoaded}일)</button></div>`
+    : `<div style="text-align:center;padding:14px;color:#888;font-size:12px;">최근 30일까지만 표시됩니다</div>`;
+
+  if(elP) elP.innerHTML = (pending.length
+    ? pending.map(t => mk(t,false,null)).join('')
+    : '<div class="empty-msg" style="padding:20px;color:#bbb;">배정된 숙제가 없습니다.</div>') + loadMoreHtml;
+  if(elC) elC.innerHTML = completed.length
+    ? completed.map(t => mk(t,true,completedMap.get(t.id))).join('')
+    : '<div class="empty-msg" style="padding:20px;color:#bbb;">완료된 숙제가 없습니다.</div>';
 }
 
-const updateRecBadge = () => _updateGenTestBadge(['recording'], 'recBadge');
+window.loadMoreRecAi = async() => {
+  const state = _testListState.get('recording');
+  if (!state || state.daysLoaded >= 30) return;
+  state.daysLoaded = Math.min(30, state.daysLoaded + 10);
+  try { await _loadRecAiListPage(); } catch(e) { console.error('loadMoreRecAi:', e); }
+};
+
+const updateRecBadge = () => _updateAllBadgesAtOnce();
 
 let _raState = {
   test: null,
@@ -3662,12 +3768,11 @@ window.goRanking=async()=>{
   document.getElementById('rankingGroupTitle').textContent='🏫 '+(userProfile?.group||'그룹');
   await renderRanking();show('ranking');
 };
-// 랭킹 기간 — 'week' | 'month' | 'all' (default: week)
+// 랭킹 기간 — 'week' | 'month' (default: week). '누적' 폐기 (read 비용 — 2026-05-13)
 let _rankPeriod = 'week';
 
-// KST 기준 기간 시작 YYYY-MM-DD 반환. 'all' 이면 빈 문자열.
+// KST 기준 기간 시작 YYYY-MM-DD 반환.
 function _rankPeriodStartYmd(period) {
-  if (period === 'all') return '';
   const now = new Date(Date.now() + 9 * 3600 * 1000); // KST 변환
   if (period === 'month') {
     return now.toISOString().slice(0, 7) + '-01'; // YYYY-MM-01
@@ -3680,7 +3785,7 @@ function _rankPeriodStartYmd(period) {
 }
 
 window.rankingSetPeriod = async (period) => {
-  if (!['week','month','all'].includes(period)) return;
+  if (!['week','month'].includes(period)) return;
   _rankPeriod = period;
   // 토글 버튼 활성/비활성 시각 갱신
   document.querySelectorAll('#rankPeriodToggle button').forEach(b => {
@@ -3697,13 +3802,18 @@ async function renderRanking(){
   const usersSnap=await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
   const students=usersSnap.docs.map(d=>({uid:d.id,...d.data()})).filter(u=>u.role==='student');
 
-  const scoresSnap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),where('group','==',group)));
   const startYmd = _rankPeriodStartYmd(_rankPeriod);
+  // server-side date 필터 — 이번 주/이번 달 scores 만 fetch (한 반 누적 X)
+  const scoresSnap=await getDocs(query(
+    collection(db,'scores'),
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('group','==', group),
+    where('date','>=', startYmd),
+    limit(500)
+  ));
   const scoresMap={};
   scoresSnap.docs.forEach(d=>{
     const s=d.data();
-    // 기간 필터 (startYmd 빈 문자열 = 누적)
-    if (startYmd && (s.date || '') < startYmd) return;
     if(!scoresMap[s.uid]) scoresMap[s.uid]={best:0, count:0, total:0};
     // 녹음숙제 (recording) 점수는 best 비교 제외 — 학생 점수 비공개 정책.
     // count/total 은 누적 (평균에 묻힘 OK).
@@ -4820,7 +4930,7 @@ window.quitVocab = async () => {
   goHome();
 };
 
-const updateVocabBadge = () => _updateGenTestBadge(['vocab'], 'testBadge');
+const updateVocabBadge = () => _updateAllBadgesAtOnce();
 
 // updateAllBadges 확장 (vocab)
 const _origUpdateAllBadgesForVocab = window.updateAllBadges;
@@ -5310,7 +5420,7 @@ window.quitUnscramble2 = async () => {
 };
 
 // updateUnscBadge 덮어쓰기: genTests(unscramble) 기반
-const updateUnscBadge2 = () => _updateGenTestBadge(['unscramble'], 'unscrambleBadge');
+const updateUnscBadge2 = () => _updateAllBadgesAtOnce();
 
 // 기존 updateTestBadge / updateUnscBadge 호출 지점을 v2 로 연결
 window.updateTestBadge = updateVocabBadge;

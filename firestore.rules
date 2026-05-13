@@ -216,6 +216,13 @@ service cloud.firestore {
       }
     }
 
+    // collectionGroup query 용 wildcard 매칭 (학생앱 홈 badge / 시험 유형 진입 batch fetch)
+    // resource.data.uid 매칭 — Firestore Rules-aware queries 가 클라의 where('uid','==',myUid) 정적 매칭 인식
+    // 단일 doc read 는 부모 nested 룰이 잡으므로 collectionGroup query 만 이 룰 사용
+    match /{path=**}/userCompleted/{userId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
     // ────────────────────────────────────────────────────────
     //   멀티테넌시 컬렉션 (Phase 0 전환)
     // ────────────────────────────────────────────────────────

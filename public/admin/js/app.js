@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, startAfter, documentId, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -74,6 +74,10 @@ const PAGE_SIZE = 10;
 
 // KST(UTC+9) 기준 YYYY-MM-DD — apiUsage doc ID 통일
 function _ymdKST(d){ return new Date((d ? d.getTime() : Date.now()) + 9*3600*1000).toISOString().slice(0,10); }
+
+// 비용 최적화 — 기간 헬퍼 (Firestore read 절감, 2026-05-13)
+function _ymdMonthStartKST(){ return _ymdKST().slice(0,7) + '-01'; }
+function _ymdDaysAgoKST(n){ return _ymdKST(new Date(Date.now() - n*864e5)); }
 
 // fetch + idToken 자동주입 wrapper.
 // 일별/월별 사용량 카운트는 서버 quota.js incrementUsage 가 단일 writer 로 통합 처리
@@ -4224,11 +4228,16 @@ async function initScoreReport(){
 }
 let _srData = [];      // 성적리포트 데이터 캐시
 let _srSort = {col:'date', dir:'desc'};  // 기본 최신순
+// 페이지네이션 상태 — 월초~당일 + 20개 + 더보기 (2026-05-13, 비용 최적화)
+// group/mode 도 server-side where 필터 (composite index 활용) — 정확 매칭
+let _srState = { lastDoc: null, exhausted: false, params: null };
+const SR_PAGE_SIZE = 20;
 
 function renderScoreReportRows(){
   const el = document.getElementById('scoreReportBody');
   if(!el) return;
 
+  // 이름 검색만 client filter (group/mode/date 는 server-side 처리됨)
   const q = (document.getElementById('scoreSearch')?.value || '').trim().toLowerCase();
   const base = q ? _srData.filter(s => (s.userName||'').toLowerCase().includes(q)) : _srData;
 
@@ -4282,66 +4291,131 @@ window.sortScoreReport = (col) => {
   renderScoreReportRows();
 };
 
-window.loadScoreReport = async() => {
-  const el=document.getElementById('scoreReportBody');
-  el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
-  try{
-    const snap=await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-    const scores=snap.docs.map(d=>({id:d.id,...d.data()}));
-    const from=document.getElementById('scoreFrom').value;
-    const to=document.getElementById('scoreTo').value;
-    const cls=document.getElementById('scoreClassFilter').value;
-    const modeFilter=document.getElementById('scoreModeFilter').value;
+// 페이지네이션 헬퍼 — scores doc 정규화 (loadScoreReport / loadMoreScoreReport 공용)
+function _srNormalize(docs, speakingMap, grammarMap) {
+  return docs.map(doc => {
+    const s = { id: doc.id, ...doc.data() };
+    const m = s.mode || 'vocab';
+    return {
+      ...s,
+      bookName: s.bookName || s.unitName || '-',
+      testName: s.testName || '-',
+      mode: m,
+      score: s.score || 0,
+      correct: s.correct || 0,
+      _isSpeaking: !!speakingMap[s.testId],
+      _isGrammar: !!grammarMap[s.testId],
+      _dateTime: s.createdAt?.toDate
+        ? s.createdAt.toDate().toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : s.date || '',
+    };
+  });
+}
 
-    // mode 필터 — 마이그레이션 완료 후 mode 만 사용 (testMode 폴백 제거 2026-05-02)
-    const filtered=scores.filter(s=>{
-      const d=s.date||'';
-      const m = s.mode || '';
-      if (modeFilter && m !== modeFilter) return false;
-      return(!from||d>=from)&&(!to||d<=to)&&(!cls||s.group===cls);
-    });
-    if(!filtered.length){
-      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">결과가 없습니다</td></tr>';
-      _srData=[]; return;
-    }
-
-    // testId → speaking/grammar 여부 맵 (시험명 옆 배지 표시용)
-    const speakingMap = {};
-    const grammarMap = {};
+// testId 들의 speaking/grammar 메타만 fetch (in 쿼리, 30개 chunk) — 학원 전체 X
+async function _srLoadTestMeta(testIds) {
+  const speakingMap = {}, grammarMap = {};
+  if (!testIds.length) return { speakingMap, grammarMap };
+  for (let i = 0; i < testIds.length; i += 30) {
+    const chunk = testIds.slice(i, i + 30);
     try {
-      const gtSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID)));
+      const gtSnap = await getDocs(query(
+        collection(db, 'genTests'),
+        where(documentId(), 'in', chunk)
+      ));
       gtSnap.docs.forEach(d => {
         const t = d.data();
-        if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
-          speakingMap[d.id] = true;
-        }
-        if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') {
-          grammarMap[d.id] = true;
-        }
+        if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') speakingMap[d.id] = true;
+        if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') grammarMap[d.id] = true;
       });
-    } catch(e) { console.warn('speaking/grammar map fetch:', e.message); }
+    } catch(e) { console.warn('test meta fetch:', e.message); }
+  }
+  return { speakingMap, grammarMap };
+}
 
-    // 정렬용 필드 정규화 (레거시 tests fallback 제거 — Phase 6F)
-    _srData = filtered.map(s=>{
-      const m = s.mode || 'vocab';
-      return {
-        ...s,
-        bookName: s.bookName||s.unitName||'-',
-        testName: s.testName||'-',
-        mode: m,  // 표준 키 유지 (vocab/fill_blank/mcq/unscramble/recording/subjective)
-        score: s.score||0,
-        correct: s.correct||0,
-        _isSpeaking: !!speakingMap[s.testId],
-        _isGrammar: !!grammarMap[s.testId],
-        _dateTime: s.createdAt?.toDate
-          ? s.createdAt.toDate().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-          : s.date||'',
-      };
-    });
+function _srRenderLoadMore() {
+  const wrap = document.getElementById('srLoadMoreWrap');
+  if (!wrap) return;
+  if (_srState.exhausted) {
+    wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨 · 더 보려면 시작일을 앞당겨 [조회]</div>';
+  } else {
+    wrap.innerHTML = '<button id="srLoadMoreBtn" class="btn btn-secondary" style="margin:10px auto;display:block;" onclick="loadMoreScoreReport()">+ 더 보기</button>';
+  }
+}
 
-    _srSort = {col:'date', dir:'desc'};
+// scores 쿼리 빌더 — date/group/mode 조건부 추가 (composite index 활용)
+function _srBuildConstraints(params, useCursor) {
+  const constraints = [
+    where('academyId', '==', window.MY_ACADEMY_ID),
+    where('date', '>=', params.from),
+  ];
+  if (params.to) constraints.push(where('date', '<=', params.to));
+  if (params.group) constraints.push(where('group', '==', params.group));
+  if (params.mode) constraints.push(where('mode', '==', params.mode));
+  constraints.push(orderBy('date', 'desc'));
+  constraints.push(orderBy('createdAt', 'desc'));
+  if (useCursor && _srState.lastDoc) constraints.push(startAfter(_srState.lastDoc));
+  constraints.push(limit(SR_PAGE_SIZE));
+  return constraints;
+}
+
+window.loadScoreReport = async() => {
+  const el = document.getElementById('scoreReportBody');
+  el.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
+  try {
+    // 페이지네이션 상태 리셋
+    _srState.lastDoc = null;
+    _srState.exhausted = false;
+    _srData = [];
+
+    // 조회 조건 — from 비어있으면 월초 자동, group/mode 도 server-side 필터
+    const fromInput = document.getElementById('scoreFrom').value;
+    const from = fromInput || _ymdMonthStartKST();
+    const to = document.getElementById('scoreTo').value;
+    const group = document.getElementById('scoreClassFilter')?.value || '';
+    const mode = document.getElementById('scoreModeFilter')?.value || '';
+    _srState.params = { from, to, group, mode };
+
+    const snap = await getDocs(query(collection(db, 'scores'), ..._srBuildConstraints(_srState.params, false)));
+
+    _srState.lastDoc = snap.docs[snap.docs.length - 1] || null;
+    _srState.exhausted = snap.size < SR_PAGE_SIZE;
+
+    // testId 들의 speaking/grammar 메타만 — 학원 전체 genTests fetch X
+    const testIds = [...new Set(snap.docs.map(d => d.data().testId).filter(Boolean))];
+    const { speakingMap, grammarMap } = await _srLoadTestMeta(testIds);
+
+    _srData = _srNormalize(snap.docs, speakingMap, grammarMap);
+    _srSort = { col: 'date', dir: 'desc' };
     renderScoreReportRows();
-  }catch(e){el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+    _srRenderLoadMore();
+  } catch(e) {
+    console.error('loadScoreReport:', e);
+    el.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';
+  }
+};
+
+window.loadMoreScoreReport = async() => {
+  if (_srState.exhausted || !_srState.lastDoc) return;
+  const btn = document.getElementById('srLoadMoreBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '로딩 중...'; }
+  try {
+    const params = _srState.params || { from: _ymdMonthStartKST() };
+    const snap = await getDocs(query(collection(db, 'scores'), ..._srBuildConstraints(params, true)));
+
+    _srState.lastDoc = snap.docs[snap.docs.length - 1] || _srState.lastDoc;
+    _srState.exhausted = snap.size < SR_PAGE_SIZE;
+
+    const testIds = [...new Set(snap.docs.map(d => d.data().testId).filter(Boolean))];
+    const { speakingMap, grammarMap } = await _srLoadTestMeta(testIds);
+
+    _srData = _srData.concat(_srNormalize(snap.docs, speakingMap, grammarMap));
+    renderScoreReportRows();
+    _srRenderLoadMore();
+  } catch(e) {
+    console.error('loadMoreScoreReport:', e);
+    if (btn) { btn.disabled = false; btn.textContent = '+ 더 보기'; }
+  }
 };
 
 // ─── 유형별 상세 빌더 (학생앱과 동일) ────────────────────────────────
@@ -5680,57 +5754,33 @@ function _computeTestStats(t, scoresArr, students) {
   };
 }
 
-window.loadTestList = async() => {
-  const el = document.getElementById('testListBody');
-  try{
-    // genTests 만 로드 (레거시 tests 컬렉션 조회 제거 — Phase 6F)
-    const gSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'))).catch(()=>({docs:[]}));
-    const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
+// 페이지네이션 상태 — 시험 목록 (2026-05-13)
+let _tlState = { lastDoc: null, exhausted: false, data: [], startDate: null };
+const TL_PAGE_SIZE = 20;
 
-    if(genTests.length===0){
-      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';
-      return;
-    }
+// testId 들의 scores 만 in 쿼리 fetch (학원 전체 X)
+async function _tlLoadScoresForTests(testIds) {
+  if (!testIds.length) return [];
+  const all = [];
+  for (let i = 0; i < testIds.length; i += 30) {
+    const chunk = testIds.slice(i, i + 30);
+    try {
+      const sSnap = await getDocs(query(
+        collection(db, 'scores'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('testId', 'in', chunk)
+      ));
+      sSnap.docs.forEach(d => all.push(d.data()));
+    } catch(e) { console.warn('scores in chunk:', e.message); }
+  }
+  return all;
+}
 
-    // scores 전체 로드 후 testId 별로 집계 (tests / genTests 공통)
-    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
-    const allScores = scoresSnap.docs.map(d=>d.data());
-
-    // 학생 전체 (대상자 계산용 — 반 타겟을 uid 로 확장하려면 필요)
-    if (!Array.isArray(allStudents) || allStudents.length === 0) {
-      try {
-        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID), where('role','==','student')));
-        allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
-      } catch(e) { console.warn('학생 로드 실패(대상자 집계 정확도 저하):', e); }
-    }
-
-    const attachStats = (t) => {
-      const scoresArr = allScores.filter(s => s.testId === t.id);
-      const stats = _computeTestStats(t, scoresArr, allStudents);
-      return { ...t,
-        attemptCount: scoresArr.length, // 제출 횟수 (하위 호환)
-        avgScore: stats.avg,
-        _passedCount: stats.passedCount,
-        _attemptedCount: stats.attemptedCount,
-        _targetCount: stats.targetCount,
-      };
-    };
-
-    // genTests 만 (Phase 6F: 레거시 tests 제거됨)
-    const combined = genTests
-      .map(attachStats)
-      .sort((a,b)=>{
-        const at = a.createdAt?.toMillis?.() || 0;
-        const bt = b.createdAt?.toMillis?.() || 0;
-        return bt - at;
-      });
-
-    initPagination('testListBody', combined, (t,i)=>{
-      // 독해 시험(genTests) 은 진행상세(토글) 현재 지원하지 않음 (Phase 2 MVP)
-      const isGen = t._src === 'genTests';
-      const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
-      const bookName = t.bookName || (isGen ? (t.sourceSetNames?.join(', ')||'-') : '-');
-      return `
+function _tlRenderRow(t, i) {
+  const isGen = t._src === 'genTests';
+  const count = isGen ? (t.questionCount||t.questions?.length||0) : (t.count||0);
+  const bookName = t.bookName || (isGen ? (t.sourceSetNames?.join(', ')||'-') : '-');
+  return `
       <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${t.id}','tl')" id="tl-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
@@ -5756,10 +5806,119 @@ window.loadTestList = async() => {
           <div id="tl-progress-content-${t.id}" style="padding:14px 16px 14px 48px;font-size:12px;color:#bbb;">로딩 중...</div>
         </td>
       </tr>`;
-    }, 'testPagination', 10, { pageSize: 20 });
+}
+
+function _tlRenderLoadMore() {
+  const wrap = document.getElementById('tlLoadMoreWrap');
+  if (!wrap) return;
+  if (_tlState.exhausted) {
+    wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨</div>';
+  } else {
+    wrap.innerHTML = '<button id="tlLoadMoreBtn" class="btn btn-secondary" style="margin:10px auto;display:block;" onclick="loadMoreTestList()">+ 더 보기</button>';
+  }
+}
+
+window.loadTestList = async() => {
+  const el = document.getElementById('testListBody');
+  try{
+    // 페이지네이션 리셋
+    _tlState.lastDoc = null;
+    _tlState.exhausted = false;
+    _tlState.data = [];
+
+    // 월초 default — KST 자정 기준 Date 객체
+    const monthStartStr = _ymdMonthStartKST();
+    const monthStartDate = new Date(monthStartStr + 'T00:00:00+09:00');
+    _tlState.startDate = monthStartDate;
+
+    const gSnap = await getDocs(query(
+      collection(db,'genTests'),
+      where('academyId','==', window.MY_ACADEMY_ID),
+      where('createdAt','>=', monthStartDate),
+      orderBy('createdAt','desc'),
+      limit(TL_PAGE_SIZE)
+    )).catch(e => { console.warn('genTests page 1:', e.message); return {docs:[], size:0}; });
+
+    _tlState.lastDoc = gSnap.docs[gSnap.docs.length - 1] || null;
+    _tlState.exhausted = gSnap.size < TL_PAGE_SIZE;
+    const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
+
+    if(genTests.length===0){
+      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">기간 내 출제된 시험이 없습니다</td></tr>';
+      _tlRenderLoadMore();
+      return;
+    }
+
+    // 받은 시험들의 testId 만 scores in 쿼리 (학원 전체 fetch X)
+    const allScores = await _tlLoadScoresForTests(genTests.map(t => t.id));
+
+    // 학생 캐시 (대상자 계산용)
+    if (!Array.isArray(allStudents) || allStudents.length === 0) {
+      try {
+        const sSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID), where('role','==','student')));
+        allStudents = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+      } catch(e) { console.warn('학생 로드 실패:', e); }
+    }
+
+    const attachStats = (t) => {
+      const scoresArr = allScores.filter(s => s.testId === t.id);
+      const stats = _computeTestStats(t, scoresArr, allStudents);
+      return { ...t,
+        attemptCount: scoresArr.length,
+        avgScore: stats.avg,
+        _passedCount: stats.passedCount,
+        _attemptedCount: stats.attemptedCount,
+        _targetCount: stats.targetCount,
+      };
+    };
+
+    _tlState.data = genTests.map(attachStats);
+
+    initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 20 });
+    _tlRenderLoadMore();
   }catch(e){
     console.error(e);
     el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';
+  }
+};
+
+window.loadMoreTestList = async() => {
+  if (_tlState.exhausted || !_tlState.lastDoc) return;
+  const btn = document.getElementById('tlLoadMoreBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '로딩 중...'; }
+  try {
+    const gSnap = await getDocs(query(
+      collection(db,'genTests'),
+      where('academyId','==', window.MY_ACADEMY_ID),
+      where('createdAt','>=', _tlState.startDate),
+      orderBy('createdAt','desc'),
+      startAfter(_tlState.lastDoc),
+      limit(TL_PAGE_SIZE)
+    ));
+    _tlState.lastDoc = gSnap.docs[gSnap.docs.length - 1] || _tlState.lastDoc;
+    _tlState.exhausted = gSnap.size < TL_PAGE_SIZE;
+    const newTests = gSnap.docs.map(d => ({id:d.id,_src:'genTests',...d.data()}));
+
+    if (newTests.length) {
+      const newScores = await _tlLoadScoresForTests(newTests.map(t => t.id));
+      const attached = newTests.map(t => {
+        const scoresArr = newScores.filter(s => s.testId === t.id);
+        const stats = _computeTestStats(t, scoresArr, allStudents);
+        return { ...t,
+          attemptCount: scoresArr.length,
+          avgScore: stats.avg,
+          _passedCount: stats.passedCount,
+          _attemptedCount: stats.attemptedCount,
+          _targetCount: stats.targetCount,
+        };
+      });
+      _tlState.data = _tlState.data.concat(attached);
+      initPagination('testListBody', _tlState.data, _tlRenderRow, 'testPagination', 10, { pageSize: 20 });
+    }
+    _tlRenderLoadMore();
+  } catch(e) {
+    console.error('loadMoreTestList:', e);
+    if (btn) { btn.disabled = false; btn.textContent = '+ 더 보기'; }
   }
 };
 
@@ -11265,6 +11424,9 @@ let _tpGenTests = [];               // 현재 유형의 genTests
 let _tpSelectedSets = new Set();    // 체크된 세트 ID
 let _activeTestType = null;         // 현재 활성 서브메뉴 type
 let _activeTestFolderKey = null;    // null = 전체
+// 페이지네이션 — 시험관리 최근시험 표 (월초~당일 + 20 + 더보기, 2026-05-13)
+let _tpTestsState = { lastDoc: null, exhausted: false, monthStartDate: null };
+const TP_PAGE_SIZE = 20;
 
 async function _renderTestAssignDetail(type) {
   const cfg = _TEST_TYPE_CONFIG[type];
@@ -11295,9 +11457,21 @@ async function _renderTestAssignDetail(type) {
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
-        const testSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
-        _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}))
-          .filter(t => t.testMode === cfg.testMode);
+        // 월초~당일 + testMode server-side + limit(20) + cursor 더보기 (2026-05-13)
+        _tpTestsState.monthStartDate = new Date(_ymdMonthStartKST() + 'T00:00:00+09:00');
+        _tpTestsState.lastDoc = null;
+        _tpTestsState.exhausted = false;
+        const testSnap = await getDocs(query(
+          collection(db,'genTests'),
+          where('academyId','==', window.MY_ACADEMY_ID),
+          where('testMode','==', cfg.testMode),
+          where('createdAt','>=', _tpTestsState.monthStartDate),
+          orderBy('createdAt','desc'),
+          limit(TP_PAGE_SIZE)
+        ));
+        _tpGenTests = testSnap.docs.map(d => ({id:d.id, ...d.data()}));
+        _tpTestsState.lastDoc = testSnap.docs[testSnap.docs.length - 1] || null;
+        _tpTestsState.exhausted = testSnap.size < TP_PAGE_SIZE;
       }
     } catch(e) {
       console.error(e);
@@ -11605,6 +11779,9 @@ function _tpRenderNoSets(cfg) {
 
 function _tpRenderTestsTable() {
   // 시험 목록 페이지(testListBody)와 컬럼 통일 — 유형·체크박스만 제외, 작업(행별 🗑 삭제) 추가
+  const loadMoreHtml = _tpTestsState.exhausted
+    ? '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨</div>'
+    : '<button class="btn btn-secondary" style="margin:10px auto;display:block;" onclick="loadMoreTpTests()">+ 더 보기</button>';
   return `
     <table style="width:100%;border-collapse:collapse;">
       <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
@@ -11623,8 +11800,32 @@ function _tpRenderTestsTable() {
       <tbody>
         ${_tpGenTests.map((t, i) => _tpRenderTestRow(t, i)).join('')}
       </tbody>
-    </table>`;
+    </table>
+    ${loadMoreHtml}`;
 }
+
+window.loadMoreTpTests = async() => {
+  if (_tpTestsState.exhausted || !_tpTestsState.lastDoc) return;
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg) return;
+  try {
+    const snap = await getDocs(query(
+      collection(db,'genTests'),
+      where('academyId','==', window.MY_ACADEMY_ID),
+      where('testMode','==', cfg.testMode),
+      where('createdAt','>=', _tpTestsState.monthStartDate),
+      orderBy('createdAt','desc'),
+      startAfter(_tpTestsState.lastDoc),
+      limit(TP_PAGE_SIZE)
+    ));
+    const newTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    _tpTestsState.lastDoc = snap.docs[snap.docs.length - 1] || _tpTestsState.lastDoc;
+    _tpTestsState.exhausted = snap.size < TP_PAGE_SIZE;
+    _tpGenTests = _tpGenTests.concat(newTests);
+    _tpRender();
+    if (newTests.length) _tpLoadTestStats();  // 새 시험들의 통계 부착
+  } catch(e) { console.error('loadMoreTpTests:', e); }
+};
 
 function _tpRenderTestRow(t, i) {
   const qCount = t.questionCount || t.questions?.length || 0;
@@ -11653,8 +11854,9 @@ function _tpRenderTestRow(t, i) {
 
 async function _tpLoadTestStats() {
   try {
-    const scoresSnap = await getDocs(query(collection(db,'scores'),where('academyId','==',window.MY_ACADEMY_ID)));
-    const allScores = scoresSnap.docs.map(d => d.data());
+    // 시험관리 표에 나온 시험 ID 만 scores in 쿼리 (학원 전체 X, 2026-05-13)
+    const testIds = (_tpGenTests || []).map(t => t.id);
+    const allScores = await _tlLoadScoresForTests(testIds);
 
     // 학생 전체 로드 (대상자 계산용)
     if (!Array.isArray(allStudents) || allStudents.length === 0) {
