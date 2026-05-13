@@ -3732,3 +3732,165 @@ ScoreSnap 마무리 후 두 큰 작업. SW v438 → v445 (~12 commit).
 - ✅ 객관식 즉시 정답 표시 (정답 초록·학생 오답 빨강)
 - ✅ 녹음숙제 일시정지/재개 (MediaRecorder pause/resume + elapsedSec 누적 타이머)
 - ✅ 메시지 첨부 드래그&드롭 (dashed 박스 + dragover 강조)
+
+---
+
+## 2026-05-13 (이어서): AI OCR 프리셋 시드 race fix + Firebase reads 폭주 진단 + 학생앱 시험 목록 최적화
+
+당일 SW v446 → v450 (3 commit). default 학원 운영 진단 + Firebase 무료 한도 초과 fix.
+
+### 1) AI OCR 클린업 프리셋 중복 정리 (commit `f67d335`, SW v447)
+
+**증상**: default 학원의 클린업 프리셋 매니저 모달에 같은 이름 6개씩 표시 (총 25개).
+
+**진단** ([scripts/diag/check-cleanup-presets.js](scripts/diag/check-cleanup-presets.js)):
+- 4 글로벌 default × 약 6번 중복 시드 (2026-05-11 08:37:31~32 — 1초 안 5번 폭주)
+- + 옛 학원장 커스텀 "객관식 문법문제 생성" 1개
+
+**원인 — race condition**:
+- `_cleanupSeedDefaults` 가 학원 진입 시 `length === 0` 검사 후 `addDoc 4번` (글로벌 default)
+- 시드 끝나기 전에 같은 함수 재호출 시 또 `length === 0` 인식 → 또 4 addDoc
+- 5월 11일 작업 중 학원장 앱 짧은 시간 새로고침 다수 → 5번 중복 시드
+
+**수정**:
+- `_cleanupSeeding` 플래그 — 같은 세션 안 중복 호출 차단
+- 시드 직전 `existingNames` Set 으로 이미 있는 이름 skip
+- `toAdd.length === 0` 시 addDoc 호출 자체 skip
+
+**1회용 정리 스크립트** ([scripts/admin/dedupe-cleanup-presets.js](scripts/admin/dedupe-cleanup-presets.js)):
+- DRY-RUN/--apply 패턴
+- 규칙: 글로벌 default 와 prompt 동일한 doc → 가장 오래된 1개만 keep
+- prompt 다른 doc (학원장 커스텀) → prompt 별 1개씩 keep
+- default 학원 25 → 5 (20건 삭제). dongbu/ipark/raloud2 변동 없음
+
+### 2) Firebase reads 폭주 진단 (무료 한도 5만/일 → 21만 발생)
+
+**증상**: 학원장 보고 — Firebase 무료 reads 5만 한도인데 하루 21만 reads.
+
+**핵심 발견** — 학생앱 시험 목록 fetch 패턴:
+
+```js
+// _loadTestListByType (학생 5종 메뉴 공용) + loadRecAiList
+const snap = await getDocs(query(
+  collection(db,'genTests'),
+  where('academyId','==', ...),
+  orderBy('createdAt','desc')   // ← 제한 없음, server-side testMode 필터 X
+));
+const allTests = snap.docs.map(...);  // 학원 전체 시험 (예: 100개)
+const myTests = filterMyTests(allTests).filter(t => t.testMode === type);  // 클라에서 필터
+```
+
+**비용 추정**:
+- 학원 전체 시험 100개 fetch / 학생 본인 시험 10~30개만 사용 (70~90개 낭비)
+- 학생 1회 메뉴 진입 = 100 reads + userCompleted ~20 = 120 reads
+- 5종 메뉴 (단어/객관식/빈칸/언스크램블/녹음) 순회 = ~600 reads
+- 학원 65명 × 5회/일 = **~195K reads ≈ 보고된 21만 reads**
+
+**기타 무거운 호출** (의심):
+- `_bigcalLoadEvents` (학원장 대시보드 큰 달력) — genTests 300개 limit fetch, 매 월 이동마다 호출
+- 진도체크 페이지 — `_prog.loaded` 캐시 적용되어 영향 작음 (재진입 시 fetch X)
+
+### 3) 학생앱 시험 목록 최적화 (commit `3521e51`, SW v450)
+
+**적용한 fix — server-side 필터 + 5분 캐시**:
+
+**Firestore 인덱스 추가** (`firestore.indexes.json`):
+```js
+genTests: { academyId ASC + testMode ASC + createdAt DESC }
+```
+
+**`_loadTestListByType` 변경**:
+```js
+where('testMode','==', type)  // ← server-side 필터
+limit(200)
+```
+
+**`_testListCache` (Map, 5분 TTL)**:
+- 메뉴 5종 순회 시 재진입엔 캐시 사용 (reads 0)
+- `_invalidateTestListCache(type?)` 헬퍼 (window 노출)
+
+**`loadRecAiList` 동일 패턴** 적용.
+
+**효과 추정**:
+
+| 패턴 | Before | After |
+|------|--------|-------|
+| 학생 1회 메뉴 진입 (단어시험) | 100 시험 fetch | 20 시험 fetch (단어만) |
+| 학생 5종 메뉴 순회 (첫) | 500 reads | ~100 reads |
+| 5분 안 재진입 (캐시) | 100 reads | 0 reads |
+| **65명 × 5회/일** | **195K** | **~40K** ✓ 무료 한도 안 |
+
+### 4) 학생 UX 영향 (5분 캐시)
+
+| 케이스 | 영향 |
+|--------|------|
+| 학원장 새 시험 배정 → 학생이 5분 안 메뉴 진입 | 새 시험 안 보일 수 있음 (캐시 valid) |
+| 학생 응시 후 카드 상태 갱신 | ✓ userCompleted 매번 fresh — 즉시 |
+| 학생 응시 시작 (시험 풀기) | ✓ getDoc(genTests/{id}) fresh fetch — 최신 보장 |
+| 5분 후 재진입 | 캐시 만료 → 자동 새 fetch — 신규 시험 보임 |
+
+### 5) 추가 최적화 검토 (다른 챗에서 진행 중)
+
+- **30일 제한** (`where('createdAt','>=', 30일전)`) — fetch 양 추가 절반 ↓
+- **incremental fetch** (당일 새 시험만 + merge) — 재진입 시 reads ~0
+- **`targetUids` 학생별 server-side 필터** — 학원 전체 fetch 폐기. 마이그레이션 필요 (~100개 시험에 targetKeys 추가)
+
+→ 이 챗에선 [5분 캐시 + server-side testMode 필터] 까지만 적용. 추가 작업은 다른 챗에서 진행 중.
+
+### 6) 복구된 녹음숙제 데이터 분석 (이혜음 학생 케이스)
+
+**증상**: default 학원의 Captain awesome 시험, 이혜음 학생 recordings.length=6 (시험 옵션 recordingCount=2 인데 6개), duration·voiceActivity 0/null.
+
+**원인**: `recoveredBy: 'script:recover-recording-errors'` — 5월 11일 복구 스크립트가 박은 데이터.
+- 학생이 4.5MB body 한도 에러로 6번 시도 → Storage 에 6개 audio 누적
+- 복구 스크립트가 Storage list 한 모든 파일을 recordings 배열에 push
+- duration·voiceActivity 는 메타데이터 없어 0/null
+
+**처리**: 그대로 둠 (학생 시도 흔적 보존). 60일 후 GCS Lifecycle 로 자연 정리.
+
+### 7) 진단 도구 신규
+
+- `scripts/diag/check-cleanup-presets.js` — 학원별 + 글로벌 비교 + 중복 탐지
+- `scripts/admin/dedupe-cleanup-presets.js` — DRY-RUN/--apply 패턴
+- `scripts/diag/inspect-recordings.js` — 특정 학생 recordings 배열 상세
+
+---
+
+## 작업 규칙 추가 (2026-05-13 이어서)
+
+신규:
+- **시드 함수 race 회피 패턴** — 학원 첫 진입 시 default 데이터 자동 시드 함수는 진행 플래그 (`_seeding`) + 직전 존재 검사 (existing names Set) 필수. 짧은 시간 안 여러 번 호출 시 중복 박힘 방지.
+- **학생앱 시험 목록 server-side 필터 의무** — `genTests` 같이 학원 단위 데이터를 학생이 가져올 때는 가능한 모든 필터를 server-side 로. 클라 측 필터는 reads 낭비.
+- **Composite index 사전 deploy → 빌드 완료 확인 (Firebase Console "사용 설정됨") → 코드 deploy 순서** (CLAUDE.md 2026-04-27 강화). 빌드 중 새 query 호출 시 "needs index" 에러로 학생 사용 차단.
+- **5분 캐시 trade-off** — 학생앱에 캐시 도입 시: 학생 응시 후 카드 상태 (`userCompleted`) 는 매번 fresh fetch (학생 UX 보장). 시험 메타 (`genTests` 목록) 만 캐시. 응시 시작 시점엔 `getDoc(genTests/{id})` fresh — 최신 옵션·문제 보장.
+- **복구 스크립트가 박은 데이터 식별** — `recoveredBy: 'script:recover-recording-errors'` 같은 마커. duration·voiceActivity 등 메타데이터 0/null. recordings 배열에 모든 Storage 파일 포함 (시험 recordingCount 무관). 학원장이 인지 가능하도록 그대로 둠.
+- **Firebase 무료 reads 5만/일 한도** — 학원 트래픽 늘면 빠르게 초과. 학생앱 시험 메뉴 진입 시 학원 전체 fetch 가 가장 큰 원인. 캐시 + server-side 필터 필수.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-13 이어서)
+- `public/js/app.js`: +50줄 (캐시 + server-side 필터)
+- `public/admin/js/app.js`: +20줄 (시드 race fix)
+- `firestore.indexes.json`: +1 composite index (genTests 3-field)
+- 신규 진단/도구: 3개
+- SW 캐시: `kunsori-v450`
+
+## 진행률 (2026-05-13 이어서)
+- **Firebase reads 최적화: ~70%** (5분 캐시 + server-side testMode 필터 적용. 30일 제한 / incremental / targetUids 는 다른 챗에서 진행 중)
+- **AI OCR 프리셋 race fix: ~100%**
+- 시험 풀이 UX: ~98% (변동 없음)
+- 녹음숙제 시스템: ~100% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-13 이어서 갱신)
+1. **Firebase reads 추가 최적화** (다른 챗) — 30일 제한 / incremental fetch / targetUids
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리
+4. **v1.0 Polish 사이클**
+
+**완료 (이 세션 이어서, 2026-05-13)**:
+- ✅ AI OCR 클린업 프리셋 시드 race fix + 정리 스크립트 (default 25 → 5)
+- ✅ Firebase reads 폭주 원인 진단 (학생앱 시험 목록 fetch 패턴)
+- ✅ 학생앱 시험 목록 — server-side testMode 필터 + 5분 캐시 (~80% 절감)
+- ✅ Firestore composite index 추가 + deploy + 빌드 완료
+- ✅ 복구된 녹음숙제 데이터 (recordings 6개, duration=0) 원인 식별
