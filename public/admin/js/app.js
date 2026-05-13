@@ -14426,11 +14426,14 @@ let _prog = {
   tab: 'date',          // 'date' | 'student' | 'test'
   groups: [],           // 반 목록
   students: [],         // 재원 학생 [{ uid, name, group, ... }]
-  tests: [],            // 학원 active genTests (60일)
+  tests: [],            // 학생별 탭용 60일 시험 (학생별 탭 첫 진입 시 lazy fetch)
+  testsByDate: {},      // 일자별 탭용 — { 'YYYY-MM-DD': [...tests] }
   selectedUid: null,    // 선택된 학생 uid
   userCompCache: {},    // { uid: { testId: comp } } — 학생별 userCompleted 캐시
-  loaded: false,
+  loaded: false,        // users + groups 로드 여부
+  allTestsLoaded: false,// 학생별 탭용 60일 시험 fetch 여부
   dateInited: false,    // 일자 input 초기 set (어제) 여부
+  dateLoading: null,    // 현재 fetch 중인 일자 (중복 호출 방지)
 };
 
 const _PROG_TYPES = [
@@ -14448,45 +14451,75 @@ async function loadProgressCheck() {
     _progApplyTab();
     return;
   }
-  // 병렬 로드
+  // 진입 시 students + groups 만 (시험은 일자별 탭이 일자 조건으로 lazy fetch — 2026-05-14)
   try {
-    const [usersSnap, testsSnap, groupsSnap] = await Promise.all([
+    const [usersSnap, groupsSnap] = await Promise.all([
       getDocs(query(collection(db, 'users'),
         where('academyId', '==', window.MY_ACADEMY_ID),
         where('role', '==', 'student'),
         where('status', '==', 'active'))),
-      getDocs(query(collection(db, 'genTests'),
-        where('academyId', '==', window.MY_ACADEMY_ID),
-        orderBy('createdAt', 'desc'),
-        limit(300))),
       getDocs(query(collection(db, 'groups'),
         where('academyId', '==', window.MY_ACADEMY_ID))),
     ]);
-    const startMs = Date.now() - _PROG_DAYS * 24 * 3600 * 1000;
     _prog.students = usersSnap.docs
       .map(d => ({ uid: d.id, ...d.data() }))
       .sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));
-    _prog.tests = testsSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => {
-        const t0 = t.createdAt?.toMillis?.() || 0;
-        return t0 >= startMs;
-      });
     _prog.groups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     _prog.loaded = true;
     _progFillGroupFilter();
     _progInitDateInput();
     _progApplyTab();
     progRenderStudentList();
-    // 기본 탭이 일자별이라 진입 시 한 번 렌더
+    // 기본 탭이 일자별이라 진입 시 한 번 렌더 (일자 default = 어제 → fetch + 캐시)
     if (_prog.tab === 'date') progRenderByDate();
   } catch (e) {
     console.warn('[progress] load failed:', e);
     const list = document.getElementById('progStudentList');
     if (list) list.innerHTML = `<div style="padding:20px;text-align:center;color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message)}</div>`;
   }
-  // 기존 시험별 진도체크 (테이블) 도 백그라운드 로드
+  // 기존 시험별 진도체크 (테이블) 도 백그라운드 로드 (별도 lazy)
   loadTestList().catch(e => console.warn('[testList]', e));
+}
+
+// 일자별 시험 lazy fetch + 캐시 (academyId + date == ymd)
+async function _progFetchTestsByDate(ymd) {
+  if (_prog.testsByDate[ymd]) return _prog.testsByDate[ymd];
+  if (_prog.dateLoading === ymd) {
+    // 같은 일자 동시 fetch 방지 — 0.5초 폴링
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      if (_prog.testsByDate[ymd]) return _prog.testsByDate[ymd];
+    }
+  }
+  _prog.dateLoading = ymd;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'genTests'),
+      where('academyId', '==', window.MY_ACADEMY_ID),
+      where('date', '==', ymd)
+    ));
+    const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _prog.testsByDate[ymd] = arr;
+    return arr;
+  } finally {
+    _prog.dateLoading = null;
+  }
+}
+
+// 학생별 탭용 60일 시험 lazy fetch (학생 클릭 시 처음에만 한 번)
+async function _progEnsureAllTestsLoaded() {
+  if (_prog.allTestsLoaded) return;
+  const startMs = Date.now() - _PROG_DAYS * 24 * 3600 * 1000;
+  const snap = await getDocs(query(
+    collection(db, 'genTests'),
+    where('academyId', '==', window.MY_ACADEMY_ID),
+    orderBy('createdAt', 'desc'),
+    limit(300)
+  ));
+  _prog.tests = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => (t.createdAt?.toMillis?.() || 0) >= startMs);
+  _prog.allTestsLoaded = true;
 }
 
 function _progFillGroupFilter() {
@@ -14559,6 +14592,12 @@ window.progSelectStudent = async function (uid) {
     label.style.color = 'var(--text)';
   }
   progRenderStudentList();  // 선택 강조 갱신
+  // 학생별 탭용 60일 시험 lazy fetch (이번 진입에 처음 1회만)
+  if (!_prog.allTestsLoaded) {
+    const detail = document.getElementById('progStudentDetail');
+    if (detail) detail.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray);font-size:14px;">시험 목록 불러오는 중...</div>`;
+    try { await _progEnsureAllTestsLoaded(); } catch (e) { console.warn('[progress] allTests:', e); }
+  }
   // 학생 userCompleted 캐시
   if (!_prog.userCompCache[uid]) {
     const detail = document.getElementById('progStudentDetail');
@@ -14697,9 +14736,22 @@ window.progRenderByDate = async function () {
     return;
   }
 
-  // 시험 필터 — date 일치 + 해당 반 대상 또는 전체 대상
-  const matched = _prog.tests.filter(t => {
-    if ((t.date || '') !== date) return false;
+  // 그 날 시험 lazy fetch + 캐시 (academyId + date == ymd)
+  const cacheHit = !!_prog.testsByDate[date];
+  if (!cacheHit) {
+    results.innerHTML = `<div style="text-align:center;padding:30px 20px;color:#bbb;font-size:13px;">불러오는 중...</div>`;
+    if (summary) summary.textContent = `${date} · ${group}`;
+  }
+  let dayTests;
+  try {
+    dayTests = await _progFetchTestsByDate(date);
+  } catch (e) {
+    results.innerHTML = `<div style="text-align:center;padding:30px 20px;color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  // 시험 필터 — 해당 반 대상 또는 전체 대상
+  const matched = dayTests.filter(t => {
     const ts = Array.isArray(t.targets) ? t.targets : [];
     if (ts.length === 0) return false;
     if (ts.some(x => x.type === 'all')) return true;
