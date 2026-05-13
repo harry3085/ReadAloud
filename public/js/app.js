@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -678,6 +678,14 @@ const TEST_TYPE_UI = {
 };
 
 // 공용 시험 목록 로더 (vocab / fill_blank / mcq / unscramble)
+// 시험 목록 캐시 — 메뉴 이동 시 같은 type 재사용 (5분 TTL)
+// reads ↓ 효과 큼 (메뉴 5종 순회 시 5번 fetch → 첫 1번만)
+const _testListCache = new Map();  // type → { tests, fetchedAt }
+const _TEST_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+window._invalidateTestListCache = (type) => {
+  if (type) _testListCache.delete(type); else _testListCache.clear();
+};
+
 async function _loadTestListByType(type) {
   const ui = TEST_TYPE_UI[type];
   const elP = document.getElementById(ui.pendingElId);
@@ -686,9 +694,24 @@ async function _loadTestListByType(type) {
   try {
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === type);
+    // 캐시 검사 (5분 TTL)
+    let allTests;
+    const cached = _testListCache.get(type);
+    if (cached && (Date.now() - cached.fetchedAt < _TEST_LIST_CACHE_TTL_MS)) {
+      allTests = cached.tests;
+    } else {
+      // server-side testMode 필터 — 학원 전체 시험 fetch X (해당 유형만)
+      const snap = await getDocs(query(
+        collection(db,'genTests'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('testMode','==',type),
+        orderBy('createdAt','desc'),
+        limit(200)
+      ));
+      allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      _testListCache.set(type, { tests: allTests, fetchedAt: Date.now() });
+    }
+    const myTests = filterMyTests(allTests, myGroup, myUid);
 
     const userCompMap = new Map();
     await Promise.all(myTests.map(async t => {
@@ -1908,9 +1931,23 @@ async function loadRecAiList(){
   try{
     const myGroup = userProfile?.group || '';
     const myUid = currentUser?.uid || '';
-    const snap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
-    const allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    const myTests = filterMyTests(allTests, myGroup, myUid).filter(t => t.testMode === 'recording');
+    // server-side testMode 필터 + 5분 캐시 (reads 80% ↓)
+    let allTests;
+    const cached = _testListCache.get('recording');
+    if (cached && (Date.now() - cached.fetchedAt < _TEST_LIST_CACHE_TTL_MS)) {
+      allTests = cached.tests;
+    } else {
+      const snap = await getDocs(query(
+        collection(db,'genTests'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('testMode','==','recording'),
+        orderBy('createdAt','desc'),
+        limit(200)
+      ));
+      allTests = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      _testListCache.set('recording', { tests: allTests, fetchedAt: Date.now() });
+    }
+    const myTests = filterMyTests(allTests, myGroup, myUid);
 
     const completedMap = new Map();
     const inProgressMap = new Map();  // Phase A+ : 중간 저장된 시험
