@@ -5077,9 +5077,9 @@ const _origUpdateAllBadgesForVocab = window.updateAllBadges;
 // vocab 시험의 한 변형 (vocabOptions.format='speaking') 으로 동작. T2 에서 _vqState 분기.
 // ═══════════════════════════════════════════════════════════════════════════
 const SPK_STRICTNESS_CONFIG = {
-  lenient: { maxAlternatives: 5, similarityThreshold: 0.7, label: '🟢 너그러움' },
-  normal:  { maxAlternatives: 5, similarityThreshold: 0.8, label: '🟡 보통' },
-  strict:  { maxAlternatives: 1, similarityThreshold: 1.0, label: '🔴 엄격' },
+  lenient: { maxAlternatives: 5, similarityThreshold: 0.55, label: '🟢 너그러움' },
+  normal:  { maxAlternatives: 5, similarityThreshold: 0.7,  label: '🟡 보통' },
+  strict:  { maxAlternatives: 1, similarityThreshold: 0.8,  label: '🔴 엄격' },
 };
 
 function _spkLevenshteinSimilarity(a, b) {
