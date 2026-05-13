@@ -10366,8 +10366,9 @@ window.loadQuestionSets = async () => {
       _qsSetsByBook = { __initialized: true };
     }
     _qsRenderList();
-    // 활성 Book 또는 "전체 최근 20" 자동 lazy fetch
-    await _qsLazyFetch(_qsActiveBookId);
+    // 진입 시 "전체 최근 20" 은 항상 fetch (상단 pane) + 활성 Book 있으면 그 폴더도
+    await _qsLazyFetch(null);
+    if (_qsActiveBookId != null) await _qsLazyFetch(_qsActiveBookId);
     _qsRenderList();
   } catch(e) {
     showToast('세트 목록 로드 실패: '+e.message);
