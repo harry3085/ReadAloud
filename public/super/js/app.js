@@ -2779,14 +2779,18 @@ setTimeout(() => {
 // T6 — 한도 관리 탭
 // ════════════════════════════════════════════════════════════════
 
-const QUOTA_FIELDS = [
+// 플랜 × 구간별 한도 — plans/{planId}.byTier (AI 쿼터·녹음·storage)
+const PLAN_FIELDS = [
   { key: 'ocrPerMonth',          label: 'OCR' },
   { key: 'cleanupPerMonth',      label: 'Cleanup' },
   { key: 'generatorPerMonth',    label: 'Generator' },
   { key: 'recordingPerMonth',    label: '녹음' },
   { key: 'growthReportPerMonth', label: '리포트' },
   { key: 'storageGB',            label: 'Storage(GB)' },
-  // 콘텐츠 한도 — 학원당 doc 수 제한 (2026-05-14, appConfig/limits 글로벌 default override)
+];
+// 학원별 Override 한도 — customLimits (위 + 콘텐츠 한도, 2026-05-14)
+const QUOTA_FIELDS = [
+  ...PLAN_FIELDS,
   { key: 'noticesPerAcademy',      label: '📢 공지 수' },
   { key: 'draftsPerAcademy',       label: '💾 초안 수' },
   { key: 'sentMessagesPerAcademy', label: '📤 발송이력 수' },
@@ -2865,7 +2869,7 @@ async function loadPlanQuotaCards() {
       const tiers = Object.keys(plan.byTier || {});
       const rows = tiers.map(tier => {
         const t = plan.byTier[tier];
-        const cells = QUOTA_FIELDS.map(f => `<td style="text-align:right;">${t[f.key] ?? '-'}</td>`).join('');
+        const cells = PLAN_FIELDS.map(f => `<td style="text-align:right;">${t[f.key] ?? '-'}</td>`).join('');
         return `<tr>
           <td style="font-weight:600;">${esc(tier)}명</td>
           ${cells}
@@ -2873,7 +2877,7 @@ async function loadPlanQuotaCards() {
         </tr>`;
       }).join('');
 
-      const head = QUOTA_FIELDS.map(f => `<th style="text-align:right;">${esc(f.label)}</th>`).join('');
+      const head = PLAN_FIELDS.map(f => `<th style="text-align:right;">${esc(f.label)}</th>`).join('');
 
       return `
         <div class="card" style="padding:0;overflow:hidden;">
@@ -2913,7 +2917,7 @@ window.openQuotaEditModal = async (planId, tier) => {
 
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
-  const inputs = QUOTA_FIELDS.map(f => `
+  const inputs = PLAN_FIELDS.map(f => `
     <div style="display:flex;align-items:center;gap:10px;">
       <label style="width:120px;font-size:13px;color:var(--gray);">${esc(f.label)}</label>
       <input id="qe_${f.key}" type="number" min="0" value="${t[f.key] ?? 0}"
@@ -2955,13 +2959,13 @@ window.saveQuotaEdit = async (planId, tier, affectedCount) => {
   const plan = _t6Plans.find(p => p.id === planId);
   const before = { ...((plan.byTier || {})[tier] || {}) };
   const after = { ...before };
-  for (const f of QUOTA_FIELDS) {
+  for (const f of PLAN_FIELDS) {
     const v = parseInt(document.getElementById(`qe_${f.key}`)?.value, 10);
     after[f.key] = isFinite(v) ? v : 0;
   }
 
   // 변경된 키 목록 (로그용)
-  const changedFields = QUOTA_FIELDS
+  const changedFields = PLAN_FIELDS
     .map(f => f.key)
     .filter(k => before[k] !== after[k]);
 
