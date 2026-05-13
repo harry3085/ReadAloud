@@ -59,6 +59,63 @@
       ]
     },
     {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "targetAll", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "targetUids", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "targetGroups", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "testMode", "order": "ASCENDING" },
+        { "fieldPath": "targetAll", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "testMode", "order": "ASCENDING" },
+        { "fieldPath": "targetUids", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genTests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "testMode", "order": "ASCENDING" },
+        { "fieldPath": "targetGroups", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "genQuestionSets",
       "queryScope": "COLLECTION",
       "fields": [

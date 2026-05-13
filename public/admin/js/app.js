@@ -11744,6 +11744,7 @@ window.mcqPublish = async () => {
 
     const bookName = selectedSets[0]?.sourcePages?.[0]?.pageTitle || '';
 
+    const tIndex = _buildTargetIndex(_mcqTargets);
     const docRef = await addDoc(collection(db,'genTests'), {
       name,
       academy: '큰소리영어',
@@ -11752,6 +11753,9 @@ window.mcqPublish = async () => {
       testMode: 'mcq',
       targetType, targetId, targetName,
       targets: [..._mcqTargets],
+      targetUids: tIndex.targetUids,
+      targetGroups: tIndex.targetGroups,
+      targetAll: tIndex.targetAll,
       active: true,
       questions,
       questionCount: questions.length,
@@ -12795,6 +12799,22 @@ function _tpFisherYates(arr) {
   return a;
 }
 
+// targets[] → server-side filter 가능한 평면 필드 추출 (2026-05-14)
+function _buildTargetIndex(targets) {
+  const out = { targetUids: [], targetGroups: [], targetAll: false };
+  for (const t of (targets || [])) {
+    if (!t || typeof t !== 'object') continue;
+    if (t.type === 'all') out.targetAll = true;
+    else if (t.type === 'class') {
+      const g = t.groupName || t.name;
+      if (g && !out.targetGroups.includes(g)) out.targetGroups.push(g);
+    } else if (t.type === 'student') {
+      if (t.id && !out.targetUids.includes(t.id)) out.targetUids.push(t.id);
+    }
+  }
+  return out;
+}
+
 window.tpPublish = async () => {
   const cfg = _TEST_TYPE_CONFIG[_activeTestType];
   if (!cfg?.enabled) return;
@@ -12877,12 +12897,16 @@ window.tpPublish = async () => {
   const bookName = [book?.name, chap?.name].filter(Boolean).join(' · ') || '';
 
   try {
+    const tIndex = _buildTargetIndex(targets);
     await addDoc(collection(db,'genTests'), {
       name, academy:'큰소리영어',
       academyId: window.MY_ACADEMY_ID || 'default',
       date,
       testMode: cfg.testMode,
       targetType, targetId, targetName, targets: [...targets],
+      targetUids: tIndex.targetUids,
+      targetGroups: tIndex.targetGroups,
+      targetAll: tIndex.targetAll,
       active: true,
       questions,
       questionCount: questions.length,
