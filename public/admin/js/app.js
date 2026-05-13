@@ -3991,113 +3991,174 @@ window.saveMessage = async() => {
 };
 // 발송 이력 행 인라인 펼침 상태 (현재 펼쳐진 pushId 1개만 유지)
 let _msgExpandedSentId = null;
+// 메시지 페이지네이션 (2026-05-14, 초안/발송 각 10개씩 + 더보기)
+const MSG_PAGE_SIZE = 10;
+let _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
+let _msgSentState  = { lastDoc: null, exhausted: false, docs: [] };
+
+// 옛/신 schema 모두에서 대상 라벨 뽑기 (module scope, loadMessages + loadMore* 공용)
+function _msgLabelOf(n) {
+  if (n.targetSummary) return n.targetSummary;
+  if (Array.isArray(n.targets) && n.targets.length) return pickerSummarize(n.targets);
+  if (n.target === 'all') return '전체';
+  if (n.target?.startsWith?.('uid:')) return '개별학생';
+  return n.target || '-';
+}
+// 본문 미리보기 한 줄 + 말줄임
+function _msgBodyPreview(txt) {
+  const s = esc((txt || '').replace(/\s+/g, ' '));
+  return `<div style="font-size:12px;color:var(--gray);margin-top:2px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s}</div>`;
+}
+const _MSG_ONE_LINE = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+function _msgRenderDraft(d) {
+  const n = d.data();
+  const targetLabel = _msgLabelOf(n);
+  return `<div style="width:100%;max-width:100%;box-sizing:border-box;border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;overflow:hidden;"
+    onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
+    onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
+      <div style="flex:1 1 0;min-width:0;overflow:hidden;">
+        <div style="font-size:13px;font-weight:600;${_MSG_ONE_LINE}">${esc(n.title)||''}</div>
+        ${_msgBodyPreview(n.body)}
+        <div style="font-size:11px;color:#bbb;margin-top:4px;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
+      </div>
+      <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
+    </div>
+  </div>`;
+}
+
+function _msgRenderSent(d) {
+  const n = d.data();
+  const targetLabel = _msgLabelOf(n);
+  const isOpen = _msgExpandedSentId === d.id;
+  return `<div id="msgSentWrap-${d.id}" style="width:100%;max-width:100%;overflow:hidden;">
+    <div id="msgSentRow-${d.id}" style="width:100%;box-sizing:border-box;border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};overflow:hidden;"
+      onclick="toggleSentDetail('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
+      onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
+        <div style="flex:1 1 0;min-width:0;overflow:hidden;">
+          <div style="font-size:13px;font-weight:600;${_MSG_ONE_LINE}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
+          ${_msgBodyPreview(n.body)}
+          <div style="font-size:11px;color:#bbb;margin-top:4px;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
+        </div>
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
+          <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
+        </div>
+      </div>
+    </div>
+    <div id="msgSentInline-${d.id}" style="width:100%;max-width:100%;overflow:hidden;"></div>
+  </div>`;
+}
+
+function _msgRenderDraftSection() {
+  const el = document.getElementById('savedMsgDrafts');
+  if (!el) return;
+  const docs = _msgDraftState.docs;
+  const cards = docs.length
+    ? docs.map(_msgRenderDraft).join('')
+    : '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">저장된 초안이 없습니다</div>';
+  const more = _msgDraftState.exhausted
+    ? (docs.length > 0 ? '<div style="text-align:center;color:#888;padding:8px;font-size:11px;">모두 표시됨</div>' : '')
+    : '<button class="btn btn-secondary" style="display:block;margin:8px auto;font-size:12px;padding:5px 14px;" onclick="loadMoreMsgDrafts()">+ 더 보기</button>';
+  el.innerHTML = cards + more;
+}
+
+function _msgRenderSentSection() {
+  const el = document.getElementById('savedMsgSent');
+  if (!el) return;
+  const docs = _msgSentState.docs;
+  const cards = docs.length
+    ? docs.map(_msgRenderSent).join('')
+    : '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송 이력이 없습니다</div>';
+  const more = _msgSentState.exhausted
+    ? (docs.length > 0 ? '<div style="text-align:center;color:#888;padding:8px;font-size:11px;">모두 표시됨</div>' : '')
+    : '<button class="btn btn-secondary" style="display:block;margin:8px auto;font-size:12px;padding:5px 14px;" onclick="loadMoreMsgSent()">+ 더 보기</button>';
+  el.innerHTML = cards + more;
+  // 펼친 항목 인라인 다시 채움
+  if (_msgExpandedSentId) {
+    const stillThere = docs.find(d => d.id === _msgExpandedSentId);
+    if (stillThere && document.getElementById('msgSentInline-' + _msgExpandedSentId)) {
+      _msgRenderSentDetail(_msgExpandedSentId, stillThere.data().title || '');
+    } else {
+      _msgExpandedSentId = null;
+    }
+  }
+}
+
+async function _msgFetchDrafts(useCursor) {
+  const constraints = [
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('sent','==', false),
+    orderBy('createdAt','desc'),
+  ];
+  if (useCursor && _msgDraftState.lastDoc) constraints.push(startAfter(_msgDraftState.lastDoc));
+  constraints.push(limit(MSG_PAGE_SIZE));
+  const snap = await getDocs(query(collection(db, 'pushNotifications'), ...constraints));
+  _msgDraftState.lastDoc = snap.docs[snap.docs.length - 1] || _msgDraftState.lastDoc;
+  _msgDraftState.exhausted = snap.size < MSG_PAGE_SIZE;
+  return snap.docs;
+}
+async function _msgFetchSent(useCursor) {
+  const constraints = [
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('sent','==', true),
+    orderBy('createdAt','desc'),
+  ];
+  if (useCursor && _msgSentState.lastDoc) constraints.push(startAfter(_msgSentState.lastDoc));
+  constraints.push(limit(MSG_PAGE_SIZE));
+  const snap = await getDocs(query(collection(db, 'pushNotifications'), ...constraints));
+  _msgSentState.lastDoc = snap.docs[snap.docs.length - 1] || _msgSentState.lastDoc;
+  _msgSentState.exhausted = snap.size < MSG_PAGE_SIZE;
+  return snap.docs;
+}
+
+window.loadMoreMsgDrafts = async() => {
+  const docs = await _msgFetchDrafts(true);
+  _msgDraftState.docs = _msgDraftState.docs.concat(docs);
+  _msgRenderDraftSection();
+};
+window.loadMoreMsgSent = async() => {
+  const docs = await _msgFetchSent(true);
+  _msgSentState.docs = _msgSentState.docs.concat(docs);
+  _msgRenderSentSection();
+};
 
 async function loadMessages(){
   const draftEl = document.getElementById('savedMsgDrafts');
   const sentEl  = document.getElementById('savedMsgSent');
   if (!draftEl || !sentEl) return;
-  // 진입 시 리사이저 + picker 1회 초기화 (idempotent)
   _msgInitResizer();
   try { await _msgInitPicker([]); } catch (e) { console.warn('[picker init]', e); }
-  try{
-    const snap=await getDocs(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
+  // state 리셋
+  _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
+  _msgSentState  = { lastDoc: null, exhausted: false, docs: [] };
+  try {
+    const [draftDocs, sentDocs] = await Promise.all([_msgFetchDrafts(false), _msgFetchSent(false)]);
+    _msgDraftState.docs = draftDocs;
+    _msgSentState.docs  = sentDocs;
 
-    const drafts=[], sent=[];
-    snap.docs.forEach(d=>{ (d.data().sent ? sent : drafts).push(d); });
-
-    // 한도 표시 (2026-05-14) — 초안 / 발송이력 각각 분리 한도
+    // 한도 표시 — 전체 count 별도 fetch (getCountFromServer)
     try {
-      const limits = await _loadContentLimits();
+      const [limits, dCount, sCount] = await Promise.all([
+        _loadContentLimits(),
+        getCountFromServer(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('sent','==',false))),
+        getCountFromServer(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('sent','==',true))),
+      ]);
       const dl = document.getElementById('msgDraftLimit');
-      if (dl) dl.textContent = `(${drafts.length}/${limits.draftsPerAcademy} 저장됨)`;
+      if (dl) dl.textContent = `(${dCount.data().count}/${limits.draftsPerAcademy} 저장됨)`;
       const sl = document.getElementById('msgSentLimit');
-      if (sl) sl.textContent = `(${sent.length}/${limits.sentMessagesPerAcademy} 저장됨)`;
+      if (sl) sl.textContent = `(${sCount.data().count}/${limits.sentMessagesPerAcademy} 저장됨)`;
     } catch(_) {}
 
-    // 옛/신 schema 모두에서 대상 라벨 뽑기
-    const labelOf = (n) => {
-      if (n.targetSummary) return n.targetSummary;
-      if (Array.isArray(n.targets) && n.targets.length) return pickerSummarize(n.targets);
-      // 옛 단일 target (호환 표시는 안 하기로 했으나 안전망)
-      if (n.target === 'all') return '전체';
-      if (n.target?.startsWith('uid:')) return '개별학생';
-      return n.target || '-';
-    };
-
-    // 본문 미리보기 — 한 줄, 박스 폭에 맞춰 말줄임. 줄바꿈 문자도 공백 처리해 한 줄에 흐르게
-    const _bodyPreview = (txt) => {
-      const s = esc((txt || '').replace(/\s+/g, ' '));
-      return `<div style="font-size:12px;color:var(--gray);margin-top:2px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s}</div>`;
-    };
-
-    // 한 줄로 잘라내는 공통 스타일 (제목·메타용)
-    const _oneLine = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-
-    const renderDraft=d=>{
-      const n=d.data();
-      const targetLabel = labelOf(n);
-      return `<div style="width:100%;max-width:100%;box-sizing:border-box;border:1px dashed var(--border);background:#fffbf3;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.15s;overflow:hidden;"
-        onclick="reuseMsg('${d.id}')" title="클릭하면 입력창에 채워집니다"
-        onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
-          <div style="flex:1 1 0;min-width:0;overflow:hidden;">
-            <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}</div>
-            ${_bodyPreview(n.body)}
-            <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
-          </div>
-          <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
-        </div>
-      </div>`;
-    };
-
-    const renderSent=d=>{
-      const n=d.data();
-      const targetLabel = labelOf(n);
-      const isOpen = _msgExpandedSentId === d.id;
-      return `<div id="msgSentWrap-${d.id}" style="width:100%;max-width:100%;overflow:hidden;">
-        <div id="msgSentRow-${d.id}" style="width:100%;box-sizing:border-box;border:1px solid ${isOpen?'var(--teal)':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:.15s;background:${isOpen?'#f0fafa':''};overflow:hidden;"
-          onclick="toggleSentDetail('${d.id}','${(n.title||'').replace(/'/g,"\\'")}')"
-          onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
-            <div style="flex:1 1 0;min-width:0;overflow:hidden;">
-              <div style="font-size:13px;font-weight:600;${_oneLine}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
-              ${_bodyPreview(n.body)}
-              <div style="font-size:11px;color:#bbb;margin-top:4px;${_oneLine}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
-            </div>
-            <div style="display:flex;gap:2px;flex-shrink:0;">
-              <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
-              <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
-            </div>
-          </div>
-        </div>
-        <div id="msgSentInline-${d.id}" style="width:100%;max-width:100%;overflow:hidden;"></div>
-      </div>`;
-    };
-
-    if(drafts.length){
-      draftEl.innerHTML = drafts.map(renderDraft).join('');
-    } else {
-      draftEl.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">저장된 초안이 없습니다</div>';
-    }
-    if(sent.length){
-      sentEl.innerHTML = sent.map(renderSent).join('');
-      // 펼쳐진 항목이 여전히 존재하면 인라인 다시 채움. 삭제됐으면 상태 초기화
-      if (_msgExpandedSentId) {
-        const stillThere = sent.find(d=>d.id===_msgExpandedSentId);
-        if (stillThere && document.getElementById('msgSentInline-'+_msgExpandedSentId)) {
-          _msgRenderSentDetail(_msgExpandedSentId, stillThere.data().title || '');
-        } else {
-          _msgExpandedSentId = null;
-        }
-      }
-    } else {
-      _msgExpandedSentId = null;
-      sentEl.innerHTML = '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송 이력이 없습니다</div>';
-    }
-  }catch(e){
-    console.error('[loadMessages]', e);
-    draftEl.innerHTML = `<div style="color:#e05050;font-size:13px;">불러오기 실패: ${esc(e.message||e.code||'')}</div>`;
-    sentEl.innerHTML = '';
+    _msgRenderDraftSection();
+    _msgRenderSentSection();
+    return;
+  } catch (e) {
+    console.error(e);
+    draftEl.innerHTML = '<div class="empty-msg" style="padding:20px;color:#e05050;">불러오기 실패: ' + e.message + '</div>';
+    return;
   }
 }
 

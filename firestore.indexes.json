@@ -188,6 +188,15 @@
       ]
     },
     {
+      "collectionGroup": "pushNotifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "sent", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "genCleanupPresets",
       "queryScope": "COLLECTION",
       "fields": [
