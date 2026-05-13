@@ -10422,10 +10422,11 @@ async function _qsLazyFetch(bid) {
   }
 }
 
-// 캐시 무효화 (저장·삭제·이름변경 후 호출)
+// 캐시 무효화 (저장·삭제·이름변경 후 호출) — quiz-sets 페이지 + 시험관리 페이지 둘 다 무효화
 function _qsInvalidateCache() {
   _qsList = [];
   _qsSetsByBook = {};
+  if (typeof _tpInvalidateSetsCache === 'function') _tpInvalidateSetsCache();
 }
 
 // ─── prefs 로드/저장 ───
@@ -11890,11 +11891,13 @@ function _renderTestAssignShell(type) {
 // 함수 자체는 유지 (Phase 6 에서 일괄 정리 예정).
 // ══════════════════════════════════════════════════════════════════════════
 
-let _tpSets = [];                   // 현재 유형의 genQuestionSets
+let _tpSets = [];                   // 현재 활성 폴더의 sets (lazy — 캐시에서 복사)
 let _tpGenTests = [];               // 현재 유형의 genTests
 let _tpSelectedSets = new Set();    // 체크된 세트 ID
 let _activeTestType = null;         // 현재 활성 서브메뉴 type
-let _activeTestFolderKey = null;    // null = 전체
+let _activeTestFolderKey = null;    // null = 미선택 (Book 클릭해야 sets 보임)
+let _tpSetsByFolder = {};           // lazy 캐시 — { 'sourceType::bookId': [...sets] }
+let _tpLoadingFolder = null;        // 중복 클릭 방지
 // 페이지네이션 — 시험관리 최근시험 표 (월초~당일 + 20 + 더보기, 2026-05-13)
 let _tpTestsState = { lastDoc: null, exhausted: false, monthStartDate: null };
 const TP_PAGE_SIZE = 20;
@@ -11918,12 +11921,10 @@ async function _renderTestAssignDetail(type) {
     } catch(e) { console.warn('gen data load:', e); }
   }
 
+  // sets 자체는 Book 폴더 클릭 시 lazy fetch (2026-05-14) — 진입 시 _tpSets 비움
+  _tpSets = [];
   if (cfg.enabled && cfg.sourceType) {
     try {
-      const setSnap = await getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc')));
-      _tpSets = setSnap.docs.map(d => ({id:d.id, ...d.data()}))
-        .filter(s => (s.sourceType || 'mcq') === cfg.sourceType);
-
       // actions에 'assign' 이 없으면 genTests 조회 생략 (배정 안 하므로)
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
@@ -11946,18 +11947,60 @@ async function _renderTestAssignDetail(type) {
       }
     } catch(e) {
       console.error(e);
-      _tpSets = [];
       _tpGenTests = [];
       showToast('데이터 로드 실패: '+e.message);
     }
   } else {
-    _tpSets = [];
     _tpGenTests = [];
   }
 
   _tpRender();
 
   if (cfg.enabled && _tpGenTests.length > 0) _tpLoadTestStats();
+}
+
+// Book 폴더 클릭 시 lazy fetch — 해당 (sourceType, bookId) sets 조회 + 캐시
+async function _tpLazyFetchFolder(bookId) {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  if (!cfg?.sourceType) return;
+  const sourceType = cfg.sourceType;
+  const cacheKey = _tpFolderCacheKey(sourceType, bookId);
+  if (_tpSetsByFolder[cacheKey]) return;
+  if (_tpLoadingFolder === cacheKey) return;
+  _tpLoadingFolder = cacheKey;
+  try {
+    let q;
+    if (bookId === '__unassigned__') {
+      q = query(
+        collection(db,'genQuestionSets'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('bookId','==',''),
+        where('sourceType','==', sourceType),
+        orderBy('createdAt','desc')
+      );
+    } else {
+      q = query(
+        collection(db,'genQuestionSets'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('bookId','==', bookId),
+        where('sourceType','==', sourceType),
+        orderBy('createdAt','desc')
+      );
+    }
+    const snap = await getDocs(q);
+    const sets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _tpSetsByFolder[cacheKey] = sets;
+  } catch(e) {
+    showToast('폴더 조회 실패: ' + e.message);
+  } finally {
+    _tpLoadingFolder = null;
+  }
+}
+
+// 시험관리 sets 캐시 무효화 (sets 삭제 후 등)
+function _tpInvalidateSetsCache() {
+  _tpSetsByFolder = {};
+  _tpSets = [];
 }
 
 function _tpRender() {
@@ -11968,10 +12011,18 @@ function _tpRender() {
   // 재렌더 시 스크롤 위치 보존 (체크박스 토글 등)
   const prevScroll = document.getElementById('tpSetsScroll')?.scrollTop || 0;
 
-  const folders = _tpBuildFolders(_tpSets);
-  const filteredSets = _activeTestFolderKey
-    ? _tpSets.filter(s => _tpFolderKeyOf(s) === _activeTestFolderKey)
-    : _tpSets;
+  const folders = _tpBuildFolders();
+  // 활성 폴더 캐시에서 _tpSets 채우기 (lazy — 폴더 클릭 시 fetch)
+  if (_activeTestFolderKey != null && cfg.sourceType) {
+    const cacheKey = _tpFolderCacheKey(cfg.sourceType, _activeTestFolderKey);
+    const cached = _tpSetsByFolder[cacheKey];
+    _tpSets = Array.isArray(cached) ? cached : [];
+  } else {
+    _tpSets = [];
+  }
+  const filteredSets = _tpSets;
+  const folderLoading = _activeTestFolderKey != null && _tpLoadingFolder === _tpFolderCacheKey(cfg.sourceType, _activeTestFolderKey);
+  const folderUnselected = _activeTestFolderKey == null;
 
   root.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:12px;height:calc(100vh - 180px);min-height:560px;">
@@ -11981,9 +12032,9 @@ function _tpRender() {
         <div id="tpSetsPane" style="flex:1 1 50%;min-width:200px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
           <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="min-width:0;">
-              <div style="font-weight:700;font-size:14px;">📚 문제 세트 ${_activeTestFolderKey?'<span style="color:var(--teal);font-size:11px;font-weight:500;">(폴더 필터)</span>':''}</div>
+              <div style="font-weight:700;font-size:14px;">📚 문제 세트 ${_activeTestFolderKey?'<span style="color:var(--teal);font-size:11px;font-weight:500;">(Book 폴더)</span>':''}</div>
               <div style="font-size:11px;color:var(--gray);">
-                선택 <span style="color:var(--teal);font-weight:700;">${_tpSelectedSets.size}</span>개 · 표시 ${filteredSets.length} / ${_tpSets.length}
+                선택 <span style="color:var(--teal);font-weight:700;">${_tpSelectedSets.size}</span>개${filteredSets.length>0 ? ' · '+filteredSets.length+'개 표시' : ''}
               </div>
             </div>
             <div style="display:flex;gap:5px;flex-shrink:0;">
@@ -12006,9 +12057,15 @@ function _tpRender() {
           <div id="tpSetsScroll" style="flex:1;overflow-y:auto;">
             ${!cfg.enabled
               ? _tpRenderDisabledState(cfg)
-              : (filteredSets.length === 0
-                  ? _tpRenderNoSets(cfg)
-                  : filteredSets.map(s => _tpRenderSetRow(s)).join('')
+              : (folderUnselected
+                  ? `<div style="padding:30px;text-align:center;color:#bbb;font-size:12px;">→ 우측에서 Book 폴더를 선택하세요</div>`
+                  : (folderLoading
+                      ? `<div style="padding:30px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`
+                      : (filteredSets.length === 0
+                          ? _tpRenderNoSets(cfg)
+                          : filteredSets.map(s => _tpRenderSetRow(s)).join('')
+                        )
+                    )
                 )
             }
           </div>
@@ -12020,13 +12077,12 @@ function _tpRender() {
 
         <div id="tpFoldersPane" style="flex:1 1 50%;min-width:200px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
           <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);">
-            <div style="font-weight:700;font-size:14px;">📁 폴더</div>
-            <div style="font-size:11px;color:var(--gray);">Book · Chapter 별 자동 분류</div>
+            <div style="font-weight:700;font-size:14px;">📁 Book 폴더</div>
+            <div style="font-size:11px;color:var(--gray);">클릭하면 그 폴더의 문제세트가 좌측에 표시됩니다</div>
           </div>
           <div style="flex:1;overflow-y:auto;">
-            ${_tpRenderFolderItem({key:null, name:'전체', count:_tpSets.length}, _activeTestFolderKey === null)}
             ${folders.length === 0
-              ? '<div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">폴더가 없습니다</div>'
+              ? '<div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">Book 폴더가 없습니다</div>'
               : folders.map(f => _tpRenderFolderItem(f, f.key === _activeTestFolderKey)).join('')
             }
           </div>
@@ -12152,50 +12208,63 @@ function _tpAttachVResizer(scope) {
   resizer.addEventListener('mouseleave', () => { resizer.style.background = 'transparent'; });
 }
 
+// 폴더 키 — sets 의 top-level bookId 우선, 폴백 sourcePages[0].bookId (Book 단위만 — 2026-05-14)
 function _tpFolderKeyOf(set) {
+  if (typeof set.bookId === 'string' && set.bookId) return set.bookId;
   const sp = (set.sourcePages && set.sourcePages[0]) || {};
-  return `${sp.bookId||''}::${sp.chapterId||''}`;
+  return sp.bookId || '__unassigned__';
 }
 
-function _tpBuildFolders(sets) {
-  const map = new Map();
-  sets.forEach(s => {
-    const key = _tpFolderKeyOf(s);
-    if (!map.has(key)) {
-      const sp = (s.sourcePages && s.sourcePages[0]) || {};
-      const book = _genBooks.find(b => b.id === sp.bookId);
-      const chap = _genChapters.find(c => c.id === sp.chapterId);
-      const bookName = book?.name || (sp.bookId ? '(삭제된 책)' : '(책 없음)');
-      const chapName = chap?.name || (sp.chapterId ? '(삭제된 챕터)' : '(챕터 없음)');
-      map.set(key, {
-        key,
-        name: `${bookName} · ${chapName}`,
-        bookId: sp.bookId || '',
-        chapterId: sp.chapterId || '',
-        count: 0,
-        lastTime: 0,
-      });
-    }
-    const folder = map.get(key);
-    folder.count++;
-    const t = s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0;
-    if (t > folder.lastTime) folder.lastTime = t;
+// 폴더 리스트 = _genBooks 직접 빌드 (sets 무관, lazy 적용). 카운트는 캐시 hit 시만 정확.
+// _activeTestType 의 sourceType 에 매칭되는 캐시만 카운트.
+function _tpBuildFolders() {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  const sourceType = cfg?.sourceType || '';
+  const folders = _genBooks.map(b => {
+    const cacheKey = _tpFolderCacheKey(sourceType, b.id);
+    const cache = _tpSetsByFolder[cacheKey];
+    const count = Array.isArray(cache) ? cache.length : null;
+    const lastTime = Array.isArray(cache)
+      ? cache.reduce((m, s) => Math.max(m, s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0), 0)
+      : (b.createdAt?.toMillis?.() || 0);
+    return {
+      key: b.id,
+      name: b.name || '(이름 없음)',
+      bookId: b.id,
+      count,
+      lastTime,
+    };
   });
-  // 최근 생성/수정된 폴더가 위로 (포함된 세트 중 가장 최신 시각 기준)
-  return [...map.values()].sort((a,b) => b.lastTime - a.lastTime);
+  // 미지정 폴더 — 캐시 hit 시만 표시
+  const unCacheKey = _tpFolderCacheKey(sourceType, '__unassigned__');
+  const unCache = _tpSetsByFolder[unCacheKey];
+  if (Array.isArray(unCache) && unCache.length > 0) {
+    folders.push({
+      key: '__unassigned__',
+      name: '(책 없음)',
+      bookId: '',
+      count: unCache.length,
+      lastTime: unCache.reduce((m, s) => Math.max(m, s.updatedAt?.toMillis?.() || s.createdAt?.toMillis?.() || 0), 0),
+    });
+  }
+  // 최근 활동 폴더가 위로
+  return folders.sort((a, b) => b.lastTime - a.lastTime);
+}
+
+function _tpFolderCacheKey(sourceType, bookId) {
+  return `${sourceType}::${bookId}`;
 }
 
 function _tpRenderFolderItem(f, isActive) {
   const bg = isActive ? 'background:var(--teal-light);color:var(--teal);' : '';
   const fontW = isActive ? 'font-weight:700;' : 'font-weight:500;';
-  const onclick = f.key === null
-    ? `tpSelectFolder(null)`
-    : `tpSelectFolder('${esc(f.key)}')`;
+  const onclick = `tpSelectFolder('${esc(f.key)}')`;
+  const cntLabel = (f.count == null) ? '?' : (f.count + '개');
   return `
     <div onclick="${onclick}"
       style="padding:10px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:12px;${bg}${fontW}display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.key === null ? '📦 전체' : '📁 ' + esc(f.name)}</span>
-      <span style="font-size:10px;color:${isActive?'var(--teal)':'var(--gray)'};flex-shrink:0;">${f.count}개</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📁 ${esc(f.name)}</span>
+      <span style="font-size:10px;color:${isActive?'var(--teal)':'var(--gray)'};flex-shrink:0;">${cntLabel}</span>
     </div>`;
 }
 
@@ -12236,8 +12305,8 @@ function _tpRenderNoSets(cfg) {
     return `
       <div style="padding:40px;text-align:center;color:var(--gray);">
         <div style="font-size:32px;margin-bottom:10px;">📭</div>
-        <div style="font-size:13px;margin-bottom:10px;">이 폴더에 해당하는 세트가 없습니다</div>
-        <button class="btn btn-secondary" onclick="tpSelectFolder(null)">📦 전체 보기</button>
+        <div style="font-size:13px;margin-bottom:10px;">이 Book 폴더에 ${esc(cfg.kindLabel)} 세트가 없습니다</div>
+        <div style="font-size:11px;color:#bbb;">다른 Book 폴더를 선택하거나 AI Generator 에서 새로 만드세요</div>
       </div>`;
   }
   return `
@@ -12362,8 +12431,11 @@ async function _tpLoadTestStats() {
   } catch(e) { console.warn('_tpLoadTestStats', e); }
 }
 
-window.tpSelectFolder = (key) => {
+window.tpSelectFolder = async (key) => {
   _activeTestFolderKey = key;
+  _tpSelectedSets.clear(); // 폴더 바꿀 때 선택 초기화 (다른 폴더 sets 와 섞이지 않게)
+  _tpRender(); // 즉시 로딩 표시
+  if (key != null) await _tpLazyFetchFolder(key);
   _tpRender();
 };
 
@@ -12512,7 +12584,10 @@ window.tpDeleteSelectedSets = async () => {
     }
   }
   _tpSelectedSets.clear();
+  _tpInvalidateSetsCache();
+  if (typeof _qsList !== 'undefined') { _qsList = []; _qsSetsByBook = {}; } // quiz-sets 캐시도 무효화
   showToast(fail === 0 ? `✓ ${success}개 세트 삭제됨` : `${success}개 삭제 / ${fail}개 실패`);
+  _activeTestFolderKey = null; // 폴더 미선택 상태로
   await _renderTestAssignDetail(_activeTestType);
 };
 
