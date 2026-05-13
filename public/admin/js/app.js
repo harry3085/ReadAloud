@@ -1102,31 +1102,49 @@ async function loadQuotaUsage(){
 
 async function loadDashStats(){
   try {
-    const usersSnap = await getDocs(query(collection(db,'users'),where('academyId','==',window.MY_ACADEMY_ID)));
-    let active=0, pause=0, out=0;
-    usersSnap.forEach(d=>{
-      const s=d.data().status||'active';
-      const r=d.data().role;
-      if(r!=='student') return;
-      if(s==='active') active++;
-      else if(s==='pause') pause++;
-      else if(s==='out') out++;
-    });
+    const aid = window.MY_ACADEMY_ID;
+    const usersRef = collection(db,'users');
+    // 학생 카운트 — getCountFromServer 3 쿼리 병렬 (학원 전체 fetch 폐기, 2026-05-14)
+    const [activeAgg, pauseAgg, outAgg] = await Promise.all([
+      getCountFromServer(query(usersRef, where('academyId','==', aid), where('role','==','student'), where('status','==','active'))),
+      getCountFromServer(query(usersRef, where('academyId','==', aid), where('role','==','student'), where('status','==','pause'))),
+      getCountFromServer(query(usersRef, where('academyId','==', aid), where('role','==','student'), where('status','==','out'))),
+    ]);
+    const active = activeAgg.data().count;
+    const pause = pauseAgg.data().count;
+    const out = outAgg.data().count;
     document.getElementById('statTotal').textContent = active+pause+out;
     document.getElementById('statActive').textContent = active;
     document.getElementById('statPause').textContent = pause;
 
-    // 미납 = 이번 달 billings 중 status !== 'paid' (unpaid + partial)
+    // 미납 = 이번 달 billings 중 status !== 'paid'
     const ym = _ymdKST().slice(0,7);
-    const billSnap = await getDocs(query(collection(db,'billings'),where('academyId','==',window.MY_ACADEMY_ID),where('yearMonth','==',ym)));
     let unpaidCnt = 0;
-    billSnap.forEach(d => { if ((d.data().status || 'unpaid') !== 'paid') unpaidCnt++; });
+    const cached = (typeof _billingsByMonth === 'object' && _billingsByMonth) ? _billingsByMonth[ym] : null;
+    if (Array.isArray(cached)) {
+      // 결제 페이지 캐시 hit — 0 reads
+      unpaidCnt = cached.filter(b => (b.status || 'unpaid') !== 'paid').length;
+    } else {
+      // 캐시 miss — 일반 fetch + 캐시 저장 (다음 진입 0 reads)
+      const billSnap = await getDocs(query(
+        collection(db,'billings'),
+        where('academyId','==', aid),
+        where('yearMonth','==', ym),
+      ));
+      const arr = billSnap.docs.map(d=>({id:d.id,...d.data()}));
+      if (typeof _billingsByMonth === 'object' && _billingsByMonth) _billingsByMonth[ym] = arr;
+      unpaidCnt = arr.filter(b => (b.status || 'unpaid') !== 'paid').length;
+    }
     document.getElementById('statUnpaid').textContent = unpaidCnt;
 
-    // 오늘 출제된 시험 = genTests where date == today
+    // 오늘 출제된 시험 = genTests where date == today (getCountFromServer 1 read)
     const today = _ymdKST();
-    const testSnap = await getDocs(query(collection(db,'genTests'),where('academyId','==',window.MY_ACADEMY_ID),where('date','==',today)));
-    document.getElementById('statTests').textContent = testSnap.size;
+    const testAgg = await getCountFromServer(query(
+      collection(db,'genTests'),
+      where('academyId','==', aid),
+      where('date','==', today),
+    ));
+    document.getElementById('statTests').textContent = testAgg.data().count;
   } catch(e){ console.log(e); }
 }
 
