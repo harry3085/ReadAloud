@@ -2444,12 +2444,17 @@ async function _renderBillingSummary() {
   const academyId = window.MY_ACADEMY_ID || 'default';
   const matEnabled = !!_billingSettings?.materialsChannel?.enabled;
 
-  const billingSnap = await getDocs(query(
-    collection(db, 'billings'),
-    where('academyId', '==', academyId),
-    where('yearMonth', '==', _billingMonth),
-  ));
-  const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // 청구 그리드와 동일한 쿼리 — 월별 캐시 hit 면 fetch skip (2026-05-14)
+  let billings = _billingsByMonth[_billingMonth];
+  if (!Array.isArray(billings)) {
+    const billingSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', academyId),
+      where('yearMonth', '==', _billingMonth),
+    ));
+    billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _billingsByMonth[_billingMonth] = billings;
+  }
 
   // 채널별 합산
   const sumChannel = (key) => {
@@ -2602,13 +2607,24 @@ async function _renderBillingTimeline() {
     months.push(`${yy}-${String(mm).padStart(2,'0')}`);
   }
 
-  // 3개월 청구서 일괄 fetch (in 쿼리)
-  const billingSnap = await getDocs(query(
-    collection(db, 'billings'),
-    where('academyId', '==', academyId),
-    where('yearMonth', 'in', months),
-  ));
-  const billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // 3개월 캐시 모두 hit 면 fetch skip — 아니면 한꺼번에 in 쿼리 + 각 월 캐시 저장 (2026-05-14)
+  let billings;
+  const allCached = months.every(ym => Array.isArray(_billingsByMonth[ym]));
+  if (allCached) {
+    billings = months.flatMap(ym => _billingsByMonth[ym]);
+  } else {
+    const billingSnap = await getDocs(query(
+      collection(db, 'billings'),
+      where('academyId', '==', academyId),
+      where('yearMonth', 'in', months),
+    ));
+    billings = billingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 월별 분리해서 캐시에 저장
+    const byMonth = {};
+    months.forEach(ym => byMonth[ym] = []);
+    billings.forEach(b => { if (byMonth[b.yearMonth]) byMonth[b.yearMonth].push(b); });
+    Object.entries(byMonth).forEach(([ym, arr]) => { _billingsByMonth[ym] = arr; });
+  }
 
   // 학생별 그룹화: { studentUid: { studentName, groupName, byMonth: { ym: billing } } }
   const byStudent = {};
