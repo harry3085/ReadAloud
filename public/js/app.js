@@ -1587,8 +1587,8 @@ window.fbUpdateAnswer = (blankIdx, value) => {
   if(!q) return;
   const targetBlank = q.blanks?.[blankIdx] || '';
   const letterCount = targetBlank.length;
-  // 영문/공백/하이픈/작은따옴표 허용 (단어시험과 동일 정규식 — 단어장 형식 ~ > 도 허용)
-  value = String(value||'').toLowerCase().replace(/[^a-zA-Z0-9\s'\-~>()\[\]{}.,]/g, '');
+  // 한글·한자·일본어 등 비-라틴 문자만 차단. 특수문자 모두 자유 (단어시험과 동일 정책)
+  value = String(value||'').toLowerCase().replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
   // 정답 공백 위치 자동 삽입 ('aJoke' + target 'a joke' → 'a joke')
   value = _vqAutoSpaces(value, targetBlank);
   value = value.slice(0, letterCount);
@@ -5528,9 +5528,10 @@ function _vqBindSpellInput(){
     const q = s.questions[s.currentIdx];
     const target = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
     let v = this.value;
-    // 영단어 입력 — 영숫자·공백·자주 쓰이는 특수문자 (단어장 형식 ~ > ( ) , .) 만 허용.
+    // 영단어 입력 — 한글·한자·일본어 등 비-라틴 문자만 차단 (특수문자는 자유)
+    // 모바일 한글 IME 함정만 회피. +, ?, ! 등 모든 특수문자 자유 입력.
     // 대소문자는 학생 입력 그대로 (채점·박스 비교 시 _vqNormCh 가 lowercase 처리).
-    if (ans.direction === 'ko2en') v = v.replace(/[^a-zA-Z0-9\s'\-~>()\[\]{}.,]/g, '');
+    if (ans.direction === 'ko2en') v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
     // 정답의 공백 위치는 자동 삽입 — 학생이 글자만 입력해도 OK ('itmightbe' → 'it might be')
     v = _vqAutoSpaces(v, target);
     if (v.length > target.length) v = v.slice(0, target.length);
