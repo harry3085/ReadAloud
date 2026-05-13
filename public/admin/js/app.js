@@ -8869,40 +8869,27 @@ const QG_TYPE_OPTIONS = {
 // [Page 1] AI 문제 생성 (genPages에서 Page 선택 → AI 호출 → 저장)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// AI Generator — Lazy load (2026-05-14, AI OCR 과 동일 패턴):
+// 진입 시 Books 만 (없으면 fetch). Chapters/Pages 는 Book 클릭 시 lazy.
+// _genBooks/_genChapters/_genPages 는 AI OCR 과 공유 — 이미 받은 데이터 있으면 재사용.
 window.loadQuizGenerate = async () => {
-  // Generator 데이터 부분 fetch — 시험관리(books/chapters만 채움) 등 다른 경로로
-  // 일부만 캐시된 상태에서 AI Generator 진입 시 0개로 표시되던 race 수정.
-  // 각 컬렉션 비어있을 때만 fetch.
   try {
-    const tasks = [];
-    if (!_genPages.length) {
-      tasks.push(
-        getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc')))
-          .then(s => { _genPages = s.docs.map(d=>({id:d.id,...d.data()})); })
-      );
-    }
-    if (!_genChapters.length) {
-      tasks.push(
-        getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc')))
-          .then(s => { _genChapters = s.docs.map(d=>({id:d.id,...d.data()})); })
-      );
-    }
     if (!_genBooks.length) {
-      tasks.push(
-        getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc')))
-          .then(s => { _genBooks = s.docs.map(d=>({id:d.id,...d.data()})); })
-      );
+      const bSnap = await getDocs(query(
+        collection(db,'genBooks'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        orderBy('createdAt','asc')
+      ));
+      _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
     }
-    if (tasks.length) await Promise.all(tasks);
   } catch(e) {
-    showToast('AI OCR 데이터 로드 실패: '+e.message);
+    showToast('AI Generator 데이터 로드 실패: '+e.message);
     return;
   }
 
   _qgSelectedPageIds.clear();
   _qgGenerated = [];
   _qgExcluded.clear();
-  // Phase 2.5: 필터 리셋 (유형은 직전 선택 유지)
   _qgActiveBook = null;
   _qgActiveChapter = null;
   _qgRender();
@@ -9221,7 +9208,7 @@ function _qgRenderListsOnly() {
 }
 
 // ─── Book / Chapter 선택 핸들러 ───
-window.qgSelectBook = (bookId) => {
+window.qgSelectBook = async (bookId) => {
   const b = (_genBooks||[]).find(x => x.id === bookId);
   if (!b) return;
   if (_qgActiveBook?.id === bookId) {
@@ -9230,6 +9217,29 @@ window.qgSelectBook = (bookId) => {
   } else {
     _qgActiveBook = { id: b.id, name: b.name };
     _qgActiveChapter = null;
+    // Book 의 Chapters + Pages lazy fetch (cache — 한 번만)
+    const hasCh = _genChapters.some(c => c.bookId === bookId);
+    const hasPg = _genPages.some(p => p.bookId === bookId);
+    if (!hasCh || !hasPg) {
+      try {
+        const [cSnap, pSnap] = await Promise.all([
+          hasCh ? Promise.resolve({docs:[]}) : getDocs(query(
+            collection(db,'genChapters'),
+            where('academyId','==', window.MY_ACADEMY_ID),
+            where('bookId','==', bookId),
+            orderBy('order','asc')
+          )),
+          hasPg ? Promise.resolve({docs:[]}) : getDocs(query(
+            collection(db,'genPages'),
+            where('academyId','==', window.MY_ACADEMY_ID),
+            where('bookId','==', bookId),
+            orderBy('serialNumber','asc')
+          )),
+        ]);
+        if (!hasCh) _genChapters = _genChapters.concat(cSnap.docs.map(d=>({id:d.id,...d.data()})));
+        if (!hasPg) _genPages = _genPages.concat(pSnap.docs.map(d=>({id:d.id,...d.data()})));
+      } catch(e) { console.warn('[qgSelectBook] lazy fetch:', e); }
+    }
   }
   _qgRender();
 };
