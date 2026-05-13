@@ -3641,3 +3641,94 @@ ScoreSnap 마무리 후 두 큰 작업. SW v438 → v445 (~12 commit).
 - ✅ 시험별 진도체크 (기존 시험 목록 그대로)
 - ✅ tpToggleTestProgress keepOpen·simpleRec 옵션 (다른 페이지 영향 X)
 - ✅ 이모지 자제 메모리
+
+---
+
+## 2026-05-13: 시험 풀이 UX 자동화 + 녹음 일시정지/재개
+
+당일 SW v445 → v449. 학생 시험 흐름 4건 + 녹음숙제 1건.
+
+### 1) 단어시험·빈칸채우기 backspace 정정 가능 fix
+**증상**: 자동 띄어쓰기 (`_vqAutoSpaces`) 위에서 backspace 누르면 공백 이전 글자 삭제 안 됨. backspace → input 끝 공백 제거 → input 이벤트 → `_vqAutoSpaces` 가 target 의 공백 위치 보고 즉시 공백 복원 → 무한 루프.
+
+**fix**: keydown 단계에서 Backspace 가로채기. 커서 직전이 공백이면 공백 + 앞 글자 함께 삭제 (`slice(0, pos-2) + slice(pos)`). 선택 영역 있으면 기본 동작 유지. 적용: `_vqBindSpellInput` keydown + `fbInputKey` 두 곳.
+
+### 2) 시험 답 입력 후 자동 진행 (단어시험 / 빈칸채우기 / 객관식)
+학생이 [다음] 클릭 안 해도 답 완성 시 자동 진행. 정답 영단어 TTS 가 있으면 끝까지 들려주고 즉시, 없으면 1초 정/오답 확인 후 다음.
+
+**공용 헬퍼**:
+- `_speakAndWait(word)` — SpeechSynthesisUtterance Promise 래퍼. onend / onerror / 3초 fallback 으로 강제 resolve. 3초는 TTS 미동작·엔진 hang 시 안전망
+
+**단어시험** (v2):
+- `vqNext` / `vqSelectMcq` 끝 `_vqShowNextButton()` → `_vqAutoAdvance(q, ans)` + `_vqAutoNext()`
+- `_vqAutoAdvance`: `direction='en2ko'` (시작 시 영단어 TTS 들음) → 1초 대기 / 그 외 + `q.word` 있음 → `_speakAndWait(q.word)` / 그 외 → 1초
+- 스펠링 input — `v.length === target.length` 시 `_vqScheduleAutoSubmit` (debounce 400ms, 학생 정정 여유)
+- 학생이 backspace 누르면 `_vqCancelAutoSubmit` (다시 입력 대기)
+
+**빈칸채우기**:
+- `fbUpdateAnswer` 마지막 빈칸 끝까지 + 모든 빈칸 채워짐 확인 → `_fbScheduleAutoSubmit` (debounce 400)
+- `_fbShowQuestionFeedback` 1.5초 고정 → 정답+영문 시 `_speakAndWait`, 그 외 1초
+
+**객관식** (본문이해·문법):
+- `mcqSelect` 보기 클릭 즉시 잠금 + `_mcqRenderFeedback` (정답 보기 초록·학생 오답 빨강·다른 보기 비활성) + 1초 후 `mcqNext`
+- `_locked[currentIdx]` 중복 클릭 차단
+
+**시간 초과**: 객관식 10초 / 스펠 30초 / 빈칸 30초 0초 도달 시 이미 `vqNext({allowEmpty:true})`·`fbNext()` 호출 → 동일 자동 흐름. 객관식 (mcq 본문이해/문법) 은 문제별 타이머 없음 (학생 클릭 필요).
+
+### 3) 녹음숙제 — 같은 회차 안 일시정지/재개
+**기술 한계 (B 옵션 폐기)**: WebM/MP4 chunk 는 같은 MediaRecorder 인스턴스 안에서만 valid (헤더 결합 문제). 페이지 이탈 후 chunk 두 개 결합 = FFmpeg 필요 (별도 인프라). 베타 비용 큼 → **옵션 A** (같은 페이지 일시정지/재개) 채택.
+
+**변경**:
+- MediaRecorder.pause() / resume() 표준 API (같은 인스턴스에서 chunk 이어붙임)
+- 녹음 중 카드: 녹음 중 = `[⏸ 일시정지] [⏹ 종료]` / 일시정지 = `[▶ 재개] [⏹ 종료]` + 안내 배지
+- 타이머 패턴 — `timerStart` (절대 시간) → `elapsedSec` 누적 + `lastTick`:
+  · 250ms 마다 `elapsedSec += (now - lastTick); lastTick = now`
+  · 일시정지 시 누적 마무리 + `isPaused=true`. 재개 시 `lastTick=now`
+- `_rv2AfterStop` duration = `Math.floor(elapsedSec)` (이전: Date.now - timerStart, 일시정지 시간 포함 — 잘못)
+- 페이지 이탈 시 — 회차 폐기 (현재 동작 유지, B 옵션 미구현)
+
+**호환성**: iOS Safari 14.5+ / Android Chrome 정상. iOS 16+ (iPhone 8 이상, 2017+) 안전 권장.
+
+### 4) 메시지 첨부 후속 (드래그&드롭)
+어제 (2026-05-12) push 한 메시지 첨부 기능에 dashed 박스 드롭존 추가. `_msgAcceptFile` 헬퍼 (input change·drop 공용). dragover 시 코랄색 강조. 다중 드롭 시 첫 파일만 (단일 첨부 정책).
+
+---
+
+## 작업 규칙 추가 (2026-05-13)
+
+신규:
+- **자동 띄어쓰기 위 backspace** — input 이벤트의 자동 보정 (`_vqAutoSpaces`) 과 backspace 동작 충돌. keydown 단계에서 Backspace 가로채 공백 + 앞 글자 함께 삭제. 선택 영역 있으면 기본 동작 유지.
+- **답 입력 후 자동 진행 — debounce 400ms** — 학생이 마지막 글자 입력 후 잠시 정정 가능. 그보다 짧으면 의도 X 트리거 가능, 길면 답답.
+- **TTS 끝까지 대기 패턴** — `SpeechSynthesisUtterance.onend` Promise 래퍼 + 3초 fallback. `_speakAndWait(word)` 표본. TTS 미동작·엔진 hang 시에도 진행.
+- **MediaRecorder pause/resume — 같은 인스턴스 안에서만 valid** — 다른 세션 결합 시도 X. 페이지 이탈 시 chunk 폐기가 단순·안전. 베타 단계에선 FFmpeg 등 별도 인프라 도입 X.
+- **녹음 시간 측정 — elapsedSec 누적 패턴** — `Date.now() - startTime` 식 절대 시간 계산은 일시정지 시간 포함됨. `elapsedSec += (now - lastTick); lastTick = now` 패턴이 일시정지 시간 자동 제외.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-13)
+- `public/js/app.js`: ~5600줄 (+~130, 자동 진행 4종 + 녹음 일시정지)
+- `public/admin/js/app.js`: ~14000줄 (드래그드롭 ~+30)
+- SW 캐시: `kunsori-v449`
+
+## 진행률 (2026-05-13)
+- 시험 풀이 UX: **~98%** (답 입력 후 자동 진행 4종 통합, backspace fix)
+- 녹음숙제 시스템: ~98% (일시정지/재개 추가)
+- 메시지 시스템: ~100% (변동 없음)
+- 진도체크 화면: ~100% (변동 없음)
+- ScoreSnap MVP: ~95% (변동 없음)
+- 멀티테넌시·super_admin·결제·인쇄·브랜딩: 변동 없음
+
+## 다음 세션 후보 (2026-05-13 갱신)
+1. **ScoreSnap 베타 운영 + 가치 검증**
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **AI 평가 실패율 (SuperAdmin Phase B T9)** — Cloud Function 일일 집계
+
+**완료 (이 세션, 2026-05-13)**:
+- ✅ 자동 띄어쓰기 위 backspace fix (단어시험·빈칸채우기)
+- ✅ 시험 답 입력 후 자동 진행 (단어시험 객관식/스펠링·빈칸채우기·객관식 mcq)
+- ✅ `_speakAndWait` Promise 헬퍼 (TTS 끝까지 대기 + 3초 fallback)
+- ✅ 객관식 즉시 정답 표시 (정답 초록·학생 오답 빨강)
+- ✅ 녹음숙제 일시정지/재개 (MediaRecorder pause/resume + elapsedSec 누적 타이머)
+- ✅ 메시지 첨부 드래그&드롭 (dashed 박스 + dragover 강조)
