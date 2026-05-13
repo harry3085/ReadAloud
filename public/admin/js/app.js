@@ -8762,9 +8762,11 @@ let _qgSelectedPageIds = new Set();    // AI 생성 화면에서 선택된 Page 
 let _qgGenerated = [];                  // AI 생성 결과 (미리보기용)
 let _qgModel = '';                      // 마지막 생성에 실제 사용된 모델 (폴백 후 실제 값)
 let _qgExcluded = new Set();            // 미리보기에서 제외된 문제 인덱스
-let _qsList = [];                       // 문제 세트 목록 (Firestore에서 로드)
+let _qsList = [];                       // 문제 세트 목록 (모든 fetch 합집합 누적 캐시)
 let _qsBooks = [];                      // Book 목록 (폴더 이름 표시용, genBooks 에서 로드)
 let _qsEditState = null;                // 수정 중인 세트 (Phase: 세트 내용 편집)
+let _qsSetsByBook = {};                 // lazy 캐시 — { bookId: [...] }. '__all_recent__' = 최근 20개
+let _qsLoadingBook = null;              // 중복 클릭 방지
 
 // ─── 문제 세트 목록 화면 상태 (Phase 7) ───
 const _QS_RECENT_LIMIT = 20;
@@ -9854,6 +9856,7 @@ window.qgRunWordsnap = async () => {
       academyId: window.MY_ACADEMY_ID || 'default',
       sourceType: 'vocab',
       sourcePages,
+      bookId: _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages }),
       questions,
       questionCount: questions.length,
       aiModel: 'Wordsnap 수동 입력',
@@ -9866,6 +9869,7 @@ window.qgRunWordsnap = async () => {
     showToast(`✓ "${setName}" 저장됨 (${questions.length}단어${homoNote})`);
     ta.value = '';
     window._qgWordsnapUpdateStatus();
+    _qsInvalidateCache();
     setTimeout(() => goPage('quiz-sets'), 400);
   } catch(e) {
     showToast('저장 실패: ' + e.message);
@@ -10322,6 +10326,7 @@ window.qgSaveSet = async () => {
       academyId: window.MY_ACADEMY_ID || 'default',
       sourceType: finalQuestions[0]?.type || 'mcq',
       sourcePages,
+      bookId: _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages }),
       questions: finalQuestions,
       questionCount: finalQuestions.length,
       aiModel: _qgModel || 'unknown',
@@ -10334,6 +10339,7 @@ window.qgSaveSet = async () => {
     _qgGenerated = [];
     _qgExcluded.clear();
     closeModal();
+    _qsInvalidateCache();
     setTimeout(() => goPage('quiz-sets'), 300);
   } catch(e) {
     showToast('저장 실패: '+e.message);
@@ -10347,17 +10353,77 @@ window.qgSaveSet = async () => {
 window.loadQuestionSets = async () => {
   try {
     _qsLoadPrefs();
-    const [setSnap, bookSnap] = await Promise.all([
-      getDocs(query(collection(db,'genQuestionSets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','desc'))),
-      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
-    ]);
-    _qsList = setSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 진입 시 Books 만 fetch (폴더 목록만 표시) — 세트는 Book 클릭 시 lazy
+    const bookSnap = await getDocs(query(
+      collection(db,'genBooks'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      orderBy('createdAt','asc')
+    ));
     _qsBooks = bookSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 첫 진입 시 캐시 초기화 (재진입은 캐시 유지)
+    if (!_qsSetsByBook.__initialized) {
+      _qsList = [];
+      _qsSetsByBook = { __initialized: true };
+    }
+    _qsRenderList();
+    // 활성 Book 또는 "전체 최근 20" 자동 lazy fetch
+    await _qsLazyFetch(_qsActiveBookId);
     _qsRenderList();
   } catch(e) {
     showToast('세트 목록 로드 실패: '+e.message);
   }
 };
+
+// ─── Book 별 lazy fetch + 캐시 ───
+// bid=null → "전체 최근 20" / bid===_QS_UNASSIGNED → 미지정 / 그 외 → 특정 Book
+async function _qsLazyFetch(bid) {
+  const cacheKey = bid == null ? '__all_recent__' : bid;
+  if (_qsSetsByBook[cacheKey]) return; // 캐시 hit
+  if (_qsLoadingBook === cacheKey) return; // 중복 클릭
+  _qsLoadingBook = cacheKey;
+  try {
+    let q;
+    if (bid == null) {
+      // 전체 최근 20개
+      q = query(
+        collection(db,'genQuestionSets'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        orderBy('createdAt','desc'),
+        limit(_QS_RECENT_LIMIT)
+      );
+    } else if (bid === _QS_UNASSIGNED) {
+      q = query(
+        collection(db,'genQuestionSets'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('bookId','==',''),
+        orderBy('createdAt','desc')
+      );
+    } else {
+      q = query(
+        collection(db,'genQuestionSets'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('bookId','==',bid),
+        orderBy('createdAt','desc')
+      );
+    }
+    const snap = await getDocs(q);
+    const sets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _qsSetsByBook[cacheKey] = sets;
+    // _qsList 에 dedup merge — 최근 생성·기타 뷰 통합 데이터
+    const seen = new Set(_qsList.map(s => s.id));
+    sets.forEach(s => { if (!seen.has(s.id)) _qsList.push(s); });
+  } catch(e) {
+    showToast('세트 조회 실패: ' + e.message);
+  } finally {
+    _qsLoadingBook = null;
+  }
+}
+
+// 캐시 무효화 (저장·삭제·이름변경 후 호출)
+function _qsInvalidateCache() {
+  _qsList = [];
+  _qsSetsByBook = {};
+}
 
 // ─── prefs 로드/저장 ───
 function _qsLoadPrefs() {
@@ -10392,6 +10458,9 @@ function _qsSavePrefs() {
 
 // ─── 데이터 헬퍼 ───
 function _qsPrimaryBookId(s) {
+  // top-level bookId 우선 (마이그레이션 + 신규 addDoc 모두 stamp)
+  if (typeof s.bookId === 'string') return s.bookId || _QS_UNASSIGNED;
+  // sourcePages 최빈값 폴백 (옛 데이터·미마이그레이션 안전망)
   const ids = (s.sourcePages||[]).map(p => p.bookId).filter(Boolean);
   if (!ids.length) return _QS_UNASSIGNED;
   const counts = {};
@@ -10455,7 +10524,10 @@ function _qsRenderList() {
   const root = document.getElementById('quizSetsRoot');
   if (!root) return;
 
-  if (_qsList.length === 0) {
+  // 책도 세트도 없는 학원 → 폐기 안내 (lazy fetch 끝난 후 판정)
+  const recentCache = _qsSetsByBook['__all_recent__'];
+  const isReallyEmpty = _qsBooks.length === 0 && Array.isArray(recentCache) && recentCache.length === 0;
+  if (isReallyEmpty) {
     root.innerHTML = `
       <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:40px;text-align:center;color:var(--gray);">
         <div style="font-size:32px;margin-bottom:10px;">📭</div>
@@ -10501,14 +10573,12 @@ function _qsTh(tableKey, col, label, opts = {}) {
 
 // ─── 상단: 최근 20개 테이블 ───
 function _qsRenderTopPane() {
-  const recent = _qsSortSets(_qsList.slice(0, _QS_RECENT_LIMIT), _qsSortTop);
-  return `
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
-      <span style="font-size:11px;color:var(--gray);font-weight:400;">총 ${_qsList.length}개</span>
-    </div>
-    <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
+  const recentCache = _qsSetsByBook['__all_recent__'];
+  const loaded = Array.isArray(recentCache);
+  const recent = loaded ? _qsSortSets(recentCache.slice(0, _QS_RECENT_LIMIT), _qsSortTop) : [];
+  const totalLabel = loaded ? `${_qsList.length}개+` : '...';
+  const body = loaded
+    ? `<table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
             ${_qsTh('top','fav','',{center:true})}
@@ -10521,50 +10591,66 @@ function _qsRenderTopPane() {
           </tr>
         </thead>
         <tbody>${recent.map(s => _qsRenderRow(s, 'top')).join('')}</tbody>
-      </table>
+      </table>`
+    : `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`;
+  return `
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
+      <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
     </div>
+    <div style="flex:1;overflow:auto;">${body}</div>
   `;
 }
 
 // ─── 하단 왼쪽: Book 폴더 리스트 ───
 function _qsRenderBookPane() {
-  // Book 별 집계
-  const bookCounts = new Map();
-  _qsList.forEach(s => {
-    const bid = _qsPrimaryBookId(s);
-    bookCounts.set(bid, (bookCounts.get(bid)||0) + 1);
-  });
-  // 정렬: 즐겨찾기 먼저 → 이름 순 → 미지정은 맨 마지막
-  const items = [...bookCounts.entries()].map(([bid, cnt]) => ({
-    id: bid,
-    name: _qsBookName(bid),
-    count: cnt,
-    fav: _qsFavBooks.has(bid),
-    isUnassigned: bid === _QS_UNASSIGNED,
+  // _qsBooks 기반 폴더 항목 구성 (lazy — 폴더는 항상 표시, count 만 캐시 hit 시 채움)
+  const items = _qsBooks.map(b => ({
+    id: b.id,
+    name: b.name || '(이름 없음)',
+    count: Array.isArray(_qsSetsByBook[b.id]) ? _qsSetsByBook[b.id].length : null,
+    fav: _qsFavBooks.has(b.id),
+    isUnassigned: false,
   }));
+  // 미지정 폴더 — 캐시 hit 면 표시
+  const unassignedCache = _qsSetsByBook[_QS_UNASSIGNED];
+  if (Array.isArray(unassignedCache) && unassignedCache.length > 0) {
+    items.push({
+      id: _QS_UNASSIGNED, name: '미지정',
+      count: unassignedCache.length, fav: _qsFavBooks.has(_QS_UNASSIGNED), isUnassigned: true,
+    });
+  } else if (_qsFavBooks.has(_QS_UNASSIGNED)) {
+    // 즐겨찾기만 되어있고 캐시 미스 → 카운트 ? 로 표시
+    items.push({ id: _QS_UNASSIGNED, name: '미지정', count: null, fav: true, isUnassigned: true });
+  }
+  // 정렬: 즐겨찾기 먼저 → 이름 순 → 미지정은 맨 마지막
   items.sort((a,b) => {
     if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
     if (a.fav !== b.fav) return a.fav ? -1 : 1;
     return a.name.localeCompare(b.name, 'ko');
   });
 
-  // "전체" 가상 폴더를 맨 위에
+  // "전체 (최근)" 가상 폴더 — 진입 default
   const totalActive = _qsActiveBookId == null;
+  const recentCache = _qsSetsByBook['__all_recent__'];
+  const recentCount = Array.isArray(recentCache) ? recentCache.length : null;
   const allRow = `
     <div onclick="qsSelectBook(null)" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${totalActive?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
       <span style="font-size:14px;">📋</span>
-      <div style="flex:1;font-weight:600;font-size:13px;color:${totalActive?'var(--teal)':'var(--text)'};">전체</div>
-      <span style="font-size:11px;color:var(--gray);">${_qsList.length}</span>
+      <div style="flex:1;font-weight:600;font-size:13px;color:${totalActive?'var(--teal)':'var(--text)'};">전체 <span style="font-size:10px;color:var(--gray);font-weight:400;">(최근)</span></div>
+      <span style="font-size:11px;color:var(--gray);">${recentCount == null ? '?' : recentCount}</span>
     </div>`;
 
   const rows = items.map(it => {
     const active = _qsActiveBookId === it.id;
+    const loading = _qsLoadingBook === it.id;
+    const cntLabel = loading ? '…' : (it.count == null ? '?' : it.count);
     return `
     <div onclick="qsSelectBook('${esc(it.id)}')" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${active?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
       <span onclick="event.stopPropagation();qsToggleFavBook('${esc(it.id)}')" style="cursor:pointer;font-size:14px;color:${it.fav?'#f0b000':'#ccc'};" title="즐겨찾기">${it.fav?'★':'☆'}</span>
       <span style="font-size:14px;">${it.isUnassigned?'📂':'📚'}</span>
       <div style="flex:1;font-weight:${it.fav?700:600};font-size:13px;color:${active?'var(--teal)':'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(it.name)}">${esc(it.name)}</div>
-      <span style="font-size:11px;color:var(--gray);">${it.count}</span>
+      <span style="font-size:11px;color:var(--gray);">${cntLabel}</span>
     </div>`;
   }).join('');
 
@@ -10582,18 +10668,25 @@ function _qsRenderBookPane() {
 
 // ─── 하단 오른쪽: 선택된 Book 의 세트 리스트 ───
 function _qsRenderSetPane() {
-  const filtered = _qsActiveBookId == null
-    ? _qsList
-    : _qsList.filter(s => _qsPrimaryBookId(s) === _qsActiveBookId);
-  const sorted = _qsSortSets(filtered, _qsSortBottom);
-  const bookLabel = _qsActiveBookId == null ? '전체' : _qsBookName(_qsActiveBookId);
+  const cacheKey = _qsActiveBookId == null ? '__all_recent__' : _qsActiveBookId;
+  const cache = _qsSetsByBook[cacheKey];
+  const loaded = Array.isArray(cache);
+  const loading = _qsLoadingBook === cacheKey;
+  const bookLabel = _qsActiveBookId == null
+    ? '전체 (최근 ' + _QS_RECENT_LIMIT + '개)'
+    : _qsBookName(_qsActiveBookId);
 
-  return `
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">세트 ${sorted.length}개</span></span>
-    </div>
-    <div style="flex:1;overflow:auto;">
-      <table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
+  let body;
+  if (loading && !loaded) {
+    body = `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`;
+  } else if (!loaded) {
+    body = `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">Book 폴더를 선택하세요</div>`;
+  } else {
+    const sorted = _qsSortSets(cache, _qsSortBottom);
+    if (sorted.length === 0) {
+      body = `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">이 폴더에 세트가 없습니다</div>`;
+    } else {
+      body = `<table class="data-table" style="width:max-content;table-layout:fixed;font-size:12px;">
         <thead style="position:sticky;top:0;background:#fafafa;z-index:1;">
           <tr>
             ${_qsTh('bottom','fav','',{center:true})}
@@ -10605,8 +10698,16 @@ function _qsRenderSetPane() {
           </tr>
         </thead>
         <tbody>${sorted.map(s => _qsRenderRow(s, 'bottom')).join('')}</tbody>
-      </table>
+      </table>`;
+    }
+  }
+  const cntLabel = loaded ? `세트 ${cache.length}개` : (loading ? '로딩...' : '미로드');
+
+  return `
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">${cntLabel}</span></span>
     </div>
+    <div style="flex:1;overflow:auto;">${body}</div>
   `;
 }
 
@@ -10650,9 +10751,11 @@ window.qsSortBottom = (col) => {
   _qsSavePrefs();
   _qsRenderList();
 };
-window.qsSelectBook = (bid) => {
+window.qsSelectBook = async (bid) => {
   _qsActiveBookId = bid;
   _qsSavePrefs();
+  _qsRenderList(); // 즉시 활성 표시 (캐시 없으면 로딩 안내)
+  await _qsLazyFetch(bid);
   _qsRenderList();
 };
 window.qsToggleFavBook = (bid) => {
@@ -11004,6 +11107,7 @@ window.qsRenameSet = async (setId) => {
       updatedAt: serverTimestamp(),
     });
     showToast('✓ 이름 변경됨');
+    _qsInvalidateCache();
     await loadQuestionSets();
   } catch(e) {
     showToast('변경 실패: '+e.message);
@@ -11017,6 +11121,7 @@ window.qsDeleteSet = async (setId) => {
   try {
     await deleteDoc(doc(db,'genQuestionSets',setId));
     showToast('✓ 삭제됨');
+    _qsInvalidateCache();
     await loadQuestionSets();
   } catch(e) {
     showToast('삭제 실패: '+e.message);
@@ -11380,11 +11485,13 @@ window.qsSaveEdits = async () => {
       questions: st.questions,
       questionCount: st.questions.length,
       sourcePages,
+      bookId: _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages }),
       updatedAt: serverTimestamp(),
     });
     showToast(`✓ "${newName}" 저장됨`);
     _qsEditState = null;
     closeModal();
+    _qsInvalidateCache();
     await loadQuestionSets();
   } catch(e) {
     showToast('저장 실패: ' + e.message);
