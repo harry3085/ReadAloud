@@ -2575,11 +2575,20 @@ function _rv2RenderRoundCard(i, cur) {
   if (saved) {
     buttonsHtml = `<div style="text-align:center;font-size:11px;color:var(--gray);padding:4px 0;">✓ 저장 완료 · 되돌릴 수 없어요</div>`;
   } else if (isRecording) {
+    const isPaused = !!_rv2.isPaused;
+    const pauseBtnHtml = isPaused
+      ? `<button onclick="rv2ResumeRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#F4936A;color:white;font-size:13px;font-weight:700;cursor:pointer;">▶ 재개</button>`
+      : `<button onclick="rv2PauseRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;">⏸ 일시정지</button>`;
+    const pausedBadge = isPaused
+      ? `<div style="text-align:center;font-size:11px;color:#BA7517;font-weight:700;margin-top:6px;">일시정지됨 — [재개] 누르면 이어서 녹음됩니다</div>`
+      : '';
     buttonsHtml = `
       <div style="display:flex;gap:8px;">
+        ${pauseBtnHtml}
         <button onclick="rv2StopRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#DC2626;color:white;font-size:13px;font-weight:700;cursor:pointer;">⏹ 녹음 종료</button>
       </div>
       <div id="rv2Timer" style="text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px;font-variant-numeric:tabular-nums;">00:00</div>
+      ${pausedBadge}
     `;
   } else if (hasTake) {
     buttonsHtml = `
@@ -2629,39 +2638,78 @@ window.rv2StartRecord = async () => {
     _rv2.mediaRecorder.onstop = () => _rv2AfterStop(mime);
     _rv2.mediaRecorder.start();
     _rv2.isRecording = true;
-    _rv2.timerStart = Date.now();
+    _rv2.isPaused = false;
+    _rv2.elapsedSec = 0;
+    _rv2.lastTick = Date.now();
     _rv2Render();
 
-    _rv2.timerInterval = setInterval(() => {
-      const sec = Math.floor((Date.now() - _rv2.timerStart) / 1000);
-      const el = document.getElementById('rv2Timer');
-      if (el) el.textContent = _rv2FormatDuration(sec);
-      // 학원장 입력 시험별 옵션 우선 (max 600 cap) — 없으면 학원 default
-      const qMax = _rv2.question?.maxDurationSec;
-      const cfgMax = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
-      const maxSec = (typeof qMax === 'number' && qMax > 0) ? Math.min(qMax, 600) : Math.min(cfgMax, 600);
-      if (sec >= maxSec) {
-        showToast(`최대 녹음 시간 (${Math.round(maxSec/60)}분) 도달 — 자동 종료됐어요. 제출하거나 다시 녹음하세요.`);
-        rv2StopRecord();
-      }
-    }, 250);
+    _rv2StartTimerLoop();
   } catch(e) {
     console.error(e);
     showToast('마이크 접근 실패: ' + (e.message || '권한을 허용해주세요'));
   }
 };
 
+// 타이머 — elapsedSec 누적 (일시정지 시 멈춤). 250ms 마다 갱신
+function _rv2StartTimerLoop() {
+  if (_rv2.timerInterval) clearInterval(_rv2.timerInterval);
+  _rv2.timerInterval = setInterval(() => {
+    if (!_rv2.isRecording || _rv2.isPaused) return;
+    const now = Date.now();
+    _rv2.elapsedSec += (now - _rv2.lastTick) / 1000;
+    _rv2.lastTick = now;
+    const sec = Math.floor(_rv2.elapsedSec);
+    const el = document.getElementById('rv2Timer');
+    if (el) el.textContent = _rv2FormatDuration(sec);
+    // 학원장 입력 시험별 옵션 우선 (max 600 cap) — 없으면 학원 default
+    const qMax = _rv2.question?.maxDurationSec;
+    const cfgMax = window.MY_ACADEMY_RECORDING_CFG?.maxDurationSec || 600;
+    const maxSec = (typeof qMax === 'number' && qMax > 0) ? Math.min(qMax, 600) : Math.min(cfgMax, 600);
+    if (sec >= maxSec) {
+      showToast(`최대 녹음 시간 (${Math.round(maxSec/60)}분) 도달 — 자동 종료됐어요. 제출하거나 다시 녹음하세요.`);
+      rv2StopRecord();
+    }
+  }, 250);
+}
+
+window.rv2PauseRecord = () => {
+  if (!_rv2.mediaRecorder || !_rv2.isRecording || _rv2.isPaused) return;
+  try { _rv2.mediaRecorder.pause(); } catch (e) { console.warn('pause:', e); }
+  // 일시정지 직전까지의 경과 시간 누적 마무리
+  const now = Date.now();
+  _rv2.elapsedSec += (now - _rv2.lastTick) / 1000;
+  _rv2.lastTick = now;
+  _rv2.isPaused = true;
+  _rv2Render();
+};
+
+window.rv2ResumeRecord = () => {
+  if (!_rv2.mediaRecorder || !_rv2.isRecording || !_rv2.isPaused) return;
+  try { _rv2.mediaRecorder.resume(); } catch (e) { console.warn('resume:', e); }
+  _rv2.isPaused = false;
+  _rv2.lastTick = Date.now();
+  _rv2Render();
+};
+
 window.rv2StopRecord = () => {
   if (!_rv2.mediaRecorder || !_rv2.isRecording) return;
+  // 일시정지 상태에서 stop 호출도 정상 작동 (MediaRecorder 표준)
+  // 최종 elapsedSec 마무리 (일시정지 중이면 lastTick 이후 시간 없으니 += 0)
+  if (!_rv2.isPaused) {
+    const now = Date.now();
+    _rv2.elapsedSec += (now - _rv2.lastTick) / 1000;
+  }
   _rv2.mediaRecorder.stop();
   _rv2.stream?.getTracks()?.forEach(t => t.stop());
   _rv2.isRecording = false;
+  _rv2.isPaused = false;
   if (_rv2.timerInterval) { clearInterval(_rv2.timerInterval); _rv2.timerInterval = null; }
 };
 
 async function _rv2AfterStop(mime) {
   const blob = new Blob(_rv2.chunks, { type: mime });
-  const duration = Math.floor((Date.now() - _rv2.timerStart) / 1000);
+  // 일시정지 시간 제외한 실제 녹음 시간 (elapsedSec 누적값)
+  const duration = Math.floor(_rv2.elapsedSec || 0);
 
   // Pre-check (AI 호출 X) — 길이·VAD·hash·일관성·대역·자기상관
   // 시험 단위 q 의 필드 (minDurationSec / maxDurationSec / accuracyThreshold) 우선
