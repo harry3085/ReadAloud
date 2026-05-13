@@ -6962,22 +6962,23 @@ function _genInitResizer() {
   });
 }
 
+// AI OCR — Lazy load (2026-05-14): 진입 시 Books 만, Book 클릭 시 그 Book 의 Chapters+Pages
 window.loadGenerator = async () => {
   _genInitResizer();
   try {
-    const [pSnap, cSnap, bSnap] = await Promise.all([
-      getDocs(query(collection(db,'genPages'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('serialNumber','asc'))),
-      getDocs(query(collection(db,'genChapters'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order','asc'))),
-      getDocs(query(collection(db,'genBooks'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc'))),
-    ]);
-    _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
-    _genChapters = cSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const bSnap = await getDocs(query(
+      collection(db,'genBooks'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      orderBy('createdAt','asc')
+    ));
     _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genChapters = [];  // Book 클릭 시 lazy fetch
+    _genPages = [];
     _genCheckedPages.clear(); _genCheckedChapters.clear(); _genCheckedBooks.clear();
     _genActiveBook = null; _genActiveChapter = null; _genActivePage = null;
     _genPageCur = 1;
     _genRenderAll();
-    _cleanupLoadPresets();  // 프리셋 백그라운드 로드 (에디터 드롭다운 채움)
+    _cleanupLoadPresets();
   } catch(e) { showToast('AI OCR 로드 실패: '+e.message); }
 };
 
@@ -7257,10 +7258,35 @@ window.genOnPageCheck = (cb) => {
   cb.checked ? _genCheckedPages.add(cb.dataset.id) : _genCheckedPages.delete(cb.dataset.id);
   _genToolbar('page'); _genRenderPages();
 };
-window.genClickBook = (id) => {
+window.genClickBook = async (id) => {
   _genActiveBook = _genActiveBook === id ? null : id;
   _genActiveChapter = null;
   _genPageCur = 1;
+  // Book 활성화 시 그 Book 의 Chapters + Pages lazy fetch (cache — 한 번만)
+  if (_genActiveBook) {
+    const hasCh = _genChapters.some(c => c.bookId === _genActiveBook);
+    const hasPg = _genPages.some(p => p.bookId === _genActiveBook);
+    if (!hasCh || !hasPg) {
+      try {
+        const [cSnap, pSnap] = await Promise.all([
+          hasCh ? Promise.resolve({docs:[]}) : getDocs(query(
+            collection(db,'genChapters'),
+            where('academyId','==', window.MY_ACADEMY_ID),
+            where('bookId','==', _genActiveBook),
+            orderBy('order','asc')
+          )),
+          hasPg ? Promise.resolve({docs:[]}) : getDocs(query(
+            collection(db,'genPages'),
+            where('academyId','==', window.MY_ACADEMY_ID),
+            where('bookId','==', _genActiveBook),
+            orderBy('serialNumber','asc')
+          )),
+        ]);
+        if (!hasCh) _genChapters = _genChapters.concat(cSnap.docs.map(d=>({id:d.id,...d.data()})));
+        if (!hasPg) _genPages = _genPages.concat(pSnap.docs.map(d=>({id:d.id,...d.data()})));
+      } catch(e) { console.warn('[genClickBook] lazy fetch:', e); }
+    }
+  }
   _genRenderBooks(); _genRenderChapters(); _genRenderPages();
 };
 window.genClickChapter = (id) => {

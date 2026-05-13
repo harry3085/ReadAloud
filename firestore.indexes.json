@@ -164,10 +164,28 @@
       ]
     },
     {
+      "collectionGroup": "genChapters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "bookId", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "genPages",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "serialNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "genPages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "bookId", "order": "ASCENDING" },
         { "fieldPath": "serialNumber", "order": "ASCENDING" }
       ]
     },
