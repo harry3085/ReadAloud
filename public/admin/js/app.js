@@ -823,12 +823,37 @@ async function bigcalInit(){
 }
 
 // ── 대시보드 ──────────────────────────────────────────
+// 통계 카드 (민감 정보) — default 숨김. 토글 시만 fetch (lazy).
+let _dashStatsLoaded = false;
 async function initDashboard(){
   const now = new Date();
   document.getElementById('dashDate').textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
-  await Promise.all([loadDashStats(), loadDashNotices(), loadApiUsage(), bigcalInit()]);
+  // 통계 보이는 상태면 갱신, 숨김 상태면 skip
+  const grid = document.getElementById('dashStatsGrid');
+  const statsVisible = grid && grid.style.display !== 'none';
+  const tasks = [loadDashNotices(), loadApiUsage(), bigcalInit()];
+  if (statsVisible) tasks.unshift(loadDashStats());
+  await Promise.all(tasks);
 }
 window.refreshDashboard = initDashboard;
+
+window.toggleDashStats = async () => {
+  const grid = document.getElementById('dashStatsGrid');
+  const btn = document.getElementById('dashStatsToggleBtn');
+  if (!grid) return;
+  const visible = grid.style.display !== 'none';
+  if (!visible) {
+    // 표시 — 첫 호출 시 fetch
+    if (!_dashStatsLoaded) {
+      try { await loadDashStats(); _dashStatsLoaded = true; } catch(e) { console.error(e); }
+    }
+    grid.style.display = '';
+    if (btn) btn.textContent = '🙈 통계 숨기기';
+  } else {
+    grid.style.display = 'none';
+    if (btn) btn.textContent = '📊 통계 보기';
+  }
+};
 
 async function loadApiUsage(){
   const body = document.getElementById('apiUsageBody');

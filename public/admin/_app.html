@@ -290,11 +290,14 @@
         <div class="page-title">초기화면</div>
         <div class="page-sub" id="dashDate"></div>
       </div>
-      <button class="btn btn-primary" onclick="refreshDashboard()">↺ 새로고침</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" id="dashStatsToggleBtn" onclick="toggleDashStats()" style="font-size:12px;padding:6px 12px;">📊 통계 보기</button>
+        <button class="btn btn-primary" onclick="refreshDashboard()">↺ 새로고침</button>
+      </div>
     </div>
 
-    <!-- 통계 카드 -->
-    <div class="dash-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+    <!-- 통계 카드 (민감 정보 — 토글로 숨김/표시, default 숨김) -->
+    <div class="dash-grid" id="dashStatsGrid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;display:none;">
       <div class="stat-card">
         <div class="stat-icon teal">👥</div>
         <div><div class="stat-num" id="statTotal">-</div><div class="stat-label">전체 학생</div></div>
