@@ -4516,7 +4516,7 @@ window.delMsg = async(id) => {
 // ── 성적 관리 ────────────────────────────────────────
 async function initScoreReport(){
   const todayStr = _ymdKST();
-  const from = todayStr.slice(0,7) + '-01';
+  const from = _ymdDaysAgoKST(1);  // 어제 default (2026-05-14 — 비용 최적화)
   document.getElementById('scoreFrom').value = from;
   document.getElementById('scoreTo').value = todayStr;
 
@@ -4697,7 +4697,7 @@ window.loadScoreReport = async() => {
 
     // 조회 조건 — from 비어있으면 월초 자동, group/mode 도 server-side 필터
     const fromInput = document.getElementById('scoreFrom').value;
-    const from = fromInput || _ymdMonthStartKST();
+    const from = fromInput || _ymdDaysAgoKST(1);
     const to = document.getElementById('scoreTo').value;
     const group = document.getElementById('scoreClassFilter')?.value || '';
     const mode = document.getElementById('scoreModeFilter')?.value || '';
@@ -4727,7 +4727,7 @@ window.loadMoreScoreReport = async() => {
   const btn = document.getElementById('srLoadMoreBtn');
   if (btn) { btn.disabled = true; btn.textContent = '로딩 중...'; }
   try {
-    const params = _srState.params || { from: _ymdMonthStartKST() };
+    const params = _srState.params || { from: _ymdDaysAgoKST(1) };
     const snap = await getDocs(query(collection(db, 'scores'), ..._srBuildConstraints(params, true)));
 
     _srState.lastDoc = snap.docs[snap.docs.length - 1] || _srState.lastDoc;
