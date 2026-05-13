@@ -4671,18 +4671,20 @@ function _srRenderLoadMore() {
 // scores 쿼리 빌더 — date/group/mode 조건부 추가 (composite index 활용)
 // 이름 검색 모드면 limit 1000 (기간 내 전체에서 client filter)
 function _srBuildConstraints(params, useCursor) {
+  const searchQ = (document.getElementById('scoreSearch')?.value || '').trim();
+  // 이름 검색 시 최근 30일로 강제 override (학원장 안내문 명시)
+  const fromForSearch = searchQ ? _ymdDaysAgoKST(30) : params.from;
   const constraints = [
     where('academyId', '==', window.MY_ACADEMY_ID),
-    where('date', '>=', params.from),
+    where('date', '>=', fromForSearch),
   ];
-  if (params.to) constraints.push(where('date', '<=', params.to));
+  if (!searchQ && params.to) constraints.push(where('date', '<=', params.to));
   if (params.group) constraints.push(where('group', '==', params.group));
   if (params.mode) constraints.push(where('mode', '==', params.mode));
   constraints.push(orderBy('date', 'desc'));
   constraints.push(orderBy('createdAt', 'desc'));
   if (useCursor && _srState.lastDoc) constraints.push(startAfter(_srState.lastDoc));
-  const searchQ = (document.getElementById('scoreSearch')?.value || '').trim();
-  constraints.push(limit(searchQ ? 1000 : SR_PAGE_SIZE));
+  constraints.push(limit(searchQ ? 300 : SR_PAGE_SIZE));
   return constraints;
 }
 
