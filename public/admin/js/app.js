@@ -858,7 +858,7 @@ async function initDashboard(){
   // 통계 보이는 상태면 갱신, 숨김 상태면 skip
   const grid = document.getElementById('dashStatsGrid');
   const statsVisible = grid && grid.style.display !== 'none';
-  const tasks = [loadDashNotices(), loadApiUsage(), bigcalInit()];
+  const tasks = [loadDashNotices(), loadDashHwFiles(), loadApiUsage(), bigcalInit()];
   if (statsVisible) tasks.unshift(loadDashStats());
   await Promise.all(tasks);
 }
@@ -1141,6 +1141,25 @@ async function loadDashNotices(){
         <span class="notice-new">NEW</span>
         <span class="notice-title">${esc(n.title)||''}</span>
         <span class="notice-date">${esc(n.date)||''}</span>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
+}
+
+// 자료실 미리보기 (학생앱에서만 보이는 데이터 — 학원장 인지용, 2026-05-14)
+async function loadDashHwFiles(){
+  const el=document.getElementById('dashHwFiles');
+  if(!el) return;
+  try{
+    const snap=await getDocs(query(collection(db,'hwFiles'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc'),limit(5)));
+    if(snap.empty){el.innerHTML='<div style="color:#bbb;font-size:13px;text-align:center;padding:12px;">등록된 자료가 없습니다</div>';return;}
+    el.innerHTML=snap.docs.map(d=>{
+      const f=d.data();
+      const targetLabel = f.targetSummary || (f.group === '전체' ? '전체' : (f.group || '-'));
+      return `<div class="notice-item">
+        <span class="notice-title">${esc(f.name)||'-'}</span>
+        <span class="notice-tag${f.group==='전체'?' all':''}" style="font-size:11px;">${esc(targetLabel)}</span>
+        <span class="notice-date">${esc(f.date)||''}</span>
       </div>`;
     }).join('');
   }catch(e){el.innerHTML='<div style="color:#bbb;font-size:13px;">불러오기 실패</div>';}
