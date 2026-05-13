@@ -10642,7 +10642,7 @@ function _qsRenderBookPane() {
     return `
     <div onclick="qsSelectBook('${esc(it.id)}')" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${active?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
       <span onclick="event.stopPropagation();qsToggleFavBook('${esc(it.id)}')" style="cursor:pointer;font-size:14px;color:${it.fav?'#f0b000':'#ccc'};" title="즐겨찾기">${it.fav?'★':'☆'}</span>
-      <span style="font-size:14px;">${it.isUnassigned?'📂':'📚'}</span>
+      <span style="font-size:14px;">📁</span>
       <div style="flex:1;font-weight:${it.fav?700:600};font-size:13px;color:${active?'var(--teal)':'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(it.name)}">${esc(it.name)}</div>
       <span style="font-size:11px;color:var(--gray);">${cntLabel}</span>
     </div>`;
@@ -10650,7 +10650,7 @@ function _qsRenderBookPane() {
 
   return `
     <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span>📚 Book 폴더</span>
+      <span>📁 Book 폴더</span>
       <span style="font-size:11px;color:var(--gray);font-weight:400;">${items.length}개</span>
     </div>
     <div style="flex:1;overflow:auto;">
@@ -11184,7 +11184,7 @@ function _qsRenderEditModal() {
             style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         </div>
         <div>
-          <label style="font-size:11px;font-weight:700;color:var(--gray);">📚 Book 폴더</label>
+          <label style="font-size:11px;font-weight:700;color:var(--gray);">📁 Book 폴더</label>
           <select id="qsEditBook"
             style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">
             <option value="" ${!_qsEditCurrentBookId()?'selected':''}>(미지정)</option>
