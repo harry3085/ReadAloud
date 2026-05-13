@@ -398,39 +398,34 @@
   <div class="page" id="page-student-active">
     <div class="page-header">
       <div><div class="page-title">학생 관리</div><div class="page-sub">재원생을 관리합니다</div></div>
-      <div style="display:flex;gap:8px;">
-        <select class="btn btn-secondary" id="studentClassFilter" onchange="filterStudents()">
-          <option value="">전체 반</option>
-        </select>
-        <button class="btn btn-secondary" onclick="exportStudentExcel()">📊 엑셀 내보내기</button>
-        <button class="btn btn-primary" onclick="openStudentModal()">+ 재원생 추가</button>
-      </div>
+      <div></div>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <input type="text" id="studentSearch" placeholder="🔍 이름, 아이디 검색..." onkeyup="searchStudents()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;width:220px;outline:none;">
-        <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="margin-left:auto;font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        <select id="studentClassFilter" onchange="filterStudents()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+          <option value="">반을 선택하세요</option>
+        </select>
+        <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button class="action-btn primary" onclick="openStudentModal()">+ 학생추가</button>
+          <button class="action-btn" onclick="editSelectedStudent()">✏️ 수정</button>
+          <button class="action-btn danger" onclick="deleteSelectedStudent()">🗑 삭제</button>
+          <span style="color:var(--border);margin:0 2px;">|</span>
+          <button class="action-btn" onclick="bulkAction('assign')">📋 반배정</button>
+          <button class="action-btn" onclick="bulkAction('pause')">⏸ 휴원</button>
+          <button class="action-btn danger" onclick="bulkAction('out')">🚪 퇴원</button>
+          <span style="color:var(--border);margin:0 2px;">|</span>
+          <button class="action-btn" onclick="exportStudentExcel('active')">📊 엑셀</button>
+          <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
+        </div>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th style="width:36px;"><input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)"></th><th onclick="sortTable('studentTableBody',0)" class="sortable">No</th><th onclick="sortTable('studentTableBody',1)" class="sortable">반</th><th onclick="sortTable('studentTableBody',2)" class="sortable">아이디</th><th onclick="sortTable('studentTableBody',3)" class="sortable">이름</th><th onclick="sortTable('studentTableBody',4)" class="sortable">생일</th><th onclick="sortTable('studentTableBody',5)" class="sortable">학교</th><th onclick="sortTable('studentTableBody',6)" class="sortable">학년</th><th>알림수신</th><th onclick="sortTable('studentTableBody',8)" class="sortable">등록일</th><th onclick="sortTable('studentTableBody',9)" class="sortable">수강료</th><th onclick="sortTable('studentTableBody',10)" class="sortable">납부일</th></tr></thead>
-          <tbody id="studentTableBody"><tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr></tbody>
+          <tbody id="studentTableBody"><tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr></tbody>
         </table>
-        <div class="tbl-toolbar">
-          <div class="tbl-actions">
-            <button class="action-btn primary" onclick="openStudentModal()">+ 학생추가</button>
-            <button class="action-btn" onclick="editSelectedStudent()">✏️ 수정</button>
-            <button class="action-btn danger" onclick="deleteSelectedStudent()">🗑 삭제</button>
-            <span style="color:var(--border);margin:0 2px;">|</span>
-            <button class="action-btn" onclick="bulkAction('assign')">📋 반배정</button>
-            <button class="action-btn" onclick="bulkAction('pause')">⏸ 휴원</button>
-            <button class="action-btn danger" onclick="bulkAction('out')">🚪 퇴원</button>
-            <span style="color:var(--border);margin:0 2px;">|</span>
-            <button class="action-btn" onclick="exportStudentExcel('active')">📊 엑셀내보내기</button>
-          </div>
-          <div class="tbl-page" id="studentPagination"></div>
-        </div>
       </div>
+      <div id="studentLoadMoreWrap"></div>
     </div>
   </div>
 
