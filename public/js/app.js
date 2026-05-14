@@ -4893,7 +4893,7 @@ window.vqSpkStart = async () => {
     const targetLower = (q.word || '').toLowerCase();
     let msg;
     if (sim >= 0.5 && sim < 0.6 && heardWord && heardWord !== targetLower) {
-      msg = `❌ 들린단어 : "${heardWord}" · 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
+      msg = `❌ "${heardWord}" 처럼 들렸어요 · 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
     } else {
       msg = `❌ 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
     }
@@ -4964,16 +4964,17 @@ function _cleanAiReason(reason, targetWord) {
   let r = String(reason).trim();
   if (!r) return '';
   const target = String(targetWord || '').toLowerCase().replace(/[\s'"]/g, '');
-  // "유진처럼 들렸어요" / "워러 같이 들려요" / "marker 비슷하게 들렸어요" → "들린단어 : XXX"
-  // 단, 들린 단어가 정답과 동일/유사하면 제거 (음역 의미 X — 정답을 그대로 음역해도 학생에 무의미)
+  // 2026-05-15 (재조정): 들린 단어가 정답과 동일/유사하면 sentence 제거.
+  // 정답과 다른 단어면 원래 sentence ("XXX 처럼 들렸어요") 그대로 유지.
   const heardSentence = /['"]?([가-힣a-zA-Z][가-힣a-zA-Z\s]*?)['"]?\s*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
-  r = r.replace(heardSentence, (_m, word) => {
+  r = r.replace(heardSentence, (match, word) => {
     const heard = String(word || '').trim();
     const heardClean = heard.toLowerCase().replace(/[\s'"]/g, '');
+    // 정답과 동일/유사 → 제거 (정답 음역은 학생에 무의미)
     if (!heard || (target && (heardClean === target || heardClean.includes(target) || target.includes(heardClean)))) {
       return '';
     }
-    return `들린단어 : ${heard}. `;
+    return match;  // 다른 단어 → "XXX 처럼 들렸어요" 표현 그대로 유지
   });
   return r.trim();
 }
