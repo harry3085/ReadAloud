@@ -57,11 +57,20 @@ HEARD field:
 - If silent/noise: return ""
 - Use lowercase English (no Korean text)
 
-REASON field — Korean pronunciation tip:
+REASON field — Korean pronunciation ACTION tip (CRITICAL rules):
+- NEVER write transliteration alone (e.g., "유진처럼 들렸어요", "워러 같이 들려요").
+  Transliteration = useless. Student needs ACTION instructions.
+- If heard sounds identical to target word: return "" (empty — nothing to fix).
 - If match: true and confidence > 90: ""
-- If match: true and confidence 60-90: short tip ("i 발음을 좀 더 길게")
-- If match: false: what's wrong ("R 발음을 굴려보세요", "발음이 다른 단어예요")
+- If match: true and confidence 60-90: short ACTION tip
+  (GOOD: "R 발음을 강하게", "L 끝까지 혀를 위로", "장모음 길게 늘려주세요")
+  (BAD: "유진처럼 들렸어요", "비슷하지만 약간 달라요", "굿잡 잘했어요")
+- If match: false: what specifically is wrong + how to fix
+  (GOOD: "R 발음을 더 강하게 굴려보세요", "TH 혀를 이 사이로 살짝")
+  (BAD: "다른 단어로 들렸어요", "워러로 들렸어요", "정답과 달라요")
+- If you cannot give a useful ACTION tip: return "" (empty is better than vague)
 - Max 25 Korean characters
+- Use IPA notation if helpful: [r], [θ], [ʃ] etc.
 
 CONFIDENCE GUIDE:
 - 90-100: Native-level or clear Korean accent

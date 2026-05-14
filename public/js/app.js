@@ -4772,20 +4772,20 @@ window.vqSpkStart = async () => {
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
   if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
-  if (status) status.textContent = isFinalAttempt ? '🔴 듣고 있어요... (마지막 시도)' : '🔴 듣고 있어요...';
+  if (status) status.textContent = isFinalAttempt
+    ? '🔴 듣고 있어요... (마지막 시도 · AI 평가)'
+    : '🔴 듣고 있어요...';
   if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
 
   s.spk.srResolved = false;
 
   // 1·2차 재시도 안내 또는 3차 AI 폴백 헬퍼
   const stopRecorder = () => {
-    // 지연 MR 시작 예약 cancel (mrDelayTimer 가 아직 안 발화했으면 MR 자체 안 시작)
     if (s.spk.mrDelayTimer) { clearTimeout(s.spk.mrDelayTimer); s.spk.mrDelayTimer = null; }
-    // 이미 시작된 recorder 정리 (closure recorder 또는 state 의 recorder)
     const r = recorder || s.spk.recorder;
     if (r && r.state === 'recording') { try { r.stop(); } catch (_) {} }
   };
-  const handleFail = (reasonText, heard) => {
+  const handleFail = (reasonText, heard, grading) => {
     s.spk.busy = false;
     if (isFinalAttempt) {
       stopRecorder();
@@ -4793,8 +4793,19 @@ window.vqSpkStart = async () => {
       setTimeout(() => _vqTryAiFallback(heard || ''), 100);
     } else {
       // 1·2차 → 재시도 안내 (lock 안 함, 버튼 활성)
+      // 유사도 기반 메시지:
+      //   - sim >= 0.6 + 들린 단어 있음: "XXX 처럼 들렸어요" (비슷한 단어 — 학생 인식 도움)
+      //   - 그 외: 일반 메시지 (음역 X — 정답과 너무 다르면 혼란)
       const nextNo = attempt + 1;
-      if (status) status.textContent = `❌ ${reasonText} · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
+      const sim = grading?.bestSimilarity || 0;
+      const heardWord = grading?.bestHeard || '';
+      let msg;
+      if (sim >= 0.6 && heardWord && heardWord.toLowerCase() !== q.word.toLowerCase()) {
+        msg = `❌ "${heardWord}" 처럼 들렸어요 · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
+      } else {
+        msg = `❌ ${reasonText} · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
+      }
+      if (status) status.textContent = msg;
       if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     }
   };
@@ -4802,6 +4813,11 @@ window.vqSpkStart = async () => {
   rec.onstart = () => { console.log('[vqSpk] SR onstart, attempt:', attempt); };
 
   rec.onresult = (e) => {
+    // 3차 — SR 결과 무시, MR audio + AI 만 사용 (사용자 B 옵션)
+    if (isFinalAttempt) {
+      console.log('[vqSpk] (3차) SR onresult 무시 → AI 평가 진행');
+      return;
+    }
     s.spk.srResolved = true;
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
@@ -4811,8 +4827,8 @@ window.vqSpkStart = async () => {
       s.spk.busy = false;
       _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
-      console.log('[vqSpk] webspeech fail. heard:', heard, 'attempt:', attempt);
-      handleFail(`다르게 들렸어요${heard ? ` ("${heard}")` : ''}`, heard);
+      console.log('[vqSpk] webspeech fail. heard:', heard, 'attempt:', attempt, 'sim:', grading.bestSimilarity);
+      handleFail('다르게 들렸어요', heard, grading);
     }
   };
 
@@ -4826,15 +4842,15 @@ window.vqSpkStart = async () => {
       _vqSpkFinalize(false, '');
       return;
     }
-    handleFail('잘 못 들었어요', s.spk.lastHeard || '');
+    handleFail('잘 못 들었어요', s.spk.lastHeard || '', null);
   };
 
   rec.onend = () => {
     console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved, 'attempt:', attempt);
-    // onresult/onerror 둘 다 발화 X (안드로이드 Chrome 발음 애매)
+    // SR 결과 도착 X (또는 3차 — onresult 무시) → AI 폴백 트리거
     if (!s.spk.srResolved && !ans._locked) {
       s.spk.srResolved = true;
-      handleFail('잘 못 들었어요', s.spk.lastHeard || '');
+      handleFail(isFinalAttempt ? 'AI 평가' : '잘 못 들었어요', s.spk.lastHeard || '', null);
     }
   };
 
@@ -4858,9 +4874,22 @@ window.vqSpkStart = async () => {
     s.spk.srResolved = true;
     console.warn('[vqSpk] SR timeout 5s, attempt:', attempt);
     try { rec.stop(); } catch (_) {}
-    handleFail('응답 없음', s.spk.lastHeard || '');
+    handleFail('응답 없음', s.spk.lastHeard || '', null);
   }, 5000);
 };
+
+// AI reason 음역 멘트 제거 (클라 측 안전망 — 프롬프트로 차단하지만 LLM 가끔 어김)
+// "XXX 처럼 들렸어요" 같은 음역 sentence 통째로 제거 → 행동 지시 (R 발음 강하게 등) 만 유지
+// 사용자 요청 (2026-05-15): 음역 자체가 학생에 무의미 — 항상 제거. 정답과 비교 X.
+function _cleanAiReason(reason, _targetWord) {
+  if (!reason) return '';
+  let r = String(reason).trim();
+  if (!r) return '';
+  // 음역 멘트 sentence 단위 제거: "유진처럼 들렸어요." / "워러 같이 들려요!" / "비슷하게 들렸어요" 등
+  const heardSentence = /[가-힣a-zA-Z][가-힣a-zA-Z\s'"]*?\s*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
+  r = r.replace(heardSentence, '');
+  return r.trim();
+}
 
 // ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
 async function _vqTryAiFallback(webspeechHeard) {
@@ -4937,10 +4966,11 @@ async function _vqTryAiFallback(webspeechHeard) {
       return;
     }
 
+    const cleanReason = _cleanAiReason(data.reason, q.word);
     const meta = {
       source: 'ai',
       aiConfidence: data.confidence,
-      aiReason: data.reason,
+      aiReason: cleanReason,
       aiHeard: data.heard,
       webspeechHeard,
     };
@@ -5388,9 +5418,10 @@ const _origUpdateAllBadgesForVocab = window.updateAllBadges;
 // vocab 시험의 한 변형 (vocabOptions.format='speaking') 으로 동작. T2 에서 _vqState 분기.
 // ═══════════════════════════════════════════════════════════════════════════
 const SPK_STRICTNESS_CONFIG = {
-  lenient: { maxAlternatives: 5, similarityThreshold: 0.55, label: '🟢 너그러움' },
-  normal:  { maxAlternatives: 5, similarityThreshold: 0.7,  label: '🟡 보통' },
-  strict:  { maxAlternatives: 1, similarityThreshold: 0.8,  label: '🔴 엄격' },
+  // 3차 AI 폴백이 있어 1·2차를 조금 엄격하게 봐도 학생 손해 작음 (2026-05-15 재조정)
+  lenient: { maxAlternatives: 5, similarityThreshold: 0.7, label: '🟢 너그러움' },
+  normal:  { maxAlternatives: 5, similarityThreshold: 0.8, label: '🟡 보통' },
+  strict:  { maxAlternatives: 1, similarityThreshold: 0.9, label: '🔴 엄격' },
 };
 
 function _spkLevenshteinSimilarity(a, b) {
@@ -5431,6 +5462,8 @@ function _spkGradeAnswer(recognitionResults, correctEnglish, strictness, homopho
 
   const alternatives = Array.from(recognitionResults || []).slice(0, cfg.maxAlternatives);
 
+  let bestSim = 0;
+  let bestHeard = '';
   for (const alt of alternatives) {
     const said = String(alt.transcript || '').toLowerCase().trim();
     if (!said) continue;
@@ -5444,12 +5477,15 @@ function _spkGradeAnswer(recognitionResults, correctEnglish, strictness, homopho
         if (sim >= cfg.similarityThreshold) {
           return { correct: true, matchedWith: said, similarity: sim, viaHomophone: candidate !== ans };
         }
+        if (sim > bestSim) { bestSim = sim; bestHeard = said; }
       }
     }
   }
   return {
     correct: false,
     alternatives: alternatives.map(a => a.transcript || '').filter(Boolean),
+    bestSimilarity: bestSim,
+    bestHeard,
   };
 }
 
