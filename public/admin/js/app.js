@@ -9802,6 +9802,9 @@ async function _qgCallRecording(opts) {
 
 // ─── Wordsnap: 클립보드 '영단어[Tab]해석' 직접 입력 (AI 호출 없이 즉시 세트 생성) ───
 function _qgBuildWordsnapSection() {
+  const bookNote = _qgActiveBook
+    ? `<span style="color:#0a7a3a;font-weight:700;">✓ 저장 위치: ${esc(_qgActiveBook.name)}${_qgActiveChapter ? ' · ' + esc(_qgActiveChapter.name) : ''}</span>`
+    : `<span style="color:#c33;">⚠ 우측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
@@ -9809,6 +9812,7 @@ function _qgBuildWordsnapSection() {
         <button class="btn btn-secondary" onclick="qgWordsnapPaste()"
           style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
       </div>
+      <div style="font-size:10px;margin-bottom:6px;line-height:1.5;">${bookNote}</div>
       <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
         각 줄: <code style="background:white;padding:1px 5px;border-radius:3px;font-size:10px;">영단어/숙어<span style="color:#c33;font-weight:700;">[Tab]</span>해석</code>
       </div>
@@ -9893,6 +9897,13 @@ window.qgWordsnapPaste = async () => {
 window.qgRunWordsnap = async () => {
   const ta = document.getElementById('qgWordsnapInput');
   if (!ta) return;
+
+  // Book 필수 — 미지정 세트 발생 차단 (2026-05-14)
+  if (!_qgActiveBook) {
+    showAlert('Book 선택 필요', '우측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
+    return;
+  }
+
   const { questions, errors } = _qgParseWordsnap(ta.value);
 
   if (questions.length === 0) { showAlert('입력 확인', '저장할 단어가 없습니다 — 형식: 영단어[Tab]해석'); return; }
@@ -10713,17 +10724,14 @@ function _qsRenderBookPane() {
     fav: _qsFavBooks.has(b.id),
     isUnassigned: false,
   }));
-  // 미지정 폴더 — 캐시 hit 면 표시
+  // 미지정 폴더 — 항상 표시 (캐시 hit 시 count 채움, 미스면 ? · 클릭 시 lazy fetch)
   const unassignedCache = _qsSetsByBook[_QS_UNASSIGNED];
-  if (Array.isArray(unassignedCache) && unassignedCache.length > 0) {
-    items.push({
-      id: _QS_UNASSIGNED, name: '미지정',
-      count: unassignedCache.length, fav: _qsFavBooks.has(_QS_UNASSIGNED), isUnassigned: true,
-    });
-  } else if (_qsFavBooks.has(_QS_UNASSIGNED)) {
-    // 즐겨찾기만 되어있고 캐시 미스 → 카운트 ? 로 표시
-    items.push({ id: _QS_UNASSIGNED, name: '미지정', count: null, fav: true, isUnassigned: true });
-  }
+  items.push({
+    id: _QS_UNASSIGNED, name: '미지정',
+    count: Array.isArray(unassignedCache) ? unassignedCache.length : null,
+    fav: _qsFavBooks.has(_QS_UNASSIGNED),
+    isUnassigned: true,
+  });
   // 정렬: 즐겨찾기 먼저 → 이름 순 → 미지정은 맨 마지막
   items.sort((a,b) => {
     if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
@@ -12333,18 +12341,16 @@ function _tpBuildFolders() {
       isUnassigned: false,
     };
   });
-  // 미지정 폴더 — 캐시 hit 시만 표시
+  // 미지정 폴더 — 항상 표시 (캐시 hit 시 count 채움, 미스면 ? · 클릭 시 lazy fetch)
   const unCacheKey = _tpFolderCacheKey(sourceType, '__unassigned__');
   const unCache = _tpSetsByFolder[unCacheKey];
-  if (Array.isArray(unCache) && unCache.length > 0) {
-    folders.push({
-      key: '__unassigned__',
-      name: '(책 없음)',
-      bookId: '',
-      count: unCache.length,
-      isUnassigned: true,
-    });
-  }
+  folders.push({
+    key: '__unassigned__',
+    name: '(책 없음)',
+    bookId: '',
+    count: Array.isArray(unCache) ? unCache.length : null,
+    isUnassigned: true,
+  });
   // 이름순 고정 (클릭해도 위치 변동 X), 미지정 폴더는 맨 마지막
   return folders.sort((a, b) => {
     if (a.isUnassigned !== b.isUnassigned) return a.isUnassigned ? 1 : -1;
