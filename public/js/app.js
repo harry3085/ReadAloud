@@ -4827,11 +4827,32 @@ window.vqSpkStart = async () => {
   if (s.spk.busy) return;
   s.spk.busy = true;
 
+  // 옛 SR 인스턴스 cleanup — 이전 시도의 onend 가 늦게 발화해서
+  // 새 시도의 버튼 색을 푸른색으로 되돌리는 버그 방지 (2026-05-15)
+  if (s.spk.recognition) {
+    try {
+      s.spk.recognition.onresult = null;
+      s.spk.recognition.onerror = null;
+      s.spk.recognition.onend = null;
+      s.spk.recognition.onstart = null;
+      s.spk.recognition.abort();
+    } catch (_) {}
+    s.spk.recognition = null;
+  }
+  if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
+
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     showToast('이 브라우저는 음성 인식을 지원하지 않습니다.');
     s.spk.busy = false;
     return;
+  }
+
+  // 2차+ 시도 — 이전 SR mic stream 자동 해제 시간 확보 (안드로이드 빨강→파랑 깜빡임 fix)
+  // rec.start() 직후 onerror 즉시 발화 또는 throw 회피
+  if ((s.spk.attempt || 0) >= 1) {
+    await new Promise(r => setTimeout(r, 150));
+    if (s.answers[s.currentIdx]?._locked) { s.spk.busy = false; return; }
   }
 
   s.spk.attempt = (s.spk.attempt || 0) + 1;
@@ -4872,9 +4893,9 @@ window.vqSpkStart = async () => {
     const targetLower = (q.word || '').toLowerCase();
     let msg;
     if (sim >= 0.5 && sim < 0.6 && heardWord && heardWord !== targetLower) {
-      msg = `❌ 들린단어 "${heardWord}" · 다시 (${nextNo}/${MAX_ATTEMPTS})`;
+      msg = `❌ 들린단어 : "${heardWord}" · 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
     } else {
-      msg = `❌ ${reasonText} · 다시 (${nextNo}/${MAX_ATTEMPTS})`;
+      msg = `❌ 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
     }
     if (status) status.textContent = msg;
     if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
@@ -4935,16 +4956,25 @@ window.vqSpkStart = async () => {
   }, 5000);
 };
 
-// AI reason 음역 멘트 제거 (클라 측 안전망 — 프롬프트로 차단하지만 LLM 가끔 어김)
-// "XXX 처럼 들렸어요" 같은 음역 sentence 통째로 제거 → 행동 지시 (R 발음 강하게 등) 만 유지
-// 사용자 요청 (2026-05-15): 음역 자체가 학생에 무의미 — 항상 제거. 정답과 비교 X.
-function _cleanAiReason(reason, _targetWord) {
+// AI reason 음역 멘트 변환 (클라 측 안전망)
+// "XXX 처럼 들렸어요" 같은 음역 sentence → "들린단어 : XXX" 로 변환 (사용자 요청 2026-05-15)
+// 음역만 단독으로 적힌 경우 학생에 정보 가치 ↑ (단어 인식 표시)
+function _cleanAiReason(reason, targetWord) {
   if (!reason) return '';
   let r = String(reason).trim();
   if (!r) return '';
-  // 음역 멘트 sentence 단위 제거: "유진처럼 들렸어요." / "워러 같이 들려요!" / "비슷하게 들렸어요" 등
-  const heardSentence = /[가-힣a-zA-Z][가-힣a-zA-Z\s'"]*?\s*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
-  r = r.replace(heardSentence, '');
+  const target = String(targetWord || '').toLowerCase().replace(/[\s'"]/g, '');
+  // "유진처럼 들렸어요" / "워러 같이 들려요" / "marker 비슷하게 들렸어요" → "들린단어 : XXX"
+  // 단, 들린 단어가 정답과 동일/유사하면 제거 (음역 의미 X — 정답을 그대로 음역해도 학생에 무의미)
+  const heardSentence = /['"]?([가-힣a-zA-Z][가-힣a-zA-Z\s]*?)['"]?\s*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
+  r = r.replace(heardSentence, (_m, word) => {
+    const heard = String(word || '').trim();
+    const heardClean = heard.toLowerCase().replace(/[\s'"]/g, '');
+    if (!heard || (target && (heardClean === target || heardClean.includes(target) || target.includes(heardClean)))) {
+      return '';
+    }
+    return `들린단어 : ${heard}. `;
+  });
   return r.trim();
 }
 
