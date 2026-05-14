@@ -362,7 +362,7 @@ window.goPage = async(id) => {
   else if(id==='test-list') await loadProgressCheck();
   else if(id==='score-report') initScoreReport();
   else if(id==='score-personal') await loadPersonalStudentList();
-  else if(id==='generator') await loadGenerator();
+  else if(id==='generator') await loadGenerator({});
   else if(id==='quiz-generate') await loadQuizGenerate();
   else if(id==='quiz-sets')     await loadQuestionSets();
   // Phase 1 플레이스홀더 — 별도 데이터 로드 없음
@@ -7050,29 +7050,65 @@ function _genInitResizer() {
   });
 }
 
-// AI OCR — Lazy load (2026-05-14): 진입 시 Books + 미배정 Pages, Book 클릭 시 그 Book 의 Chapters+Pages
-window.loadGenerator = async () => {
+// AI OCR — Lazy load (2026-05-14): 진입 시 Books + 미배정 Chapters/Pages, Book 클릭 시 그 Book 의 Chapters+Pages
+// opts.keepActive=true: CRUD 후 호출 — _genActiveBook/Chapter 보존 + 선택된 Book 의 Chapter/Page 도 re-fetch
+window.loadGenerator = async (opts = {}) => {
   _genInitResizer();
+  const keepActive = !!opts.keepActive;
+  const savedBook = keepActive ? _genActiveBook : null;
+  const savedChapter = keepActive ? _genActiveChapter : null;
   try {
-    const [bSnap, pSnap] = await Promise.all([
-      getDocs(query(
-        collection(db,'genBooks'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        orderBy('createdAt','asc')
-      )),
-      // 미배정 Page (OCR 막 찍은 거 / 수동 생성) — 첫 화면 기본 뷰
-      getDocs(query(
-        collection(db,'genPages'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('bookId','==', null),
-        orderBy('serialNumber','asc')
-      )),
+    const bookFetch = getDocs(query(
+      collection(db,'genBooks'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      orderBy('createdAt','asc')
+    ));
+    // 미배정 Page (bookId=null) — OCR 막 찍은 거 / 수동 생성 / Book 에서 제외된 것
+    const unassignedPageFetch = getDocs(query(
+      collection(db,'genPages'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('bookId','==', null),
+      orderBy('serialNumber','asc')
+    ));
+    // 미배정 Chapter (bookId=null) — 신규 Chapter / Book 에서 제외된 것
+    const unassignedChapterFetch = getDocs(query(
+      collection(db,'genChapters'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('bookId','==', null),
+      orderBy('order','asc')
+    ));
+    // 활성 Book 이 있으면 그 Book 의 Chapter/Page 도 re-fetch (keepActive 시)
+    const activeChapterFetch = savedBook ? getDocs(query(
+      collection(db,'genChapters'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('bookId','==', savedBook),
+      orderBy('order','asc')
+    )) : Promise.resolve({docs:[]});
+    const activePageFetch = savedBook ? getDocs(query(
+      collection(db,'genPages'),
+      where('academyId','==',window.MY_ACADEMY_ID),
+      where('bookId','==', savedBook),
+      orderBy('serialNumber','asc')
+    )) : Promise.resolve({docs:[]});
+    const [bSnap, upSnap, ucSnap, acSnap, apSnap] = await Promise.all([
+      bookFetch, unassignedPageFetch, unassignedChapterFetch, activeChapterFetch, activePageFetch
     ]);
     _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
-    _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
-    _genChapters = [];  // Book 클릭 시 lazy fetch
+    _genPages = upSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genChapters = ucSnap.docs.map(d=>({id:d.id,...d.data()}));
+    if (savedBook) {
+      _genChapters = _genChapters.concat(acSnap.docs.map(d=>({id:d.id,...d.data()})));
+      _genPages = _genPages.concat(apSnap.docs.map(d=>({id:d.id,...d.data()})));
+    }
     _genCheckedPages.clear(); _genCheckedChapters.clear(); _genCheckedBooks.clear();
-    _genActiveBook = null; _genActiveChapter = null; _genActivePage = null;
+    if (keepActive) {
+      // active state 유지 — 단, Book/Chapter 가 삭제됐을 수 있으니 존재 확인
+      _genActiveBook = _genBooks.some(b => b.id === savedBook) ? savedBook : null;
+      _genActiveChapter = _genChapters.some(c => c.id === savedChapter) ? savedChapter : null;
+    } else {
+      _genActiveBook = null; _genActiveChapter = null;
+    }
+    _genActivePage = null;
     _genPageCur = 1;
     _genRenderAll();
     _cleanupLoadPresets();
@@ -7568,7 +7604,7 @@ window.runGenOcr = async () => {
   if (status) { status.textContent=`완료! ${saved}개 Page 저장됨`; setTimeout(()=>{ status.textContent=''; },3000); }
   btn.disabled=false;
   _genImages=[]; _genRenderThumbnails();
-  await loadGenerator();
+  await loadGenerator({keepActive:true});
 };
 
 // ── Page CRUD ──
@@ -7607,7 +7643,7 @@ window.genDoCreatePage = async () => {
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -7644,7 +7680,7 @@ window.genDoEditPage = async (pid) => {
   if (!title) { showAlert('입력 확인', '제목을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -7747,7 +7783,7 @@ window.genDoMergePages = async (idsCsv) => {
 
     _genCheckedPages.clear();
     closeModal();
-    await loadGenerator();
+    await loadGenerator({keepActive:true});
     showToast(deleteOriginals
       ? `✂ ${pages.length}개 페이지 병합 완료 — 원본 삭제됨`
       : `✂ ${pages.length}개 페이지 병합 완료 — 원본 보존`);
@@ -7776,7 +7812,7 @@ window.genDeletePages = async () => {
   if (!ok) return;
   try {
     await Promise.all([..._genCheckedPages].map(id=>deleteDoc(doc(db,'genPages',id))));
-    _genCheckedPages.clear(); await loadGenerator();
+    _genCheckedPages.clear(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
@@ -7784,7 +7820,7 @@ window.genExcludePages = async () => {
   if (!_genCheckedPages.size) return;
   try {
     await Promise.all([..._genCheckedPages].map(id=>updateDoc(doc(db,'genPages',id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
-    showToast('미지정 상태로 변경됨'); await loadGenerator();
+    showToast('미지정 상태로 변경됨'); await loadGenerator({keepActive:true});
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -7818,7 +7854,7 @@ window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genPages',id),{chapterId,chapterName,bookId:bookId||null,bookName:bookName||''})));
     closeModal(); _genCheckedPages.clear();
     showToast(`"${chapterName}"으로 이동 완료`);
-    await loadGenerator();
+    await loadGenerator({keepActive:true});
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -7851,7 +7887,7 @@ window.genDoCreateChapter = async () => {
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -7884,7 +7920,7 @@ window.genDoEditChapter = async (cid) => {
   try {
     await updateDoc(doc(db,'genChapters',cid),{name, updatedAt:serverTimestamp()});
     await Promise.all(_genPages.filter(p=>p.chapterId===cid).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterName:name})));
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -7896,7 +7932,7 @@ window.genDeleteChapters = async () => {
     const ids=[..._genCheckedChapters];
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
     await Promise.all(ids.map(id=>deleteDoc(doc(db,'genChapters',id))));
-    _genCheckedChapters.clear(); await loadGenerator();
+    _genCheckedChapters.clear(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
@@ -7906,7 +7942,7 @@ window.genExcludeChapters = async () => {
   try {
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId:null,bookName:'',updatedAt:serverTimestamp()})));
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})));
-    showToast('Book에서 제외됨'); await loadGenerator();
+    showToast('Book에서 제외됨'); await loadGenerator({keepActive:true});
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -7941,7 +7977,7 @@ window.genDoMoveChapters = async (bookId,bookName) => {
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId,bookName})));
     closeModal(); _genCheckedChapters.clear();
     showToast(`"${bookName}"으로 이동 완료`);
-    await loadGenerator();
+    await loadGenerator({keepActive:true});
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -7974,7 +8010,7 @@ window.genDoCreateBook = async () => {
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8010,7 +8046,7 @@ window.genDoEditBook = async (bid) => {
       ..._genChapters.filter(c=>c.bookId===bid).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookName:name})),
       ..._genPages.filter(p=>p.bookId===bid).map(p=>updateDoc(doc(db,'genPages',p.id),{bookName:name})),
     ]);
-    closeModal(); await loadGenerator();
+    closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8025,7 +8061,7 @@ window.genDeleteBooks = async () => {
       ..._genPages.filter(p=>ids.includes(p.bookId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})),
       ...ids.map(id=>deleteDoc(doc(db,'genBooks',id))),
     ]);
-    _genCheckedBooks.clear(); await loadGenerator();
+    _genCheckedBooks.clear(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
