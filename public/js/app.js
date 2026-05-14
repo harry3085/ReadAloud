@@ -4707,17 +4707,13 @@ window.vqSpkStart = async () => {
 
   s.spk.attempt = (s.spk.attempt || 0) + 1;
 
-  // ── MediaRecorder 병행 — AI 폴백용 오디오 캡처 (Web Speech 1차 통과 시 폐기) ──
-  // 안드로이드 Chrome 회귀: MediaRecorder 의 getUserMedia 가 SpeechRecognition 의
-  // 마이크 접근을 차단해 SR 가 hang 됨. AI 도입 전 정상 작동하던 Web Speech 복원.
-  // 안드로이드는 MediaRecorder skip — SR 만 단독 사용 (원래 동작).
-  // iOS/PC 는 두 stream 동시 사용 OK → AI 폴백 그대로.
-  const isAndroid = /Android/i.test(navigator.userAgent || '');
+  // ── MediaRecorder 병행 — AI 폴백용 오디오 캡처 (Web Speech 통과 시 폐기) ──
+  // 안드로이드 Chrome SR 는 발음 애매할 때 onresult 안 주고 onend 만 발화하는 특성.
+  // → onend 시 즉시 AI 폴백 트리거 (timeout 안 기다림).
+  // iOS/PC 도 같은 흐름 — MediaRecorder + AI 폴백 통일.
   let stream = null, recorder = null;
   const audioChunks = [];
-  if (isAndroid) {
-    console.log('[vqSpk] Android — skip MediaRecorder, Web Speech only');
-  } else try {
+  try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // mimeType 자동 선택 — 안드로이드/iOS/데스크 모두 커버
     const candidates = [
@@ -4766,63 +4762,56 @@ window.vqSpkStart = async () => {
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
   if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
-  // 진단 모드 — 안드로이드만 단계별 표시 (모바일 콘솔 우회)
-  if (status) status.textContent = isAndroid ? '[DIAG] SR new() OK · waiting start' : '🔴 듣고 있어요...';
+  if (status) status.textContent = '🔴 듣고 있어요...';
   if (attemptEl) attemptEl.textContent = '';
 
-  rec.onstart = () => {
-    if (isAndroid && status) status.textContent = '[DIAG] SR onstart fired';
-    console.log('[vqSpk] SR onstart');
-  };
+  // SR 결과 도착 여부 추적 — onend 에서 AI 폴백 트리거 분기
+  s.spk.srResolved = false;
+
+  rec.onstart = () => { console.log('[vqSpk] SR onstart'); };
 
   rec.onresult = (e) => {
-    const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
-    if (isAndroid && status) status.innerHTML = `[DIAG] SR onresult: "<b>${heard||'(empty)'}</b>"`;
+    s.spk.srResolved = true;
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     if (grading.correct) {
+      // Web Speech 통과 — MediaRecorder 정리 (AI 호출 X)
       if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
       _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
+      // Web Speech 인식 결과 있으나 정답 아님 → 즉시 AI 폴백
+      const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
       s.spk.lastHeard = heard;
       console.log('[vqSpk] webspeech fail. heard:', heard);
       if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-      if (isAndroid) {
-        // 안드로이드 진단 — AI 폴백 skip, 결과만 표시
-        _vqSpkFinalize(false, heard, { source: 'webspeech', diag: 'android-no-ai' });
-      } else {
-        _vqTryAiFallback(heard);
-      }
+      _vqTryAiFallback(heard);
     }
   };
 
   rec.onerror = (e) => {
+    s.spk.srResolved = true;
     console.warn('[vqSpk] error:', e.error);
-    if (isAndroid && status) status.textContent = `[DIAG] SR onerror: ${e.error}`;
     if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      if (!isAndroid && status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
+      if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
       _vqSpkFinalize(false, '');
       return;
     }
-    if (isAndroid) {
-      _vqSpkFinalize(false, '', { source: 'webspeech', diag: `android-err-${e.error}` });
-      return;
-    }
-    if (e.error === 'no-speech' || e.error === 'aborted') {
-      setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
-      return;
-    }
-    if (status) status.textContent = `오류: ${e.error}`;
+    // 다른 에러 (no-speech/aborted 등) → AI 폴백
     setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
   };
 
   rec.onend = () => {
-    if (isAndroid && status && !ans._locked) {
-      // onresult/onerror 둘 다 안 오고 onend 만 오면 hang 케이스
-      status.textContent = '[DIAG] SR onend (no result/error)';
+    console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved);
+    // onresult/onerror 둘 다 발화 안 함 (안드로이드 Chrome 발음 애매 케이스)
+    // → 즉시 AI 폴백 트리거 (timeout 5초 안 기다림 — UX ↑)
+    if (!s.spk.srResolved && !ans._locked) {
+      s.spk.srResolved = true;  // 중복 트리거 방지
+      console.log('[vqSpk] onend without result/error → AI fallback');
+      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+      setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
+      return;
     }
-    console.log('[vqSpk] SR onend');
     if (btn && !ans._locked) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
   };
 
@@ -4830,24 +4819,19 @@ window.vqSpkStart = async () => {
     s.spk.attempt = Math.max(0, (s.spk.attempt || 1) - 1);
     if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
-    if (status) status.textContent = isAndroid ? `[DIAG] SR start throw: ${e.message}` : '인식 시작 실패. 다시 시도하세요.';
+    if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
     return;
   }
 
-  // 6초 강제 타임아웃 — onresult/onerror/onend 어느 것도 발화 안 하면 hang 확정
+  // 5초 safety net — onstart/onresult/onerror/onend 모두 발화 안 하는 hang 케이스
   s.spk.timeoutId = setTimeout(() => {
-    if (s.answers[s.currentIdx]?._locked) return;
-    if (isAndroid) {
-      if (status) status.textContent = '[DIAG] SR timeout 6s — no event fired';
-      try { rec.stop(); } catch (_) {}
-      _vqSpkFinalize(false, '', { source: 'webspeech', diag: 'android-timeout' });
-      return;
-    }
-    console.warn('[vqSpk] SR timeout — forcing AI fallback');
+    if (s.answers[s.currentIdx]?._locked || s.spk.srResolved) return;
+    s.spk.srResolved = true;
+    console.warn('[vqSpk] SR timeout 5s — hang case, AI fallback');
     try { rec.stop(); } catch (_) {}
     if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     _vqTryAiFallback(s.spk.lastHeard || '');
-  }, 6000);
+  }, 5000);
 };
 
 // ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
