@@ -4672,6 +4672,9 @@ function _vqSpkRenderArea() {
   s.spk.lastAudioBlob = null;
   s.spk.lastAudioMime = null;
   s.spk.lastHeard = '';
+  if (s.spk.silenceCleanup) { try { s.spk.silenceCleanup(); } catch(_) {} s.spk.silenceCleanup = null; }
+  const oldDoneBtn = document.getElementById('vqSpkDoneBtn');
+  if (oldDoneBtn) oldDoneBtn.remove();
   if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
   if (s.spk.mrDelayTimer) { clearTimeout(s.spk.mrDelayTimer); s.spk.mrDelayTimer = null; }
   if (s.spk.recognition) {
@@ -4687,10 +4690,128 @@ function _vqSpkRenderArea() {
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
   const result = document.getElementById('vqSpkResult');
-  if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = !!ans._locked; btn.textContent = '🎤'; }
+  if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = !!ans._locked; btn.textContent = '🎤'; }
   if (status) status.textContent = ans._locked ? '✓ 채점 완료' : '마이크 버튼을 누르고 영어로 말해보세요';
   if (attemptEl) attemptEl.textContent = '';
   if (result) result.style.display = ans._locked ? 'block' : 'none';
+  // 3차 [완료] 버튼 — 새 문제 진입 시 숨김
+  const doneBtnEl = document.getElementById('vqSpkDoneBtn');
+  if (doneBtnEl) { doneBtnEl.style.display = 'none'; doneBtnEl.onclick = null; }
+}
+
+// 3차 silence detection — 1초 무음 감지 시 onSilent() 호출. cleanup 함수 반환.
+function _vqSetupSilenceDetection(stream, onSilent) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  let ctx;
+  try { ctx = new AudioCtx(); } catch (_) { return null; }
+  const source = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let silenceStart = 0;
+  let voiceDetected = false;
+  const THRESHOLD = 0.015;
+  const SILENCE_MS = 1000;
+  const intervalId = setInterval(() => {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / data.length);
+    if (rms > THRESHOLD) {
+      voiceDetected = true;
+      silenceStart = 0;
+    } else if (voiceDetected) {
+      if (silenceStart === 0) silenceStart = Date.now();
+      else if (Date.now() - silenceStart >= SILENCE_MS) {
+        clearInterval(intervalId);
+        try { ctx.close(); } catch(_) {}
+        onSilent();
+      }
+    }
+  }, 50);
+  return () => { clearInterval(intervalId); try { ctx.close(); } catch(_) {} };
+}
+
+// 3차 전용 흐름 — MR 단독 (SR X) + 종료 감지 3가지 race (timeout / [완료] / silence)
+async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
+  const btn = document.getElementById('vqSpkMicBtn');
+  const status = document.getElementById('vqSpkStatus');
+  const attemptEl = document.getElementById('vqSpkAttempt');
+  if (btn) { btn.style.background = MIC_BTN_RECORDING; btn.disabled = true; }
+  if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
+  if (status) status.innerHTML = `🔴 듣고 있어요... <span style="font-size:11px;color:#888;">(AI 평가 · 발음 후 [완료] 또는 자동 종료)</span>`;
+
+  // MR 시작 (mic 단독 점유)
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    console.error('[vqSpk] (3차) getUserMedia 실패:', e.message);
+    s.spk.busy = false;
+    if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
+    if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
+    _vqSpkFinalize(false, '');
+    return;
+  }
+  const candidates = [
+    'audio/webm;codecs=opus', 'audio/webm',
+    'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
+    'audio/ogg;codecs=opus', 'audio/ogg',
+  ];
+  let chosenMime = '';
+  for (const m of candidates) {
+    if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
+  }
+  const audioChunks = [];
+  const recorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime } : {});
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+  recorder.onstop = () => {
+    if (audioChunks.length > 0) {
+      const mime = recorder.mimeType || 'audio/webm';
+      s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
+      s.spk.lastAudioMime = mime;
+      console.log('[vqSpk] (3차) blob:', s.spk.lastAudioBlob.size, 'bytes');
+    }
+    try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+  };
+  recorder.start();
+  s.spk.recorder = recorder;
+
+  // 종료 감지 race — 3가지 중 하나만 trigger
+  let ended = false;
+  const doneBtnEl = document.getElementById('vqSpkDoneBtn');
+  const triggerEnd = (reason) => {
+    if (ended || ans._locked) return;
+    ended = true;
+    console.log('[vqSpk] (3차) end by:', reason);
+    if (s.spk.silenceCleanup) { s.spk.silenceCleanup(); s.spk.silenceCleanup = null; }
+    if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
+    if (doneBtnEl) { doneBtnEl.style.display = 'none'; doneBtnEl.onclick = null; }
+    if (recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+    if (btn) { btn.style.background = MIC_BTN_IDLE; }
+    setTimeout(() => _vqTryAiFallback(''), 150);  // blob 처리 시간 확보
+  };
+
+  // 1. Timeout 5초
+  s.spk.timeoutId = setTimeout(() => triggerEnd('timeout-5s'), 5000);
+
+  // 2. [✓ 완료] 버튼 (정적 HTML 버튼 활용)
+  if (doneBtnEl) {
+    doneBtnEl.style.display = 'inline-block';
+    doneBtnEl.onclick = () => triggerEnd('done-button');
+  }
+
+  // 3. Silence detection (1초 무음)
+  try {
+    s.spk.silenceCleanup = _vqSetupSilenceDetection(stream, () => triggerEnd('silence-1s'));
+  } catch (e) {
+    console.warn('[vqSpk] (3차) silence detection 실패:', e.message);
+  }
 }
 
 window.vqSpkStart = async () => {
@@ -4717,50 +4838,12 @@ window.vqSpkStart = async () => {
   const attempt = s.spk.attempt;
   const isFinalAttempt = attempt >= MAX_ATTEMPTS;
 
-  // ── 3차에서만 MediaRecorder (SR 먼저, 200ms 후 MR 시작 — mic 충돌 회피 시도) ──
-  // 1·2차: SR 단독 → mic 단독 점유 → SR onresult 정상 발화 가능성 ↑
-  // 3차: SR 먼저 시작 (mic 점유) → 200ms 후 MR 시작 (audio 캡처). SR 가 stream 잡고 있는 동안
-  //      MR 가 같은 mic 잡을 수 있는지 검증.
-  let stream = null, recorder = null;
-  const audioChunks = [];
+  // 3차 — MR 단독 (SR X) + 3가지 종료 감지 race (timeout / [완료] / silence)
+  if (isFinalAttempt) {
+    return _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS);
+  }
 
-  const _startMRDelayed = async () => {
-    if (ans._locked || s.spk.srResolved || s.spk.recorder) return;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // 시작 사이 SR 가 이미 처리됐는지 다시 확인
-      if (ans._locked || s.spk.srResolved) {
-        try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
-        return;
-      }
-      const candidates = [
-        'audio/webm;codecs=opus', 'audio/webm',
-        'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
-        'audio/ogg;codecs=opus', 'audio/ogg',
-      ];
-      let chosenMime = '';
-      for (const m of candidates) {
-        if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
-      }
-      recorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime } : {});
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-      recorder.onstop = () => {
-        if (audioChunks.length > 0) {
-          const mime = recorder.mimeType || 'audio/webm';
-          s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
-          s.spk.lastAudioMime = mime;
-          console.log('[vqSpk] blob ready:', s.spk.lastAudioBlob.size, 'bytes', mime);
-        }
-        try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
-      };
-      recorder.start();
-      s.spk.recorder = recorder;
-      console.log('[vqSpk] (3차) MR delayed start OK:', recorder.mimeType || 'default');
-    } catch (e) {
-      console.warn('[vqSpk] (3차) MR delayed start failed:', e.message);
-    }
-  };
-
+  // ── 1·2차: SR 단독 (mic 단독 점유 → onresult 정상 발화 가능성 ↑) ──
   const rec = new SR();
   rec.lang = 'en-US';
   rec.continuous = false;
@@ -4771,63 +4854,44 @@ window.vqSpkStart = async () => {
   const btn = document.getElementById('vqSpkMicBtn');
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
-  if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
-  if (status) status.textContent = isFinalAttempt
-    ? '🔴 듣고 있어요... (마지막 시도 · AI 평가)'
-    : '🔴 듣고 있어요...';
+  if (btn) { btn.style.background = MIC_BTN_RECORDING; btn.disabled = true; }
+  if (status) status.textContent = '🔴 듣고 있어요...';
   if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
 
   s.spk.srResolved = false;
 
-  // 1·2차 재시도 안내 또는 3차 AI 폴백 헬퍼
-  const stopRecorder = () => {
-    if (s.spk.mrDelayTimer) { clearTimeout(s.spk.mrDelayTimer); s.spk.mrDelayTimer = null; }
-    const r = recorder || s.spk.recorder;
-    if (r && r.state === 'recording') { try { r.stop(); } catch (_) {} }
-  };
   const handleFail = (reasonText, heard, grading) => {
     s.spk.busy = false;
-    if (isFinalAttempt) {
-      stopRecorder();
-      // 3차 → AI 폴백 (audio 캡처 있으면 사용, 없으면 finalize false)
-      setTimeout(() => _vqTryAiFallback(heard || ''), 100);
+    // 1·2차 → 재시도 안내 (lock 안 함, 버튼 활성)
+    // 유사도 기반 메시지 (2026-05-15 재조정):
+    //   - 0.5 ≤ sim < 0.6 + 들린 단어 ≠ 정답: "들린단어 XXX" (비슷한 단어 안내)
+    //   - sim < 0.5 또는 정답과 동일: 일반 "다르게 들렸어요" (음역 X)
+    const nextNo = attempt + 1;
+    const sim = grading?.bestSimilarity || 0;
+    const heardWord = (grading?.bestHeard || '').toLowerCase();
+    const targetLower = (q.word || '').toLowerCase();
+    let msg;
+    if (sim >= 0.5 && sim < 0.6 && heardWord && heardWord !== targetLower) {
+      msg = `❌ 들린단어 "${heardWord}" · 다시 (${nextNo}/${MAX_ATTEMPTS})`;
     } else {
-      // 1·2차 → 재시도 안내 (lock 안 함, 버튼 활성)
-      // 유사도 기반 메시지:
-      //   - sim >= 0.6 + 들린 단어 있음: "XXX 처럼 들렸어요" (비슷한 단어 — 학생 인식 도움)
-      //   - 그 외: 일반 메시지 (음역 X — 정답과 너무 다르면 혼란)
-      const nextNo = attempt + 1;
-      const sim = grading?.bestSimilarity || 0;
-      const heardWord = grading?.bestHeard || '';
-      let msg;
-      if (sim >= 0.6 && heardWord && heardWord.toLowerCase() !== q.word.toLowerCase()) {
-        msg = `❌ "${heardWord}" 처럼 들렸어요 · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
-      } else {
-        msg = `❌ ${reasonText} · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
-      }
-      if (status) status.textContent = msg;
-      if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
+      msg = `❌ ${reasonText} · 다시 (${nextNo}/${MAX_ATTEMPTS})`;
     }
+    if (status) status.textContent = msg;
+    if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
   };
 
   rec.onstart = () => { console.log('[vqSpk] SR onstart, attempt:', attempt); };
 
   rec.onresult = (e) => {
-    // 3차 — SR 결과 무시, MR audio + AI 만 사용 (사용자 B 옵션)
-    if (isFinalAttempt) {
-      console.log('[vqSpk] (3차) SR onresult 무시 → AI 평가 진행');
-      return;
-    }
     s.spk.srResolved = true;
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
     s.spk.lastHeard = heard;
     if (grading.correct) {
-      stopRecorder();
       s.spk.busy = false;
       _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
-      console.log('[vqSpk] webspeech fail. heard:', heard, 'attempt:', attempt, 'sim:', grading.bestSimilarity);
+      console.log('[vqSpk] webspeech fail. heard:', heard, 'sim:', grading.bestSimilarity);
       handleFail('다르게 들렸어요', heard, grading);
     }
   };
@@ -4836,7 +4900,6 @@ window.vqSpkStart = async () => {
     s.spk.srResolved = true;
     console.warn('[vqSpk] error:', e.error, 'attempt:', attempt);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      stopRecorder();
       s.spk.busy = false;
       if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
       _vqSpkFinalize(false, '');
@@ -4847,28 +4910,22 @@ window.vqSpkStart = async () => {
 
   rec.onend = () => {
     console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved, 'attempt:', attempt);
-    // SR 결과 도착 X (또는 3차 — onresult 무시) → AI 폴백 트리거
+    // SR 결과 도착 X (애매한 발음) → 재시도 안내
     if (!s.spk.srResolved && !ans._locked) {
       s.spk.srResolved = true;
-      handleFail(isFinalAttempt ? 'AI 평가' : '잘 못 들었어요', s.spk.lastHeard || '', null);
+      handleFail('잘 못 들었어요', s.spk.lastHeard || '', null);
     }
   };
 
   try { rec.start(); } catch(e) {
     s.spk.attempt = Math.max(0, attempt - 1);
     s.spk.busy = false;
-    stopRecorder();
-    if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
+    if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
     return;
   }
 
-  // 3차 — SR 먼저 시작 후 200ms 지연 후 MR 시작 (mic 충돌 회피 시도)
-  if (isFinalAttempt) {
-    s.spk.mrDelayTimer = setTimeout(_startMRDelayed, 200);
-  }
-
-  // 5초 safety net — 모든 이벤트 발화 안 하는 hang 케이스
+  // 5초 safety net — onstart/onresult/onerror/onend 모두 발화 안 하는 hang 케이스
   s.spk.timeoutId = setTimeout(() => {
     if (s.answers[s.currentIdx]?._locked || s.spk.srResolved) return;
     s.spk.srResolved = true;
@@ -5417,11 +5474,15 @@ const _origUpdateAllBadgesForVocab = window.updateAllBadges;
 // 말하기 시험 — 음성 인식 채점 헬퍼 (T1)
 // vocab 시험의 한 변형 (vocabOptions.format='speaking') 으로 동작. T2 에서 _vqState 분기.
 // ═══════════════════════════════════════════════════════════════════════════
+// 마이크 버튼 색 (학원 brand 색 무시 — 녹음 중 시각적 구분 우선, 2026-05-15)
+const MIC_BTN_IDLE = '#60a5fa';       // 옅은 파랑 — 평소 (대기)
+const MIC_BTN_RECORDING = '#dc2626';  // 진한 빨강 — 녹음/발음 중
+
 const SPK_STRICTNESS_CONFIG = {
-  // 3차 AI 폴백이 있어 1·2차를 조금 엄격하게 봐도 학생 손해 작음 (2026-05-15 재조정)
-  lenient: { maxAlternatives: 5, similarityThreshold: 0.7, label: '🟢 너그러움' },
-  normal:  { maxAlternatives: 5, similarityThreshold: 0.8, label: '🟡 보통' },
-  strict:  { maxAlternatives: 1, similarityThreshold: 0.9, label: '🔴 엄격' },
+  // 2026-05-15 두번째 재조정 — 0.7/0.8/0.9 → 0.6/0.7/0.8 (이전 강화가 너무 타이트)
+  lenient: { maxAlternatives: 5, similarityThreshold: 0.6, label: '🟢 너그러움' },
+  normal:  { maxAlternatives: 5, similarityThreshold: 0.7, label: '🟡 보통' },
+  strict:  { maxAlternatives: 1, similarityThreshold: 0.8, label: '🔴 엄격' },
 };
 
 function _spkLevenshteinSimilarity(a, b) {
