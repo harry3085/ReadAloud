@@ -4813,14 +4813,15 @@ window.vqSpkStart = async () => {
   }
 
   // ── 안드로이드 Chrome SpeechRecognition hang 케이스 대비 강제 타임아웃 ──
-  // onresult/onerror 어느 것도 8초 안에 안 오면 강제 AI 폴백
+  // onresult/onerror 어느 것도 4초 안에 안 오면 강제 AI 폴백
+  // (정상 환경: Web Speech 1~2초 응답 → 영향 X. 안드로이드 hang: 4초 후 AI 자동)
   s.spk.timeoutId = setTimeout(() => {
     if (s.answers[s.currentIdx]?._locked) return;
-    console.warn('[vqSpk] SR timeout (8s) — forcing AI fallback');
+    console.warn('[vqSpk] SR timeout (4s) — forcing AI fallback');
     try { rec.stop(); } catch (_) {}
     if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     _vqTryAiFallback(s.spk.lastHeard || '');
-  }, 8000);
+  }, 4000);
 };
 
 // ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
