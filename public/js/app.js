@@ -4666,10 +4666,18 @@ function _vqSpkRenderArea() {
   const ans = s.answers[s.currentIdx];
   // 새 문제 진입 시 spk 상태 리셋
   s.spk.attempt = 0;
+  s.spk.aiTried = false;
+  s.spk.lastAudioBlob = null;
+  s.spk.lastAudioMime = null;
+  s.spk.lastHeard = '';
   if (s.spk.recognition) {
     try { s.spk.recognition.stop(); } catch(_) {}
     s.spk.recognition = null;
   }
+  if (s.spk.recorder && s.spk.recorder.state === 'recording') {
+    try { s.spk.recorder.stop(); } catch(_) {}
+  }
+  s.spk.recorder = null;
   // UI 초기화
   const btn = document.getElementById('vqSpkMicBtn');
   const status = document.getElementById('vqSpkStatus');
@@ -4681,14 +4689,13 @@ function _vqSpkRenderArea() {
   if (result) result.style.display = ans._locked ? 'block' : 'none';
 }
 
-window.vqSpkStart = () => {
+window.vqSpkStart = async () => {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
   if (ans._locked) return;
   const q = s.questions[s.currentIdx];
 
-  // 안전 가드 — 이미 2회 시도한 상태에서 더 누르면 즉시 finalize (oversight 방지)
-  // 정상 흐름엔 영향 X (2회째 onresult 도달 시 finalize 됨). rec.start 실패 등 edge case 대비.
+  // 안전 가드 — 이미 2회 시도한 상태에서 더 누르면 즉시 finalize
   if ((s.spk.attempt || 0) >= 2) {
     _vqSpkFinalize(false, s.spk.lastHeard || '');
     return;
@@ -4701,12 +4708,41 @@ window.vqSpkStart = () => {
   }
 
   s.spk.attempt = (s.spk.attempt || 0) + 1;
+
+  // ── MediaRecorder 병행 — AI 폴백용 오디오 캡처 (Web Speech 1차 통과 시 폐기) ──
+  // 실패 시에도 SpeechRecognition 정상 동작 (보조적). 다른 사용 코드에 영향 없음.
+  let stream = null, recorder = null;
+  const audioChunks = [];
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+    });
+    let recOpts = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 };
+    if (!MediaRecorder.isTypeSupported(recOpts.mimeType)) {
+      recOpts = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {};
+    }
+    recorder = new MediaRecorder(stream, recOpts);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    recorder.onstop = () => {
+      if (audioChunks.length > 0) {
+        const mime = recorder.mimeType || 'audio/webm';
+        s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
+        s.spk.lastAudioMime = mime;
+      }
+      try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    };
+    recorder.start();
+  } catch (e) {
+    console.warn('[vqSpk] MediaRecorder unavailable:', e.message);
+    // 마이크 미허용 또는 미지원 — Web Speech 만으로 진행
+  }
+  s.spk.recorder = recorder;
+
   const rec = new SR();
   rec.lang = 'en-US';
   rec.continuous = false;
   rec.interimResults = false;
   rec.maxAlternatives = 5;
-
   s.spk.recognition = rec;
 
   const btn = document.getElementById('vqSpkMicBtn');
@@ -4719,26 +4755,32 @@ window.vqSpkStart = () => {
   rec.onresult = (e) => {
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     if (grading.correct) {
-      _vqSpkFinalize(true, grading.matchedWith || q.word);
+      // Web Speech 1차 통과 — MediaRecorder 즉시 정리 (AI 호출 X)
+      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+      _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
       const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
-      s.spk.lastHeard = heard;  // 안전 가드용 — 이후 attempt>=2 도달 시 finalize 에서 사용
+      s.spk.lastHeard = heard;
       if (s.spk.attempt < 2) {
-        // 1차 실패 — 재시도 안내
         if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
         if (status) status.textContent = `❗ "${heard}" 로 들렸어요. 다시 시도하세요.`;
+        // 1차 실패는 recorder 그대로 두고 다음 시도 — 단 chunk 누적은 정상이라 stop 후 다음 attempt 에서 새로
+        // 단순화: 1차 실패 시 recorder stop, 2차에서 새 recorder 시작 (음성 분리)
+        if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
       } else {
-        // 2차 실패 → 오답 확정
-        _vqSpkFinalize(false, heard);
+        // 2차 실패 → AI 폴백 시도 (오디오 blob 준비될 때까지 50ms 대기)
+        if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+        setTimeout(() => _vqTryAiFallback(heard), 100);
       }
     }
   };
 
   rec.onerror = (e) => {
     console.warn('[vqSpk]', e.error);
+    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다. 브라우저 설정에서 허용해주세요.';
+      if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
       _vqSpkFinalize(false, '');
       return;
     }
@@ -4746,7 +4788,7 @@ window.vqSpkStart = () => {
       if (s.spk.attempt < 2) {
         if (status) status.textContent = '음성이 감지되지 않았어요. 다시 시도하세요.';
       } else {
-        _vqSpkFinalize(false, '');
+        _vqSpkFinalize(false, '');  // 무음은 AI 호출 X
       }
       return;
     }
@@ -4759,23 +4801,119 @@ window.vqSpkStart = () => {
   };
 
   try { rec.start(); } catch(e) {
-    // rec.start 실패 → attempt 증가 롤백 (사용자가 진짜 시도 못 했으니)
     s.spk.attempt = Math.max(0, (s.spk.attempt || 1) - 1);
+    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
   }
 };
 
-function _vqSpkFinalize(correct, heard) {
+// ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
+async function _vqTryAiFallback(webspeechHeard) {
+  const s = _vqState;
+  const q = s.questions[s.currentIdx];
+  const status = document.getElementById('vqSpkStatus');
+  const btn = document.getElementById('vqSpkMicBtn');
+
+  if (s.answers[s.currentIdx]?._locked) return;
+
+  // 단어당 AI 호출 1회만
+  if (s.spk.aiTried) {
+    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'already-tried' });
+    return;
+  }
+  s.spk.aiTried = true;
+
+  // 사전 검증 — 무음·짧은 오디오는 AI 호출 X
+  const blob = s.spk.lastAudioBlob;
+  if (!blob || blob.size < 3000) {
+    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-short' });
+    return;
+  }
+  if (blob.size > 200 * 1024) {
+    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-large' });
+    return;
+  }
+  if (!webspeechHeard || webspeechHeard.length === 0) {
+    _vqSpkFinalize(false, '', { aiSkipped: 'no-speech' });
+    return;
+  }
+
+  // 진행 UI
+  if (status) status.innerHTML = '🤖 AI가 자세히 들어볼게요... <span style="font-size:11px;color:#888;">(약 1~2초)</span>';
+  if (btn) { btn.disabled = true; btn.style.background = '#8b5cf6'; }
+
+  try {
+    if (!currentUser) throw new Error('로그인 정보 없음');
+    const idToken = await currentUser.getIdToken();
+    const audioBase64 = await _blobToBase64(blob);
+
+    // 5초 타임아웃
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('/api/check-word', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        targetWord: q.word,
+        audioBase64,
+        mimeType: s.spk.lastAudioMime,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(tid);
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok || data.fallback) {
+      _vqSpkFinalize(false, webspeechHeard, { source: 'ai-error', aiError: data.error });
+      return;
+    }
+
+    const meta = {
+      source: 'ai',
+      aiConfidence: data.confidence,
+      aiReason: data.reason,
+      aiHeard: data.heard,
+      webspeechHeard,
+    };
+    if (data.match && data.confidence >= 60) {
+      _vqSpkFinalize(true, q.word, meta);
+    } else {
+      _vqSpkFinalize(false, data.heard || webspeechHeard, meta);
+    }
+  } catch (e) {
+    console.error('[vqSpk] AI fallback:', e);
+    if (e.name === 'AbortError' && status) status.textContent = 'AI 응답이 늦어요. 다시 시도하세요.';
+    _vqSpkFinalize(false, webspeechHeard, { source: 'ai-error', aiError: e.message });
+  }
+}
+
+// Blob → base64 (data URL 헤더 제거)
+function _blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
+    r.onerror = () => reject(new Error('FileReader 실패'));
+    r.readAsDataURL(blob);
+  });
+}
+
+function _vqSpkFinalize(correct, heard, meta) {
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
   const q = s.questions[s.currentIdx];
   ans._locked = true;
-  // 정답이면 q.word 를 input 에 (vqIsAnsCorrect 통과), 오답이면 빈 문자열
   ans.input = correct ? (q.word || '') : '';
   ans.spkHeard = heard || '';
   ans.spkAttempts = s.spk.attempt;
   ans.spkCorrect = correct;
+  // AI 폴백 메타 보존 (분석·UI 분기·통계용)
+  ans.spkSource = meta?.source || 'webspeech';
+  ans.spkAiConfidence = meta?.aiConfidence;
+  ans.spkAiReason = meta?.aiReason;
+  ans.spkAiHeard = meta?.aiHeard;
+  ans.spkWebspeechHeard = meta?.webspeechHeard;
   _vqStopTimer();
 
   const btn = document.getElementById('vqSpkMicBtn');
@@ -4791,13 +4929,40 @@ function _vqSpkFinalize(correct, heard) {
     icon.textContent = correct ? '⭐' : '❌';
     icon.style.color = correct ? '#22c55e' : '#dc2626';
   }
-  if (heardEl) heardEl.textContent = heard ? `들린 단어: "${heard}"` : '';
+
+  // ── 3 케이스 분기 ──
+  const isAiPath = (meta?.source === 'ai');
+  const aiHeard = meta?.aiHeard || '';
+  const aiReason = meta?.aiReason || '';
+
+  if (heardEl) {
+    if (correct && !isAiPath) {
+      // 케이스 1: Web Speech 1차 통과 — 깔끔한 정답, 다른 단어 표시 X
+      heardEl.innerHTML = '';
+    } else if (correct && isAiPath) {
+      // 케이스 2: AI 정밀 통과 — 발음 약간 부정확하지만 인정
+      let html = '<div style="font-size:13px;color:#f59e0b;margin-top:4px;">발음이 약간 부정확해요</div>';
+      if (aiHeard) html += `<div style="font-size:12px;color:#6b7280;margin-top:2px;">"<strong>${esc(aiHeard)}</strong>"처럼 들릴 수 있어요</div>`;
+      if (aiReason) html += `<div style="font-size:12px;color:#7c3aed;margin-top:4px;">💡 ${esc(aiReason)}</div>`;
+      heardEl.innerHTML = html;
+    } else {
+      // 케이스 3: 오답
+      let html = '';
+      const displayHeard = aiHeard || heard;
+      if (displayHeard) {
+        html += `<div style="font-size:13px;color:#6b7280;">"<strong>${esc(displayHeard)}</strong>"로 들렸어요</div>`;
+      } else {
+        html += `<div style="font-size:13px;color:#9ca3af;">음성이 명확하지 않았어요</div>`;
+      }
+      if (aiReason) html += `<div style="font-size:12px;color:#7c3aed;margin-top:4px;">💡 ${esc(aiReason)}</div>`;
+      heardEl.innerHTML = html;
+    }
+  }
   if (answerEl) answerEl.textContent = `정답: ${q.word || ''}`;
 
   // 영단어 정답 발음 들려주기 (학습 효과)
   if (q.word) _fbSpeakWords([q.word]);
 
-  // [다음] 버튼으로 전환 — 기존 vqShowNextButton 패턴 재사용
   if (typeof _vqShowNextButton === 'function') _vqShowNextButton();
 }
 
