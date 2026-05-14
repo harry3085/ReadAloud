@@ -14988,12 +14988,23 @@ window.progRenderByDate = async function () {
     return;
   }
 
-  // 시험 필터 — 해당 반 대상 또는 전체 대상
+  // 시험 필터 — 전체 대상 / 해당 반 대상 / 해당 반 학생 개별 출제 (3 케이스 모두 포함)
+  // 평면 필드 (targetAll/targetGroups/targetUids) 우선, 옛 데이터는 targets[] 폴백
+  const groupStudentUids = new Set(
+    (_prog.students || []).filter(s => s.group === group).map(s => s.uid)
+  );
   const matched = dayTests.filter(t => {
+    // 새 평면 필드 (2026-05-14 마이그레이션 후 모든 시험 보유)
+    if (t.targetAll === true) return true;
+    if (Array.isArray(t.targetGroups) && t.targetGroups.includes(group)) return true;
+    if (Array.isArray(t.targetUids) && t.targetUids.some(uid => groupStudentUids.has(uid))) return true;
+    // 옛 targets[] 폴백 (안전망)
     const ts = Array.isArray(t.targets) ? t.targets : [];
     if (ts.length === 0) return false;
     if (ts.some(x => x.type === 'all')) return true;
-    return ts.some(x => x.type === 'class' && (x.groupName === group || x.name === group));
+    if (ts.some(x => x.type === 'class' && (x.groupName === group || x.name === group))) return true;
+    if (ts.some(x => x.type === 'student' && groupStudentUids.has(x.id))) return true;
+    return false;
   });
 
   if (summary) {
