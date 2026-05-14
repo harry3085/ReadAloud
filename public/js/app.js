@@ -4714,20 +4714,34 @@ window.vqSpkStart = async () => {
   let stream = null, recorder = null;
   const audioChunks = [];
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-    });
-    let recOpts = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 };
-    if (!MediaRecorder.isTypeSupported(recOpts.mimeType)) {
-      recOpts = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {};
+    // 안드로이드 Chrome 호환성 — 단순 audio:true 가 거부율 가장 낮음
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // mimeType 자동 선택 — 안드로이드/iOS/데스크 모두 커버
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/aac',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+    ];
+    let chosenMime = '';
+    for (const m of candidates) {
+      if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
     }
+    const recOpts = chosenMime ? { mimeType: chosenMime } : {};
     recorder = new MediaRecorder(stream, recOpts);
+    console.log('[vqSpk] MediaRecorder ready, mime:', recorder.mimeType || 'default');
     recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
     recorder.onstop = () => {
       if (audioChunks.length > 0) {
         const mime = recorder.mimeType || 'audio/webm';
         s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
         s.spk.lastAudioMime = mime;
+        console.log('[vqSpk] blob ready:', s.spk.lastAudioBlob.size, 'bytes', mime);
+      } else {
+        console.warn('[vqSpk] onstop with empty chunks');
       }
       try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
     };
@@ -4842,8 +4856,8 @@ async function _vqTryAiFallback(webspeechHeard) {
     _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'no-blob' });
     return;
   }
-  if (blob.size < 1500) {
-    if (status) status.textContent = '녹음이 너무 짧아요. 다시 시도하세요.';
+  if (blob.size < 800) {
+    if (status) status.textContent = `녹음이 너무 짧아요 (${blob.size}B). 다시 시도하세요.`;
     _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-short', blobSize: blob.size });
     return;
   }
