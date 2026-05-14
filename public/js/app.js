@@ -4764,13 +4764,13 @@ window.vqSpkStart = async () => {
       if (s.spk.attempt < 2) {
         if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
         if (status) status.textContent = `❗ "${heard}" 로 들렸어요. 다시 시도하세요.`;
-        // 1차 실패는 recorder 그대로 두고 다음 시도 — 단 chunk 누적은 정상이라 stop 후 다음 attempt 에서 새로
-        // 단순화: 1차 실패 시 recorder stop, 2차에서 새 recorder 시작 (음성 분리)
+        // 1차 실패 → recorder 정지 (2차는 새 stream/recorder). 메모리 누수 방지
         if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
       } else {
-        // 2차 실패 → AI 폴백 시도 (오디오 blob 준비될 때까지 50ms 대기)
+        // 2차 실패 → recorder 정지 + AI 폴백 (blob 대기는 _vqTryAiFallback 내부)
+        console.log('[vqSpk] 2nd attempt failed, triggering AI fallback. heard:', heard);
         if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-        setTimeout(() => _vqTryAiFallback(heard), 100);
+        _vqTryAiFallback(heard);
       }
     }
   };
@@ -4824,10 +4824,25 @@ async function _vqTryAiFallback(webspeechHeard) {
   }
   s.spk.aiTried = true;
 
+  // blob 준비 대기 — recorder.onstop 비동기 발화 보장 (최대 1.5초)
+  // stop() 직후 100ms 만으로 부족할 수 있음 (특히 모바일)
+  if (status) status.textContent = '🎧 오디오 준비 중...';
+  for (let i = 0; i < 15; i++) {
+    if (s.spk.lastAudioBlob) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+
   // 사전 검증 — 무음·짧은 오디오는 AI 호출 X
+  // 32kbps opus 기준: 1초 ≈ 4KB. 0.4초 발음 ≈ 1.6KB → 1500 byte 임계
   const blob = s.spk.lastAudioBlob;
-  if (!blob || blob.size < 3000) {
-    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-short' });
+  if (!blob) {
+    if (status) status.textContent = '오디오 캡처 실패. 다시 시도하세요.';
+    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'no-blob' });
+    return;
+  }
+  if (blob.size < 1500) {
+    if (status) status.textContent = '녹음이 너무 짧아요. 다시 시도하세요.';
+    _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-short', blobSize: blob.size });
     return;
   }
   if (blob.size > 200 * 1024) {
