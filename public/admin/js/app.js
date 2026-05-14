@@ -7050,18 +7050,27 @@ function _genInitResizer() {
   });
 }
 
-// AI OCR — Lazy load (2026-05-14): 진입 시 Books 만, Book 클릭 시 그 Book 의 Chapters+Pages
+// AI OCR — Lazy load (2026-05-14): 진입 시 Books + 미배정 Pages, Book 클릭 시 그 Book 의 Chapters+Pages
 window.loadGenerator = async () => {
   _genInitResizer();
   try {
-    const bSnap = await getDocs(query(
-      collection(db,'genBooks'),
-      where('academyId','==',window.MY_ACADEMY_ID),
-      orderBy('createdAt','asc')
-    ));
+    const [bSnap, pSnap] = await Promise.all([
+      getDocs(query(
+        collection(db,'genBooks'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        orderBy('createdAt','asc')
+      )),
+      // 미배정 Page (OCR 막 찍은 거 / 수동 생성) — 첫 화면 기본 뷰
+      getDocs(query(
+        collection(db,'genPages'),
+        where('academyId','==',window.MY_ACADEMY_ID),
+        where('bookId','==', null),
+        orderBy('serialNumber','asc')
+      )),
+    ]);
     _genBooks = bSnap.docs.map(d=>({id:d.id,...d.data()}));
+    _genPages = pSnap.docs.map(d=>({id:d.id,...d.data()}));
     _genChapters = [];  // Book 클릭 시 lazy fetch
-    _genPages = [];
     _genCheckedPages.clear(); _genCheckedChapters.clear(); _genCheckedBooks.clear();
     _genActiveBook = null; _genActiveChapter = null; _genActivePage = null;
     _genPageCur = 1;
