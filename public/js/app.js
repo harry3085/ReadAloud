@@ -2192,6 +2192,10 @@ window.startRecAi = async (testId, testName) => {
     const questions = (test.questions || []).filter(q => q.type === 'recording' || q.sentence);
     if(questions.length === 0){ showToast('녹음할 문장이 없습니다.'); return; }
 
+    // 마이크 권한 사전 체크 (차단 모달, 재시도 자동 진입)
+    const micOk = await _checkMicSupport({ needSpeech: false });
+    if (!micOk) return;
+
     // Phase 5.5: schemaV===2 감지 → v2 플로우로 분기
     const firstQ = questions[0];
     if(firstQ?.schemaV === 2){
@@ -3618,6 +3622,82 @@ window.closeRecordingTermsModal = () => {
   const el = document.getElementById('recTermsOverlay');
   if (el) el.remove();
 };
+// ── 마이크·음성인식 사전 체크 (녹음숙제·말하기 시험 진입 전) ───────
+// 권한 거부·미지원 시 학생에게 안내 모달 → 학생이 권한 허용 후 [재시도] 시 자동 통과
+// resolves: true=통과(시험 진행), false=학생 [돌아가기]
+async function _checkMicSupport(opts = {}) {
+  const needSpeech = !!opts.needSpeech;  // 말하기 시험만 true (Web Speech API 추가 체크)
+
+  // 1) 브라우저 자체가 API 미지원
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return _showMicBlockModal({
+      title: '브라우저가 마이크를 지원하지 않아요',
+      detail: '브라우저를 최신 버전으로 업데이트하거나 다른 브라우저(Chrome / Safari)로 접속해주세요.',
+      needSpeech,
+    });
+  }
+  if (needSpeech && !(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+    return _showMicBlockModal({
+      title: '이 브라우저는 음성 인식을 지원하지 않아요',
+      detail: 'iPhone 은 iOS 14.5 이상 필요해요. 폰을 업데이트하거나 Chrome 으로 접속해보세요.',
+      needSpeech,
+    });
+  }
+
+  // 2) 마이크 권한 — getUserMedia 시도. 즉시 stop 해서 LED·자원 해제
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    const code = e?.name || e?.message || '';
+    const denied = /NotAllowed|SecurityError|Permission/i.test(code);
+    return _showMicBlockModal({
+      title: denied ? '마이크 권한이 차단되어 있어요' : '마이크를 사용할 수 없어요',
+      detail: denied
+        ? '브라우저 설정 → 마이크 권한 → "허용" 으로 변경 후 [재시도] 해주세요.'
+        : '다른 앱이 마이크를 사용 중이거나 폰 자체 문제일 수 있어요. 다른 앱 종료 후 [재시도]·또는 폰을 재시작 해주세요.',
+      needSpeech,
+    });
+  }
+
+  // (Web Speech 실제 작동 체크는 시간 비용 큼 — 시험 중 onerror 로 처리)
+  return true;
+}
+
+// 차단 모달 — Promise 반환. 학생 [재시도] 시 _checkMicSupport 재호출 → 통과면 true / 실패면 다시 모달
+function _showMicBlockModal({ title, detail, needSpeech }) {
+  return new Promise((resolve) => {
+    // 이미 떠 있으면 제거 (재시도 케이스)
+    const existing = document.getElementById('micBlockOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'micBlockOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:14px;width:min(440px,94vw);max-height:88vh;overflow-y:auto;padding:22px 22px 18px;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
+        <div style="font-size:32px;text-align:center;margin-bottom:10px;">🎙️</div>
+        <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:10px;color:#dc2626;">${esc(title)}</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:14px;text-align:center;">${esc(detail)}</div>
+        <div style="padding:10px 12px;background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;font-size:12px;color:#075985;line-height:1.6;margin-bottom:14px;">
+          📢 자세한 해결 방법은 <b>공지사항</b>에 안내되어 있어요. 그래도 안 되면 학원에 알려주세요.
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="micBlockBack" style="flex:1;padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">돌아가기</button>
+          <button id="micBlockRetry" style="flex:1.5;padding:11px;background:var(--c-brand);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">권한 허용 후 재시도</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('micBlockBack').onclick = () => { overlay.remove(); resolve(false); };
+    document.getElementById('micBlockRetry').onclick = async () => {
+      overlay.remove();
+      const ok = await _checkMicSupport({ needSpeech });
+      resolve(ok);
+    };
+  });
+}
+
 window.showRecordingTermsModal = () => {
   // 이미 떠 있으면 다시 안 띄움
   if (document.getElementById('recTermsOverlay')) return;
@@ -4384,14 +4464,11 @@ window.startVocab = async (testId, testName) => {
       return ans;
     });
 
-    // speaking 모드 전체 시험인지 — SpeechRecognition 지원 사전 체크
+    // speaking 모드 — 마이크 권한 + Web Speech API 사전 체크 (차단 모달, 재시도 자동 진입)
     const hasSpeaking = answers.some(a => a.format === 'speaking');
     if (hasSpeaking) {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {
-        showToast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome 사용을 권장합니다.');
-        return;
-      }
+      const ok = await _checkMicSupport({ needSpeech: true });
+      if (!ok) return;  // 학생 [돌아가기] — 시험 시작 안 함
     }
 
     _vqState = {
