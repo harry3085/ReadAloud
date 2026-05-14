@@ -4673,6 +4673,7 @@ function _vqSpkRenderArea() {
   s.spk.lastAudioMime = null;
   s.spk.lastHeard = '';
   if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
+  if (s.spk.mrDelayTimer) { clearTimeout(s.spk.mrDelayTimer); s.spk.mrDelayTimer = null; }
   if (s.spk.recognition) {
     try { s.spk.recognition.stop(); } catch(_) {}
     s.spk.recognition = null;
@@ -4716,39 +4717,49 @@ window.vqSpkStart = async () => {
   const attempt = s.spk.attempt;
   const isFinalAttempt = attempt >= MAX_ATTEMPTS;
 
-  // ── 3차에서만 MediaRecorder 시작 (AI 폴백용 audio 캡처) ──
+  // ── 3차에서만 MediaRecorder (SR 먼저, 200ms 후 MR 시작 — mic 충돌 회피 시도) ──
   // 1·2차: SR 단독 → mic 단독 점유 → SR onresult 정상 발화 가능성 ↑
-  // 3차: MediaRecorder + SR 병행 → mic 충돌 변수, 그래도 audio 캡처는 시도
+  // 3차: SR 먼저 시작 (mic 점유) → 200ms 후 MR 시작 (audio 캡처). SR 가 stream 잡고 있는 동안
+  //      MR 가 같은 mic 잡을 수 있는지 검증.
   let stream = null, recorder = null;
   const audioChunks = [];
-  if (isFinalAttempt) try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const candidates = [
-      'audio/webm;codecs=opus', 'audio/webm',
-      'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
-      'audio/ogg;codecs=opus', 'audio/ogg',
-    ];
-    let chosenMime = '';
-    for (const m of candidates) {
-      if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
-    }
-    recorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime } : {});
-    console.log('[vqSpk] (3차) MediaRecorder ready:', recorder.mimeType || 'default');
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-    recorder.onstop = () => {
-      if (audioChunks.length > 0) {
-        const mime = recorder.mimeType || 'audio/webm';
-        s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
-        s.spk.lastAudioMime = mime;
-        console.log('[vqSpk] blob ready:', s.spk.lastAudioBlob.size, 'bytes', mime);
+
+  const _startMRDelayed = async () => {
+    if (ans._locked || s.spk.srResolved || s.spk.recorder) return;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 시작 사이 SR 가 이미 처리됐는지 다시 확인
+      if (ans._locked || s.spk.srResolved) {
+        try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+        return;
       }
-      try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
-    };
-    recorder.start();
-  } catch (e) {
-    console.warn('[vqSpk] MediaRecorder unavailable:', e.message);
-  }
-  s.spk.recorder = recorder;
+      const candidates = [
+        'audio/webm;codecs=opus', 'audio/webm',
+        'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
+        'audio/ogg;codecs=opus', 'audio/ogg',
+      ];
+      let chosenMime = '';
+      for (const m of candidates) {
+        if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
+      }
+      recorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime } : {});
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+      recorder.onstop = () => {
+        if (audioChunks.length > 0) {
+          const mime = recorder.mimeType || 'audio/webm';
+          s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
+          s.spk.lastAudioMime = mime;
+          console.log('[vqSpk] blob ready:', s.spk.lastAudioBlob.size, 'bytes', mime);
+        }
+        try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      };
+      recorder.start();
+      s.spk.recorder = recorder;
+      console.log('[vqSpk] (3차) MR delayed start OK:', recorder.mimeType || 'default');
+    } catch (e) {
+      console.warn('[vqSpk] (3차) MR delayed start failed:', e.message);
+    }
+  };
 
   const rec = new SR();
   rec.lang = 'en-US';
@@ -4768,7 +4779,11 @@ window.vqSpkStart = async () => {
 
   // 1·2차 재시도 안내 또는 3차 AI 폴백 헬퍼
   const stopRecorder = () => {
-    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+    // 지연 MR 시작 예약 cancel (mrDelayTimer 가 아직 안 발화했으면 MR 자체 안 시작)
+    if (s.spk.mrDelayTimer) { clearTimeout(s.spk.mrDelayTimer); s.spk.mrDelayTimer = null; }
+    // 이미 시작된 recorder 정리 (closure recorder 또는 state 의 recorder)
+    const r = recorder || s.spk.recorder;
+    if (r && r.state === 'recording') { try { r.stop(); } catch (_) {} }
   };
   const handleFail = (reasonText, heard) => {
     s.spk.busy = false;
@@ -4830,6 +4845,11 @@ window.vqSpkStart = async () => {
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
     return;
+  }
+
+  // 3차 — SR 먼저 시작 후 200ms 지연 후 MR 시작 (mic 충돌 회피 시도)
+  if (isFinalAttempt) {
+    s.spk.mrDelayTimer = setTimeout(_startMRDelayed, 200);
   }
 
   // 5초 safety net — 모든 이벤트 발화 안 하는 hang 케이스
