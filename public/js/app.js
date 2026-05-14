@@ -4670,6 +4670,7 @@ function _vqSpkRenderArea() {
   s.spk.lastAudioBlob = null;
   s.spk.lastAudioMime = null;
   s.spk.lastHeard = '';
+  if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
   if (s.spk.recognition) {
     try { s.spk.recognition.stop(); } catch(_) {}
     s.spk.recognition = null;
@@ -4808,7 +4809,18 @@ window.vqSpkStart = async () => {
     if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
+    return;
   }
+
+  // ── 안드로이드 Chrome SpeechRecognition hang 케이스 대비 강제 타임아웃 ──
+  // onresult/onerror 어느 것도 8초 안에 안 오면 강제 AI 폴백
+  s.spk.timeoutId = setTimeout(() => {
+    if (s.answers[s.currentIdx]?._locked) return;
+    console.warn('[vqSpk] SR timeout (8s) — forcing AI fallback');
+    try { rec.stop(); } catch (_) {}
+    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+    _vqTryAiFallback(s.spk.lastHeard || '');
+  }, 8000);
 };
 
 // ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
@@ -4920,6 +4932,8 @@ function _vqSpkFinalize(correct, heard, meta) {
   const ans = s.answers[s.currentIdx];
   const q = s.questions[s.currentIdx];
   ans._locked = true;
+  // SR hang 대비 타임아웃 정리
+  if (s.spk.timeoutId) { clearTimeout(s.spk.timeoutId); s.spk.timeoutId = null; }
   ans.input = correct ? (q.word || '') : '';
   ans.spkHeard = heard || '';
   ans.spkAttempts = s.spk.attempt;
