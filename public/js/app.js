@@ -4788,7 +4788,9 @@ window.vqSpkStart = async () => {
       if (s.spk.attempt < 2) {
         if (status) status.textContent = '음성이 감지되지 않았어요. 다시 시도하세요.';
       } else {
-        _vqSpkFinalize(false, '');  // 무음은 AI 호출 X
+        // 2차도 Web Speech no-speech — MediaRecorder 오디오 있으면 AI 폴백
+        // (학생이 발음했는데 Web Speech 만 못 들은 케이스 회수)
+        setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
       }
       return;
     }
@@ -4849,10 +4851,8 @@ async function _vqTryAiFallback(webspeechHeard) {
     _vqSpkFinalize(false, webspeechHeard, { aiSkipped: 'audio-large' });
     return;
   }
-  if (!webspeechHeard || webspeechHeard.length === 0) {
-    _vqSpkFinalize(false, '', { aiSkipped: 'no-speech' });
-    return;
-  }
+  // webspeechHeard 가 빈 문자열이어도 blob 충분히 크면 AI 시도
+  // (Web Speech 가 못 들었지만 학생은 실제 발음한 케이스)
 
   // 진행 UI
   if (status) status.innerHTML = '🤖 AI가 자세히 들어볼게요... <span style="font-size:11px;color:#888;">(약 1~2초)</span>';
