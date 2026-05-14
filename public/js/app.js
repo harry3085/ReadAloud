@@ -4695,11 +4695,8 @@ window.vqSpkStart = async () => {
   if (ans._locked) return;
   const q = s.questions[s.currentIdx];
 
-  // 안전 가드 — 이미 2회 시도한 상태에서 더 누르면 즉시 finalize
-  if ((s.spk.attempt || 0) >= 2) {
-    _vqSpkFinalize(false, s.spk.lastHeard || '');
-    return;
-  }
+  // 안전 가드 — 이미 시도한 상태 (AI 진행 중 등) 에서 또 누르면 무시
+  if ((s.spk.attempt || 0) >= 1) return;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
@@ -4764,28 +4761,21 @@ window.vqSpkStart = async () => {
   const attemptEl = document.getElementById('vqSpkAttempt');
   if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
   if (status) status.textContent = '🔴 듣고 있어요...';
-  if (attemptEl) attemptEl.textContent = `시도 ${s.spk.attempt}/2`;
+  if (attemptEl) attemptEl.textContent = '';  // 2회 시도 표기 폐기 (1회 통일)
 
   rec.onresult = (e) => {
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
     if (grading.correct) {
-      // Web Speech 1차 통과 — MediaRecorder 즉시 정리 (AI 호출 X)
+      // Web Speech 즉시 통과 — MediaRecorder 정리 (AI 호출 X)
       if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
       _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
+      // Web Speech 실패 → 즉시 AI 폴백 (1회 통일, 학생 재시도 X)
       const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
       s.spk.lastHeard = heard;
-      if (s.spk.attempt < 2) {
-        if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
-        if (status) status.textContent = `❗ "${heard}" 로 들렸어요. 다시 시도하세요.`;
-        // 1차 실패 → recorder 정지 (2차는 새 stream/recorder). 메모리 누수 방지
-        if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-      } else {
-        // 2차 실패 → recorder 정지 + AI 폴백 (blob 대기는 _vqTryAiFallback 내부)
-        console.log('[vqSpk] 2nd attempt failed, triggering AI fallback. heard:', heard);
-        if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-        _vqTryAiFallback(heard);
-      }
+      console.log('[vqSpk] webspeech fail, triggering AI fallback. heard:', heard);
+      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+      _vqTryAiFallback(heard);
     }
   };
 
@@ -4799,17 +4789,14 @@ window.vqSpkStart = async () => {
       return;
     }
     if (e.error === 'no-speech' || e.error === 'aborted') {
-      if (s.spk.attempt < 2) {
-        if (status) status.textContent = '음성이 감지되지 않았어요. 다시 시도하세요.';
-      } else {
-        // 2차도 Web Speech no-speech — MediaRecorder 오디오 있으면 AI 폴백
-        // (학생이 발음했는데 Web Speech 만 못 들은 케이스 회수)
-        setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
-      }
+      // 1회 통일 — Web Speech 무음 판정 시도 즉시 AI 폴백 (오디오 있으면)
+      console.log('[vqSpk] webspeech no-speech, triggering AI fallback');
+      setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
       return;
     }
-    if (status) status.textContent = `오류: ${e.error}. 다시 시도하세요.`;
-    if (s.spk.attempt >= 2) _vqSpkFinalize(false, '');
+    if (status) status.textContent = `오류: ${e.error}`;
+    // 기타 에러도 AI 폴백 시도 (오디오 있으면)
+    setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
   };
 
   rec.onend = () => {
