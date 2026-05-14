@@ -4667,6 +4667,8 @@ function _vqSpkRenderArea() {
   // 새 문제 진입 시 spk 상태 리셋
   s.spk.attempt = 0;
   s.spk.aiTried = false;
+  s.spk.busy = false;
+  s.spk.srResolved = false;
   s.spk.lastAudioBlob = null;
   s.spk.lastAudioMime = null;
   s.spk.lastHeard = '';
@@ -4696,42 +4698,42 @@ window.vqSpkStart = async () => {
   if (ans._locked) return;
   const q = s.questions[s.currentIdx];
 
-  // 안전 가드 — 이미 시도한 상태 (AI 진행 중 등) 에서 또 누르면 무시
-  if ((s.spk.attempt || 0) >= 1) return;
+  const MAX_ATTEMPTS = 3;
+
+  // 안전 가드 — 3회 시도 끝, 또는 처리 중
+  if ((s.spk.attempt || 0) >= MAX_ATTEMPTS) return;
+  if (s.spk.busy) return;
+  s.spk.busy = true;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     showToast('이 브라우저는 음성 인식을 지원하지 않습니다.');
+    s.spk.busy = false;
     return;
   }
 
   s.spk.attempt = (s.spk.attempt || 0) + 1;
+  const attempt = s.spk.attempt;
+  const isFinalAttempt = attempt >= MAX_ATTEMPTS;
 
-  // ── MediaRecorder 병행 — AI 폴백용 오디오 캡처 (Web Speech 통과 시 폐기) ──
-  // 안드로이드 Chrome SR 는 발음 애매할 때 onresult 안 주고 onend 만 발화하는 특성.
-  // → onend 시 즉시 AI 폴백 트리거 (timeout 안 기다림).
-  // iOS/PC 도 같은 흐름 — MediaRecorder + AI 폴백 통일.
+  // ── 3차에서만 MediaRecorder 시작 (AI 폴백용 audio 캡처) ──
+  // 1·2차: SR 단독 → mic 단독 점유 → SR onresult 정상 발화 가능성 ↑
+  // 3차: MediaRecorder + SR 병행 → mic 충돌 변수, 그래도 audio 캡처는 시도
   let stream = null, recorder = null;
   const audioChunks = [];
-  try {
+  if (isFinalAttempt) try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // mimeType 자동 선택 — 안드로이드/iOS/데스크 모두 커버
     const candidates = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/mp4',
-      'audio/mp4;codecs=mp4a.40.2',
-      'audio/aac',
-      'audio/ogg;codecs=opus',
-      'audio/ogg',
+      'audio/webm;codecs=opus', 'audio/webm',
+      'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
+      'audio/ogg;codecs=opus', 'audio/ogg',
     ];
     let chosenMime = '';
     for (const m of candidates) {
       if (MediaRecorder.isTypeSupported(m)) { chosenMime = m; break; }
     }
-    const recOpts = chosenMime ? { mimeType: chosenMime } : {};
-    recorder = new MediaRecorder(stream, recOpts);
-    console.log('[vqSpk] MediaRecorder ready, mime:', recorder.mimeType || 'default');
+    recorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime } : {});
+    console.log('[vqSpk] (3차) MediaRecorder ready:', recorder.mimeType || 'default');
     recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
     recorder.onstop = () => {
       if (audioChunks.length > 0) {
@@ -4739,15 +4741,12 @@ window.vqSpkStart = async () => {
         s.spk.lastAudioBlob = new Blob(audioChunks, { type: mime });
         s.spk.lastAudioMime = mime;
         console.log('[vqSpk] blob ready:', s.spk.lastAudioBlob.size, 'bytes', mime);
-      } else {
-        console.warn('[vqSpk] onstop with empty chunks');
       }
       try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
     };
     recorder.start();
   } catch (e) {
     console.warn('[vqSpk] MediaRecorder unavailable:', e.message);
-    // 마이크 미허용 또는 미지원 — Web Speech 만으로 진행
   }
   s.spk.recorder = recorder;
 
@@ -4762,75 +4761,84 @@ window.vqSpkStart = async () => {
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
   if (btn) { btn.style.background = '#dc2626'; btn.disabled = true; }
-  if (status) status.textContent = '🔴 듣고 있어요...';
-  if (attemptEl) attemptEl.textContent = '';
+  if (status) status.textContent = isFinalAttempt ? '🔴 듣고 있어요... (마지막 시도)' : '🔴 듣고 있어요...';
+  if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
 
-  // SR 결과 도착 여부 추적 — onend 에서 AI 폴백 트리거 분기
   s.spk.srResolved = false;
 
-  rec.onstart = () => { console.log('[vqSpk] SR onstart'); };
+  // 1·2차 재시도 안내 또는 3차 AI 폴백 헬퍼
+  const stopRecorder = () => {
+    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+  };
+  const handleFail = (reasonText, heard) => {
+    s.spk.busy = false;
+    if (isFinalAttempt) {
+      stopRecorder();
+      // 3차 → AI 폴백 (audio 캡처 있으면 사용, 없으면 finalize false)
+      setTimeout(() => _vqTryAiFallback(heard || ''), 100);
+    } else {
+      // 1·2차 → 재시도 안내 (lock 안 함, 버튼 활성)
+      const nextNo = attempt + 1;
+      if (status) status.textContent = `❌ ${reasonText} · 다시 말해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
+      if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
+    }
+  };
+
+  rec.onstart = () => { console.log('[vqSpk] SR onstart, attempt:', attempt); };
 
   rec.onresult = (e) => {
     s.spk.srResolved = true;
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
+    const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
+    s.spk.lastHeard = heard;
     if (grading.correct) {
-      // Web Speech 통과 — MediaRecorder 정리 (AI 호출 X)
-      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+      stopRecorder();
+      s.spk.busy = false;
       _vqSpkFinalize(true, grading.matchedWith || q.word, { source: 'webspeech' });
     } else {
-      // Web Speech 인식 결과 있으나 정답 아님 → 즉시 AI 폴백
-      const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
-      s.spk.lastHeard = heard;
-      console.log('[vqSpk] webspeech fail. heard:', heard);
-      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-      _vqTryAiFallback(heard);
+      console.log('[vqSpk] webspeech fail. heard:', heard, 'attempt:', attempt);
+      handleFail(`다르게 들렸어요${heard ? ` ("${heard}")` : ''}`, heard);
     }
   };
 
   rec.onerror = (e) => {
     s.spk.srResolved = true;
-    console.warn('[vqSpk] error:', e.error);
-    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-    if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
+    console.warn('[vqSpk] error:', e.error, 'attempt:', attempt);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      stopRecorder();
+      s.spk.busy = false;
       if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
       _vqSpkFinalize(false, '');
       return;
     }
-    // 다른 에러 (no-speech/aborted 등) → AI 폴백
-    setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
+    handleFail('잘 못 들었어요', s.spk.lastHeard || '');
   };
 
   rec.onend = () => {
-    console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved);
-    // onresult/onerror 둘 다 발화 안 함 (안드로이드 Chrome 발음 애매 케이스)
-    // → 즉시 AI 폴백 트리거 (timeout 5초 안 기다림 — UX ↑)
+    console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved, 'attempt:', attempt);
+    // onresult/onerror 둘 다 발화 X (안드로이드 Chrome 발음 애매)
     if (!s.spk.srResolved && !ans._locked) {
-      s.spk.srResolved = true;  // 중복 트리거 방지
-      console.log('[vqSpk] onend without result/error → AI fallback');
-      if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-      setTimeout(() => _vqTryAiFallback(s.spk.lastHeard || ''), 100);
-      return;
+      s.spk.srResolved = true;
+      handleFail('잘 못 들었어요', s.spk.lastHeard || '');
     }
-    if (btn && !ans._locked) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
   };
 
   try { rec.start(); } catch(e) {
-    s.spk.attempt = Math.max(0, (s.spk.attempt || 1) - 1);
-    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
+    s.spk.attempt = Math.max(0, attempt - 1);
+    s.spk.busy = false;
+    stopRecorder();
     if (btn) { btn.style.background = 'var(--c-brand)'; btn.disabled = false; }
     if (status) status.textContent = '인식 시작 실패. 다시 시도하세요.';
     return;
   }
 
-  // 5초 safety net — onstart/onresult/onerror/onend 모두 발화 안 하는 hang 케이스
+  // 5초 safety net — 모든 이벤트 발화 안 하는 hang 케이스
   s.spk.timeoutId = setTimeout(() => {
     if (s.answers[s.currentIdx]?._locked || s.spk.srResolved) return;
     s.spk.srResolved = true;
-    console.warn('[vqSpk] SR timeout 5s — hang case, AI fallback');
+    console.warn('[vqSpk] SR timeout 5s, attempt:', attempt);
     try { rec.stop(); } catch (_) {}
-    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
-    _vqTryAiFallback(s.spk.lastHeard || '');
+    handleFail('응답 없음', s.spk.lastHeard || '');
   }, 5000);
 };
 
