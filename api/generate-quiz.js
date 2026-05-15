@@ -777,11 +777,15 @@ RULES:
 
 2. Multi-word phrases: list phrases that sound identical (e.g., "be served"/"be surveyed") only if a true phrase-level homophone exists. Otherwise return [].
 
-3. Output the EXACT lowercase form (no capitalization, no quotes, no extra spaces).
+3. SHORT WORDS — Include even very short single-syllable homophones (greeting/interjection words count too).
+   Examples: high/hi, by/bye/buy, two/to/too, ate/eight, ant/aunt, ad/add, be/bee, see/sea.
+   Do NOT exclude a homophone just because it's a short or common word.
 
-4. If a word has NO true homophones, return an empty array — do NOT invent any. False positives are worse than empty results.
+4. Output the EXACT lowercase form (no capitalization, no quotes, no extra spaces).
 
-5. Output ONLY a valid JSON object (no markdown, no prose):
+5. If a word has NO true homophones, return an empty array — do NOT invent any. False positives are worse than empty results.
+
+6. Output ONLY a valid JSON object (no markdown, no prose):
 {
   "results": [
     { "word": "cereal", "homophones": ["serial"] },
