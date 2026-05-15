@@ -4956,17 +4956,22 @@ window.vqSpkStart = async () => {
   }, 5000);
 };
 
-// AI reason 음역 멘트 제거 (클라 측 안전망 — 정확도 우선)
-// "XXX 처럼 들렸어요" 같은 음역 sentence 통째로 제거 → 행동 지시 (R 발음 강하게 등) 만 유지.
-// 들린 단어 정보는 별도 필드 (spkHeard / spkAiHeard) 로 결과 화면에 표시되므로 reason 안 음역은 중복.
-// 2026-05-15 (재조정): "정답인 XXX 처럼" 같은 prefix 케이스도 정규식 매칭 실패해 깨진 결과 나옴 → 통째 제거가 안전.
-function _cleanAiReason(reason, _targetWord) {
+// AI reason 음역 멘트 처리 (heard 비교 기반, 2026-05-15 재조정)
+// heard === target (정답과 동일 발음 인식) → 음역 sentence 제거 (학생에 무의미)
+// heard !== target (다른 단어로 들음) → 그대로 유지 (학생에 "어떻게 들렸는지" 정보 가치 ↑)
+// 정규식: 들[가-힣]+ 로 모든 변형 매치 (들렸/들려/들릴/들립/들리지 등)
+function _cleanAiReason(reason, targetWord, heard) {
   if (!reason) return '';
   let r = String(reason).trim();
   if (!r) return '';
-  // 음역 sentence 통째 제거 (단어 capture 안 함 — 정확도 ↑)
-  // 패턴: "(prefix 단어들) (처럼/같이/...) (들렸/들려/...)" + sentence 끝까지
-  const heardSentence = /[^.!?]*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
+  const heardLower = String(heard || '').toLowerCase().trim();
+  const targetLower = String(targetWord || '').toLowerCase().trim();
+  // heard 와 target 다르면 reason 그대로 유지 (학생에 정보)
+  if (heardLower && targetLower && heardLower !== targetLower) {
+    return r;
+  }
+  // heard === target 또는 heard 없음 → 음역 sentence 제거
+  const heardSentence = /[^.!?]*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*들[가-힣]+[^.!?]*[.!?]?\s*/gu;
   r = r.replace(heardSentence, '');
   return r.trim();
 }
@@ -5053,7 +5058,7 @@ async function _vqTryAiFallback(webspeechHeard) {
       return;
     }
 
-    const cleanReason = _cleanAiReason(data.reason, q.word);
+    const cleanReason = _cleanAiReason(data.reason, q.word, data.heard);
     const meta = {
       source: 'ai',
       aiConfidence: data.confidence,

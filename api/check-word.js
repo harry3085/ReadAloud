@@ -36,7 +36,7 @@ Return JSON only:
 
 match=true: target spoken (Korean accent OK). match=false: different word / silent / noise.
 heard: actual word heard (empty if silent).
-reason: pronunciation ACTION only (e.g. "R 발음 강하게", "TH 혀끝 이 사이"). NEVER transliteration ("XX처럼 들려요" 금지). Empty if no useful tip.
+reason: pronunciation ACTION tip preferred (e.g. "R 발음 강하게", "TH 혀끝 이 사이"). If you must mention how the word sounded, use TENTATIVE expression "XX 처럼 들릴 수 있어요" (가능성·완곡), NEVER assertive "XX 처럼 들렸어요". Empty if no useful tip.
 confidence: 90+ clear / 70-89 minor / 50-69 fair / <50 poor.`;
 }
 
