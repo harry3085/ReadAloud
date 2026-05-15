@@ -1089,9 +1089,9 @@ async function loadQuotaUsage(){
     });
 
     // SVG 차트 — 당월 일별 막대 (우측 Y) + 누적 직선 (좌측 Y) + 한도 점선 + 전월 종착선
-    // viewBox 600×180, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
+    // viewBox 600×60, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
     const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color) => {
-      const W = 600, H = 180, PAD_L = 42, PAD_R = 42, PAD_T = 12, PAD_B = 28;
+      const W = 600, H = 60, PAD_L = 32, PAD_R = 32, PAD_T = 4, PAD_B = 12;
       const cw = W - PAD_L - PAD_R;
       const ch = H - PAD_T - PAD_B;
       const maxLeft = Math.max(limit || 0, prevMonthTotal || 0, ...(cumulative.length ? cumulative : [0]), 1);
@@ -1116,51 +1116,37 @@ async function loadQuotaUsage(){
       const cumPts = cumulative.map((v, i) => `${xCenter(i + 1)},${yL(v)}`).join(' ');
       const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${color}" stroke-width="2"/>` : '';
 
-      // 한도선 (붉은 점선)
+      // 한도선 (붉은 점선) — 라벨 별도 표시 X (헤더에 이미 N/한도 표시)
       let limitLine = '';
       if (limit > 0 && limit <= maxLeft) {
         const y = yL(limit);
-        limitLine = `
-          <line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="1" stroke-dasharray="5 3"/>
-          <text x="${W - PAD_R - 2}" y="${y - 3}" font-size="10" fill="#dc2626" text-anchor="end" font-weight="600">한도 ${limit}</text>`;
+        limitLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="1" stroke-dasharray="4 2"/>`;
       }
       // 전월 종착선 (회색 직선)
       let prevLine = '';
       if (prevMonthTotal > 0 && prevMonthTotal <= maxLeft) {
         const y = yL(prevMonthTotal);
-        prevLine = `
-          <line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="1"/>
-          <text x="${PAD_L + 2}" y="${y - 3}" font-size="10" fill="#64748b" text-anchor="start">전월 ${prevMonthTotal}</text>`;
+        prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="1"/>`;
       }
 
-      // X축 라벨 (1·5·10·15·20·25·마지막)
-      const xMarks = [...new Set([1, 5, 10, 15, 20, 25, daysInMonth])].filter(d => d <= daysInMonth);
-      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 14}" font-size="9" fill="#64748b" text-anchor="middle">${d}</text>`).join('');
+      // X축 라벨 (1·10·20·말일만 — 좁은 차트 가독성)
+      const xMarks = [...new Set([1, 10, 20, daysInMonth])].filter(d => d <= daysInMonth);
+      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 9}" font-size="7" fill="#94a3b8" text-anchor="middle">${d}</text>`).join('');
 
-      // Y축 라벨 (좌·우 3단계: 0/half/max)
-      const yLeftLbl = [0, 0.5, 1].map(p => {
+      // Y축 라벨 (좌·우 2단계: 0/max)
+      const yLeftLbl = [0, 1].map(p => {
         const v = Math.round(maxLeft * p);
-        return `<text x="${PAD_L - 4}" y="${yL(v) + 3}" font-size="9" fill="#64748b" text-anchor="end">${v}</text>`;
+        return `<text x="${PAD_L - 2}" y="${yL(v) + (p === 0 ? -1 : 6)}" font-size="7" fill="#94a3b8" text-anchor="end">${v}</text>`;
       }).join('');
-      const yRightLbl = [0, 0.5, 1].map(p => {
+      const yRightLbl = [0, 1].map(p => {
         const v = Math.round(maxRight * p);
-        return `<text x="${W - PAD_R + 4}" y="${yR(v) + 3}" font-size="9" fill="#64748b" text-anchor="start">${v}</text>`;
+        return `<text x="${W - PAD_R + 2}" y="${yR(v) + (p === 0 ? -1 : 6)}" font-size="7" fill="#94a3b8" text-anchor="start">${v}</text>`;
       }).join('');
 
       // 축선
-      const axis = `
-        <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${H - PAD_B}" stroke="#e2e8f0"/>
-        <line x1="${W - PAD_R}" y1="${PAD_T}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#e2e8f0"/>
-        <line x1="${PAD_L}" y1="${H - PAD_B}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#cbd5e1"/>`;
+      const axis = `<line x1="${PAD_L}" y1="${H - PAD_B}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#cbd5e1" stroke-width="0.5"/>`;
 
-      return `
-        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:10px;" preserveAspectRatio="xMidYMid meet">
-          ${axis}${yLeftLbl}${yRightLbl}${xAxisLbl}
-          ${prevLine}${limitLine}
-          ${bars}${cumLine}
-          <text x="${PAD_L - 4}" y="${PAD_T - 2}" font-size="9" fill="#64748b" text-anchor="end" font-weight="600">누적</text>
-          <text x="${W - PAD_R + 4}" y="${PAD_T - 2}" font-size="9" fill="#64748b" text-anchor="start" font-weight="600">일별</text>
-        </svg>`;
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:6px;" preserveAspectRatio="none">${axis}${yLeftLbl}${yRightLbl}${xAxisLbl}${prevLine}${limitLine}${bars}${cumLine}</svg>`;
     };
 
     const _fmtBytes = (n) => {
