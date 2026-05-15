@@ -4956,9 +4956,10 @@ window.vqSpkStart = async () => {
   }, 5000);
 };
 
-// AI reason 음역 멘트 처리 (heard 비교 기반, 2026-05-15 재조정)
-// heard === target (정답과 동일 발음 인식) → 음역 sentence 제거 (학생에 무의미)
-// heard !== target (다른 단어로 들음) → 그대로 유지 (학생에 "어떻게 들렸는지" 정보 가치 ↑)
+// AI reason 음역 멘트 처리 (C 옵션 — 정답 단어 포함 검사, 2026-05-15 재조정)
+// reason 안 음역 sentence 가 정답 단어를 그대로 포함 → 제거 (학생에 무의미)
+// 정답과 다른 단어가 음역 sentence 에 있으면 → 유지 (학생에 "이렇게 들렸다" 정보 가치)
+// 또는 heard === target (heard 비교) — fallback (안전망)
 // 정규식: 들[가-힣]+ 로 모든 변형 매치 (들렸/들려/들릴/들립/들리지 등)
 function _cleanAiReason(reason, targetWord, heard) {
   if (!reason) return '';
@@ -4966,13 +4967,15 @@ function _cleanAiReason(reason, targetWord, heard) {
   if (!r) return '';
   const heardLower = String(heard || '').toLowerCase().trim();
   const targetLower = String(targetWord || '').toLowerCase().trim();
-  // heard 와 target 다르면 reason 그대로 유지 (학생에 정보)
-  if (heardLower && targetLower && heardLower !== targetLower) {
-    return r;
-  }
-  // heard === target 또는 heard 없음 → 음역 sentence 제거
   const heardSentence = /[^.!?]*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*들[가-힣]+[^.!?]*[.!?]?\s*/gu;
-  r = r.replace(heardSentence, '');
+  r = r.replace(heardSentence, (match) => {
+    // C 옵션: 음역 sentence 안에 정답 단어가 그대로 포함되면 제거 (학생에 무의미)
+    if (targetLower && match.toLowerCase().includes(targetLower)) return '';
+    // fallback: heard === target 이면 제거 (안전망)
+    if (heardLower && targetLower && heardLower === targetLower) return '';
+    // 그 외 — 다른 단어로 들린 정보 가치 ↑ → 유지
+    return match;
+  });
   return r.trim();
 }
 
