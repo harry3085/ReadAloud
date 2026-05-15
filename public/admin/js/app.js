@@ -1091,7 +1091,7 @@ async function loadQuotaUsage(){
     // SVG 차트 — 당월 일별 막대 (우측 Y) + 누적 직선 (좌측 Y) + 한도 점선 + 전월 종착선
     // viewBox 600×60, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
     const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color, darkColor) => {
-      const W = 600, H = 60, PAD_L = 32, PAD_R = 32, PAD_T = 4, PAD_B = 12;
+      const W = 600, H = 60, PAD_L = 32, PAD_R = 32, PAD_T = 6, PAD_B = 12;
       const cw = W - PAD_L - PAD_R;
       const ch = H - PAD_T - PAD_B;
       const maxLeft = Math.max(limit || 0, prevMonthTotal || 0, ...(cumulative.length ? cumulative : [0]), 1);
@@ -1102,9 +1102,9 @@ async function loadQuotaUsage(){
       const yL = (v) => PAD_T + ch * (1 - v / maxLeft);
       const yR = (v) => PAD_T + ch * (1 - v / maxRight);
 
-      // 막대 (일별 — 우측 Y) — 폭 2/3 + opacity 더 연하게
+      // 막대 (일별 — 우측 Y) — 일별 슬롯폭의 2/3 + opacity 연함 + 막대 위 수치
       const slotW = cw / daysInMonth;
-      const narrowBarW = Math.max(1.5, barW * 0.67);  // 2/3 폭
+      const narrowBarW = Math.max(1.5, slotW * 0.67);  // 일별 슬롯폭의 2/3
       const inset = (slotW - narrowBarW) / 2;
       const bars = dayCounts.map((v, i) => {
         const day = i + 1;
@@ -1112,7 +1112,11 @@ async function loadQuotaUsage(){
         const h = ch * (v / maxRight);
         const y = PAD_T + ch - h;
         const isToday = day === today;
-        return `<rect x="${xLeft(day) + inset}" y="${y}" width="${narrowBarW}" height="${h}" fill="${color}" opacity="${isToday ? 0.7 : 0.4}"/>`;
+        const rect = `<rect x="${xLeft(day) + inset}" y="${y}" width="${narrowBarW}" height="${h}" fill="${color}" opacity="${isToday ? 0.7 : 0.4}"/>`;
+        // 막대 위 일별 수치 (PAD_T 위로 안 잘리게 가드)
+        const lblY = Math.max(PAD_T + 2, y - 1);
+        const lbl = `<text x="${xCenter(day)}" y="${lblY}" font-size="4" fill="${darkColor || color}" text-anchor="middle" font-weight="600">${v}</text>`;
+        return rect + lbl;
       }).join('');
 
       // 누적 직선 (좌측 Y) — 진한 톤·두께 1
@@ -1120,17 +1124,19 @@ async function loadQuotaUsage(){
       const cumStroke = darkColor || color;
       const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${cumStroke}" stroke-width="1"/>` : '';
 
-      // 한도선 (붉은 점선) — 가늘게
+      // 한도선 (붉은 점선 + 숫자 라벨)
       let limitLine = '';
       if (limit > 0 && limit <= maxLeft) {
         const y = yL(limit);
-        limitLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="0.5" stroke-dasharray="3 2"/>`;
+        limitLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="0.5" stroke-dasharray="3 2"/>
+          <text x="${W - PAD_R - 1}" y="${y - 1}" font-size="4" fill="#dc2626" text-anchor="end" font-weight="600">한도 ${limit}</text>`;
       }
-      // 전월 종착선 (회색 직선) — 가늘게
+      // 전월 종착선 (회색 직선 + 숫자 라벨)
       let prevLine = '';
       if (prevMonthTotal > 0 && prevMonthTotal <= maxLeft) {
         const y = yL(prevMonthTotal);
-        prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="0.5"/>`;
+        prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="0.5"/>
+          <text x="${PAD_L + 1}" y="${y - 1}" font-size="4" fill="#64748b" text-anchor="start" font-weight="600">전월 ${prevMonthTotal}</text>`;
       }
 
       // X축 라벨 (매일 1~말일 표시)
