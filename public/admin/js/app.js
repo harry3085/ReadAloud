@@ -926,13 +926,15 @@ async function loadApiUsage(){
     const studentCur = usage.activeStudentsCount || 0;
     const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
 
-    // 5분류 (상세 페이지·super 앱과 동일 순서: OCR → 정리 → Generator → 녹음 → 리포트)
+    // 6분류 (라벨 통일: OCR · Cleanup · Generator · 단어시험 · 녹음숙제 · 성장리포트)
+    // 단어시험 (check-word) 은 recording 한도 공유 — monthCounter/limit 별도 X (한도 공유 표시)
     const items = [
-      { label: '📷 OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
-      { label: '🧹 OCR 정리',    dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
-      { label: '✨ Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
-      { label: '🎤 녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
-      { label: '📈 성장 리포트', dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
+      { label: 'OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
+      { label: 'Cleanup',     dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
+      { label: 'Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
+      { label: '단어시험',     dailyKeys: ['check-word'],      monthCounter: null,                          limitField: null,                          shareNote: '(녹음숙제 한도 공유)' },
+      { label: '녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
+      { label: '성장리포트',   dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
     ];
 
     const fracBar = (cur, lim) => {
@@ -942,9 +944,19 @@ async function loadApiUsage(){
       return `<div style="height:3px;background:#eee;border-radius:2px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:${p}%;background:${c};"></div></div>`;
     };
 
-    // 한 줄에 [라벨 / 일사용량 / 월사용량/한도 + 진도바] — 5분류 통일 형식
+    // 한 줄에 [라벨 / 일사용량 / 월사용량/한도 + 진도바] — 6분류 통일 형식
     const renderRow = (it) => {
       const day = it.dailyKeys.reduce((s,k) => s + cnt(k), 0);
+      // monthCounter 없는 항목 (단어시험 = recording 한도 공유) → 일별만 표시
+      if (!it.monthCounter) {
+        return `
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+              <span>${it.label}</span>
+              <span style="color:var(--gray);font-size:10px;">오늘 <b style="color:var(--text);">${day}</b> <span style="color:#94a3b8;">${it.shareNote || ''}</span></span>
+            </div>
+          </div>`;
+      }
       const month = usage[it.monthCounter] || 0;
       const lim = cl[it.limitField] ?? tierLimits[it.limitField];
       const limStr = (typeof lim === 'number' && isFinite(lim)) ? lim : '∞';
@@ -1027,17 +1039,61 @@ async function loadQuotaUsage(){
     const customLimits = acad.customLimits || {};
     const usage = acad.usage || {};
 
+    // 6분류 (라벨 통일, 단어시험 = recording 한도 공유)
     const items = [
-      { label: '📷 OCR (이미지 인식)',       counter: 'ocrCallsThisMonth',       limitField: 'ocrPerMonth',          color: '#0ea5e9' },
-      { label: '🧹 Cleanup (텍스트 정리)',    counter: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      color: '#06b6d4' },
-      { label: '✨ Generator (AI 문제 생성)', counter: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    color: '#f59e0b' },
-      { label: '🎙 녹음 평가',                counter: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    color: '#8b5cf6' },
-      { label: '📈 성장 리포트',              counter: 'growthReportCallsThisMonth',   limitField: 'growthReportPerMonth', color: '#10b981' },
+      { label: 'OCR',         counter: 'ocrCallsThisMonth',         limitField: 'ocrPerMonth',          color: '#0ea5e9', dailyKey: 'ocr' },
+      { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',     limitField: 'cleanupPerMonth',      color: '#06b6d4', dailyKey: 'cleanup-ocr' },
+      { label: 'Generator',   counter: 'generatorCallsThisMonth',   limitField: 'generatorPerMonth',    color: '#f59e0b', dailyKey: 'generate-quiz' },
+      { label: '단어시험',     counter: null,                        limitField: null,                   color: '#a855f7', dailyKey: 'check-word',       shareNote: '(녹음숙제 한도 공유)' },
+      { label: '녹음숙제',     counter: 'recordingCallsThisMonth',   limitField: 'recordingPerMonth',    color: '#8b5cf6', dailyKey: 'check-recording' },
+      { label: '성장리포트',   counter: 'growthReportCallsThisMonth',limitField: 'growthReportPerMonth', color: '#10b981', dailyKey: 'growth-report' },
     ];
 
     const planName = (plan.displayName || planId).toUpperCase();
     header.innerHTML = `<span class="badge badge-teal" style="font-size:11px;">${esc(planName)}</span>
       <span style="margin-left:8px;">${esc(acad.name || '')} · 학생 한도 ${esc(tier)}명</span>`;
+
+    // 지난 7일 일별 데이터 fetch (각 항목별 막대 그래프용) — KST 기준
+    const KST = 9 * 60 * 60 * 1000;
+    const days = [];
+    const todayKst = new Date(Date.now() + KST);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayKst);
+      d.setUTCDate(d.getUTCDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    const daySnaps = await Promise.all(
+      days.map(ymd => getDoc(doc(db, 'apiUsage', `${academyId}_${ymd}`)).catch(() => null))
+    );
+    const daily7d = {};
+    items.forEach(it => {
+      daily7d[it.dailyKey] = days.map((_, j) => {
+        const snap = daySnaps[j];
+        if (!snap || !snap.exists()) return 0;
+        const d = snap.data();
+        const bE = d.byEndpoint || {};
+        return (bE[it.dailyKey] || 0) + (d['byEndpoint.' + it.dailyKey] || 0);
+      });
+    });
+
+    // 막대 그래프 생성 헬퍼 (7개 막대 · 최대값 기준 비례)
+    const _renderBarChart = (data, color) => {
+      const max = Math.max(1, ...data);
+      const dayLabels = days.map(ymd => ymd.slice(5).replace('-', '/'));  // MM/DD
+      return `
+        <div style="display:flex;align-items:flex-end;gap:6px;height:60px;margin-top:8px;padding:0 2px;">
+          ${data.map((v, j) => {
+            const h = Math.max(3, Math.round(v / max * 56));
+            const isToday = j === data.length - 1;
+            return `
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
+                <div style="font-size:10px;color:${v > 0 ? 'var(--text)' : '#cbd5e1'};font-weight:${isToday ? '700' : '400'};">${v}</div>
+                <div style="width:100%;height:${h}px;background:${color};border-radius:3px 3px 0 0;opacity:${isToday ? '1' : '0.65'};"></div>
+                <div style="font-size:9px;color:${isToday ? color : 'var(--gray)'};font-weight:${isToday ? '700' : '400'};">${dayLabels[j]}</div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    };
 
     const _fmtBytes = (n) => {
       if (n < 1024) return `${n} B`;
@@ -1047,6 +1103,22 @@ async function loadQuotaUsage(){
     };
 
     grid.innerHTML = items.map(item => {
+      const data7d = daily7d[item.dailyKey] || [];
+      const todayCnt = data7d[data7d.length - 1] || 0;
+
+      // 단어시험 — counter 없음 (recording 한도 공유). 일별 + 7일 그래프만 표시.
+      if (!item.counter) {
+        return `
+          <div style="margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
+              <span style="font-weight:600;">${item.label} <span style="color:var(--gray);font-size:11px;font-weight:400;">${item.shareNote || ''}</span></span>
+              <span style="color:var(--text);">오늘 <b>${todayCnt.toLocaleString()}</b></span>
+            </div>
+            ${_renderBarChart(data7d, item.color)}
+          </div>
+        `;
+      }
+
       const current = usage[item.counter] || 0;
       const limitRaw = customLimits[item.limitField] ?? tierLimits[item.limitField];
       const limit = (typeof limitRaw === 'number') ? limitRaw : 0;
@@ -1056,7 +1128,7 @@ async function loadQuotaUsage(){
       const labelColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)';
 
       return `
-        <div style="margin-bottom:14px;">
+        <div style="margin-bottom:20px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
             <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
             <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / ${limit.toLocaleString()} <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span></span>
@@ -1067,6 +1139,7 @@ async function loadQuotaUsage(){
           ${percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
             : percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
             : ''}
+          ${_renderBarChart(data7d, item.color)}
         </div>
       `;
     }).join('') + (() => {
