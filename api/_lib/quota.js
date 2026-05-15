@@ -37,13 +37,15 @@ function _currentYearMonth() {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
 }
 
-// 5분류 한도 매핑 — counterField (academies.usage), limitField (plan.byTier[tier])
+// 6분류 한도 매핑 — counterField (academies.usage), limitField (plan.byTier[tier])
+// 2026-05-15: 'word-speaking' 분리 (이전 'recording' 공유 → 별도 카운터·한도)
 const QUOTA_CONFIG = {
-  ocr:          { counterField: 'ocrCallsThisMonth',       limitField: 'ocrPerMonth',          label: 'OCR' },
-  cleanup:      { counterField: 'cleanupCallsThisMonth',   limitField: 'cleanupPerMonth',      label: 'Cleanup' },
-  generator:    { counterField: 'generatorCallsThisMonth', limitField: 'generatorPerMonth',    label: 'Generator' },
-  recording:    { counterField: 'recordingCallsThisMonth', limitField: 'recordingPerMonth',    label: '녹음 평가' },
-  growthReport: { counterField: 'growthReportCallsThisMonth',   limitField: 'growthReportPerMonth', label: '성장 리포트' },
+  ocr:           { counterField: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth',           label: 'OCR' },
+  cleanup:       { counterField: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth',       label: 'Cleanup' },
+  generator:     { counterField: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth',     label: 'Generator' },
+  'word-speaking': { counterField: 'wordSpeakingCallsThisMonth', limitField: 'wordSpeakingPerMonth', label: '단어시험' },
+  recording:     { counterField: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth',     label: '녹음숙제' },
+  growthReport:  { counterField: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth',  label: '성장리포트' },
 };
 
 async function verifyAndCheckQuota({ idToken, quotaKind }) {
@@ -151,6 +153,7 @@ const ALL_MONTHLY_COUNTERS = [
   'ocrCallsThisMonth',
   'cleanupCallsThisMonth',
   'generatorCallsThisMonth',
+  'wordSpeakingCallsThisMonth',  // 2026-05-15 별도 분리
   'recordingCallsThisMonth',
   'growthReportCallsThisMonth',
 ];

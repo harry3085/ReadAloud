@@ -130,8 +130,8 @@ module.exports = async (req, res) => {
 
   _ensureAdminApp();
 
-  // ── 인증 + 할당량 (recording 재사용) ──
-  const q = await verifyAndCheckQuota({ idToken, quotaKind: 'recording' });
+  // ── 인증 + 할당량 (2026-05-15 'word-speaking' 별도 카운터 분리) ──
+  const q = await verifyAndCheckQuota({ idToken, quotaKind: 'word-speaking' });
   if (q.error) return res.status(q.status || 401).json({ error: q.error, fallback: true });
 
   // ── MIME 보정 (Gemini 호환 형식으로 라벨링) ──

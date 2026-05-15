@@ -1182,11 +1182,12 @@ function _renderAcmUsage(a) {
 
   // 5분류 (학원장 대시보드·loadQuotaUsage 와 동일 순서·라벨)
   const items = [
-    { label: '📷 OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth' },
-    { label: '🧹 OCR 정리',    counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth' },
-    { label: '✨ Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth' },
-    { label: '🎤 녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth' },
-    { label: '📈 성장 리포트', counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth' },
+    { label: 'OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth' },
+    { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth' },
+    { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth' },
+    { label: '단어시험',     counter: 'wordSpeakingCallsThisMonth', limitField: 'wordSpeakingPerMonth' },  // 2026-05-15
+    { label: '녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth' },
+    { label: '성장리포트',   counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth' },
   ];
 
   // Storage 행 — bytes/GB 단위 (수동 reconcile 결과 기반)
@@ -1488,6 +1489,7 @@ async function loadAcademies() {
         ${cell(u.ocrCallsThisMonth || 0,        'ocrPerMonth',          'OCR')} ·
         ${cell(u.cleanupCallsThisMonth || 0,    'cleanupPerMonth',      '정리')} ·
         ${cell(u.generatorCallsThisMonth || 0,  'generatorPerMonth',    '생성')}<br>
+        ${cell(u.wordSpeakingCallsThisMonth || 0, 'wordSpeakingPerMonth', '단어')} ·
         ${cell(u.recordingCallsThisMonth || 0,  'recordingPerMonth',    '녹음')} ·
         ${cell(u.growthReportCallsThisMonth || 0,    'growthReportPerMonth', '리포트')}
       </div>`;
@@ -1505,6 +1507,7 @@ async function loadAcademies() {
         ocrPerMonth: 'OCR',
         cleanupPerMonth: 'Cleanup',
         generatorPerMonth: 'AI Generator',
+        wordSpeakingPerMonth: '단어시험',  // 2026-05-15
         recordingPerMonth: '녹음 평가',
         growthReportPerMonth: '성장 리포트',
         storageGB: 'Storage(GB)',
@@ -2597,14 +2600,16 @@ async function _loadAcademyTop10() {
     const ocr = u.ocrCallsThisMonth || 0;
     const cleanup = u.cleanupCallsThisMonth || 0;
     const generator = u.generatorCallsThisMonth || 0;
+    const wordSpeaking = u.wordSpeakingCallsThisMonth || 0;  // 2026-05-15
     const recording = u.recordingCallsThisMonth || 0;
     const growth = u.growthReportCallsThisMonth || 0;
     const storageBytes = u.storageBytes || 0;
-    // 4 AI 분류 합산 한도 대비 % (정렬·색상용)
-    const aiSum = ocr + cleanup + generator + growth;
-    const aiSumLimit = (cl.ocrPerMonth         ?? tl.ocrPerMonth         ?? 0)
-                     + (cl.cleanupPerMonth     ?? tl.cleanupPerMonth     ?? 0)
-                     + (cl.generatorPerMonth   ?? tl.generatorPerMonth   ?? 0)
+    // 5 AI 분류 합산 한도 대비 % (정렬·색상용)
+    const aiSum = ocr + cleanup + generator + wordSpeaking + growth;
+    const aiSumLimit = (cl.ocrPerMonth          ?? tl.ocrPerMonth          ?? 0)
+                     + (cl.cleanupPerMonth      ?? tl.cleanupPerMonth      ?? 0)
+                     + (cl.generatorPerMonth    ?? tl.generatorPerMonth    ?? 0)
+                     + (cl.wordSpeakingPerMonth ?? tl.wordSpeakingPerMonth ?? 0)
                      + (cl.growthReportPerMonth ?? tl.growthReportPerMonth ?? 0);
     const aiPct = aiSumLimit > 0 ? (aiSum / aiSumLimit) * 100 : 0;
     return {
@@ -2782,12 +2787,13 @@ setTimeout(() => {
 // 플랜 × 구간별 한도 — plans/{planId}.byTier (AI 쿼터·녹음·storage + 콘텐츠 한도)
 // 2026-05-14: 콘텐츠 한도 4개도 plan byTier 에 통합 (글로벌 default 폐기)
 const PLAN_FIELDS = [
-  { key: 'ocrPerMonth',          label: 'OCR' },
-  { key: 'cleanupPerMonth',      label: 'Cleanup' },
-  { key: 'generatorPerMonth',    label: 'Generator' },
-  { key: 'recordingPerMonth',    label: '녹음' },
-  { key: 'growthReportPerMonth', label: '리포트' },
-  { key: 'storageGB',            label: 'Storage(GB)' },
+  { key: 'ocrPerMonth',           label: 'OCR' },
+  { key: 'cleanupPerMonth',       label: 'Cleanup' },
+  { key: 'generatorPerMonth',     label: 'Generator' },
+  { key: 'wordSpeakingPerMonth',  label: '단어시험' },  // 2026-05-15 별도 분리
+  { key: 'recordingPerMonth',     label: '녹음' },
+  { key: 'growthReportPerMonth',  label: '리포트' },
+  { key: 'storageGB',             label: 'Storage(GB)' },
   { key: 'noticesPerAcademy',      label: '📢 공지' },
   { key: 'draftsPerAcademy',       label: '💾 초안' },
   { key: 'sentMessagesPerAcademy', label: '📤 발송' },

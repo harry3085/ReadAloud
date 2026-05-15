@@ -927,12 +927,12 @@ async function loadApiUsage(){
     const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
 
     // 6분류 (라벨 통일: OCR · Cleanup · Generator · 단어시험 · 녹음숙제 · 성장리포트)
-    // 단어시험 (check-word) 은 recording 한도 공유 — monthCounter/limit 별도 X (한도 공유 표시)
+    // 2026-05-15: 단어시험 별도 한도 분리 (이전 recording 공유 → wordSpeakingCallsThisMonth)
     const items = [
       { label: 'OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
       { label: 'Cleanup',     dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
       { label: 'Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
-      { label: '단어시험',     dailyKeys: ['check-word'],      monthCounter: null,                          limitField: null,                          shareNote: '(녹음숙제 한도 공유)' },
+      { label: '단어시험',     dailyKeys: ['check-word'],      monthCounter: 'wordSpeakingCallsThisMonth',  limitField: 'wordSpeakingPerMonth' },
       { label: '녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
       { label: '성장리포트',   dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
     ];
@@ -1039,14 +1039,15 @@ async function loadQuotaUsage(){
     const customLimits = acad.customLimits || {};
     const usage = acad.usage || {};
 
-    // 6분류 (라벨 통일, 단어시험 = recording 한도 공유) — darkColor: 누적선용 진한 톤
+    // 6분류 (라벨 통일) — darkColor: 누적선용 진한 톤
+    // 2026-05-15: 단어시험 별도 한도 분리 (wordSpeakingCallsThisMonth)
     const items = [
-      { label: 'OCR',         counter: 'ocrCallsThisMonth',         limitField: 'ocrPerMonth',          color: '#0ea5e9', darkColor: '#0369a1', dailyKey: 'ocr' },
-      { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',     limitField: 'cleanupPerMonth',      color: '#06b6d4', darkColor: '#0e7490', dailyKey: 'cleanup-ocr' },
-      { label: 'Generator',   counter: 'generatorCallsThisMonth',   limitField: 'generatorPerMonth',    color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz' },
-      { label: '단어시험',     counter: null,                        limitField: null,                   color: '#a855f7', darkColor: '#7e22ce', dailyKey: 'check-word',       shareNote: '(녹음숙제 한도 공유)' },
-      { label: '녹음숙제',     counter: 'recordingCallsThisMonth',   limitField: 'recordingPerMonth',    color: '#8b5cf6', darkColor: '#6d28d9', dailyKey: 'check-recording' },
-      { label: '성장리포트',   counter: 'growthReportCallsThisMonth',limitField: 'growthReportPerMonth', color: '#10b981', darkColor: '#047857', dailyKey: 'growth-report' },
+      { label: 'OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth',           color: '#0ea5e9', darkColor: '#0369a1', dailyKey: 'ocr' },
+      { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth',       color: '#06b6d4', darkColor: '#0e7490', dailyKey: 'cleanup-ocr' },
+      { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth',     color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz' },
+      { label: '단어시험',     counter: 'wordSpeakingCallsThisMonth', limitField: 'wordSpeakingPerMonth',  color: '#a855f7', darkColor: '#7e22ce', dailyKey: 'check-word' },
+      { label: '녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth',     color: '#8b5cf6', darkColor: '#6d28d9', dailyKey: 'check-recording' },
+      { label: '성장리포트',   counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth',  color: '#10b981', darkColor: '#047857', dailyKey: 'growth-report' },
     ];
 
     const planName = (plan.displayName || planId).toUpperCase();
@@ -1185,23 +1186,25 @@ async function loadQuotaUsage(){
 
       const current = usage[item.counter] || 0;
       const limitRaw = customLimits[item.limitField] ?? tierLimits[item.limitField];
-      const limit = (typeof limitRaw === 'number') ? limitRaw : 0;
+      const isUnlimited = limitRaw === null || limitRaw === undefined;
+      const limit = isUnlimited ? 0 : (typeof limitRaw === 'number' ? limitRaw : 0);
       const isOverride = customLimits[item.limitField] !== undefined;
-      const percent = limit > 0 ? Math.min(100, (current / limit) * 100) : 0;
-      const barColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : item.color;
-      const labelColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)';
+      const percent = (!isUnlimited && limit > 0) ? Math.min(100, (current / limit) * 100) : 0;
+      const barColor = isUnlimited ? '#cbd5e1' : (percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : item.color);
+      const labelColor = isUnlimited ? 'var(--text)' : (percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)');
+      const limDisplay = isUnlimited ? '∞ 무제한' : `${limit.toLocaleString()} (${percent.toFixed(1)}%)`;
 
       return `
         <div style="margin-bottom:24px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
             <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
-            <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / ${limit.toLocaleString()} <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span> · 전월 <b style="color:var(--text);">${cd.prevMonthTotal.toLocaleString()}</b></span>
+            <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / <span style="color:var(--gray);font-size:11px;">${limDisplay}</span> · 전월 <b style="color:var(--text);">${cd.prevMonthTotal.toLocaleString()}</b></span>
           </div>
           <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
-            <div style="background:${barColor};height:100%;width:${percent}%;transition:width 0.3s;"></div>
+            <div style="background:${barColor};height:100%;width:${isUnlimited ? 100 : percent}%;transition:width 0.3s;opacity:${isUnlimited ? 0.3 : 1};"></div>
           </div>
-          ${percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
-            : percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
+          ${!isUnlimited && percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
+            : !isUnlimited && percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
             : ''}
           ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color, item.darkColor)}
         </div>
