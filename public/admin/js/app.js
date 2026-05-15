@@ -1039,14 +1039,14 @@ async function loadQuotaUsage(){
     const customLimits = acad.customLimits || {};
     const usage = acad.usage || {};
 
-    // 6분류 (라벨 통일, 단어시험 = recording 한도 공유)
+    // 6분류 (라벨 통일, 단어시험 = recording 한도 공유) — darkColor: 누적선용 진한 톤
     const items = [
-      { label: 'OCR',         counter: 'ocrCallsThisMonth',         limitField: 'ocrPerMonth',          color: '#0ea5e9', dailyKey: 'ocr' },
-      { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',     limitField: 'cleanupPerMonth',      color: '#06b6d4', dailyKey: 'cleanup-ocr' },
-      { label: 'Generator',   counter: 'generatorCallsThisMonth',   limitField: 'generatorPerMonth',    color: '#f59e0b', dailyKey: 'generate-quiz' },
-      { label: '단어시험',     counter: null,                        limitField: null,                   color: '#a855f7', dailyKey: 'check-word',       shareNote: '(녹음숙제 한도 공유)' },
-      { label: '녹음숙제',     counter: 'recordingCallsThisMonth',   limitField: 'recordingPerMonth',    color: '#8b5cf6', dailyKey: 'check-recording' },
-      { label: '성장리포트',   counter: 'growthReportCallsThisMonth',limitField: 'growthReportPerMonth', color: '#10b981', dailyKey: 'growth-report' },
+      { label: 'OCR',         counter: 'ocrCallsThisMonth',         limitField: 'ocrPerMonth',          color: '#0ea5e9', darkColor: '#0369a1', dailyKey: 'ocr' },
+      { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',     limitField: 'cleanupPerMonth',      color: '#06b6d4', darkColor: '#0e7490', dailyKey: 'cleanup-ocr' },
+      { label: 'Generator',   counter: 'generatorCallsThisMonth',   limitField: 'generatorPerMonth',    color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz' },
+      { label: '단어시험',     counter: null,                        limitField: null,                   color: '#a855f7', darkColor: '#7e22ce', dailyKey: 'check-word',       shareNote: '(녹음숙제 한도 공유)' },
+      { label: '녹음숙제',     counter: 'recordingCallsThisMonth',   limitField: 'recordingPerMonth',    color: '#8b5cf6', darkColor: '#6d28d9', dailyKey: 'check-recording' },
+      { label: '성장리포트',   counter: 'growthReportCallsThisMonth',limitField: 'growthReportPerMonth', color: '#10b981', darkColor: '#047857', dailyKey: 'growth-report' },
     ];
 
     const planName = (plan.displayName || planId).toUpperCase();
@@ -1090,7 +1090,7 @@ async function loadQuotaUsage(){
 
     // SVG 차트 — 당월 일별 막대 (우측 Y) + 누적 직선 (좌측 Y) + 한도 점선 + 전월 종착선
     // viewBox 600×60, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
-    const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color) => {
+    const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color, darkColor) => {
       const W = 600, H = 60, PAD_L = 32, PAD_R = 32, PAD_T = 4, PAD_B = 12;
       const cw = W - PAD_L - PAD_R;
       const ch = H - PAD_T - PAD_B;
@@ -1102,19 +1102,23 @@ async function loadQuotaUsage(){
       const yL = (v) => PAD_T + ch * (1 - v / maxLeft);
       const yR = (v) => PAD_T + ch * (1 - v / maxRight);
 
-      // 막대 (일별 — 우측 Y)
+      // 막대 (일별 — 우측 Y) — 폭 2/3 + opacity 더 연하게
+      const slotW = cw / daysInMonth;
+      const narrowBarW = Math.max(1.5, barW * 0.67);  // 2/3 폭
+      const inset = (slotW - narrowBarW) / 2;
       const bars = dayCounts.map((v, i) => {
         const day = i + 1;
-        if (day > today || v <= 0) return '';  // 미래 또는 0 — 막대 X
+        if (day > today || v <= 0) return '';
         const h = ch * (v / maxRight);
         const y = PAD_T + ch - h;
         const isToday = day === today;
-        return `<rect x="${xLeft(day) + 1}" y="${y}" width="${barW}" height="${h}" fill="${color}" opacity="${isToday ? 1 : 0.65}"/>`;
+        return `<rect x="${xLeft(day) + inset}" y="${y}" width="${narrowBarW}" height="${h}" fill="${color}" opacity="${isToday ? 0.7 : 0.4}"/>`;
       }).join('');
 
-      // 누적 직선 (좌측 Y) — 진하게 강조
+      // 누적 직선 (좌측 Y) — 진한 톤·두께 1
       const cumPts = cumulative.map((v, i) => `${xCenter(i + 1)},${yL(v)}`).join(' ');
-      const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${color}" stroke-width="1.8"/>` : '';
+      const cumStroke = darkColor || color;
+      const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${cumStroke}" stroke-width="1"/>` : '';
 
       // 한도선 (붉은 점선) — 가늘게
       let limitLine = '';
@@ -1129,18 +1133,18 @@ async function loadQuotaUsage(){
         prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="0.5"/>`;
       }
 
-      // X축 라벨 (1·10·20·말일만 — 좁은 차트 가독성)
-      const xMarks = [...new Set([1, 10, 20, daysInMonth])].filter(d => d <= daysInMonth);
-      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 7}" font-size="5" fill="#94a3b8" text-anchor="middle">${d}</text>`).join('');
+      // X축 라벨 (매일 1~말일 표시)
+      const xAxisLbl = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+        .map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 6}" font-size="4" fill="#94a3b8" text-anchor="middle">${d}</text>`).join('');
 
       // Y축 라벨 (좌·우 2단계: 0/max)
       const yLeftLbl = [0, 1].map(p => {
         const v = Math.round(maxLeft * p);
-        return `<text x="${PAD_L - 2}" y="${yL(v) + (p === 0 ? -1 : 4)}" font-size="5" fill="#94a3b8" text-anchor="end">${v}</text>`;
+        return `<text x="${PAD_L - 2}" y="${yL(v) + (p === 0 ? -1 : 3)}" font-size="4" fill="#94a3b8" text-anchor="end">${v}</text>`;
       }).join('');
       const yRightLbl = [0, 1].map(p => {
         const v = Math.round(maxRight * p);
-        return `<text x="${W - PAD_R + 2}" y="${yR(v) + (p === 0 ? -1 : 4)}" font-size="5" fill="#94a3b8" text-anchor="start">${v}</text>`;
+        return `<text x="${W - PAD_R + 2}" y="${yR(v) + (p === 0 ? -1 : 3)}" font-size="4" fill="#94a3b8" text-anchor="start">${v}</text>`;
       }).join('');
 
       // 축선 (가늘게)
@@ -1168,7 +1172,7 @@ async function loadQuotaUsage(){
               <span style="font-weight:600;">${item.label} <span style="color:var(--gray);font-size:11px;font-weight:400;">${item.shareNote || ''}</span></span>
               <span style="color:var(--text);">오늘 <b>${todayCnt.toLocaleString()}</b> · 누적 <b>${(cd.cumulative[cd.cumulative.length - 1] || 0).toLocaleString()}</b> · 전월 <b>${cd.prevMonthTotal.toLocaleString()}</b></span>
             </div>
-            ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit: 0, prevMonthTotal: cd.prevMonthTotal }, item.color)}
+            ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit: 0, prevMonthTotal: cd.prevMonthTotal }, item.color, item.darkColor)}
           </div>
         `;
       }
@@ -1193,7 +1197,7 @@ async function loadQuotaUsage(){
           ${percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
             : percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
             : ''}
-          ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color)}
+          ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color, item.darkColor)}
         </div>
       `;
     }).join('') + (() => {
