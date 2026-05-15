@@ -2531,7 +2531,20 @@ window.loadUsageDashboard = async () => {
   ]);
 };
 
-async function _todayApiCalls() {
+// ─── apiUsage 메모리 캐시 (P1-A + P1-B, 2026-05-15) ───
+// 같은 사용량 모니터링 페이지 안 다중 호출 결과 공유 + 5분 TTL 재진입 0 reads
+// force=true 로 강제 fresh 가능 (예: 사용자 [새로고침] 버튼 추가 시)
+let _apiUsageCache = { today: null, thisMonth: null };  // { data, cachedAt }
+const _API_USAGE_TTL = 5 * 60 * 1000;
+
+function _invalidateApiUsageCache() {
+  _apiUsageCache = { today: null, thisMonth: null };
+}
+
+async function _todayApiCalls(force = false) {
+  const c = _apiUsageCache.today;
+  if (!force && c && Date.now() - c.cachedAt < _API_USAGE_TTL) return c.data;
+
   const today = _todayYMD();
   const snap = await getDocs(query(collection(db, 'apiUsage'), where('date', '==', today)));
   let total = 0;
@@ -2544,10 +2557,15 @@ async function _todayApiCalls() {
     });
   });
   // geminiTotal: 명칭은 그대로 유지하되 의미는 '비용 발생 5분류 합 (Gemini+Vision)' — 호출처에서 'AI 사용량' 으로 표기
-  return { total, byEndpoint, geminiTotal: ALL_AI_ENDPOINTS.reduce((s, k) => s + (byEndpoint[k] || 0), 0) };
+  const result = { total, byEndpoint, geminiTotal: ALL_AI_ENDPOINTS.reduce((s, k) => s + (byEndpoint[k] || 0), 0) };
+  _apiUsageCache.today = { data: result, cachedAt: Date.now() };
+  return result;
 }
 
-async function _thisMonthApiCalls() {
+async function _thisMonthApiCalls(force = false) {
+  const c = _apiUsageCache.thisMonth;
+  if (!force && c && Date.now() - c.cachedAt < _API_USAGE_TTL) return c.data;
+
   const { start, next } = _thisMonthRange();
   const snap = await getDocs(query(
     collection(db, 'apiUsage'),
@@ -2564,7 +2582,9 @@ async function _thisMonthApiCalls() {
     const aid = data.academyId || 'unknown';
     byAcademy[aid] = (byAcademy[aid] || 0) + (data.total || 0);
   });
-  return { total, byEndpoint, byAcademy };
+  const result = { total, byEndpoint, byAcademy };
+  _apiUsageCache.thisMonth = { data: result, cachedAt: Date.now() };
+  return result;
 }
 
 // ── T5-B: 5장 카드 ────────────────────────────────────
