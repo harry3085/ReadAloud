@@ -1112,39 +1112,39 @@ async function loadQuotaUsage(){
         return `<rect x="${xLeft(day) + 1}" y="${y}" width="${barW}" height="${h}" fill="${color}" opacity="${isToday ? 1 : 0.65}"/>`;
       }).join('');
 
-      // 누적 직선 (좌측 Y) — 1일부터 오늘까지
+      // 누적 직선 (좌측 Y) — 진하게 강조
       const cumPts = cumulative.map((v, i) => `${xCenter(i + 1)},${yL(v)}`).join(' ');
-      const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${color}" stroke-width="2"/>` : '';
+      const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${color}" stroke-width="1.8"/>` : '';
 
-      // 한도선 (붉은 점선) — 라벨 별도 표시 X (헤더에 이미 N/한도 표시)
+      // 한도선 (붉은 점선) — 가늘게
       let limitLine = '';
       if (limit > 0 && limit <= maxLeft) {
         const y = yL(limit);
-        limitLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="1" stroke-dasharray="4 2"/>`;
+        limitLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="0.5" stroke-dasharray="3 2"/>`;
       }
-      // 전월 종착선 (회색 직선)
+      // 전월 종착선 (회색 직선) — 가늘게
       let prevLine = '';
       if (prevMonthTotal > 0 && prevMonthTotal <= maxLeft) {
         const y = yL(prevMonthTotal);
-        prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="1"/>`;
+        prevLine = `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="0.5"/>`;
       }
 
       // X축 라벨 (1·10·20·말일만 — 좁은 차트 가독성)
       const xMarks = [...new Set([1, 10, 20, daysInMonth])].filter(d => d <= daysInMonth);
-      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 9}" font-size="7" fill="#94a3b8" text-anchor="middle">${d}</text>`).join('');
+      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 7}" font-size="5" fill="#94a3b8" text-anchor="middle">${d}</text>`).join('');
 
       // Y축 라벨 (좌·우 2단계: 0/max)
       const yLeftLbl = [0, 1].map(p => {
         const v = Math.round(maxLeft * p);
-        return `<text x="${PAD_L - 2}" y="${yL(v) + (p === 0 ? -1 : 6)}" font-size="7" fill="#94a3b8" text-anchor="end">${v}</text>`;
+        return `<text x="${PAD_L - 2}" y="${yL(v) + (p === 0 ? -1 : 4)}" font-size="5" fill="#94a3b8" text-anchor="end">${v}</text>`;
       }).join('');
       const yRightLbl = [0, 1].map(p => {
         const v = Math.round(maxRight * p);
-        return `<text x="${W - PAD_R + 2}" y="${yR(v) + (p === 0 ? -1 : 6)}" font-size="7" fill="#94a3b8" text-anchor="start">${v}</text>`;
+        return `<text x="${W - PAD_R + 2}" y="${yR(v) + (p === 0 ? -1 : 4)}" font-size="5" fill="#94a3b8" text-anchor="start">${v}</text>`;
       }).join('');
 
-      // 축선
-      const axis = `<line x1="${PAD_L}" y1="${H - PAD_B}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#cbd5e1" stroke-width="0.5"/>`;
+      // 축선 (가늘게)
+      const axis = `<line x1="${PAD_L}" y1="${H - PAD_B}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#cbd5e1" stroke-width="0.3"/>`;
 
       return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:6px;" preserveAspectRatio="none">${axis}${yLeftLbl}${yRightLbl}${xAxisLbl}${prevLine}${limitLine}${bars}${cumLine}</svg>`;
     };
