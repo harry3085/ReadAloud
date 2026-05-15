@@ -11699,6 +11699,43 @@ window.qsCloseEdit = async () => {
   closeModal();
 };
 
+// ─── 동음이의어 누락 단어 AI 채움 헬퍼 (vocab questions 만 대상) ───────
+// homophones 가 Array 가 아닌 단어만 추출 → AI 호출 (mode='homophones-only')
+// 실패 시 빈 배열 채움 (다음 호출에 다시 시도 안 함 — 무한 루프 방지)
+// 호출자: qsSaveEdits (세트 수정 저장 시) / tpPublish (출제 안전망, vocab+speaking 만)
+// 반환: { filled: N, total: M } — N=실제 동음이의어 받은 단어 수, M=호출 대상 단어 수
+async function _fillMissingHomophones(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) return { filled: 0, total: 0 };
+  const missing = questions.filter(q =>
+    q && q.word && (q.type === 'vocab' || !q.type) && !Array.isArray(q.homophones)
+  );
+  if (missing.length === 0) return { filled: 0, total: 0 };
+  try {
+    const resp = await _geminiFetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'homophones-only', words: missing.map(q => q.word) }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.success && Array.isArray(data.results)) {
+        const map = new Map(data.results.map(r => [String(r.word || '').toLowerCase(), r.homophones || []]));
+        let filled = 0;
+        missing.forEach(q => {
+          q.homophones = map.get(q.word.toLowerCase()) || [];
+          if (q.homophones.length) filled++;
+        });
+        return { filled, total: missing.length };
+      }
+    }
+    missing.forEach(q => { q.homophones = []; });
+  } catch (e) {
+    console.warn('[homophones] AI failed:', e.message);
+    missing.forEach(q => { q.homophones = []; });
+  }
+  return { filled: 0, total: missing.length };
+}
+
 window.qsSaveEdits = async () => {
   const st = _qsEditState;
   if (!st) return;
@@ -11761,6 +11798,14 @@ window.qsSaveEdits = async () => {
   }
 
   if (!(await showConfirm('수정사항을 저장할까요?', `${st.questions.length}문제 업데이트`))) return;
+
+  // vocab 세트면 누락 단어 동음이의어 자동 채움 (학원장이 단어 추가/수정한 케이스 대응, 2026-05-15)
+  if (st.sourceType === 'vocab' || st.questions.some(q => q.type === 'vocab')) {
+    const filled = await _fillMissingHomophones(st.questions);
+    if (filled.total > 0) {
+      console.log(`[qsSaveEdits] 동음이의어 채움: ${filled.filled}/${filled.total}`);
+    }
+  }
 
   try {
     await updateDoc(doc(db,'genQuestionSets',st.setId), {
@@ -13155,6 +13200,15 @@ window.tpPublish = async () => {
     // 🎤 말하기 모드일 때만 엄격도 저장
     if (fmt === 'speaking') {
       vocabOptions.speakingStrictness = document.getElementById('tpSpeakingStrictness')?.value || 'normal';
+    }
+  }
+
+  // 안전망: vocab+speaking 일 때 누락 단어 동음이의어 자동 채움 (옛 세트 / API 수정 / import 케이스)
+  // 정상 시나리오 (Wordsnap·AI Generator·세트 수정 저장) 면 이미 채워져 있어 0 호출 — skip
+  if (cfg.testMode === 'vocab' && vocabOptions?.format === 'speaking') {
+    const filled = await _fillMissingHomophones(questions);
+    if (filled.total > 0) {
+      console.log(`[tpPublish 안전망] 동음이의어 채움: ${filled.filled}/${filled.total}`);
     }
   }
 
