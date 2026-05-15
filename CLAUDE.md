@@ -4276,3 +4276,191 @@ v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
 - ✅ 말하기 시험 채점 임계값 3단계 모두 완화 (0.55 / 0.7 / 0.8)
 - ✅ 학원장 앱 reads 진단 (학생관리 패턴 재확인)
 - ✅ SPK 임계값 정책 작업 규칙 명문화
+
+---
+
+## 2026-05-15: 음성 인식 시스템 정비 + 단어시험 별도 한도 + AI 사용량 차트 + super 앱 사용자 검색 최적화
+
+당일 SW v492 → v523 (~30+ commit). 6 큰 영역 작업.
+
+### 1) 음성 인식 시스템 (Web Speech + AI 폴백) 종합 정비
+
+**진단 (회귀 가설 폐기)**:
+- 사용자 보고 — 안드로이드 Chrome 에서 Web Speech 결과 안 받음, AI 도입 전엔 정상이었다고 주장
+- 진단 commit (`isAndroid` 분기 + 화면 [DIAG] 메시지) → 발음 후 `onend (no result/error)` 만 발화 확인
+- 일반 Chrome 에서도 같은 결과 → **PWA·MediaRecorder 무관, Chrome 자체 SR 한계**
+- 추가 진단 — 완전 정답·오답엔 `onresult` 정상 발화, **발음 애매할 때만** `onend` only
+- = SR 자체는 작동. 안드로이드 Chrome Google Cloud Speech 가 confidence 낮으면 결과 반환 X (정상 동작)
+
+**3차 시도 흐름 도입** (사용자 제안):
+- 1차 SR 단독 → 정답 → 다음 / 오답·애매 → 재시도 안내 (lock X)
+- 2차 SR 단독 → 동일
+- 3차 = **MR 단독 + 3 race 종료** (SR 완전 제거, mic 충돌 회피)
+  · timeout 5초 (max safety)
+  · [✓ 완료] 버튼 (학생 클릭, 정적 HTML)
+  · silence detection 1초 무음 (Web Audio API AnalyserNode RMS)
+  · 하나 fire → MR.stop() → AI 폴백 호출
+
+**임계값 재조정** (`SPK_STRICTNESS_CONFIG`):
+- 0.55/0.7/0.8 (2026-05-14) → 0.7/0.8/0.9 (이번 세션 첫 변경, 너무 타이트) → **0.6/0.7/0.8** (재조정, 최종)
+- 3차 AI 폴백 있어 1·2차 조금 엄격해도 학생 손해 작음
+
+**메시지·UX 변경**:
+- 1·2차 유사도 분기:
+  · sim 0.5~0.6 + 들린 단어 ≠ 정답 → `🔁 들린단어 "XXX" · 다시 한번 발음해보세요 (N/3)`
+  · 그 외 → `🔁 다시 한번 발음해보세요 (N/3)` (음역 X)
+- "다르게 들렸어요" → "다시 한번 발음해보세요" (학생 친화)
+- AI 코멘트 `XXX 처럼 들렸어요` → `들린단어 : XXX` 자동 변환 (`_cleanAiReason` 클라 안전망)
+  · 정답과 동일/유사 음역은 제거 (학생에 무의미)
+  · 행동 지시 (R 발음 강하게 등) 그대로 유지
+- 마이크 버튼 색 — 학원 brand 색 무시, 시각 구분 우선:
+  · `MIC_BTN_IDLE = '#60a5fa'` (옅은 파랑, 평소)
+  · `MIC_BTN_RECORDING = '#dc2626'` (진한 빨강, 녹음 중)
+- 2차 마이크 색 깜빡임 fix — vqSpkStart 진입 시 옛 SR 핸들러 null + abort() (옛 closure 의 handleFail 호출 차단)
+
+**관련 작업 규칙 (CLAUDE.md 신규)**:
+- 안드로이드 Chrome Web Speech 한계 — 발음 애매 시 cloud speech 결과 반환 X. AI 폴백 의무
+- MediaRecorder + SpeechRecognition 동시 사용 시 mic 충돌 (안드로이드). 순차 시작도 효과 없음
+- 옛 SR 인스턴스 cleanup 패턴 — 새 시도 시작 전 onresult/onerror/onend/onstart null 셋팅 + abort()
+
+### 2) AI 사용량 위젯·상세 페이지 — 6분류 + 라벨 통일 + 당월 SVG 차트
+
+**6분류 항목 통일** (사용자 결정):
+- OCR / Cleanup / Generator / 단어시험 / 녹음숙제 / 성장리포트
+- 학원장 위젯 (loadApiUsage) + 상세 페이지 (loadQuotaUsage) + super 앱 모든 위치 동일
+
+**당월 SVG 차트** (사용자 spec 확정 — 임의 7일 → 당월):
+- X축: 당월 1일 ~ 월말 (미래 일자 빈 막대)
+- 막대: 일별 사용량 (우측 Y축)
+- 꺾은선 직선: 월 누적 (좌측 Y축)
+- 한도선: horizontal 붉은 점선 (좌측 Y축)
+- 전월선: horizontal 회색 직선 (좌측 Y축, 전월 누적 종착값)
+- 이중 Y축 (좌측 누적·우측 일별, 0/max 라벨)
+- **B 옵션 (SVG 직접) — Chart.js 의존성 X, 0KB**
+
+**차트 세밀 조정** (사용자 피드백 반복):
+- H 180 → 60 (1/3)
+- 글자 사이즈 9~10 → **4** (X·Y 라벨)
+- 누적선 stroke-width 2 → **1** + `darkColor` (항목별 진한 톤, 예: sky-500 → sky-700)
+- 한도/전월선 stroke 1 → **0.5**, 축선 0.3
+- 막대 폭 = **`slotW * 0.67`** (일별 슬롯의 2/3)
+- 막대 opacity — 오늘 0.7 / 평소 0.4 (연하게)
+- X축 라벨 매일 1~말일 표시 (이전 4개 → 31개)
+- 한도/전월 숫자 라벨 차트 내 표시 (font-size 4, 굵게)
+- 각 막대 위 일별 사용량 숫자 표시 (font-size 4, darkColor, 굵게)
+
+**무제한 UI 분기**:
+- limit=null/undefined → "∞ 무제한" + 진도바 회색 + 회색 안내
+- API 측 `api/_lib/quota.js` 의 `limit = effective[cfg.limitField] ?? Infinity` — 이미 처리됨
+
+### 3) 단어시험 별도 한도 분리 (recording 공유 → wordSpeakingPerMonth)
+
+**사용자 결정** (옵션 컨펌 후): 1=명명 OK / 2=B(5월 백필) / 3=C(null=무제한) / 4=YES(Override)
+
+**데이터 모델**:
+- 카운터: `wordSpeakingCallsThisMonth`
+- 한도: `wordSpeakingPerMonth` (null = 무제한)
+- quotaKind: `'word-speaking'`
+- endpoint: `'check-word'` 그대로
+
+**코드 변경**:
+- `api/_lib/quota.js` — QUOTA_CONFIG 6분류, ALL_MONTHLY_COUNTERS 에 추가
+- `api/check-word.js` — quotaKind `'recording'` → `'word-speaking'`
+- 학원장 위젯·상세 페이지·super 앱 모든 위치 6분류 적용
+
+**마이그레이션 (실행 완료)**:
+1. `scripts/migrate/plans-add-word-speaking.js --apply` — plans 4개 byTier 에 `wordSpeakingPerMonth: null` 추가
+2. `scripts/migrate/backfill-may-word-speaking.js --apply` — default 학원 5월 209건 백필 (recording 388→179, wordSpeaking 0→209). 나머지 5학원 0건
+
+### 4) super 앱 사용량 모니터링 단어시험 통합
+
+- 상단 6 카드 한 줄 (grid 5 → 6, 카드 사이즈 축소)
+- Top 10 표 — `🗣 단어` 컬럼 추가 (10 → 11컬럼)
+- 엔드포인트별 호출 6분류 + 색 통일 (학원장 darkColor 와 일치)
+
+### 5) super 앱 사용자 검색 학원 단위 fetch (읽기 최소화)
+
+**사용자 제안 패턴**:
+- Role 필터 제거 → **학원 select** 신규 (왼쪽, default "학원을 선택하세요")
+- 학원 비선택 시 fetch X (페이지 진입만 = 0 reads)
+- 학원 선택 → `where('academyId','==',X) + orderBy('name') + limit(100)` 1회 fetch
+- 100명 초과 → [+ 더보기 (100명)] 버튼 (cursor `startAfter`)
+- 검색어 입력 (debounce 300ms) → 캐시 부분이면 자동 나머지 fetch + 클라 필터
+- 캐시 `_usersByAcademy[academyId] = { docs, lastDoc, complete }`
+- 같은 학원 재선택 = 0 reads
+- 사용자 추가·수정·삭제 후 캐시 전체 무효화 (단순)
+
+**reads 절감 효과**:
+| 시나리오 | 이전 | 신규 |
+|---------|------|------|
+| 페이지 진입만 | ~210 | **0** |
+| 학원 선택 (30명) | ~210 | **30** |
+| 같은 학원 재선택 | ~210 (캐시 hit) | **0** |
+| 학원 250명 + 더보기 1회 | ~210 | **200** |
+
+### 6) 작업 규칙 강화 — 확정 안 된 spec 임의 결정 X
+
+**필수 규칙 신설** ([memory/feedback_confirm_specs_before_work.md](memory/feedback_confirm_specs_before_work.md)):
+- 기간 / 범위 / 임계값 / 수치 / 색 등 사용자 명시 안 한 spec 임의 결정 금지
+- 작업 전 옵션 제시 + 컨펌
+- "default 로 진행" / "보통 N 일 사용" 등 추정 표현 금지
+- 시간 절약 위해 임의 결정 X — 결국 재작업 손해 ↑
+
+**계기**: AI 사용량 차트에 기간 "7일" 임의 결정 → 사용자 강한 피드백 ("누가 7일이라고 했지?"). 작업 손해 + 신뢰 손상. 강한 규칙으로 명문화.
+
+---
+
+## 작업 규칙 추가 (2026-05-15)
+
+신규:
+- **확정 안 된 spec 임의 결정 X** ([feedback_confirm_specs_before_work.md](memory/feedback_confirm_specs_before_work.md)) — 필수 규칙. 옵션 제시 → 컨펌 → 작업
+- **MediaRecorder + SpeechRecognition 동시 작동 X (안드로이드)** — mic 단일 점유. 진단 commit 으로 확정. 순차 시작 (200ms 지연) 도 효과 X. 두 API 가 필요하면 시점 분리 (1·2차 SR 단독 / 3차 MR 단독)
+- **안드로이드 Chrome Web Speech 발음 애매 케이스 처리** — onresult 안 오고 onend 만 발화. AI 폴백으로 받쳐줘야. iOS Safari 는 Apple on-device 라 confidence 낮아도 결과 반환 (정책 차이)
+- **옛 SR 인스턴스 cleanup** — 새 vqSpkStart 진입 시 옛 인스턴스 핸들러 null + abort(). 옛 closure 의 handleFail 호출로 UI 깜빡임 차단
+- **마이크 버튼 색 — 학원 brand 색 무시** — 녹음 시각 구분 우선이라 학원 brand 와 별개 색 고정 (옅은 파랑/진한 빨강)
+- **AI 코멘트 음역 멘트 자동 변환** — 프롬프트 차단 + 클라 안전망 (`_cleanAiReason`). "XXX 처럼 들렸어요" → "들린단어 : XXX". 정답과 동일/유사 음역은 제거
+- **이중 Y축 SVG 차트** — Chart.js 의존성 X, 직접 구현 패턴. 좌측 Y축 (누적) / 우측 Y축 (일별) / X축 (1~말일 매일). 막대·꺾은선 직선·점선 horizontal·grid 라벨 모두 SVG primitive
+- **카운터 신규 분리 시 작업 양** — quota.js QUOTA_CONFIG + ALL_MONTHLY_COUNTERS + API 호출부 quotaKind + 학원장 위젯·상세 페이지 items + super 앱 (학원 모달 + Top 10 + 한도 관리 PLAN_FIELDS + Override + aiSum 합산 + ALL_AI_ENDPOINTS + 사용량 카드 + 엔드포인트별) + plans 마이그레이션 + academies 백필. 한 분류 추가 = ~10 위치 일괄 변경
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-15)
+- `public/js/app.js`: ~5,400줄 (+~400, 3차 시도 흐름 + silence detection + 메시지 통일)
+- `public/admin/js/app.js`: ~14,200줄 (+~250, 6분류 + SVG 차트 + 무제한 UI)
+- `public/super/js/app.js`: ~3,200줄 (+~150, 6분류 + 사용자 검색 학원 단위 + 사용량 모니터링)
+- `public/super/index.html`: +~10 (학원 select + 더보기 영역)
+- `public/_app.html`: +1 (vqSpkDoneBtn 정적 버튼)
+- `api/_lib/quota.js`: +5 ('word-speaking' QUOTA_CONFIG + ALL_MONTHLY_COUNTERS)
+- `api/check-word.js`: quotaKind 변경 1줄
+- 신규 마이그레이션: `plans-add-word-speaking.js` / `backfill-may-word-speaking.js`
+- SW 캐시: `kunsori-v523`
+
+## 진행률 (2026-05-15)
+- **음성 인식 시스템: ~100%** (3차 흐름 + 임계값·메시지·색 정비 + 옛 SR cleanup)
+- **AI 사용량 인프라: ~100%** (6분류 통일 + 당월 SVG 차트 + 무제한 UI)
+- **단어시험 별도 한도: ~100%** (데이터 모델·마이그레이션·UI 모두 적용)
+- super 앱 사용량 모니터링: ~98% (단어시험 통합 완료, 추세 차트는 Phase B)
+- super 앱 사용자 검색: **~100%** (학원 단위 fetch + 캐시 + 더보기, 진입 0 reads)
+- 멀티테넌시·결제·브랜딩·녹음숙제: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-15 갱신)
+1. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+2. **학원장 대시보드 달력 보강** — 생일 카테고리
+3. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+4. **학원장 앱 reads 추가 최적화** (학생관리·결제·반·공지 localStorage 캐시)
+5. **AI 평가 실패율 (SuperAdmin Phase B T9)** — Cloud Function 일일 집계
+
+**완료 (이 세션, 2026-05-15)**:
+- ✅ 음성 인식 진단 (안드로이드 Chrome SR 한계 확정 — MediaRecorder 무관, 발음 애매 시 onend only)
+- ✅ 3차 시도 흐름 (1·2차 SR 단독 + 3차 MR + 3 race 종료)
+- ✅ SR 임계값 0.6/0.7/0.8 + 1·2차 유사도 메시지 "들린단어 XXX"
+- ✅ 마이크 버튼 색 통일 (옅은 파랑 / 진한 빨강) + 2차 깜빡임 fix
+- ✅ AI 코멘트 "들린단어 : XXX" + "다시 한번 발음해보세요"
+- ✅ AI 사용량 위젯·상세 6분류 적용
+- ✅ 당월 SVG 차트 (막대+누적+한도+전월, 이중 Y축, 막대 위 일별 수치)
+- ✅ 단어시험 별도 한도 분리 (quotaKind 'word-speaking', wordSpeakingPerMonth)
+- ✅ 마이그레이션 2건 적용 (plans byTier + default 209건 백필)
+- ✅ super 앱 사용량 모니터링 6분류 통합 (카드·Top 10·엔드포인트별)
+- ✅ super 앱 사용자 검색 학원 단위 fetch + 캐시 + 더보기 (진입 0 reads)
+- ✅ 작업 규칙 신설 — 확정 안 된 spec 임의 결정 X (필수)
