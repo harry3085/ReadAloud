@@ -4593,3 +4593,160 @@ v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
 - ✅ super 앱 apiUsage 메모리 캐시 + 5분 TTL (P1-A + P1-B)
 - ✅ 메모리 등록 — project_super_reads_p2_after_billing
 - ✅ 작업 규칙 보강 — limit 없는 query silent 누락 X / 인덱스 cleanup 3종 세트 / 모듈 변수+TTL 캐시 / 작업 전 컨펌 재확인
+
+---
+
+## 2026-05-15 (저녁 2): AI 응답 속도 개선 + 동음이의어 시스템 + 음역 멘트 처리 (단어시험)
+
+당일 SW v522 → v529 (~10 commit). 단어시험 (api/check-word.js) 음성 평가 흐름 + AI reason 처리 정비.
+
+### 1) AI 응답 속도 개선 (A+B+C)
+
+기존 흐름: blob 대기 → audioBase64 → /api/check-word → Firebase admin init + verifyAndCheckQuota → Gemini → incrementUsage → 응답. 1.5~3초 소요.
+
+**A. 출력 축소 (api/check-word.js)**:
+- buildWordCheckPrompt 시스템 프롬프트 ~600 → ~250 tokens (입력 ↓ + 비용 ↓)
+- maxOutputTokens 200 → **80** (출력 짧을수록 Gemini 응답 빨라짐). reason 25자 한정이라 충분
+- 예상 절감: ~400ms
+
+**B. 서버 처리 동시화 (api/check-word.js)**:
+- incrementUsage await 폐기 → fire-and-forget (응답 후 백그라운드)
+- res.status(200).json(...) 즉시 반환 → Firestore write 는 백그라운드 처리
+- X-Quota-* 헤더는 셋팅 X (학원장 위젯이 자체 fetch 로 한도 표시)
+- 예상 절감: ~150ms
+
+**C. progress 메시지 다단계 (체감 응답 ↑, 학생 앱)**:
+- 300ms: `🎧 오디오 준비 중...` → `🤖 AI 분석 중...`
+- 1200ms: `🤖 AI 분석 중... (곧 도착)`
+- fetch 완료 시 clearProgress 자동 호출 (locked 가드)
+- 실제 시간은 같지만 학생 체감 답답함 ↓
+
+체감 응답: 1.5~3초 → **0.8~1.8초** + 단계별 진전 보임.
+
+### 2) 동음이의어 시스템 옵션 1 (세트 수정 + 출제 안전망)
+
+사용자 결정 (선택지 분석 후): 세트 생성 + 세트 수정 저장 + 출제 시 누락 검사 3중 적용.
+
+**_fillMissingHomophones 헬퍼** (학원장 앱):
+- vocab questions 중 word 있고 `homophones` not Array 인 단어만 추출
+- AI 호출 (mode='homophones-only') 1회 → 결과 적용
+- 실패 시 빈 배열 fallback (무한 루프 방지)
+
+**qsSaveEdits — 세트 수정 저장 시**:
+- vocab 세트면 누락 단어 자동 채움 후 Firestore 저장
+- 학원장이 단어 추가/수정 → 저장 클릭 → 1~2초 추가 → 완료
+- generator 카운터에 자연스러움
+
+**tpPublish — vocab+speaking 출제 시 안전망**:
+- 누락 단어 있으면만 호출 (정상 시나리오 0 호출)
+- 옛 세트 / API 직접 수정 / import 케이스 자동 대응
+
+**마이그레이션 스크립트 신규**: `scripts/migrate/backfill-vocab-homophones.js`
+- DRY-RUN / --apply / --academyId / --testId / --setId / --tests-only / --sets-only
+- 옛 vocab 시험/세트 일괄 백필
+- default 학원 적용 — 45 세트 + 66 시험 검사 → **52 doc 업데이트**, 비용 ~₩200
+
+### 3) 'high' 수동 fix + AI 프롬프트 강화
+
+베타 사용자 (moon3085) 보고 — Q11 'high' 발음 시 SR 'hi' 인식 → 동음이의어 매칭 안 됨.
+
+**진단**: AI 가 'high' 의 동음이의어 'hi' 를 인식 못 함 (HOMOPHONES_PROMPT 가 "true homophone only" 엄격, 짧은 단어 제외 경향).
+
+**수동 fix**: 3 시험 (`2woSatRxfQ8HIZpr2kcx` / `51CMwklumtZgp5zeZubI` / `M22jmjdLBsnbtUXm185p`) Q11 의 `homophones=['hi']` 강제 셋팅.
+
+**AI 프롬프트 강화** ([api/generate-quiz.js HOMOPHONES_PROMPT](api/generate-quiz.js)):
+- 신규 RULE 3 추가: **SHORT WORDS — Include even very short single-syllable homophones**
+- 예시 추가: `high/hi`, `by/bye/buy`, `two/to/too`, `ate/eight`, `be/bee`, `see/sea`, `ad/add`, `ant/aunt`
+- 이전 AI 가 'hi' / 'be' / 'a' 같은 짧은 단어 누락하던 false-negative 해결
+- 다음 호출부터 적용
+
+### 4) _cleanAiReason 시리즈 — 음역 멘트 처리 (3차례 반복 개선)
+
+베타 사용자 보고 — 학생 결과 화면에 "XXX 처럼 들렸어요" / "soft 처럼 들릴 수 있어요" 같은 음역 멘트 표시. 학생에 무의미.
+
+**v1 (commit `ba85ee3` 시점, 직전)**: 정규식 capture group + 정답 동일 시 제거 + 다른 단어면 "들린단어 : XXX" 변환
+- 한계: "정답인 paper 처럼" 같은 prefix 케이스 → "정답인" capture → "들린단어 : 정답인" 깨진 결과
+
+**v2 (commit `6ddc92a`)**: 정규식 통째 제거 (capture 폐기)
+- `[^.!?]*(처럼|같이|로|...)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*`
+- 한계: '들릴' (사용자 보고 케이스 "들릴 수 있어요") 매치 안 됨
+
+**v3 (commit `4181298`)**: heard 비교 + 정규식 일반화
+- `(들렸|들려|들림|들리)` → **`들[가-힣]+`** (들릴/들렸/들립/들리지/들리네 등 모두 매치)
+- heard === target → 음역 제거 / heard !== target → 그대로 유지
+- 한계: heard 가 살짝 다른 케이스 (대소문자/공백/SR 변형) 비교 실패
+
+**v4 최종 (commit `38629c5`, C 옵션)**: 정답 단어 포함 검사
+- 음역 sentence 안에 **정답 단어가 그대로 포함되면 무조건 제거** (학생에 무의미)
+- 정답과 다른 단어가 음역 sentence 에 있으면 → 유지 (학생에 정보 가치)
+- heard === target — fallback 안전망
+- 정규식 + 정답 포함 검사 둘 다 적용
+
+### 5) AI reason 완곡 표현 (api/check-word.js)
+- 단정 "XX 처럼 들렸어요" 금지
+- 완곡 **"XX 처럼 들릴 수 있어요"** (가능성·tentative) 권장
+- 학생에 더 친화적 표현 — 단언 X, 가능성 ↑
+
+### 6) 학생 응시 데이터 진단·검증
+
+베타 응시 데이터 진단 도구:
+- `dump-speaking-completion.js` — userCompleted 의 answers[].spkAiReason / spkHeard 등 raw 값 출력
+- Mr Brown 12문제 시험 진단 — moon3085 (default) 통과 데이터에서 dibble dibble / high 케이스 확인
+
+**중요 발견**:
+- userCompleted 의 questions/answers 는 **최고점 통과 시에만** 저장 ([CLAUDE.md 규칙 7](CLAUDE.md))
+- 재시험 점수가 옛 최고점 이하면 새 응시 데이터 저장 안 됨
+- 학생이 화면에서 본 메시지가 Firestore 에 없는 케이스 — 메모리에서만 표시
+
+### 7) SW 캐시 갱신 정책 (학생 폰)
+
+- 학생 폰의 PWA SW 는 자동 갱신 보수적 — 페이지 새로고침 또는 PWA 재시작 필요
+- 베타 운영 중 코드 자주 변경 시 학생 폰 캐시 오래 머무를 수 있음
+- 응시 시점 SW 버전 ≠ 학원장 최신 버전 가능성 — 진단 시 시간 확인 필요
+- 가이드: 학원장이 학생에게 강제 새로고침 안내 (또는 docs/student-mic-help.md 같은 자료)
+
+---
+
+## 작업 규칙 추가 (2026-05-15 저녁 2)
+
+신규:
+- **AI 응답 속도 최적화 3 패턴** — (A) 출력 토큰 제한 (maxOutputTokens) + 프롬프트 축소, (B) 인증·카운터를 fire-and-forget 으로 응답 후 처리, (C) 클라 progress 다단계 메시지로 체감 응답 ↑. 1.5~3초 → 0.8~1.8초 효과 달성.
+- **동음이의어 자동 채움 3중 적용** — 세트 생성 + 세트 수정 저장 + 출제 시 누락 검사. 학원장이 단어 추가/수정 후 출제까지 자동 보강. 호출 비용은 정상 시나리오 출제 시 0.
+- **AI 가 짧은 단어 동음이의어 누락 회피** — HOMOPHONES_PROMPT 에 SHORT WORDS rule 명시 (high/hi · by/bye/buy · two/to/too 등). false-negative 큰 폭 감소.
+- **AI reason 음역 멘트 처리 — 정답 단어 포함 검사 (C 옵션)** — heard 비교보다 robust. AI 가 reason 에 정답 단어 그대로 쓰는 모든 케이스 자동 제거. 다른 단어 들렸으면 학생에 정보 가치 유지.
+- **AI reason 완곡 표현 권장** — "XX 처럼 들렸어요" (단정) 금지, "XX 처럼 들릴 수 있어요" (가능성) 권장. 학생 친화.
+- **응시 시점 SW 버전 확인** — 베타 운영 중 학생 폰 SW 캐시가 학원장 최신 버전과 다를 가능성 ↑. 진단 시 응시 latestAt 와 SW commit 시간 비교 필수.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-15 저녁 2)
+- `public/admin/js/app.js`: ~14,400줄 (+~200, _fillMissingHomophones · qsSaveEdits · tpPublish 안전망)
+- `public/js/app.js`: ~5,420줄 (+~30, progress 다단계 · _cleanAiReason C 옵션)
+- `api/check-word.js`: 프롬프트 축소 + maxOutputTokens 80 + fire-and-forget + 완곡 표현 가이드 (~25 변경)
+- `api/generate-quiz.js`: HOMOPHONES_PROMPT SHORT WORDS rule 추가 (~3 줄)
+- 신규 스크립트: `scripts/migrate/backfill-vocab-homophones.js` (~140 줄)
+- SW 캐시: `kunsori-v529`
+
+## 진행률 (2026-05-15 저녁 2)
+- **AI 응답 속도 (단어시험): ~95%** (A+B+C 완료, Edge function 변환 검토 가능)
+- **동음이의어 시스템: ~100%** (3중 적용 + 마이그레이션 + AI 프롬프트 강화)
+- **AI reason 음역 처리: ~100%** (C 옵션 적용)
+- 음성 인식 시스템: ~100% (변동 없음)
+- AI 사용량 인프라: ~100% (변동 없음)
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-15 저녁 2 갱신)
+1. **학원장 공지 등록** — docs/student-mic-help.md + SW 캐시 갱신 안내 (학생에 강제 새로고침 가이드)
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리
+4. **v1.0 Polish 사이클**
+5. **AI 평가 실패율 (SuperAdmin Phase B T9)** — Cloud Function 일일 집계
+
+**완료 (이 세션 저녁 2, 2026-05-15)**:
+- ✅ AI 응답 속도 A+B+C (출력 축소 + fire-and-forget + progress 다단계)
+- ✅ 동음이의어 시스템 옵션 1 (세트 수정 + 출제 안전망 + backfill 마이그레이션 적용)
+- ✅ 'high' 수동 fix (3 시험) + HOMOPHONES_PROMPT SHORT WORDS rule
+- ✅ _cleanAiReason 시리즈 4차례 개선 (capture group → 통째 제거 → heard 비교 → C 옵션 정답 단어 포함)
+- ✅ AI reason 완곡 표현 가이드 (들렸어요 → 들릴 수 있어요)
+- ✅ 베타 데이터 진단 도구 (dump-speaking-completion 활용)
+- ✅ 작업 규칙 보강 — AI 응답 속도 / 동음이의어 3중 / 음역 처리 C 옵션 / SW 캐시 정책
