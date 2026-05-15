@@ -4956,26 +4956,18 @@ window.vqSpkStart = async () => {
   }, 5000);
 };
 
-// AI reason 음역 멘트 변환 (클라 측 안전망)
-// "XXX 처럼 들렸어요" 같은 음역 sentence → "들린단어 : XXX" 로 변환 (사용자 요청 2026-05-15)
-// 음역만 단독으로 적힌 경우 학생에 정보 가치 ↑ (단어 인식 표시)
-function _cleanAiReason(reason, targetWord) {
+// AI reason 음역 멘트 제거 (클라 측 안전망 — 정확도 우선)
+// "XXX 처럼 들렸어요" 같은 음역 sentence 통째로 제거 → 행동 지시 (R 발음 강하게 등) 만 유지.
+// 들린 단어 정보는 별도 필드 (spkHeard / spkAiHeard) 로 결과 화면에 표시되므로 reason 안 음역은 중복.
+// 2026-05-15 (재조정): "정답인 XXX 처럼" 같은 prefix 케이스도 정규식 매칭 실패해 깨진 결과 나옴 → 통째 제거가 안전.
+function _cleanAiReason(reason, _targetWord) {
   if (!reason) return '';
   let r = String(reason).trim();
   if (!r) return '';
-  const target = String(targetWord || '').toLowerCase().replace(/[\s'"]/g, '');
-  // 2026-05-15 (재조정): 들린 단어가 정답과 동일/유사하면 sentence 제거.
-  // 정답과 다른 단어면 원래 sentence ("XXX 처럼 들렸어요") 그대로 유지.
-  const heardSentence = /['"]?([가-힣a-zA-Z][가-힣a-zA-Z\s]*?)['"]?\s*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
-  r = r.replace(heardSentence, (match, word) => {
-    const heard = String(word || '').trim();
-    const heardClean = heard.toLowerCase().replace(/[\s'"]/g, '');
-    // 정답과 동일/유사 → 제거 (정답 음역은 학생에 무의미)
-    if (!heard || (target && (heardClean === target || heardClean.includes(target) || target.includes(heardClean)))) {
-      return '';
-    }
-    return match;  // 다른 단어 → "XXX 처럼 들렸어요" 표현 그대로 유지
-  });
+  // 음역 sentence 통째 제거 (단어 capture 안 함 — 정확도 ↑)
+  // 패턴: "(prefix 단어들) (처럼/같이/...) (들렸/들려/...)" + sentence 끝까지
+  const heardSentence = /[^.!?]*(처럼|같이|로|으로|같아요|와\s*비슷|비슷하게)\s*(들렸|들려|들림|들리)[^.!?]*[.!?]?\s*/gu;
+  r = r.replace(heardSentence, '');
   return r.trim();
 }
 
@@ -5023,9 +5015,15 @@ async function _vqTryAiFallback(webspeechHeard) {
   // webspeechHeard 가 빈 문자열이어도 blob 충분히 크면 AI 시도
   // (Web Speech 가 못 들었지만 학생은 실제 발음한 케이스)
 
-  // 진행 UI
-  if (status) status.innerHTML = '🤖 AI가 자세히 들어볼게요... <span style="font-size:11px;color:#888;">(약 1~2초)</span>';
+  // 진행 UI — 다단계 메시지 (체감 응답 ↑, 2026-05-15)
   if (btn) { btn.disabled = true; btn.style.background = '#8b5cf6'; }
+  if (status) status.textContent = '🎧 오디오 준비 중...';
+
+  // 진행 메시지 step (실제 진행은 fetch 1회. 단계별 시각 진전 효과)
+  const progressTimers = [];
+  progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.textContent = '🤖 AI 분석 중...'; }, 300));
+  progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.innerHTML = '🤖 AI 분석 중... <span style="font-size:11px;color:#888;">(곧 도착)</span>'; }, 1200));
+  const clearProgress = () => progressTimers.forEach(t => clearTimeout(t));
 
   try {
     if (!currentUser) throw new Error('로그인 정보 없음');
@@ -5047,6 +5045,7 @@ async function _vqTryAiFallback(webspeechHeard) {
       signal: ctrl.signal,
     });
     clearTimeout(tid);
+    clearProgress();
     const data = await r.json().catch(() => ({}));
 
     if (!r.ok || data.fallback) {
@@ -5068,6 +5067,7 @@ async function _vqTryAiFallback(webspeechHeard) {
       _vqSpkFinalize(false, data.heard || webspeechHeard, meta);
     }
   } catch (e) {
+    clearProgress();
     console.error('[vqSpk] AI fallback:', e);
     if (e.name === 'AbortError' && status) status.textContent = 'AI 응답이 늦어요. 다시 시도하세요.';
     _vqSpkFinalize(false, webspeechHeard, { source: 'ai-error', aiError: e.message });

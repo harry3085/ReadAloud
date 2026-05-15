@@ -26,58 +26,18 @@ const MODELS = [
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 function buildWordCheckPrompt(targetWord) {
-  return `You are evaluating ONE English word pronunciation by a Korean student.
+  // 2026-05-15 축소판 — 응답 속도 우선 (입력 토큰 ↓ + 출력 ≤80 tokens 강제)
+  return `Korean student pronouncing English word.
 
-TARGET WORD: "${targetWord}"
+TARGET: "${targetWord}"
 
-Listen to the audio and answer:
-1. Did the student say "${targetWord}" or close to it? (Korean accent acceptable)
-2. What did you actually hear?
+Return JSON only:
+{"match":true|false,"heard":"<heard word, lowercase eng>","confidence":0-100,"reason":"<Korean action tip, max 20 chars>"}
 
-Return STRICT JSON only (no markdown, no explanation):
-{
-  "match": true | false,
-  "heard": "<the word you actually heard, lowercase English only>",
-  "confidence": <0-100>,
-  "reason": "<one-line Korean pronunciation tip, max 25 chars>"
-}
-
-ACCEPT (match: true):
-- Clearly pronounced target word
-- Korean accent of target word (e.g., "워러" for "water" → match: true)
-- Minor mispronunciation if target is identifiable
-
-REJECT (match: false):
-- Completely different word
-- Silent or only noise
-- Wrong word that just sounds similar in letters (e.g., "right" vs "light")
-
-HEARD field:
-- ALWAYS return what you actually heard, even if match: true
-- If silent/noise: return ""
-- Use lowercase English (no Korean text)
-
-REASON field — Korean pronunciation ACTION tip (CRITICAL rules):
-- NEVER write transliteration alone (e.g., "유진처럼 들렸어요", "워러 같이 들려요").
-  Transliteration = useless. Student needs ACTION instructions.
-- If heard sounds identical to target word: return "" (empty — nothing to fix).
-- If match: true and confidence > 90: ""
-- If match: true and confidence 60-90: short ACTION tip
-  (GOOD: "R 발음을 강하게", "L 끝까지 혀를 위로", "장모음 길게 늘려주세요")
-  (BAD: "유진처럼 들렸어요", "비슷하지만 약간 달라요", "굿잡 잘했어요")
-- If match: false: what specifically is wrong + how to fix
-  (GOOD: "R 발음을 더 강하게 굴려보세요", "TH 혀를 이 사이로 살짝")
-  (BAD: "다른 단어로 들렸어요", "워러로 들렸어요", "정답과 달라요")
-- If you cannot give a useful ACTION tip: return "" (empty is better than vague)
-- Max 25 Korean characters
-- Use IPA notation if helpful: [r], [θ], [ʃ] etc.
-
-CONFIDENCE GUIDE:
-- 90-100: Native-level or clear Korean accent
-- 70-89: Identifiable with minor issues
-- 50-69: Recognizable but needs practice
-- 30-49: Significant issues
-- 0-29: Wrong / silent / noise`;
+match=true: target spoken (Korean accent OK). match=false: different word / silent / noise.
+heard: actual word heard (empty if silent).
+reason: pronunciation ACTION only (e.g. "R 발음 강하게", "TH 혀끝 이 사이"). NEVER transliteration ("XX처럼 들려요" 금지). Empty if no useful tip.
+confidence: 90+ clear / 70-89 minor / 50-69 fair / <50 poor.`;
 }
 
 function extractJson(text) {
@@ -163,7 +123,7 @@ module.exports = async (req, res) => {
     generationConfig: {
       temperature: 0.0,
       topP: 0.8,
-      maxOutputTokens: 200,
+      maxOutputTokens: 80,  // 2026-05-15 200 → 80 (응답 시간 단축, 50~80 tokens 면 충분)
       responseMimeType: 'application/json',
       responseSchema,
       thinkingConfig: { thinkingBudget: 0 },
@@ -213,14 +173,8 @@ module.exports = async (req, res) => {
   const cleanReason = String(parsed.reason || '').slice(0, 40);
   const conf = Math.max(0, Math.min(100, parsed.confidence || 0));
 
-  // ── 사용량 카운트 (성공 시만, recording 카운터 + apiUsage 'check-word') ──
-  try {
-    await incrementUsage({ ...q, res, endpoint: 'check-word' });
-  } catch (e) {
-    console.warn('[check-word] incrementUsage 실패:', e.message);
-  }
-
-  return res.status(200).json({
+  // ── 응답 먼저 보내고 사용량 카운트는 백그라운드 (응답 시간 단축, 2026-05-15) ──
+  res.status(200).json({
     match: parsed.match,
     heard: cleanHeard,
     confidence: conf,
@@ -228,4 +182,9 @@ module.exports = async (req, res) => {
     modelUsed,
     elapsed,
   });
+
+  // Fire and forget — Vercel function 이 종료될 때까지 백그라운드 처리
+  // 단 X-Quota-* 헤더는 응답 이후라 셋팅 X (학원장 위젯이 자체 fetch 로 한도 표시)
+  incrementUsage({ ...q, endpoint: 'check-word' })
+    .catch(e => console.warn('[check-word] incrementUsage 실패:', e.message));
 };
