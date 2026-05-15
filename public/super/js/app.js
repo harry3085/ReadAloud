@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, deleteDoc, writeBatch, query, orderBy, where, limit, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, deleteDoc, writeBatch, query, orderBy, where, limit, startAfter, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8",
@@ -215,15 +215,19 @@ window.goTab = (id) => {
   else if (id === 'branding') loadLexiAIBranding();
 };
 
-// ── 사용자 검색 ──────────────────────────────────────
-let _allUsersCache = null;
+// ── 사용자 검색 (학원 단위 fetch + cursor 더보기, 2026-05-15) ──
+// 캐시: { academyId: { docs:[...], lastDoc, complete:bool } }
+// 학원 비선택 시 fetch X. 학원 선택 = 첫 100명 fetch. 더보기 = +100. 검색어 입력 = 나머지 전체 fetch.
+const _usersByAcademy = {};
+const USERS_PAGE_SIZE = 100;
 let _userSortKey = 'name';
-let _userSortDir = 1;  // 1 asc, -1 desc
+let _userSortDir = 1;
+let _searchDebounceTimer = null;
 
 window.sortUsers = (key) => {
   if (_userSortKey === key) _userSortDir *= -1;
   else { _userSortKey = key; _userSortDir = 1; }
-  runUserSearch();
+  _renderUsersTable();
 };
 
 function _applyUserSort(arr) {
@@ -255,39 +259,141 @@ function _renderSortMarks() {
     else el.textContent = '';
   });
 }
-async function _loadAllUsers() {
-  if (_allUsersCache) return _allUsersCache;
-  const snap = await getDocs(collection(db, 'users'));
-  _allUsersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-  return _allUsersCache;
+
+// 학원 select 옵션 채움 (페이지 진입 시 1회, _academiesCache 변경 시 호출)
+window.populateAcademyFilter = () => {
+  const sel = document.getElementById('userAcademyFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  const opts = ['<option value="">학원을 선택하세요</option>'];
+  _academiesCache.forEach(a => {
+    opts.push(`<option value="${esc(a.id)}">${esc(a.name || a.id)}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if (cur) sel.value = cur;
+};
+
+// 학원별 사용자 fetch — 첫 호출 limit 100, 이후 cursor 로 +100, fetchAll=true 면 남은 모두
+async function _loadUsersForAcademy(academyId, { fetchAll = false } = {}) {
+  if (!academyId) return [];
+  let cache = _usersByAcademy[academyId];
+  if (!cache) cache = _usersByAcademy[academyId] = { docs: [], lastDoc: null, complete: false };
+  if (cache.complete) return cache.docs;
+
+  const usersRef = collection(db, 'users');
+  const constraints = [where('academyId', '==', academyId), orderBy('name')];
+  if (cache.lastDoc) constraints.push(startAfter(cache.lastDoc));
+  if (!fetchAll) constraints.push(limit(USERS_PAGE_SIZE));
+
+  const snap = await getDocs(query(usersRef, ...constraints));
+  snap.docs.forEach(d => cache.docs.push({ uid: d.id, ...d.data() }));
+  cache.lastDoc = snap.docs[snap.docs.length - 1] || cache.lastDoc;
+  if (fetchAll || snap.size < USERS_PAGE_SIZE) cache.complete = true;
+  return cache.docs;
 }
 
-window.runUserSearch = async () => {
+// 학원 select 변경 → 비어있으면 빈 상태, 선택 시 fetch 후 표시
+window.onAcademyFilterChange = async () => {
+  const academyId = document.getElementById('userAcademyFilter')?.value || '';
   const tbody = document.getElementById('userSearchBody');
-  const term = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
-  const roleFilter = document.getElementById('userRoleFilter')?.value || '';
+  if (!academyId) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">학원을 선택하세요</td></tr>';
+    _hideMoreBar();
+    return;
+  }
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
   try {
+    await _loadUsersForAcademy(academyId);
+    _renderUsersTable();
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">로드 실패: ${esc(e.message)}</td></tr>`;
+  }
+};
+
+// 검색어 입력 → 캐시가 부분이면 나머지 fetch 후 클라 필터 (debounce 300ms)
+window.onSearchTermChange = () => {
+  if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(async () => {
+    const academyId = document.getElementById('userAcademyFilter')?.value || '';
+    const term = (document.getElementById('userSearchInput')?.value || '').trim();
+    if (!academyId) return;  // 학원 비어있으면 무시
+    const cache = _usersByAcademy[academyId];
+    // 검색어 있고 캐시 부분일 때 — 나머지 일괄 fetch (검색 정확도 보장)
+    if (term && cache && !cache.complete) {
+      const tbody = document.getElementById('userSearchBody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색을 위해 나머지 로딩 중...</td></tr>';
+      try { await _loadUsersForAcademy(academyId, { fetchAll: true }); } catch (e) {}
+    }
+    _renderUsersTable();
+  }, 300);
+};
+
+window.runUserSearch = async () => {
+  // [🔍 검색] 버튼 — onSearchTermChange 와 동일
+  const academyId = document.getElementById('userAcademyFilter')?.value || '';
+  if (!academyId) return;
+  const cache = _usersByAcademy[academyId];
+  if (cache && !cache.complete) {
+    const tbody = document.getElementById('userSearchBody');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">검색을 위해 나머지 로딩 중...</td></tr>';
+    try { await _loadUsersForAcademy(academyId, { fetchAll: true }); } catch (e) {}
+  }
+  _renderUsersTable();
+};
+
+window.loadMoreUsers = async () => {
+  const academyId = document.getElementById('userAcademyFilter')?.value || '';
+  if (!academyId) return;
+  const btn = document.querySelector('#userSearchMore button');
+  if (btn) { btn.disabled = true; btn.textContent = '로딩 중...'; }
+  try {
+    await _loadUsersForAcademy(academyId);
+    _renderUsersTable();
+  } catch (e) {
+    showToast('로드 실패: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '+ 더보기 (100명)'; }
+  }
+};
+
+function _hideMoreBar() {
+  const more = document.getElementById('userSearchMore');
+  if (more) more.style.display = 'none';
+}
+
+function _renderUsersTable() {
+  const tbody = document.getElementById('userSearchBody');
+  const more = document.getElementById('userSearchMore');
+  const moreInfo = document.getElementById('userSearchMoreInfo');
+  const academyId = document.getElementById('userAcademyFilter')?.value || '';
+  const term = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+
+  if (!academyId) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">학원을 선택하세요</td></tr>';
+    _hideMoreBar();
+    return;
+  }
+  const cache = _usersByAcademy[academyId];
+  if (!cache) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">로딩 중...</td></tr>';
-    const [all] = await Promise.all([
-      _loadAllUsers(),
-      _academiesCache.length === 0 ? loadAcademies() : Promise.resolve(),
-    ]);
-    const academyNameMap = {};
-    _academiesCache.forEach(a => { academyNameMap[a.id] = a.name || a.id; });
-    let filtered = all.map(u => ({ ...u, academyName: u.academyId ? (academyNameMap[u.academyId] || u.academyId) : '' }));
-    if (roleFilter) filtered = filtered.filter(u => u.role === roleFilter);
-    if (term) {
-      filtered = filtered.filter(u => {
-        const fields = [u.name, u.email, u.username, u.uid].map(s => String(s || '').toLowerCase());
-        return fields.some(f => f.includes(term));
-      });
-    }
-    filtered = _applyUserSort(filtered);
-    _renderSortMarks();
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">결과 없음</td></tr>';
-      return;
-    }
+    return;
+  }
+
+  // 학원명 매핑 + 필터
+  const academyNameMap = {};
+  _academiesCache.forEach(a => { academyNameMap[a.id] = a.name || a.id; });
+  let filtered = cache.docs.map(u => ({ ...u, academyName: u.academyId ? (academyNameMap[u.academyId] || u.academyId) : '' }));
+  if (term) {
+    filtered = filtered.filter(u => {
+      const fields = [u.name, u.email, u.username, u.uid].map(s => String(s || '').toLowerCase());
+      return fields.some(f => f.includes(term));
+    });
+  }
+  filtered = _applyUserSort(filtered);
+  _renderSortMarks();
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">결과 없음</td></tr>';
+  } else {
     const fmtDate = (t) => {
       if (!t) return '-';
       let d;
@@ -298,7 +404,7 @@ window.runUserSearch = async () => {
       else return '-';
       return isNaN(d.getTime()) ? '-' : new Date(d.getTime() + 9*3600*1000).toISOString().slice(0, 10);
     };
-    tbody.innerHTML = filtered.slice(0, 200).map(u => {
+    tbody.innerHTML = filtered.map(u => {
       const acaName = u.academyName || '-';
       const acaId = u.academyId || '';
       return `
@@ -307,32 +413,52 @@ window.runUserSearch = async () => {
         <td class="td-mono">${esc(u.username || '-')}</td>
         <td class="td-sub">${esc(u.email || '-')}</td>
         <td>${esc(acaName)}${acaId && acaId !== acaName ? `<span style="color:#bbb;font-size:11px;margin-left:4px;">(${esc(acaId)})</span>` : ''}</td>
-        <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : (u.role === 'admin' ? 'badge-teal' : '')}">${esc(u.role || '-')}</span></td>
+        <td><span class="badge ${u.role === 'super_admin' ? 'badge-red' : ((u.role === 'admin' || u.role === 'academy_admin') ? 'badge-teal' : '')}">${esc(u.role || '-')}</span></td>
         <td class="td-sub">${esc(u.status || '-')}</td>
         <td class="td-sub">${fmtDate(u.createdAt)}</td>
       </tr>`;
-    }).join('') + (filtered.length > 200 ? `<tr><td colspan="7" style="text-align:center;color:#bbb;padding:8px;">... 외 ${filtered.length - 200}건 (검색어 더 좁히기)</td></tr>` : '');
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#e05050;padding:20px;">검색 실패: ${esc(e.message)}</td></tr>`;
+    }).join('');
   }
-};
 
-window.onUserRowClick = async (uid) => {
-  const all = await _loadAllUsers();
-  const u = all.find(x => x.uid === uid);
+  // 더보기 바 — 캐시 미완료 + term 없을 때 표시
+  if (more) {
+    if (!cache.complete && !term) {
+      more.style.display = 'block';
+      if (moreInfo) moreInfo.textContent = `${cache.docs.length}명 표시 — 더 있어요`;
+    } else if (!cache.complete && term) {
+      more.style.display = 'none';  // 검색 시 자동 전체 fetch 라 더보기 X
+    } else {
+      more.style.display = 'block';
+      if (moreInfo) moreInfo.textContent = `전체 ${cache.docs.length}명${term ? ` · 검색 결과 ${filtered.length}건` : ''}`;
+      const btn = more.querySelector('button');
+      if (btn) btn.style.display = 'none';
+    }
+  }
+}
+
+window.onUserRowClick = (uid) => {
+  // 캐시에서 직접 찾음 (학원 단위라 빠름)
+  let u = null;
+  for (const k in _usersByAcademy) {
+    u = _usersByAcademy[k].docs.find(x => x.uid === uid);
+    if (u) break;
+  }
   if (!u) { showToast('사용자 없음'); return; }
-  if (u.role === 'admin' && u.academyId) {
-    // 학원장 → 학원 모달
-    if (!_academiesCache.length) await loadAcademies();
-    openAcademyModal(u.academyId);
+  if ((u.role === 'admin' || u.role === 'academy_admin') && u.academyId) {
+    if (!_academiesCache.length) loadAcademies().then(() => openAcademyModal(u.academyId));
+    else openAcademyModal(u.academyId);
   } else {
-    // 학생 / super_admin → 사용자 단독 편집 모달
     openUserEditModal(uid);
   }
 };
 
 window.openUserEditModal = (uid) => {
-  const u = (_allUsersCache || []).find(x => x.uid === uid);
+  // _usersByAcademy 캐시에서 사용자 찾기
+  let u = null;
+  for (const k in _usersByAcademy) {
+    u = _usersByAcademy[k].docs.find(x => x.uid === uid);
+    if (u) break;
+  }
   if (!u) return;
   const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
@@ -388,9 +514,11 @@ window.saveUserEdit = async () => {
     if (!j.success) { showToast('저장 실패: ' + j.error); return; }
     await logAdminAction('update_user', 'user', uid, { changedFields: Object.keys(fields) });
     closeModal();
-    _allUsersCache = null; // 캐시 무효화
+    // 캐시 무효화 — 사용자 학원 캐시 + 새 학원 (변경 가능) 캐시 둘 다 제거
+    Object.keys(_usersByAcademy).forEach(k => { delete _usersByAcademy[k]; });
     showToast('✅ 저장됨');
-    runUserSearch();
+    const acad = document.getElementById('userAcademyFilter')?.value || '';
+    if (acad) onAcademyFilterChange();
   } catch (e) {
     showToast('오류: ' + e.message);
   }
@@ -658,7 +786,7 @@ window.executeAcademyDelete = async (academyId, subdomain) => {
     showToast(`✅ 학원 영구 삭제 완료 (${totalDeleted} docs)`);
     // 캐시 무효화 + 새로고침
     _academiesCache = [];
-    _allUsersCache = null;
+    Object.keys(_usersByAcademy).forEach(k => { delete _usersByAcademy[k]; });
     await loadAcademies();
   } catch (e) {
     if (status) status.innerHTML = `<span style="color:#dc2626;">오류: ${esc(e.message)}</span>`;
@@ -1498,6 +1626,7 @@ async function loadAcademies() {
     _academiesCache = academies;
     _plansCache = planMap;
     await _renderAcademiesSummary(academies, planMap);
+    if (typeof populateAcademyFilter === 'function') populateAcademyFilter();
     el.innerHTML = academies.map(a => {
       const expCls = _expiryClass(a.planExpiresAt);
       const expText = _fmtDate(a.planExpiresAt);
@@ -2365,7 +2494,7 @@ window.exportBillingCsv = () => {
 
 const GEMINI_DAILY_LIMIT = 1000;        // (deprecated — 유료 전환 후 한도 없음, 글로벌 배너 비활성)
 // 비용 발생 5분류 endpoint — 학원장 대시보드·loadQuotaUsage 와 동일 정의
-const ALL_AI_ENDPOINTS = ['ocr', 'cleanup-ocr', 'generate-quiz', 'check-recording', 'growth-report'];
+const ALL_AI_ENDPOINTS = ['ocr', 'cleanup-ocr', 'generate-quiz', 'check-word', 'check-recording', 'growth-report'];
 const VISION_ENDPOINTS = ['ocr'];                                       // (참고용)
 const GEMINI_ENDPOINTS = ['cleanup-ocr', 'generate-quiz', 'check-recording', 'growth-report'];  // (참고용)
 
@@ -2498,13 +2627,14 @@ async function _loadGeminiGauge() {
   if (!el) return;
   const today = await _todayApiCalls();
 
-  // 5분류 라벨 (학원장 대시보드·Top 10 과 동일 순서)
+  // 6분류 라벨 (학원장 대시보드·Top 10 과 동일 순서, 2026-05-15 단어시험 추가)
   const items = [
     { key: 'ocr',             label: '📷 OCR',         provider: 'Vision' },
-    { key: 'cleanup-ocr',     label: '🧹 OCR 정리',    provider: 'Gemini' },
+    { key: 'cleanup-ocr',     label: '🧹 Cleanup',     provider: 'Gemini' },
     { key: 'generate-quiz',   label: '✨ Generator',   provider: 'Gemini' },
+    { key: 'check-word',      label: '🗣 단어시험',     provider: 'Gemini' },
     { key: 'check-recording', label: '🎤 녹음숙제',     provider: 'Gemini' },
-    { key: 'growth-report',   label: '📈 성장 리포트', provider: 'Gemini' },
+    { key: 'growth-report',   label: '📈 성장리포트',   provider: 'Gemini' },
   ];
   const totalToday = items.reduce((s, it) => s + (today.byEndpoint[it.key] || 0), 0);
 
