@@ -2656,13 +2656,13 @@ async function _loadGeminiGauge() {
       <span style="font-size:28px;font-weight:800;color:var(--text);">${totalToday.toLocaleString()}</span>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">
       ${items.map(it => {
         const v = today.byEndpoint[it.key] || 0;
         return `
-          <div style="padding:10px 8px;background:#fafafa;border:1px solid var(--border);border-radius:6px;text-align:center;">
-            <div style="font-size:11px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
-            <div style="font-size:18px;font-weight:700;margin-top:4px;color:var(--text);">${v.toLocaleString()}</div>
+          <div style="padding:8px 6px;background:#fafafa;border:1px solid var(--border);border-radius:6px;text-align:center;">
+            <div style="font-size:10px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
+            <div style="font-size:16px;font-weight:700;margin-top:3px;color:var(--text);">${v.toLocaleString()}</div>
             <div style="font-size:9px;color:#bbb;margin-top:2px;">${it.provider}</div>
           </div>`;
       }).join('')}
@@ -2745,7 +2745,7 @@ async function _loadAcademyTop10() {
     return {
       id: a.id, name: a.name || a.id, planId: a.planId,
       students: u.activeStudentsCount || 0,
-      ocr, cleanup, generator, recording, growth, storageBytes,
+      ocr, cleanup, generator, wordSpeaking, recording, growth, storageBytes,
       total: aiSum + recording, aiLimit: aiSumLimit, aiPct,
     };
   });
@@ -2766,16 +2766,17 @@ async function _loadAcademyTop10() {
     ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
     <table class="table" style="margin:0;font-size:12px;table-layout:fixed;width:100%;">
       <colgroup>
-        <col style="width:18%;">
+        <col style="width:16%;">
+        <col style="width:7%;">
+        <col style="width:7%;">
+        <col style="width:7%;">
         <col style="width:8%;">
         <col style="width:8%;">
         <col style="width:8%;">
-        <col style="width:9%;">
-        <col style="width:9%;">
         <col style="width:8%;">
-        <col style="width:9%;">
         <col style="width:8%;">
-        <col style="width:9%;">
+        <col style="width:8%;">
+        <col style="width:7%;">
       </colgroup>
       <thead><tr>
         <th style="white-space:nowrap;">학원명</th>
@@ -2784,10 +2785,11 @@ async function _loadAcademyTop10() {
         <th class="td-center" style="white-space:nowrap;">📷 OCR</th>
         <th class="td-center" style="white-space:nowrap;">🧹 정리</th>
         <th class="td-center" style="white-space:nowrap;">✨ 생성</th>
+        <th class="td-center" style="white-space:nowrap;">🗣 단어</th>
         <th class="td-center" style="white-space:nowrap;">🎤 녹음</th>
         <th class="td-center" style="white-space:nowrap;">📈 리포트</th>
         <th class="td-center" style="white-space:nowrap;" title="Storage 사용량 (수동 점검)">💾 저장</th>
-        <th class="td-center" style="white-space:nowrap;" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
+        <th class="td-center" style="white-space:nowrap;" title="AI 한도 대비 (OCR+정리+생성+단어+리포트)">한도</th>
       </tr></thead>
       <tbody>
         ${top10.map(a => `
@@ -2798,6 +2800,7 @@ async function _loadAcademyTop10() {
             <td class="td-center">${a.ocr.toLocaleString()}</td>
             <td class="td-center">${a.cleanup.toLocaleString()}</td>
             <td class="td-center">${a.generator.toLocaleString()}</td>
+            <td class="td-center">${a.wordSpeaking.toLocaleString()}</td>
             <td class="td-center">${a.recording.toLocaleString()}</td>
             <td class="td-center">${a.growth.toLocaleString()}</td>
             <td class="td-center">${_fmtBytes(a.storageBytes)}</td>
@@ -2810,36 +2813,36 @@ async function _loadAcademyTop10() {
     </table>`}`;
 }
 
-// ── 엔드포인트 분포 (이번 달 전체) — 5분류 통일 ────────
+// ── 엔드포인트 분포 (이번 달 전체) — 6분류 통일 (2026-05-15 단어시험 추가) ──
 async function _loadEndpointBreakdown() {
   const el = document.getElementById('usageEndpoints');
   if (!el) return;
   el.innerHTML = '<div style="padding:14px 18px;color:#bbb;font-size:12px;">로딩 중...</div>';
   try {
     const month = await _thisMonthApiCalls();
-    // 5분류 (학원장 대시보드 / Top 10 / Gemini 카드 와 동일 순서)
     const items = [
-      { key: 'ocr',             label: '📷 OCR',         provider: 'Vision', color: '#8b5cf6' },
-      { key: 'cleanup-ocr',     label: '🧹 OCR 정리',    provider: 'Gemini', color: '#06b6d4' },
+      { key: 'ocr',             label: '📷 OCR',         provider: 'Vision', color: '#0ea5e9' },
+      { key: 'cleanup-ocr',     label: '🧹 Cleanup',     provider: 'Gemini', color: '#06b6d4' },
       { key: 'generate-quiz',   label: '✨ Generator',   provider: 'Gemini', color: '#f59e0b' },
-      { key: 'check-recording', label: '🎤 녹음숙제',     provider: 'Gemini', color: '#a855f7' },
-      { key: 'growth-report',   label: '📈 성장 리포트', provider: 'Gemini', color: '#10b981' },
+      { key: 'check-word',      label: '🗣 단어시험',     provider: 'Gemini', color: '#a855f7' },
+      { key: 'check-recording', label: '🎤 녹음숙제',     provider: 'Gemini', color: '#8b5cf6' },
+      { key: 'growth-report',   label: '📈 성장리포트',   provider: 'Gemini', color: '#10b981' },
     ];
     const itemsTotal = items.reduce((s, it) => s + (month.byEndpoint[it.key] || 0), 0);
     el.innerHTML = `
       <div style="padding:12px 18px;border-bottom:1px solid #eee;font-weight:700;">🧩 엔드포인트별 호출 (이번 달, 총 ${itemsTotal.toLocaleString()})</div>
-      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;">
         ${items.map(it => {
           const v = month.byEndpoint[it.key] || 0;
           const pct = itemsTotal > 0 ? (v / itemsTotal) * 100 : 0;
           return `
-            <div style="padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
-              <div style="font-size:12px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
-              <div style="font-size:18px;font-weight:700;margin-top:4px;">${v.toLocaleString()}</div>
-              <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-top:6px;overflow:hidden;">
+            <div style="padding:8px 10px;background:#fafafa;border:1px solid var(--border);border-radius:8px;">
+              <div style="font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.label}</div>
+              <div style="font-size:16px;font-weight:700;margin-top:3px;">${v.toLocaleString()}</div>
+              <div style="height:5px;background:#e5e7eb;border-radius:3px;margin-top:5px;overflow:hidden;">
                 <div style="width:${pct.toFixed(1)}%;height:100%;background:${it.color};"></div>
               </div>
-              <div style="font-size:10px;color:#999;margin-top:3px;">${it.provider} · ${pct.toFixed(1)}%</div>
+              <div style="font-size:9px;color:#999;margin-top:3px;">${it.provider} · ${pct.toFixed(1)}%</div>
             </div>`;
         }).join('')}
       </div>`;
