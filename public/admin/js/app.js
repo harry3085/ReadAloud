@@ -1053,46 +1053,114 @@ async function loadQuotaUsage(){
     header.innerHTML = `<span class="badge badge-teal" style="font-size:11px;">${esc(planName)}</span>
       <span style="margin-left:8px;">${esc(acad.name || '')} · 학생 한도 ${esc(tier)}명</span>`;
 
-    // 지난 7일 일별 데이터 fetch (각 항목별 막대 그래프용) — KST 기준
+    // 당월 + 전월 apiUsage doc fetch — 일별 + 누적 + 한도 + 전월 종착값 차트용 (KST 기준)
     const KST = 9 * 60 * 60 * 1000;
-    const days = [];
     const todayKst = new Date(Date.now() + KST);
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(todayKst);
-      d.setUTCDate(d.getUTCDate() - i);
-      days.push(d.toISOString().slice(0, 10));
-    }
-    const daySnaps = await Promise.all(
-      days.map(ymd => getDoc(doc(db, 'apiUsage', `${academyId}_${ymd}`)).catch(() => null))
-    );
-    const daily7d = {};
+    const curY = todayKst.getUTCFullYear();
+    const curM = todayKst.getUTCMonth();
+    const today = todayKst.getUTCDate();
+    const daysInMonth = new Date(Date.UTC(curY, curM + 1, 0)).getUTCDate();
+    const daysInPrevMonth = new Date(Date.UTC(curY, curM, 0)).getUTCDate();
+    const prevDate = new Date(Date.UTC(curY, curM - 1, 1));
+    const prevY = prevDate.getUTCFullYear();
+    const prevM = prevDate.getUTCMonth();
+    const _ymd = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const curMonthYmds = [];
+    for (let d = 1; d <= daysInMonth; d++) curMonthYmds.push(_ymd(curY, curM, d));
+    const prevMonthYmds = [];
+    for (let d = 1; d <= daysInPrevMonth; d++) prevMonthYmds.push(_ymd(prevY, prevM, d));
+    const [curSnaps, prevSnaps] = await Promise.all([
+      Promise.all(curMonthYmds.map(ymd => getDoc(doc(db, 'apiUsage', `${academyId}_${ymd}`)).catch(() => null))),
+      Promise.all(prevMonthYmds.map(ymd => getDoc(doc(db, 'apiUsage', `${academyId}_${ymd}`)).catch(() => null))),
+    ]);
+    const _cntFromSnap = (snap, key) => {
+      if (!snap || !snap.exists()) return 0;
+      const d = snap.data();
+      const bE = d.byEndpoint || {};
+      return (bE[key] || 0) + (d['byEndpoint.' + key] || 0);
+    };
+    const chartData = {};
     items.forEach(it => {
-      daily7d[it.dailyKey] = days.map((_, j) => {
-        const snap = daySnaps[j];
-        if (!snap || !snap.exists()) return 0;
-        const d = snap.data();
-        const bE = d.byEndpoint || {};
-        return (bE[it.dailyKey] || 0) + (d['byEndpoint.' + it.dailyKey] || 0);
-      });
+      const dayCounts = curSnaps.map(snap => _cntFromSnap(snap, it.dailyKey));
+      let acc = 0;
+      const cumulative = dayCounts.slice(0, today).map(v => { acc += v; return acc; });
+      const prevMonthTotal = prevSnaps.reduce((s, snap) => s + _cntFromSnap(snap, it.dailyKey), 0);
+      chartData[it.dailyKey] = { dayCounts, cumulative, prevMonthTotal };
     });
 
-    // 막대 그래프 생성 헬퍼 (7개 막대 · 최대값 기준 비례)
-    const _renderBarChart = (data, color) => {
-      const max = Math.max(1, ...data);
-      const dayLabels = days.map(ymd => ymd.slice(5).replace('-', '/'));  // MM/DD
+    // SVG 차트 — 당월 일별 막대 (우측 Y) + 누적 직선 (좌측 Y) + 한도 점선 + 전월 종착선
+    // viewBox 600×180, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
+    const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color) => {
+      const W = 600, H = 180, PAD_L = 42, PAD_R = 42, PAD_T = 12, PAD_B = 28;
+      const cw = W - PAD_L - PAD_R;
+      const ch = H - PAD_T - PAD_B;
+      const maxLeft = Math.max(limit || 0, prevMonthTotal || 0, ...(cumulative.length ? cumulative : [0]), 1);
+      const maxRight = Math.max(...(dayCounts.length ? dayCounts : [0]), 1);
+      const xCenter = (day) => PAD_L + cw * (day - 0.5) / daysInMonth;
+      const xLeft = (day) => PAD_L + cw * (day - 1) / daysInMonth;
+      const barW = Math.max(2, cw / daysInMonth - 2);
+      const yL = (v) => PAD_T + ch * (1 - v / maxLeft);
+      const yR = (v) => PAD_T + ch * (1 - v / maxRight);
+
+      // 막대 (일별 — 우측 Y)
+      const bars = dayCounts.map((v, i) => {
+        const day = i + 1;
+        if (day > today || v <= 0) return '';  // 미래 또는 0 — 막대 X
+        const h = ch * (v / maxRight);
+        const y = PAD_T + ch - h;
+        const isToday = day === today;
+        return `<rect x="${xLeft(day) + 1}" y="${y}" width="${barW}" height="${h}" fill="${color}" opacity="${isToday ? 1 : 0.65}"/>`;
+      }).join('');
+
+      // 누적 직선 (좌측 Y) — 1일부터 오늘까지
+      const cumPts = cumulative.map((v, i) => `${xCenter(i + 1)},${yL(v)}`).join(' ');
+      const cumLine = cumPts ? `<polyline points="${cumPts}" fill="none" stroke="${color}" stroke-width="2"/>` : '';
+
+      // 한도선 (붉은 점선)
+      let limitLine = '';
+      if (limit > 0 && limit <= maxLeft) {
+        const y = yL(limit);
+        limitLine = `
+          <line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#dc2626" stroke-width="1" stroke-dasharray="5 3"/>
+          <text x="${W - PAD_R - 2}" y="${y - 3}" font-size="10" fill="#dc2626" text-anchor="end" font-weight="600">한도 ${limit}</text>`;
+      }
+      // 전월 종착선 (회색 직선)
+      let prevLine = '';
+      if (prevMonthTotal > 0 && prevMonthTotal <= maxLeft) {
+        const y = yL(prevMonthTotal);
+        prevLine = `
+          <line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#94a3b8" stroke-width="1"/>
+          <text x="${PAD_L + 2}" y="${y - 3}" font-size="10" fill="#64748b" text-anchor="start">전월 ${prevMonthTotal}</text>`;
+      }
+
+      // X축 라벨 (1·5·10·15·20·25·마지막)
+      const xMarks = [...new Set([1, 5, 10, 15, 20, 25, daysInMonth])].filter(d => d <= daysInMonth);
+      const xAxisLbl = xMarks.map(d => `<text x="${xCenter(d)}" y="${H - PAD_B + 14}" font-size="9" fill="#64748b" text-anchor="middle">${d}</text>`).join('');
+
+      // Y축 라벨 (좌·우 3단계: 0/half/max)
+      const yLeftLbl = [0, 0.5, 1].map(p => {
+        const v = Math.round(maxLeft * p);
+        return `<text x="${PAD_L - 4}" y="${yL(v) + 3}" font-size="9" fill="#64748b" text-anchor="end">${v}</text>`;
+      }).join('');
+      const yRightLbl = [0, 0.5, 1].map(p => {
+        const v = Math.round(maxRight * p);
+        return `<text x="${W - PAD_R + 4}" y="${yR(v) + 3}" font-size="9" fill="#64748b" text-anchor="start">${v}</text>`;
+      }).join('');
+
+      // 축선
+      const axis = `
+        <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${H - PAD_B}" stroke="#e2e8f0"/>
+        <line x1="${W - PAD_R}" y1="${PAD_T}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#e2e8f0"/>
+        <line x1="${PAD_L}" y1="${H - PAD_B}" x2="${W - PAD_R}" y2="${H - PAD_B}" stroke="#cbd5e1"/>`;
+
       return `
-        <div style="display:flex;align-items:flex-end;gap:6px;height:60px;margin-top:8px;padding:0 2px;">
-          ${data.map((v, j) => {
-            const h = Math.max(3, Math.round(v / max * 56));
-            const isToday = j === data.length - 1;
-            return `
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
-                <div style="font-size:10px;color:${v > 0 ? 'var(--text)' : '#cbd5e1'};font-weight:${isToday ? '700' : '400'};">${v}</div>
-                <div style="width:100%;height:${h}px;background:${color};border-radius:3px 3px 0 0;opacity:${isToday ? '1' : '0.65'};"></div>
-                <div style="font-size:9px;color:${isToday ? color : 'var(--gray)'};font-weight:${isToday ? '700' : '400'};">${dayLabels[j]}</div>
-              </div>`;
-          }).join('')}
-        </div>`;
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:10px;" preserveAspectRatio="xMidYMid meet">
+          ${axis}${yLeftLbl}${yRightLbl}${xAxisLbl}
+          ${prevLine}${limitLine}
+          ${bars}${cumLine}
+          <text x="${PAD_L - 4}" y="${PAD_T - 2}" font-size="9" fill="#64748b" text-anchor="end" font-weight="600">누적</text>
+          <text x="${W - PAD_R + 4}" y="${PAD_T - 2}" font-size="9" fill="#64748b" text-anchor="start" font-weight="600">일별</text>
+        </svg>`;
     };
 
     const _fmtBytes = (n) => {
@@ -1103,18 +1171,18 @@ async function loadQuotaUsage(){
     };
 
     grid.innerHTML = items.map(item => {
-      const data7d = daily7d[item.dailyKey] || [];
-      const todayCnt = data7d[data7d.length - 1] || 0;
+      const cd = chartData[item.dailyKey] || { dayCounts: [], cumulative: [], prevMonthTotal: 0 };
+      const todayCnt = cd.dayCounts[today - 1] || 0;
 
-      // 단어시험 — counter 없음 (recording 한도 공유). 일별 + 7일 그래프만 표시.
+      // 단어시험 — counter 없음 (recording 한도 공유). 한도선 X, 전월선은 표시.
       if (!item.counter) {
         return `
-          <div style="margin-bottom:20px;">
+          <div style="margin-bottom:24px;">
             <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
               <span style="font-weight:600;">${item.label} <span style="color:var(--gray);font-size:11px;font-weight:400;">${item.shareNote || ''}</span></span>
-              <span style="color:var(--text);">오늘 <b>${todayCnt.toLocaleString()}</b></span>
+              <span style="color:var(--text);">오늘 <b>${todayCnt.toLocaleString()}</b> · 누적 <b>${(cd.cumulative[cd.cumulative.length - 1] || 0).toLocaleString()}</b> · 전월 <b>${cd.prevMonthTotal.toLocaleString()}</b></span>
             </div>
-            ${_renderBarChart(data7d, item.color)}
+            ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit: 0, prevMonthTotal: cd.prevMonthTotal }, item.color)}
           </div>
         `;
       }
@@ -1128,10 +1196,10 @@ async function loadQuotaUsage(){
       const labelColor = percent >= 95 ? '#dc2626' : percent >= 80 ? '#f59e0b' : 'var(--text)';
 
       return `
-        <div style="margin-bottom:20px;">
+        <div style="margin-bottom:24px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
             <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
-            <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / ${limit.toLocaleString()} <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span></span>
+            <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / ${limit.toLocaleString()} <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span> · 전월 <b style="color:var(--text);">${cd.prevMonthTotal.toLocaleString()}</b></span>
           </div>
           <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
             <div style="background:${barColor};height:100%;width:${percent}%;transition:width 0.3s;"></div>
@@ -1139,7 +1207,7 @@ async function loadQuotaUsage(){
           ${percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
             : percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
             : ''}
-          ${_renderBarChart(data7d, item.color)}
+          ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color)}
         </div>
       `;
     }).join('') + (() => {
