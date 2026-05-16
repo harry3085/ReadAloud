@@ -4822,24 +4822,23 @@ function _srNormalize(docs, speakingMap, grammarMap) {
   });
 }
 
-// testId 들의 speaking/grammar 메타만 fetch (in 쿼리, 30개 chunk) — 학원 전체 X
+// testId 들의 speaking/grammar 메타만 fetch — 학원 전체 X
+// genTests Rules(academyId 검증) 는 documentId() in 쿼리에 academyId 정적
+// 제약이 없으면 permission-denied 로 거부 → 옛 in 쿼리는 항상 실패해 배지 전멸.
+// 개별 getDoc 은 단일 doc read 라 match /genTests/{testId} 가 각 doc 의
+// academyId == myAcademyId 를 평가 → 같은 학원이면 통과. reads 동일(N개).
 async function _srLoadTestMeta(testIds) {
   const speakingMap = {}, grammarMap = {};
   if (!testIds.length) return { speakingMap, grammarMap };
-  for (let i = 0; i < testIds.length; i += 30) {
-    const chunk = testIds.slice(i, i + 30);
-    try {
-      const gtSnap = await getDocs(query(
-        collection(db, 'genTests'),
-        where(documentId(), 'in', chunk)
-      ));
-      gtSnap.docs.forEach(d => {
-        const t = d.data();
-        if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') speakingMap[d.id] = true;
-        if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') grammarMap[d.id] = true;
-      });
-    } catch(e) { console.warn('test meta fetch:', e.message); }
-  }
+  const snaps = await Promise.all(testIds.map(id =>
+    getDoc(doc(db, 'genTests', id)).catch(() => null)
+  ));
+  snaps.forEach(d => {
+    if (!d || !d.exists?.()) return;
+    const t = d.data();
+    if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') speakingMap[d.id] = true;
+    if ((t.testMode || '').toLowerCase() === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar') grammarMap[d.id] = true;
+  });
   return { speakingMap, grammarMap };
 }
 
