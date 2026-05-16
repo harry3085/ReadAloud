@@ -4909,3 +4909,119 @@ speaking 줄에 학원장 전용 추가:
 - ✅ 학원장 상세 정확도·시도횟수 표시 (학생 비노출)
 - ✅ 성적 상세 N회 응시 중 X번째 + scores 인덱스
 - ✅ 작업 규칙 보강 — Firestore undefined / catch 삼킴 금지 / 표시값·저장값 분리 / AI 추정값 비노출 / 응시 횟수 doc 건수
+
+---
+
+## 2026-05-16 (이어서): 성적리포트 배지 Rules 버그 + 삭제시험 안내 + 결제 입금체크 + attemptLabel Rules
+
+SW v537 → v540 (~6 commit). 학원장 보고 연쇄 진단 — 성적리포트 배지·상세 표시 + 결제 입금체크.
+
+### 9) 성적리포트 배지 전멸 — _srLoadTestMeta Rules 충돌 (commit `fdfedbc`)
+
+증상: 성적 리포트 시험명에 🎤 말하기 / 📐 문법 배지 **전부 누락**.
+F12: `app.js:4841 test meta fetch: Missing or insufficient permissions`.
+
+원인: `_srLoadTestMeta` 의 `where(documentId(),'in',chunk)` (genTests) 가
+genTests Rules(`academyId == myAcademyId`)와 충돌 — in 쿼리에 academyId
+정적 제약 없어 Firestore permission-denied → catch → speakingMap/grammarMap
+**항상 빈 객체** → 모든 행 배지 false. 시험목록·시험관리는 genTests 직접
+로드라 정상이었음(성적리포트만 별도 메타 in쿼리).
+**admin SDK 진단은 Rules 우회라 "정상"으로 오판 → F12 로 확정.**
+
+수정: in 쿼리 → `Promise.all(testIds.map(getDoc))`. 단일 doc read 는
+`match /genTests/{testId}` 가 각 doc academyId 평가 → 같은 학원 통과. reads 동일.
+
+수평전개: `documentId() in` / academyId 제약 없는 쿼리 전수 점검 →
+`_srLoadTestMeta` 가 유일(학생앱 genTests in 은 academyId 동반·안전,
+collectionGroup userCompleted 는 uid 정적 제약·Rules-aware·안전, super
+adminLogs 는 isSuperAdmin only·안전).
+
+### 10) 삭제 시험 vs 레거시 안내 문구 분기 (commit `201b237`)
+
+성지율 mcq 90점 첫통과인데 "레거시 시험" 표시 → 학원장 혼란. 진단: 학원장이
+그 시험 삭제 → userCompleted cascade 제거, scores 만 이력 보존. showScoreDetail
+의 `!genTest` 분기가 삭제·진짜레거시 구분 없음. 수정: `s.testId` 유무로 분기
+— testId 있는데 genTests 없음 = "삭제된 시험(점수 보존, 상세는 삭제 시 제거)",
+testId 빈값 = 기존 "레거시" 문구.
+
+### 11) scores 에 speaking/grammar 메타 보존 (commit `567b77b`)
+
+배지가 genTests 메타에만 의존 → 시험 삭제 시 같은 학생 성적리포트에서
+살아있는 시험은 배지 O, 삭제 시험은 X (불일치). 응시 저장 시 scores 에
+메타 박음: vocab `_vqSubmit` → `vocabFormat`, mcq submit → `subType`.
+`_srNormalize` 가 scores 자체 필드 우선 → 없으면 genTests 폴백.
+앞으로 응시분은 시험 삭제돼도 배지 유지 + genTests fetch 줄어 reads↓.
+이미 삭제된 옛 건은 소스 없어 복구 불가(불가피).
+
+### 12) 결제관리 입금 체크 즉시 풀리던 버그 (commit `ffe9c8f`)
+
+학원비 입금 체크 → 바로 지워짐. 원인: `_billingToggleChannel` 이 updateDoc
+직후 `_renderBillingGrid()` (refetch=true 기본) → Firestore eventual
+consistency 로 stale snapshot 받아 체크 풀린 상태로 덮음 + 메모리 캐시
+미갱신. 2026-05-08 결제 패널서 고친 패턴이 이 토글 함수만 누락. 수정:
+메모리 캐시(b — _billingsByMonth ref) 즉시 반영 + `_renderBillingGrid(0,{refetch:false})`.
+
+### 13) attemptLabel Rules 충돌 — N회 라벨 안 뜸 (commit `3b4e369`)
+
+문성미 '단어 Mr Brown' ~25회 응시인데 상세모달에 "N회 응시 중 X번째"
+라벨 없음. 원인: `f913e49`(attemptLabel) 쿼리 `where(testId)+where(uid)+
+orderBy(createdAt)` 에 academyId 정적 제약 없음 → scores Rules
+(`academyId==myAcademyId`) 충돌 → permission-denied → catch → 라벨 ''.
+**§9 _srLoadTestMeta 와 동일 함정을 신규 코드(f913e49)에 반복** — 수평전개는
+기존 코드 대상이라 직후 작성한 신규에 작업규칙 미적용한 실수.
+수정: 쿼리에 `where('academyId','==',s.academyId||MY)` + 인덱스
+`scores(testId+uid+createdAt)` → `(academyId+testId+uid+createdAt)` 교체·
+deploy·빌드. 옛 인덱스는 grep 전수 사용처 0건 확인 → `--force` 정리.
+
+### 인덱스 무한 증가 우려 — 답변
+
+Firebase composite index 한도 200/프로젝트(현 ~45). Console 에 사용 통계
+**없음** — 사용 여부는 **코드 grep 으로 판별**(인덱스 정확 조합 ↔ 쿼리 대조,
+prefix 규칙 고려). 애매하면 보존(인덱스 더 있어도 쿼리 안 깨짐, 삭제 실수가
+더 위험). prefix 규칙: `[academyId,testId,uid,createdAt]` 1개가 academyId
+단독·+testId·+uid 쿼리 모두 커버 → 잘 설계하면 인덱스 1개로 다수 쿼리 재사용.
+
+---
+
+## 작업 규칙 추가 (2026-05-16 이어서)
+
+신규:
+- **수평전개 후 작성하는 신규 코드에도 그 작업규칙 즉시 적용** — 수평전개는
+  기존 코드만 점검. 직후 추가하는 코드가 같은 함정 반복 가능(f913e49 가
+  _srLoadTestMeta 와 동일 Rules 함정 반복이 표본). 신규 쿼리 작성 시
+  "academyId 검증 Rules 컬렉션이면 academyId 정적 제약" 체크리스트 적용.
+- **Firestore 인덱스 사용 여부는 코드 grep 으로만 판별** — Firebase Console
+  사용 통계 없음. 인덱스 정확 조합(academyId 유무·orderBy 유무·순서) ↔ 코드
+  쿼리 1:1 대조 + prefix 규칙. grep 0건 = 안전 삭제 / 애매 = 보존. 쿼리
+  교체 시 옛 인덱스 `--force` 정리(컬렉션 폐기 cleanup 3종 세트와 동일 맥락).
+- **결제 등 토글 후 refetch:false + 메모리 캐시 즉시 반영** — `updateDoc`
+  직후 `getDocs` refetch 는 Firestore eventual consistency 로 stale.
+  토글류는 메모리 캐시(reference) 즉시 갱신 + `{refetch:false}` 로 캐시
+  렌더(2026-05-08 결제 패널 패턴 — 신규 토글 함수마다 누락 없는지 확인).
+- **`!genTest` 안내는 삭제 vs 레거시 분기** — `s.testId` 있는데 genTests
+  없음 = 학원장이 삭제(scores 만 보존). testId 빈값 = 진짜 옛 레거시. 문구
+  구분으로 학원장 "내가 삭제해서구나" 즉시 이해.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-16 종료)
+- `public/admin/js/app.js`: +~30줄 (_srLoadTestMeta getDoc·삭제문구·_srNormalize·결제토글·attemptLabel academyId)
+- `public/js/app.js`: +~3줄 (vocab/mcq scores 메타)
+- `firestore.indexes.json`: scores 인덱스 academyId+testId+uid+createdAt 교체 (옛것 --force 정리)
+- SW 캐시: `kunsori-v540`
+
+## 진행률 (2026-05-16 종료)
+- 말하기 시험 userCompleted 버그·결과표시: ~100% (변동 없음)
+- **성적리포트 배지·상세 표시: ~100%** (Rules 버그 fix·삭제문구·메타보존·attemptLabel)
+- **결제관리 입금 체크: ~100%** (eventual consistency fix)
+- 멀티테넌시·super 앱·브랜딩: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션 이어서, 2026-05-16)**:
+- ✅ 성적리포트 배지 전멸 fix (_srLoadTestMeta in쿼리 → getDoc, Rules 통과)
+- ✅ documentId in / academyId 제약 없는 쿼리 수평전개 (유일 사례 확정)
+- ✅ 삭제 시험 vs 레거시 안내 문구 분기
+- ✅ scores 에 speaking/grammar 메타 보존 (시험 삭제돼도 배지 — 신규 응시분)
+- ✅ 결제관리 입금 체크 즉시 풀리던 버그 (refetch:false + 캐시)
+- ✅ attemptLabel Rules 충돌 fix (academyId 추가 + 인덱스 교체·옛것 정리)
+- ✅ 작업 규칙 — 신규코드 규칙 적용 / 인덱스 grep 판별·prefix / 토글 refetch:false / 삭제·레거시 분기
