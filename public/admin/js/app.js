@@ -4813,8 +4813,9 @@ function _srNormalize(docs, speakingMap, grammarMap) {
       mode: m,
       score: s.score || 0,
       correct: s.correct || 0,
-      _isSpeaking: !!speakingMap[s.testId],
-      _isGrammar: !!grammarMap[s.testId],
+      // scores 자체 메타 우선 (시험 삭제돼도 판정 — 2026-05-16) → 없으면 genTests fetch 폴백
+      _isSpeaking: s.vocabFormat === 'speaking' || (!s.vocabFormat && !!speakingMap[s.testId]),
+      _isGrammar: s.subType === 'grammar' || (!s.subType && !!grammarMap[s.testId]),
       _dateTime: s.createdAt?.toDate
         ? s.createdAt.toDate().toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
         : s.date || '',

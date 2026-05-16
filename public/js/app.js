@@ -1184,6 +1184,8 @@ async function _mcqSubmit(){
       unitName: t.name || '',
       bookName: t.bookName || '',
       mode: 'mcq',
+      // 시험 삭제돼도 성적리포트 문법 배지 판정 가능하도록 메타 보존 (2026-05-16)
+      subType: s.questions?.[0]?.subType || '',
       score, correct, wrong, total,
       passed, passScore,
       date: today,
@@ -5398,6 +5400,8 @@ async function _vqSubmit() {
       unitId: t.id, unitName: t.name || '',
       bookName: t.bookName || '',
       mode: 'vocab',
+      // 시험 삭제돼도 성적리포트 배지 판정 가능하도록 메타 보존 (2026-05-16)
+      vocabFormat: t.vocabOptions?.format || s.opts?.format || '',
       score, correct, wrong: total - correct, total,
       passed, passScore,
       date: today,
