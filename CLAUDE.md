@@ -4750,3 +4750,146 @@ v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
 - ✅ AI reason 완곡 표현 가이드 (들렸어요 → 들릴 수 있어요)
 - ✅ 베타 데이터 진단 도구 (dump-speaking-completion 활용)
 - ✅ 작업 규칙 보강 — AI 응답 속도 / 동음이의어 3중 / 음역 처리 C 옵션 / SW 캐시 정책
+
+---
+
+## 2026-05-16: 말하기 시험 userCompleted 미생성 버그 + 결과 표시 정비
+
+당일 SW v529 → v535 (~8 commit). 학원장 "통과했는데 목록에 미완료" 보고에서
+출발 → 근본 원인(말하기 answers undefined) 추적 → 차단·복구·표시 정비 종합.
+
+### 1) userCompleted 미생성 근본 버그 (commit `d9faa59`)
+
+**증상**: 문성미 '중1 마더텅 영어듣기 ch10' 말하기 통과(90점)했는데 학생앱·
+학원앱 목록에 미완료 유지. 같은 시험 통과자 전원(용주영 등) userCompleted 0건.
+
+**진단**: `scores` 는 `addDoc` 으로 정상 박힘(score=90 passed=true). 그러나
+`_writeUserCompleted` 의 `setDoc` 가 throw → `_vqSubmit` 안쪽 `catch` 가
+`console.warn` 으로 **조용히 삼킴** → userCompleted 미생성 → 목록 완료
+판정(`userCompMap.get(t.id)?.score !== undefined`) 영영 false.
+
+**throw 이유**: 말하기 answers 의 `spkAttempts` 등이 5/14~16 음성인식
+대규모 변경(3차 MR 흐름, commit 18개)의 특정 경로에서 `undefined`.
+Firestore 는 객체 어디든 undefined 있으면 setDoc **전체** 거부.
+
+**수정 (옵션 1 — 공용 함수 방어, 음성인식 코드 무관)**:
+- `questions`/`answers` JSON 왕복(`JSON.parse(JSON.stringify())`)으로 깊은 곳 undefined 제거
+- top-level undefined 키 제거 (serverTimestamp sentinel 은 undefined 아니라 보존)
+- setDoc 실패 시 `console.error` + 사용자 토스트 + **re-throw** (조용히 삼키지 않음)
+- 모든 시험 유형(vocab/mcq/fill_blank/unscramble) 예방 보호. 다음 응시부터 적용
+
+### 2) 누락 응시자 백필 (commit `37215c6`)
+
+`scripts/migrate/backfill-usercompleted-from-scores.js` — scores `passed=true`
+→ (testId,uid) 최고점 → userCompleted.score 없으면 최소 필드 백필.
+- DRY-RUN/--apply. `_backfilledFromScores:true` 마커
+- **default 9건 적용** (문성미 5·이성민·전지윤·정하윤·용주영, 전부 vocab/speaking)
+- `questions`/`answers` 는 scores 에 없어 생략 → 목록·점수 정상, 상세는 작업규칙7 폴백
+
+### 3) 다른 모드 영향 전수검사 — 말하기 전용 확인
+
+백필 스크립트가 4모드(vocab/mcq/fill_blank/unscramble) 전부 스캔 → 대상
+9건 전부 `vocab` + format 확인 결과 **전부 speaking**. mcq/fill_blank/
+unscramble/일반vocab 누락 **0건**. → 말하기(speaking) 전용 버그 확정.
+
+### 4) stale 전수검사 (commit `b5ee1c7`)
+
+`scripts/diag/check-stale-usercompleted.js` — userCompleted 는 있지만
+scores 최고점 > userCompleted.score (재응시 최고점 미반영, 김다윤 케이스).
+- **stale 2건**: 문성미·김다윤 (둘 다 vocab/speaking, scores 100점인데
+  userCompleted 83·90점 — 5/16 재응시가 setDoc 실패로 미반영)
+- **옵션 A 채택** — 데이터 손대지 않음. 코드 수정(d9faa59) 완료라 재응시
+  하면 자동 완전 복구. 점수만 갱신 시 questions/answers(유실) 불일치라 비권장
+
+### 5) 결과화면 음역 멘트 누락 fix (commit `be6f990`)
+
+`_cleanAiReason`(C 옵션, 5/15) 은 reason 텍스트만 정제. `aiHeard` 를 직접
+출력하는 라인 5154 `"OOO처럼 들릴 수 있어요"` 는 별도 경로라 정답 검사
+없이 무조건 출력 → 정답 말해도 떴음. 케이스2(AI 정밀통과)에서 aiHeard
+소문자 trim 비교 → 정답(q.word)과 같으면 그 줄 숨김. 다른/동음이의어면 유지.
+
+### 6) 상세 들린단어 spkAiHeard 우선 (commit `23d8a41`)
+
+**발견**: AI 통과 시 `_vqSpkFinalize(true, q.word)` → `spkHeard = 정답
+그 자체`. 상세 모달의 들린 단어가 정답으로 박혀 학생 실제 발음(AI 인식값
+= spkAiHeard) 안 보임 — AI 정밀 결과를 버리는 셈.
+- `_vqBuildDetail`(학생) + `_adminVocabBuildDetail`(학원장) 들린 단어를
+  `spkAiHeard || spkHeard` 로. 학원장 동음이의어 매칭 판정도 spkAiHeard 우선
+- 표시 레이어만 변경 — 데이터·저장 로직 무관. 옛 데이터는 spkHeard 폴백
+
+### 7) 학원장 상세 — 정확도·시도횟수 표시 (commit `dd9f2f0`, `48048ee`)
+
+`confidence`·`spkAttempts` 는 이미 받던 데이터(추가 비용 0). `_adminVocabBuildDetail`
+speaking 줄에 학원장 전용 추가:
+- **정확도 N%** (spkAiConfidence, 90+초록/70-89주황/<70빨강) — AI 추정값이라
+  학생 비노출(시험점수와 혼동·혼란 우려). AI 경로만 (Web Speech 통과·옛 데이터 미표시)
+- **N회** (spkAttempts — 단어 1개 내 1·2차 Web Speech / 3차 AI 중 통과 시도.
+  객관 사실이라 혼란 없음)
+
+### 8) 성적 상세 'N회 응시 중 X번째' (commit `f913e49`)
+
+시험 전체 재응시 횟수 — 별도 카운터 없음, scores doc 건수로 계산.
+`showScoreDetail` 에 그 학생·그 시험 scores `createdAt` asc 정렬 → 현재
+기록 순번. 헤더에 보라색 `4회 응시 중 3번째` / `1회 응시`.
+- 인덱스 `scores (testId+uid+createdAt)` 추가·deploy·빌드 완료 후 적용
+- try/catch — 빌드 지연·실패 시 순번만 생략, 모달 정상
+
+---
+
+## 작업 규칙 추가 (2026-05-16)
+
+신규:
+- **Firestore undefined → setDoc 전체 거부** — 객체·배열 어디든 `undefined`
+  하나면 그 doc write 통째 실패. 사용자 입력·동적 필드가 들어가는 공용
+  저장 함수(`_writeUserCompleted` 등)는 `JSON.parse(JSON.stringify())` 또는
+  재귀 sanitize 로 방어. (serverTimestamp sentinel 은 JSON 왕복 대상에서
+  제외 — top-level 만 undefined 키 삭제, sentinel 은 보존됨)
+- **안쪽 catch 가 조용히 삼키면 안 됨** — `try{ await write }catch(e){
+  console.warn }` 패턴은 실패가 묻혀 "scores 는 있는데 userCompleted 없음"
+  같은 비대칭 유발. 최소 사용자 토스트 + re-throw(호출자 인지). 디버깅 가능하게.
+- **표시값과 저장값 분리 인지** — `spkHeard` 는 AI 통과 시 `q.word`(정답)
+  가 박혀 "실제 발음"이 아님. 실제 발음은 `spkAiHeard`. 상세 표시는
+  `spkAiHeard || spkHeard` 우선. 진단·통계 필드(spkAiConfidence/spkAttempts)는
+  저장만 되고 표시는 별도 결정.
+- **AI 자체 추정값(confidence)은 학생 비노출** — 객관 측정 아닌 주관 추정.
+  절대 수치로 학생에게 보이면 시험점수와 혼동·혼란. 학원장 참고용으로만.
+  객관 사실(spkAttempts 시도횟수, 응시 순번)은 노출 OK.
+- **응시 횟수는 컬렉션 doc 건수** — 별도 카운터 필드 없음. scores 는 매
+  응시 addDoc → (testId,uid) doc 건수 = 재응시 횟수. createdAt 정렬로 순번.
+- **버그 영향 전수검사 = 백필 스크립트로 모드 전부 스캔** — 특정 유형 버그
+  의심 시 4모드 다 스캔해서 실제 분포 확인(추측 X). 9건 전부 speaking →
+  말하기 전용 확정. stale(있지만 미반영)은 별도 스크립트로 구분 검사.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-16)
+- `public/js/app.js`: +~25줄 (sanitize + 실패토스트 + aiHeard 정답검사 + spkAiHeard 우선)
+- `public/admin/js/app.js`: +~30줄 (spkAiHeard 우선 + 정확도·시도횟수 + 응시 순번)
+- `firestore.indexes.json`: +1 (scores testId+uid+createdAt)
+- 신규 스크립트: `backfill-usercompleted-from-scores.js` / `check-stale-usercompleted.js`
+- SW 캐시: `kunsori-v535`
+
+## 진행률 (2026-05-16)
+- 말하기 시험 userCompleted 버그: **~100%** (근본 차단 + 9건 백필 + stale 2건 진단 + 전수검사)
+- 말하기 결과·상세 표시 정비: **~100%** (음역 멘트·spkAiHeard·정확도·시도횟수·응시순번)
+- 단어시험 채점 견고성·동음이의어·음성 인식: ~100% (변동 없음)
+- 멀티테넌시·결제·브랜딩·super 앱: 변동 없음
+- Phase 5 출시 준비: 0%
+
+## 다음 세션 후보 (2026-05-16 갱신)
+1. **stale 2건 학원장 안내** — 문성미·김다윤 재응시 시 자동 완전 복구 (코드 수정 완료)
+2. **Phase 5 출시 준비** — 도메인 / 약관 / 결제 PG 연동
+3. **학원장 대시보드 달력 보강** — 생일 카테고리
+4. **v1.0 Polish 사이클** ([memory/project_v1_polish_cycle.md](memory/project_v1_polish_cycle.md))
+5. **super 앱 reads P2** ([memory/project_super_reads_p2_after_billing.md](memory/project_super_reads_p2_after_billing.md)) — 결제 완성 후
+
+**완료 (이 세션, 2026-05-16)**:
+- ✅ userCompleted undefined sanitize + 실패 토스트 + re-throw (근본 차단)
+- ✅ 백필 9건 복구 (문성미·이성민·전지윤·정하윤·용주영, 전부 말하기)
+- ✅ 다른 모드 영향 전수검사 (말하기 speaking 전용 확정)
+- ✅ stale 2건 진단 (문성미·김다윤, 옵션 A 재응시 복구)
+- ✅ 결과화면 aiHeard 정답 시 음역 멘트 숨김
+- ✅ 상세 들린단어 spkAiHeard 우선 (AI 실제 발음 반영)
+- ✅ 학원장 상세 정확도·시도횟수 표시 (학생 비노출)
+- ✅ 성적 상세 N회 응시 중 X번째 + scores 인덱스
+- ✅ 작업 규칙 보강 — Firestore undefined / catch 삼킴 금지 / 표시값·저장값 분리 / AI 추정값 비노출 / 응시 횟수 doc 건수
