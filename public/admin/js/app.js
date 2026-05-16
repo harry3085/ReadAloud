@@ -4970,7 +4970,13 @@ function _adminVqBuildDetail(questions, answers){
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
           ${isSpeaking
-            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
+            ? (() => {
+                const _c = a.spkAiConfidence;
+                const _accHtml = (typeof _c === 'number')
+                  ? ` · <span style="color:${_c>=90?'#059669':_c>=70?'#CA8A04':'#dc2626'};">정확도 ${_c}%</span>`
+                  : '';
+                return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>${_accHtml}`;
+              })()
             : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}`}
         </div>
       </div>`;
