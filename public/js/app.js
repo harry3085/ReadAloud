@@ -5151,7 +5151,10 @@ function _vqSpkFinalize(correct, heard, meta) {
     } else if (correct && isAiPath) {
       // 케이스 2: AI 정밀 통과 — 발음 약간 부정확하지만 인정
       let html = '<div style="font-size:13px;color:#f59e0b;margin-top:4px;">발음이 약간 부정확해요</div>';
-      if (aiHeard) html += `<div style="font-size:12px;color:#6b7280;margin-top:2px;">"<strong>${esc(aiHeard)}</strong>"처럼 들릴 수 있어요</div>`;
+      // aiHeard 가 정답과 같으면 "처럼 들릴 수 있어요" 무의미 → 숨김 (다른/동음이의어 단어면 발음 학습 가치 — 유지)
+      const _hn = String(aiHeard||'').toLowerCase().trim();
+      const _wn = String(q.word||'').toLowerCase().trim();
+      if (aiHeard && _hn !== _wn) html += `<div style="font-size:12px;color:#6b7280;margin-top:2px;">"<strong>${esc(aiHeard)}</strong>"처럼 들릴 수 있어요</div>`;
       if (aiReason) html += `<div style="font-size:12px;color:#7c3aed;margin-top:4px;">💡 ${esc(aiReason)}</div>`;
       heardEl.innerHTML = html;
     } else {
