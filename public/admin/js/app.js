@@ -5178,11 +5178,20 @@ window.showScoreDetail = async(scoreId, testId) => {
       // Phase B: 녹음숙제는 통과/불통 분기 폐기 — recordings 있으면 무조건 상세 표시
       detailHtml = _adminBuildDetail(mode, comp);
     } else if(!genTest){
-      detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
-        <div style="font-size:24px;margin-bottom:6px;">📄</div>
-        <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
-        <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
-      </div>`;
+      // testId 있는데 genTests 없음 = 학원장이 시험 삭제 (scores 는 이력 보존, 상세는 cascade 제거)
+      // testId 빈값 = 진짜 옛 레거시 데이터
+      const _deleted = !!(s.testId && String(s.testId).trim());
+      detailHtml = _deleted
+        ? `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+            <div style="font-size:24px;margin-bottom:6px;">🗑</div>
+            <div style="font-weight:600;color:#888;">삭제된 시험 - 상세 답안을 볼 수 없습니다</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">점수는 보존되나, 상세 답안은 시험 삭제 시 함께 제거됩니다</div>
+          </div>`
+        : `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
+            <div style="font-size:24px;margin-bottom:6px;">📄</div>
+            <div style="font-weight:600;color:#888;">레거시 시험 - 상세 답안 정보가 없습니다</div>
+            <div style="font-size:11px;color:#bbb;margin-top:4px;">점수 요약만 제공됩니다</div>
+          </div>`;
     } else if(isRecording) {
       // 녹음숙제인데 recordings 없음 = 옛 미통과 데이터 (recordings 미저장)
       detailHtml = `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
