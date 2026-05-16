@@ -5135,6 +5135,23 @@ window.showScoreDetail = async(scoreId, testId) => {
       }catch(e){ console.warn('genTest 조회 실패', e); }
     }
 
+    // 응시 순번 — 이 학생·이 시험 전체 scores 중 현재 기록이 몇 번째 (createdAt 오름차순)
+    let attemptLabel = '';
+    if(testId && s.uid){
+      try{
+        const aSnap = await getDocs(query(
+          collection(db,'scores'),
+          where('testId','==',testId),
+          where('uid','==',s.uid),
+          orderBy('createdAt','asc')
+        ));
+        const ids = aSnap.docs.map(d=>d.id);
+        const idx = ids.indexOf(scoreId);
+        if(ids.length>1 && idx>=0) attemptLabel = `${ids.length}회 응시 중 ${idx+1}번째`;
+        else if(ids.length===1) attemptLabel = `1회 응시`;
+      }catch(e){ console.warn('응시 순번 조회 실패(인덱스 빌드중?)', e); }
+    }
+
     const bookName = s.bookName || genTest?.bookName || s.unitName || '-';
     const testName = s.testName || genTest?.name || '-';
     const isRecording = mode === 'recording';
@@ -5201,6 +5218,7 @@ window.showScoreDetail = async(scoreId, testId) => {
               <div style="font-size:11px;color:var(--gray);margin-top:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                 ${_unifiedTypeBadge(mode)}
                 <span style="word-break:break-word;">${esc(bookName)} · ${esc(testName)}</span>
+                ${attemptLabel ? `<span style="color:#7c3aed;font-weight:600;">· ${esc(attemptLabel)}</span>` : ''}
               </div>
             </div>
             <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;flex-shrink:0;">${pct}점</span>
