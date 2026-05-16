@@ -2881,8 +2881,11 @@ window._billingToggleChannel = async (billingId, channel, paid) => {
     const totalAmount = items.reduce((s, i) => s + (i.amount || 0), 0);
     const paidAmount = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
     const status = totalAmount === 0 ? 'paid' : (paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'));
+    // 메모리 캐시 즉시 반영 (b 는 _billingsByMonth reference) — Firestore eventual
+    // consistency 회피: refetch=false 로 캐시만 렌더 (즉시 refetch 시 stale 로 체크 풀림)
+    b.items = items; b.totalAmount = totalAmount; b.paidAmount = paidAmount; b.status = status;
     await updateDoc(doc(db, 'billings', billingId), { items, totalAmount, paidAmount, status, updatedAt: serverTimestamp() });
-    await _renderBillingGrid();
+    await _renderBillingGrid(0, { refetch: false });
   } catch (e) { showAlert('저장 실패', e.message); }
 };
 
