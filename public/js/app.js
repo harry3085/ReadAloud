@@ -657,20 +657,34 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
     latestAt: serverTimestamp(),
   };
 
+  // Firestore 는 객체 어디든 undefined 가 있으면 setDoc 전체를 거부.
+  // 말하기 시험 answers 의 spkAttempts 등이 특정 경로에서 undefined → JSON 왕복으로 깊은 곳까지 제거.
+  // (questions/answers 는 genTests·학생입력 primitive 라 Timestamp/sentinel 없음 — JSON 왕복 안전)
+  const _clean = o => JSON.parse(JSON.stringify(o ?? null));
+
   const isNewBest = passed && score > prevBest;
   if (isNewBest) {
     Object.assign(data, {
       score, passed: true, passScore,
       correct, wrong, total,
-      questions: questions || [],
-      answers: answers || [],
+      questions: _clean(questions || []),
+      answers: _clean(answers || []),
       date: today,
       completedAt: serverTimestamp(),
-      ...(extra || {}),
+      ...(extra ? _clean(extra) : {}),
     });
   }
 
-  await setDoc(compRef, data, { merge: true });
+  // top-level undefined 방어 (serverTimestamp sentinel 은 undefined 아니라 보존됨)
+  Object.keys(data).forEach(k => { if (data[k] === undefined) delete data[k]; });
+
+  try {
+    await setDoc(compRef, data, { merge: true });
+  } catch (e) {
+    console.error('[userCompleted] setDoc 실패 — 완료 기록 저장 안 됨', e);
+    showToast('완료 기록 저장에 실패했어요. 네트워크 확인 후 다시 시도해주세요.');
+    throw e;  // 호출자 흐름 유지 (조용히 삼키지 않음)
+  }
 
   if (isNewBest && existing?.score !== undefined) {
     showToast(`🎉 새 기록! ${existing.score}점 → ${score}점`);
