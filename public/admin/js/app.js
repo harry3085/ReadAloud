@@ -5142,8 +5142,11 @@ window.showScoreDetail = async(scoreId, testId) => {
     let attemptLabel = '';
     if(testId && s.uid){
       try{
+        // scores Rules(academyId==myAcademyId) 통과 위해 academyId 정적 제약 필수
+        // (없으면 permission-denied → catch → 라벨 안 뜸)
         const aSnap = await getDocs(query(
           collection(db,'scores'),
+          where('academyId','==', s.academyId || window.MY_ACADEMY_ID),
           where('testId','==',testId),
           where('uid','==',s.uid),
           orderBy('createdAt','asc')
