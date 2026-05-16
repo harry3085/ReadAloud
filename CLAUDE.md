@@ -4859,6 +4859,22 @@ speaking 줄에 학원장 전용 추가:
 - **버그 영향 전수검사 = 백필 스크립트로 모드 전부 스캔** — 특정 유형 버그
   의심 시 4모드 다 스캔해서 실제 분포 확인(추측 X). 9건 전부 speaking →
   말하기 전용 확정. stale(있지만 미반영)은 별도 스크립트로 구분 검사.
+- **admin SDK 진단은 Firestore Rules 우회 — 클라 Rules 영향 쿼리는 F12
+  병행 필수** — `scripts/` 의 firebase-admin 진단은 Rules 무시(전권). 클라
+  에서 권한 거부되는 쿼리도 admin 진단은 "데이터 정상"으로 나옴. 클라
+  화면 버그는 admin SDK 진단만으로 단정 X — 학원장/학생 F12 콘솔 에러
+  (`Missing or insufficient permissions`) 확인 병행. _srLoadTestMeta
+  배지 전멸이 표본 (admin 진단 정상 → F12 로 permission-denied 확정).
+- **academyId 검증 Rules 컬렉션은 쿼리에 academyId 정적 제약 필수** —
+  `allow read: resource.data.academyId == myAcademyId()` 인 컬렉션
+  (genTests 등) 을 `where(documentId(),'in',[...])` 또는 academyId 없는
+  쿼리로 클라 조회하면 Firestore 가 "Rules 만족 보장 불가" → 쿼리 전체
+  permission-denied. **해결: (a) 쿼리에 `where('academyId','==',MY)`
+  동반, 또는 (b) 단일 `getDoc(doc(...))` — nested rule `match
+  /{id}` 가 각 doc 의 academyId 평가 → 같은 학원 통과**. 2026-05-16
+  수평 전개 결과 `_srLoadTestMeta` 가 유일 사례 (학생앱 genTests in
+  쿼리는 academyId 동반·안전, collectionGroup userCompleted 는 uid
+  정적 제약·Rules-aware 설계·안전, super adminLogs 는 isSuperAdmin only).
 
 ---
 
