@@ -5444,7 +5444,7 @@ function _vqBuildDetail(questions, answers) {
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
           ${a.format === 'speaking'
-            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${isCorrect ? '⭐ 정답' : '❌ 오답'}</span>${a.spkHeard ? ` · 들린 단어: "${esc(a.spkHeard)}"` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
+            ? (() => { const _heard = a.spkAiHeard || a.spkHeard; return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${isCorrect ? '⭐ 정답' : '❌ 오답'}</span>${_heard ? ` · 들린 단어: "${esc(_heard)}"` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`; })()
             : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect ? ` · <span style="color:#059669;">정답: ${esc(target)}</span>` : ''}`}
         </div>
       </div>`;

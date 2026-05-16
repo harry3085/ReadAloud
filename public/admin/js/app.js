@@ -4955,7 +4955,9 @@ function _adminVqBuildDetail(questions, answers){
     const border=isCorrect?'#BBF7D0':'#FECACA';
     const formatLabel = a.format==='mcq' ? '객관식' : (isSpeaking ? '🎤 말하기' : '단답');
     // 동음이의어 매칭으로 통과한 경우 표시 (q.homophones 에 들린 단어가 있는지)
-    const heardLower = String(a.spkHeard||'').toLowerCase().trim();
+    // AI 거친 경우 spkHeard 는 정답(q.word) 이라 무의미 → spkAiHeard(실제 발음) 우선
+    const _heardRaw = a.spkAiHeard || a.spkHeard;
+    const heardLower = String(_heardRaw||'').toLowerCase().trim();
     const matchedHomophone = isSpeaking && isCorrect && heardLower && heardLower !== String(q.word||'').toLowerCase().trim()
       ? heardLower : null;
     return `
@@ -4968,7 +4970,7 @@ function _adminVqBuildDetail(questions, answers){
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
           ${isSpeaking
-            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${a.spkHeard ? `들린 단어: "${esc(a.spkHeard)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
+            ? `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>`
             : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}`}
         </div>
       </div>`;
