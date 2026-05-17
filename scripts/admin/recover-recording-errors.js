@@ -18,7 +18,7 @@ const { FieldValue } = require('firebase-admin/firestore');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env.local') });
 
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.1-flash-lite-preview'];
+const MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 function _ymdKST(d = new Date()) {

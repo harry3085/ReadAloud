@@ -52,7 +52,7 @@ async function getEffectivePrompt(quizType) {
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
-  'gemini-3.1-flash-lite-preview',
+  'gemini-3.1-flash-lite',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
