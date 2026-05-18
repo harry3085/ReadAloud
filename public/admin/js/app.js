@@ -13332,7 +13332,7 @@ window.tpOpenPublishModal = async () => {
     : `${selectedSets[0]?.name || cfg.kindLabel} 외 ${selectedSets.length - 1}`;
 
   const html = `
-    <div style="width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+    <div style="width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;">📝 시험출제</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">
@@ -13410,8 +13410,8 @@ window.tpOpenPublishModal = async () => {
         ${cfg.testMode === 'vocab'
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">
               <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">📝 단어시험 풀이 옵션 (학생앱 적용)</div>
-              <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);">
+              <div style="display:flex;gap:14px;flex-wrap:nowrap;align-items:center;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;">
                   형식:
                   <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:white;">
                     <option value="mixed" selected>혼합 (랜덤)</option>
@@ -13420,19 +13420,19 @@ window.tpOpenPublishModal = async () => {
                     <option value="speaking">말하기 (음성 인식)</option>
                   </select>
                 </label>
-                <span id="tpVocabRatioRow" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
+                <span id="tpVocabRatioRow" style="display:flex;gap:14px;flex-wrap:nowrap;align-items:center;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
                   객관식비율:
                   <input type="range" id="tpVocabMcqRatio" min="0" max="100" step="10" value="50"
                     oninput="document.getElementById('tpVocabMcqRatioVal').textContent=this.value+'%';"
-                    style="width:110px;">
+                    style="width:100px;">
                   <span id="tpVocabMcqRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);" title="영→한 비율 (0% = 전체 한→영, 100% = 전체 영→한)">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;" title="영→한 비율 (0% = 전체 한→영, 100% = 전체 영→한)">
                   영→한비율:
                   <input type="range" id="tpVocabEn2koRatio" min="0" max="100" step="10" value="50"
                     oninput="document.getElementById('tpVocabEn2koRatioVal').textContent=this.value+'%';"
-                    style="width:110px;">
+                    style="width:100px;">
                   <span id="tpVocabEn2koRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
                 </label>
                 </span>
