@@ -7197,6 +7197,9 @@ let _genCheckedPages = new Set(), _genCheckedChapters = new Set(), _genCheckedBo
 let _genActiveBook = null, _genActiveChapter = null, _genActivePage = null;
 // Book 클릭 lazy fetch race 가드 — 늦게 온 옛 응답 무시 (AI OCR genClickBook + AI Generator qgSelectBook 공용)
 let _genBookFetchToken = 0;
+// Chapter 이동 모달 — 선택된 Book ({id,name}|null). 모달 내 Book→Chapter 2단 흐름 상태
+let _genMoveBook = null;
+let _genMoveBookToken = 0;  // 모달 내 Book별 chapter lazy fetch race 가드
 let _genPageCur = 1;
 const _genPageSize = 20;
 
@@ -8016,39 +8019,114 @@ window.genExcludePages = async () => {
   } catch(e){ showToast('실패: '+e.message); }
 };
 
-window.genMovePages = async () => {
+// Chapter 이동 — Book 선택 → 그 Book chapter 동적(lazy) + inline 새 Chapter 생성·즉시이동 (2026-05-18)
+// Book 안 고른 채 막혀 중복 Chapter 생성하던 문제 해결. lazy 유지 → 학원 커져도 목록·reads 일정
+window.genMovePages = () => {
   if (!_genCheckedPages.size) return;
-  if (!_genChapters.length) { showAlert('입력 확인', 'Chapter가 없습니다. 먼저 Chapter를 생성하세요.'); return; }
-  const chapters = _genRecentSort(_genChapters);
+  if (!_genBooks.length) { showAlert('입력 확인', 'Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
+  _genMoveBook = null;
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Chapter 이동</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedPages.size}개 Page 이동 · 최근 수정순</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedPages.size}개 Page · Book 선택 후 Chapter 지정</div>
       </div>
-      <div style="padding:16px 22px;overflow-y:auto;flex:1;">
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-          ${chapters.map(c=>`
-            <div data-cid="${esc(c.id)}" data-bid="${esc(c.bookId||'')}" data-bname="${esc(c.bookName||'')}" data-cname="${esc(c.name)}" onclick="window.genDoMovePages(this.dataset.cid,this.dataset.bid,this.dataset.bname,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
-              <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(c.name)}</div>
-              <div style="font-size:11px;color:${c.bookId?'var(--gray)':'#bbb'};font-style:${c.bookId?'normal':'italic'};pointer-events:none;">${c.bookId?esc(c.bookName||''):'Book 미지정'}</div>
-            </div>`).join('')}
-        </div>
-      </div>
+      <div id="genMoveBody" style="padding:16px 22px;overflow-y:auto;flex:1;">${_genMoveBodyHtml()}</div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
       </div>
     </div>`);
 };
-window.genDoMovePages = async (chapterId,bookId,bookName,chapterName) => {
+
+function _genMoveBodyHtml() {
+  if (!_genMoveBook) {
+    const books = [..._genBooks].sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
+    return `
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">① Book 선택</div>
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        ${books.map(b=>`
+          <div data-bid="${esc(b.id)}" onclick="genMoveSelectBook(this.dataset.bid)" style="padding:11px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:13px;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">${esc(b.name||'(이름 없음)')}</div>
+        `).join('')}
+      </div>`;
+  }
+  const chs = _genChapters.filter(c => c.bookId === _genMoveBook.id)
+    .sort((a,b)=>(a.order||0)-(b.order||0) || String(a.name||'').localeCompare(String(b.name||''),'ko'));
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="genMoveBackToBooks()">&#8592; Book 다시</button>
+      <span style="font-size:13px;font-weight:700;">${esc(_genMoveBook.name)}</span>
+    </div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">② Chapter 선택 (Page 이동)</div>
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+      ${chs.length ? chs.map(c=>`
+        <div data-cid="${esc(c.id)}" data-cname="${esc(c.name)}" onclick="genMovePick(this.dataset.cid,this.dataset.cname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:13px;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">${esc(c.name)}</div>
+      `).join('') : `<div style="padding:14px;text-align:center;color:#bbb;font-size:12px;font-style:italic;">이 Book 엔 Chapter 가 없습니다.<br>아래에서 새로 만들어 바로 연결하세요.</div>`}
+    </div>
+    <button class="btn btn-secondary" style="width:100%;padding:9px;font-size:12px;" onclick="genMoveShowNew()">&#43; 이 Book 에 새 Chapter 만들기</button>
+    <div id="genMoveNewWrap" style="display:none;margin-top:10px;padding:12px;border:1px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">새 Chapter 이름 *</div>
+      <input id="genMoveNewName" type="text" placeholder="예: Chapter 1" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;" onkeydown="if(event.key==='Enter')genMoveCreateAndMove()">
+      <button class="btn btn-primary" style="width:100%;padding:9px;font-size:12px;font-weight:700;margin-top:8px;" onclick="genMoveCreateAndMove()">생성 + ${_genCheckedPages.size}개 Page 이동</button>
+    </div>`;
+}
+function _genMoveRefresh(){ const el=document.getElementById('genMoveBody'); if(el) el.innerHTML=_genMoveBodyHtml(); }
+
+window.genMoveSelectBook = async (bookId) => {
+  const b = _genBooks.find(x => x.id === bookId);
+  if (!b) return;
+  _genMoveBook = { id: b.id, name: b.name };
+  const hasCh = _genChapters.some(c => c.bookId === bookId);
+  if (!hasCh) {
+    const tk = ++_genMoveBookToken;
+    try {
+      const cs = await getDocs(query(
+        collection(db,'genChapters'),
+        where('academyId','==', window.MY_ACADEMY_ID),
+        where('bookId','==', bookId),
+        orderBy('order','asc')
+      ));
+      if (tk !== _genMoveBookToken) return;  // 그 사이 다른 Book 선택 → 무시
+      _genChapters = _genChapters.concat(cs.docs.map(d=>({id:d.id,...d.data()})));
+    } catch(e) {
+      if (tk !== _genMoveBookToken) return;
+      console.error('[genMove] chapter fetch 실패', e);
+      showToast('Chapter 목록을 불러오지 못했어요 — Book 을 다시 선택해주세요');
+    }
+  }
+  _genMoveRefresh();
+};
+window.genMoveBackToBooks = () => { _genMoveBook = null; _genMoveRefresh(); };
+window.genMoveShowNew = () => {
+  const w = document.getElementById('genMoveNewWrap');
+  if (w) { w.style.display = 'block'; setTimeout(()=>document.getElementById('genMoveNewName')?.focus(),50); }
+};
+window.genMovePick = (chapterId, chapterName) => {
+  if (!_genMoveBook) return;
+  _genDoMove(chapterId, _genMoveBook.id, _genMoveBook.name, chapterName);
+};
+window.genMoveCreateAndMove = async () => {
+  if (!_genMoveBook) return;
+  const name = document.getElementById('genMoveNewName')?.value.trim();
+  if (!name) { showAlert('입력 확인', 'Chapter 이름을 입력하세요.'); return; }
+  try {
+    const ref = await addDoc(collection(db,'genChapters'), {
+      name, bookId: _genMoveBook.id, bookName: _genMoveBook.name,
+      order: _genChapters.filter(c=>c.bookId===_genMoveBook.id).length + 1, pageCount: 0,
+      createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    });
+    await _genDoMove(ref.id, _genMoveBook.id, _genMoveBook.name, name);
+  } catch(e){ showToast('Chapter 생성 실패: '+e.message); }
+};
+async function _genDoMove(chapterId, bookId, bookName, chapterName) {
   try {
     const ids=[..._genCheckedPages];
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genPages',id),{chapterId,chapterName,bookId:bookId||null,bookName:bookName||''})));
-    closeModal(); _genCheckedPages.clear();
-    showToast(`"${chapterName}"으로 이동 완료`);
+    closeModal(); _genCheckedPages.clear(); _genMoveBook = null;
+    showToast(`"${chapterName}"으로 ${ids.length}개 Page 이동 완료`);
     await loadGenerator({keepActive:true});
-  } catch(e){ showToast('실패: '+e.message); }
-};
+  } catch(e){ showToast('이동 실패: '+e.message); }
+}
 
 // ── Chapter CRUD ──
 window.genCreateChapter = () => {
