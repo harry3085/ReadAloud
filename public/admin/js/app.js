@@ -8040,7 +8040,7 @@ window.genMovePages = () => {
 
 function _genMoveBodyHtml() {
   if (!_genMoveBook) {
-    const books = [..._genBooks].sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
+    const books = _genRecentSort(_genBooks);  // 최근순 기본
     return `
       <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">① Book 선택</div>
       <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
@@ -8055,8 +8055,7 @@ function _genMoveBodyHtml() {
         <button class="btn btn-primary" style="width:100%;padding:9px;font-size:12px;font-weight:700;margin-top:8px;" onclick="genMoveCreateBook()">Book 생성 후 계속</button>
       </div>`;
   }
-  const chs = _genChapters.filter(c => c.bookId === _genMoveBook.id)
-    .sort((a,b)=>(a.order||0)-(b.order||0) || String(a.name||'').localeCompare(String(b.name||''),'ko'));
+  const chs = _genRecentSort(_genChapters.filter(c => c.bookId === _genMoveBook.id));  // 최근순 기본
   return `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="genMoveBackToBooks()">&#8592; Book 다시</button>
