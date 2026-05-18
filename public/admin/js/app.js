@@ -13410,16 +13410,17 @@ window.tpOpenPublishModal = async () => {
         ${cfg.testMode === 'vocab'
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">
               <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">📝 단어시험 풀이 옵션 (학생앱 적용)</div>
-              <div>
-                <label style="font-size:11px;font-weight:600;color:var(--gray);">형식</label>
-                <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                  <option value="mixed" selected>혼합 (랜덤)</option>
-                  <option value="mixed_mcq_first">혼합 (객→주)</option>
-                  <option value="mixed_short_first">혼합 (주→객)</option>
-                  <option value="speaking">말하기 (음성 인식)</option>
-                </select>
-              </div>
-              <div id="tpVocabRatioRow" style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;">
+              <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);">
+                  형식:
+                  <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:white;">
+                    <option value="mixed" selected>혼합 (랜덤)</option>
+                    <option value="mixed_mcq_first">혼합 (객→주)</option>
+                    <option value="mixed_short_first">혼합 (주→객)</option>
+                    <option value="speaking">말하기 (음성 인식)</option>
+                  </select>
+                </label>
+                <span id="tpVocabRatioRow" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
                   객관식비율:
                   <input type="range" id="tpVocabMcqRatio" min="0" max="100" step="10" value="50"
@@ -13434,6 +13435,7 @@ window.tpOpenPublishModal = async () => {
                     style="width:110px;">
                   <span id="tpVocabEn2koRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
                 </label>
+                </span>
               </div>
               <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
