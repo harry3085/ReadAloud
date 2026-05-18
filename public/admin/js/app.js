@@ -13410,30 +13410,30 @@ window.tpOpenPublishModal = async () => {
         ${cfg.testMode === 'vocab'
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">
               <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">📝 단어시험 풀이 옵션 (학생앱 적용)</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-                <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">형식</label>
-                  <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                    <option value="mixed" selected>혼합</option>
-                    <option value="short">주관식(스펠링)</option>
-                    <option value="mcq">객관식</option>
-                    <option value="speaking">🎤 말하기 (음성 인식)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">방향</label>
-                  <select id="tpVocabDirection" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                    <option value="mixed" selected>혼합</option>
-                    <option value="en2ko">영→한</option>
-                    <option value="ko2en">한→영</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="font-size:11px;font-weight:600;color:var(--gray);">객관식 비율 (%)</label>
-                  <input type="number" id="tpVocabMcqRatio" value="50" min="0" max="100"
-                    style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-                  <div style="font-size:10px;color:var(--gray);margin-top:2px;">혼합 형식일 때만 반영</div>
-                </div>
+              <div>
+                <label style="font-size:11px;font-weight:600;color:var(--gray);">형식</label>
+                <select id="tpVocabFormat" onchange="_tpVocabFormatChanged()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;background:white;">
+                  <option value="mixed" selected>혼합 (랜덤)</option>
+                  <option value="mixed_mcq_first">혼합 (객→주)</option>
+                  <option value="mixed_short_first">혼합 (주→객)</option>
+                  <option value="speaking">말하기 (음성 인식)</option>
+                </select>
+              </div>
+              <div id="tpVocabRatioRow" style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
+                  객관식비율:
+                  <input type="range" id="tpVocabMcqRatio" min="0" max="100" step="10" value="50"
+                    oninput="document.getElementById('tpVocabMcqRatioVal').textContent=this.value+'%';"
+                    style="width:110px;">
+                  <span id="tpVocabMcqRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);" title="영→한 비율 (0% = 전체 한→영, 100% = 전체 영→한)">
+                  영→한비율:
+                  <input type="range" id="tpVocabEn2koRatio" min="0" max="100" step="10" value="50"
+                    oninput="document.getElementById('tpVocabEn2koRatioVal').textContent=this.value+'%';"
+                    style="width:110px;">
+                  <span id="tpVocabEn2koRatioVal" style="font-size:11px;font-weight:700;min-width:34px;color:var(--text);">50%</span>
+                </label>
               </div>
               <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
@@ -13495,17 +13495,13 @@ window._tpVocabFormatChanged = () => {
   const fmt = document.getElementById('tpVocabFormat')?.value;
   const isSpeaking = fmt === 'speaking';
   const speakOpts = document.getElementById('tpSpeakingOpts');
-  const direction = document.getElementById('tpVocabDirection');
-  const mcqRatio = document.getElementById('tpVocabMcqRatio');
+  const ratioRow = document.getElementById('tpVocabRatioRow');
   if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
-  if (direction) {
-    direction.disabled = isSpeaking;
-    direction.style.opacity = isSpeaking ? '0.4' : '1';
-    if (isSpeaking) direction.value = 'ko2en';  // 시각적으로도 ko2en 표시
-  }
-  if (mcqRatio) {
-    mcqRatio.disabled = isSpeaking;
-    mcqRatio.style.opacity = isSpeaking ? '0.4' : '1';
+  // 말하기 → 객관식비율·영→한비율 슬라이더 비활성화 (한글→영어 발음 고정)
+  if (ratioRow) {
+    ratioRow.style.opacity = isSpeaking ? '0.4' : '1';
+    ratioRow.style.pointerEvents = isSpeaking ? 'none' : 'auto';
+    ratioRow.querySelectorAll('input').forEach(el => { el.disabled = isSpeaking; });
   }
 };
 
@@ -13588,10 +13584,12 @@ window.tpPublish = async () => {
   let vocabOptions = null;
   if (cfg.testMode === 'vocab') {
     const fmt = document.getElementById('tpVocabFormat')?.value || 'mixed';
+    const _mcqR = parseInt(document.getElementById('tpVocabMcqRatio')?.value);
+    const _e2kR = parseInt(document.getElementById('tpVocabEn2koRatio')?.value);
     vocabOptions = {
-      format: fmt,                                                                                    // mixed | short | mcq | speaking
-      direction: fmt === 'speaking' ? 'ko2en' : (document.getElementById('tpVocabDirection')?.value || 'mixed'),
-      mcqRatio: Math.max(0, Math.min(100, parseInt(document.getElementById('tpVocabMcqRatio')?.value) || 50)),
+      format: fmt,                                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
+      mcqRatio: isFinite(_mcqR) ? Math.max(0, Math.min(100, _mcqR)) : 50,
+      en2koRatio: isFinite(_e2kR) ? Math.max(0, Math.min(100, _e2kR)) : 50,
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
       shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
     };

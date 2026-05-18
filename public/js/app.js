@@ -4437,31 +4437,38 @@ window.startVocab = async (testId, testName) => {
       if (typeof _vqBindSpellInput === 'function') _vqBindSpellInput();
     });
 
-    // vocabOptions (기본값 제공)
-    const opts = Object.assign(
-      { format:'mixed', direction:'mixed', mcqRatio:50, shuffleQ:true, shuffleChoices:true },
-      test.vocabOptions || {}
-    );
+    // vocabOptions — 신모델(슬라이더 mcqRatio/en2koRatio) + 구모델(format='short'|'mcq', direction) 하위호환
+    const _raw = test.vocabOptions || {};
+    let _fmt = _raw.format || 'mixed';
+    let _mcqRatio = (typeof _raw.mcqRatio === 'number') ? _raw.mcqRatio : 50;
+    // 구 형식값 정규화: 주관식(스펠링)=비율0% / 객관식=비율100% → 모두 'mixed' 로 흡수
+    if (_fmt === 'short') { _fmt = 'mixed'; _mcqRatio = 0; }
+    else if (_fmt === 'mcq') { _fmt = 'mixed'; _mcqRatio = 100; }
+    // 영→한 비율: 신필드 우선, 없으면 구 direction 매핑 (en2ko=100 / ko2en=0 / mixed·미설정=50)
+    let _en2koRatio;
+    if (typeof _raw.en2koRatio === 'number') _en2koRatio = _raw.en2koRatio;
+    else if (_raw.direction === 'en2ko') _en2koRatio = 100;
+    else if (_raw.direction === 'ko2en') _en2koRatio = 0;
+    else _en2koRatio = 50;
+    const opts = {
+      format: _fmt,                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
+      mcqRatio: Math.max(0, Math.min(100, _mcqRatio)),
+      en2koRatio: Math.max(0, Math.min(100, _en2koRatio)),
+      shuffleQ: _raw.shuffleQ !== false,
+      shuffleChoices: _raw.shuffleChoices !== false,
+      speakingStrictness: _raw.speakingStrictness || 'normal',
+    };
+    const isSpeaking = opts.format === 'speaking';
 
     // 1) 문제 순서 섞기 (재풀이 시에도 매번 새로)
     if (opts.shuffleQ) questions = _rngShuffle(questions);
 
-    // 2) 각 문제에 format/direction 배정
-    const answers = questions.map((q, i) => {
-      // direction
-      let dir = opts.direction;
-      if (dir === 'mixed') dir = i % 2 === 0 ? 'en2ko' : 'ko2en';
-      // format
-      let fmt;
-      if (opts.format === 'mixed') {
-        fmt = Math.random() * 100 < opts.mcqRatio ? 'mcq' : 'short';
-      } else {
-        fmt = opts.format;
-      }
-      // 스펠링 쓰기는 항상 한글→영어 (알파벳 입력)
-      if (fmt === 'short') dir = 'ko2en';
-      // 말하기는 항상 한글→영어 (한글 보고 영어로 발음)
-      if (fmt === 'speaking') dir = 'ko2en';
+    // 2) 각 문제에 format/direction 배정 (객·주 선택, 영→한 모두 비율 기반 랜덤)
+    let answers = questions.map((q) => {
+      const fmt = isSpeaking ? 'speaking' : ((Math.random() * 100 < opts.mcqRatio) ? 'mcq' : 'short');
+      let dir = (Math.random() * 100 < opts.en2koRatio) ? 'en2ko' : 'ko2en';
+      // 스펠링 쓰기·말하기는 항상 한글→영어
+      if (fmt === 'short' || fmt === 'speaking') dir = 'ko2en';
       const ans = { input: '', direction: dir, format: fmt };
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
@@ -4479,6 +4486,17 @@ window.startVocab = async (testId, testName) => {
       }
       return ans;
     });
+
+    // 3) 형식별 출제 순서 정렬 — 객→주 / 주→객 (객·주 선택은 위에서 랜덤, 여기선 그룹 순서만)
+    //    같은 그룹 내부는 안정 정렬로 셔플된 순서 그대로 유지. questions·answers 인덱스 동기.
+    if (opts.format === 'mixed_mcq_first' || opts.format === 'mixed_short_first') {
+      const mcqFirst = opts.format === 'mixed_mcq_first';
+      const order = answers
+        .map((a, i) => ({ i, mcq: a.format === 'mcq' }))
+        .sort((x, y) => x.mcq === y.mcq ? 0 : (mcqFirst ? (x.mcq ? -1 : 1) : (x.mcq ? 1 : -1)));
+      questions = order.map(o => questions[o.i]);
+      answers = order.map(o => answers[o.i]);
+    }
 
     // speaking 모드 — 마이크 권한 + Web Speech API 사전 체크 (차단 모달, 재시도 자동 진입)
     const hasSpeaking = answers.some(a => a.format === 'speaking');
