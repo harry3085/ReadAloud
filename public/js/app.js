@@ -4771,6 +4771,23 @@ function _vqSetupSilenceDetection(stream, onSilent) {
   return () => { clearInterval(intervalId); try { ctx.close(); } catch(_) {} };
 }
 
+// getUserMedia 타임아웃 래퍼 — 안드로이드에서 1·2차 SR 마이크가 안 풀려 3차
+// getUserMedia 가 응답·reject 없이 hang 하면 화면이 영구 먹통. ms 후 강제 실패.
+// 늦게 도착하는 stream 은 track stop (마이크 LED 잔존 방지).
+function _gumWithTimeout(constraints, ms) {
+  const p = navigator.mediaDevices.getUserMedia(constraints);
+  let timer;
+  const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('gum-timeout')), ms); });
+  return Promise.race([p, timeout])
+    .finally(() => clearTimeout(timer))
+    .catch(err => {
+      if (err && err.message === 'gum-timeout') {
+        p.then(st => { try { st.getTracks().forEach(t => t.stop()); } catch (_) {} }).catch(() => {});
+      }
+      throw err;
+    });
+}
+
 // 3차 전용 흐름 — MR 단독 (SR X) + 종료 감지 3가지 race (timeout / [완료] / silence)
 async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
   const btn = document.getElementById('vqSpkMicBtn');
@@ -4780,17 +4797,18 @@ async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
   if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
   if (status) status.innerHTML = `🔴 듣고 있어요... <span style="font-size:11px;color:#888;">(AI 평가 · 발음 후 [완료] 또는 자동 종료)</span>`;
 
-  // MR 시작 (mic 단독 점유)
+  // MR 시작 (mic 단독 점유) — 4초 타임아웃. hang/실패 시 잠그지 않고 재시도 허용.
   let stream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await _gumWithTimeout({ audio: true }, 4000);
   } catch (e) {
-    console.error('[vqSpk] (3차) getUserMedia 실패:', e.message);
+    const isTimeout = e && e.message === 'gum-timeout';
+    console.error('[vqSpk] (3차) getUserMedia', isTimeout ? '타임아웃' : '실패', ':', e && e.message);
     s.spk.busy = false;
-    if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
+    s.spk.attempt = Math.max(0, attempt - 1);  // 롤백 → 마이크 버튼 다시 눌러 재시도 가능
+    if (status) status.textContent = '⚠️ 마이크 준비 실패. 버튼을 다시 눌러 시도하세요.';
     if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
-    _vqSpkFinalize(false, '');
-    return;
+    return;  // finalize 안 함 — 잠그지 않고 재시도
   }
   const candidates = [
     'audio/webm;codecs=opus', 'audio/webm',
