@@ -8043,10 +8043,16 @@ function _genMoveBodyHtml() {
     const books = [..._genBooks].sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
     return `
       <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">① Book 선택</div>
-      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-        ${books.map(b=>`
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+        ${books.length ? books.map(b=>`
           <div data-bid="${esc(b.id)}" onclick="genMoveSelectBook(this.dataset.bid)" style="padding:11px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:13px;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">${esc(b.name||'(이름 없음)')}</div>
-        `).join('')}
+        `).join('') : `<div style="padding:14px;text-align:center;color:#bbb;font-size:12px;font-style:italic;">Book 이 없습니다. 아래에서 새로 만드세요.</div>`}
+      </div>
+      <button class="btn btn-secondary" style="width:100%;padding:9px;font-size:12px;" onclick="genMoveShowNewBook()">&#43; 새 Book 만들기</button>
+      <div id="genMoveNewBookWrap" style="display:none;margin-top:10px;padding:12px;border:1px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">새 Book 이름 *</div>
+        <input id="genMoveNewBookName" type="text" placeholder="예: Bricks Reading 1" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;" onkeydown="if(event.key==='Enter')genMoveCreateBook()">
+        <button class="btn btn-primary" style="width:100%;padding:9px;font-size:12px;font-weight:700;margin-top:8px;" onclick="genMoveCreateBook()">Book 생성 후 계속</button>
       </div>`;
   }
   const chs = _genChapters.filter(c => c.bookId === _genMoveBook.id)
@@ -8096,6 +8102,24 @@ window.genMoveSelectBook = async (bookId) => {
   _genMoveRefresh();
 };
 window.genMoveBackToBooks = () => { _genMoveBook = null; _genMoveRefresh(); };
+window.genMoveShowNewBook = () => {
+  const w = document.getElementById('genMoveNewBookWrap');
+  if (w) { w.style.display = 'block'; setTimeout(()=>document.getElementById('genMoveNewBookName')?.focus(),50); }
+};
+window.genMoveCreateBook = async () => {
+  const name = document.getElementById('genMoveNewBookName')?.value.trim();
+  if (!name) { showAlert('입력 확인', 'Book 이름을 입력하세요.'); return; }
+  try {
+    const ref = await addDoc(collection(db,'genBooks'), {
+      name, chapterCount: 0, pageCount: 0,
+      createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    });
+    _genBooks.push({ id: ref.id, name, chapterCount: 0, pageCount: 0 });  // 메모리 반영 (최종 이동 시 loadGenerator 로 전체 갱신)
+    _genMoveBook = { id: ref.id, name };  // 생성한 Book 선택 상태로 → ② Chapter 단계
+    _genMoveRefresh();
+  } catch(e){ showToast('Book 생성 실패: '+e.message); }
+};
 window.genMoveShowNew = () => {
   const w = document.getElementById('genMoveNewWrap');
   if (w) { w.style.display = 'block'; setTimeout(()=>document.getElementById('genMoveNewName')?.focus(),50); }
