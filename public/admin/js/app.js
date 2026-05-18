@@ -9387,6 +9387,32 @@ window.qsRefresh = async () => {
   await loadQuestionSets();
   showToast('✅ 문제 세트 목록 새로고침 완료');
 };
+// 진도체크 일자별 — 그 날짜 캐시(_prog.testsByDate[date]) 무효 후 재fetch
+window.progRefresh = async () => {
+  const date = (document.getElementById('progDateInput')?.value || '').trim();
+  if (date && _prog?.testsByDate) delete _prog.testsByDate[date];
+  showToast('진도체크 새로고침 중...');
+  await progRenderByDate();
+  showToast('✅ 진도체크 새로고침 완료');
+};
+// 대시보드 — initDashboard 가 거의 모든 위젯 매번 fresh (미납만 결제캐시·자동무효) → 토스트만
+window.dashRefresh = async () => {
+  showToast('대시보드 새로고침 중...');
+  await initDashboard();
+  showToast('✅ 대시보드 새로고침 완료');
+};
+// AI 사용량 — loadQuotaUsage 매번 getDoc fresh (캐시 없음) → 토스트만
+window.quotaRefresh = async () => {
+  showToast('AI 사용량 새로고침 중...');
+  await loadQuotaUsage();
+  showToast('✅ AI 사용량 새로고침 완료');
+};
+// 시험배정 상세 — _renderTestAssignDetail 매번 books/chapters 재fetch → 토스트만
+window.tpAssignRefresh = async () => {
+  showToast('새로고침 중...');
+  await _renderTestAssignDetail(_activeTestType);
+  showToast('✅ 새로고침 완료');
+};
 
 // 난이도 표기 정규화 — 한글 '하/중/상' (현행) / 영어 'easy/medium/hard' / 옛 학년('중1' 등) 모두 영어로 매핑.
 // API 프롬프트에는 항상 'easy'/'medium'/'hard' 영어로 전달.
@@ -12803,7 +12829,7 @@ function _tpRender() {
             <div style="font-weight:700;font-size:14px;">${cfg.actions?.includes('assign') ? '📊 최근 시험' : '🖨 시험지 출력 전용'} <span style="color:var(--gray);font-weight:400;font-size:12px;">· ${esc(cfg.kindLabel)} 유형</span></div>
             <div style="font-size:11px;color:var(--gray);">${cfg.actions?.includes('assign') ? _tpGenTests.length + '개 · 최근순 · 행 클릭 시 응시 현황' : '인쇄 전용 — 출제 이력 저장 없음'}</div>
           </div>
-          ${cfg.actions?.includes('assign') ? `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="_renderTestAssignDetail('${esc(_activeTestType)}')">↻ 새로고침</button>` : ''}
+          ${cfg.actions?.includes('assign') ? `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpAssignRefresh()">↻ 새로고침</button>` : ''}
         </div>
         <div style="flex:1;overflow-y:auto;">
           ${!cfg.enabled
