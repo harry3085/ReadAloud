@@ -5164,3 +5164,92 @@ SW v540 → v541 (1 commit `b4516a4`). 단어시험 Wordsnap 처럼 언스크램
 - ✅ 언스크램블 문장 직접 입력 (mode 'unscramble-from-text' + UI + 원문 보존 검증)
 - ✅ qgSaveSet Book fallback (직접 입력 세트 미지정 폴더 방지)
 - ✅ 작업 규칙 — AI 직접 입력 원문 보존 / qgSaveSet Book fallback
+
+---
+
+## 2026-05-18 (이어서): AI Generator/OCR Book 클릭 race + Chapter 이동 모달 재구성
+
+학원장 신고 "AI Generator/OCR 에서 Book 클릭해도 Chapter/Page 종종 안 뜸"
+→ lazy fetch race 진단 → 이동 모달 UX 종합 재구성. SW v540 → v546 (~5 commit).
+
+### 1) Book 클릭 lazy fetch race + 조용한 실패 fix (commit `0756d82`)
+
+증상: AI Generator(`qgSelectBook`)/AI OCR(`genClickBook`) 에서 Book 클릭
+시 Chapter·Page 목록 종종 안 뜸.
+
+원인 (둘 동일 패턴):
+- **race**: async lazy fetch 중 다른 Book 클릭 → 늦게 온 옛 응답이
+  엉뚱한 시점 concat+render → 빈 목록 (빠른/연속 클릭 시)
+- **catch 조용히 삼킴**: `catch(e){console.warn}` — fetch 일시 실패 시
+  빈 화면, 사용자 에러 인지 0
+
+수정: 공용 `_genBookFetchToken` 세대 가드 — `++tk` 후 fetch, 완료 시
+`tk !== 현재토큰`이면 return (최신 클릭이 render 담당). catch →
+`console.error` + 토스트 + 옛 응답 에러 무시. 인덱스·Rules 정상 확인
+(genChapters/genPages `academyId+bookId+order/serialNumber` 존재,
+where academyId 동반 → Rules 통과 — _srLoadTestMeta 함정 아님).
+
+### 2) Chapter 이동 모달 Book→Chapter 2단 + inline 생성 (commit `38538a4`·`987880a`·`9bd58f1`)
+
+문제: lazy 라 Book 안 고르면 `_genChapters` 비어 "Chapter 없음" alert
+→ 사용자가 딴 화면서 **중복 Chapter 생성**. 전체 chapter 노출은 학원
+커지면 긴 목록·reads 증가로 비효율(사용자 우려).
+
+데이터 근거: default Book 10 / Chapter 29 / Page 156 — Page 가 대용량.
+
+해결 (사용자 제안 — 상위 선택→그 하위만 lazy, 전체 fetch X):
+- **`genMovePages` 2단**: ① Book 선택(`_genBooks`) → ② 그 Book chapter
+  lazy fetch(where bookId, race 가드) 목록
+- 양 단계 항상 **inline 새 생성** ([+ 새 Book], [+ 이 Book 에 새 Chapter])
+  → 이름 입력(Enter) → addDoc(bookId/bookName 자동) → 생성+즉시 이동
+  (별도 화면 X, 중복·미지정 차단). `_genDoMove` 공용 헬퍼
+- **`genMoveChapters`**(Chapter→Book) 도 inline 새 Book (생성 즉시 그
+  Book 으로 Chapter 이동 — 1단)
+- "없음" alert 차단 → 안내 + 생성 버튼. onclick 인라인 따옴표 →
+  `data-*` 속성 패턴 (특수문자 안전)
+
+효과: lazy 유지(학원 커져도 목록·reads 일정 — 항상 한 Book chapter),
+중복 생성 근본 차단, 초기 사용자 직관(모달이 Book→Chapter 흐름 안내).
+
+### 3) 이동 모달 리스트 최근순 통일 (commit `3141a86`)
+
+genMovePages ① Book(이름순)·② Chapter(order순) → `_genRecentSort`
+(updatedAt/createdAt 최근순). genMoveChapters Book 은 이미 최근순.
+3곳 통일 → 방금 작업·생성 항목이 맨 위 (스크롤 불필요).
+
+---
+
+## 작업 규칙 추가 (2026-05-18 이어서)
+
+신규:
+- **async lazy fetch 는 세대 토큰 race 가드 필수** — Book 클릭처럼
+  사용자가 빠르게 연속 트리거하는 async fetch 는 `const tk=++_token`
+  후 fetch, 완료 시 `tk !== _token` 이면 return(최신 트리거가 render).
+  옛 응답이 늦게 와 엉뚱한 render → 빈 목록 방지. catch 도 옛 토큰이면
+  무시 + 현재 토큰일 때만 사용자 토스트.
+- **lazy fetch ↔ UX 충돌은 "상위 선택 → 그 하위만 lazy + inline 생성"
+  으로** — 전체 fetch(학원 커지면 긴 목록·reads↑) 도 아니고 lazy
+  방치(안 보여 중복 생성) 도 아닌, 모달에서 상위(Book) 고르면 그
+  하위(Chapter) 만 lazy + 없으면 그 자리 생성. 확장성·중복 차단 동시.
+- **모달 내 동적 단계 전환** — showModal 정적 HTML + `<div id=...>` 영역
+  innerHTML 교체(`_genMoveRefresh`)로 2단 흐름. 상태는 모듈 변수
+  (`_genMoveBook`). window 함수로 onclick 노출.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-18 이어서)
+- `public/admin/js/app.js`: +~120줄 (race 가드 + Chapter 이동 모달 재구성·inline 생성)
+- SW 캐시: `kunsori-v546`
+
+## 진행률 (2026-05-18 이어서)
+- AI Generator/OCR 안정성: **~100%** (Book 클릭 race fix + 이동 모달 종합 재구성)
+- AI Generator 직접 입력: ~100% (변동 없음)
+- Gemini 인프라·성적리포트·결제·말하기: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션 이어서, 2026-05-18)**:
+- ✅ Book 클릭 lazy fetch race + 조용한 실패 fix (AI Generator·OCR)
+- ✅ Chapter 이동 모달 Book→Chapter 2단 + 양 단계 inline 새 Book/Chapter 생성·즉시이동
+- ✅ Chapter→Book 이동 모달 inline 새 Book
+- ✅ 이동 모달 리스트 최근순 통일 (방금 작업 항목 우선)
+- ✅ 작업 규칙 — async lazy race 가드 / lazy↔UX 충돌 해법 / 모달 내 동적 단계
