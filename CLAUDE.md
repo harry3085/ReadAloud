@@ -5110,3 +5110,57 @@ WebFetch 로 ai.google.dev 가격 확인 (per 1M tokens, 유료):
 - ✅ preview→GA 모델 교체 6곳 (5/25 종료 대비, 폴백 3순위 유지)
 - ✅ 가격 비교 (WebFetch) + 폴백 2순위 재배치 메모리 등록 (다음 달 보류)
 - ✅ 작업 규칙 — ListModels 노이즈 / Vercel 로그 휘발성 / 외부 가격 WebFetch 확인
+
+---
+
+## 2026-05-18: AI Generator 언스크램블 문장 직접 입력 (Wordsnap 패턴)
+
+SW v540 → v541 (1 commit `b4516a4`). 단어시험 Wordsnap 처럼 언스크램블에도 본문 Page 선택 없이 영문장 직접 입력 → 청크 분할 + 한글뜻 자동 생성.
+
+### 확정 spec (사용자 결정)
+- 입력 형식: textarea **한 줄 = 1 영문장** (한글뜻 AI 자동 생성)
+- 청크 분할: AI 호출 (원문 100% 보존 + 자연 청크 경계)
+- 결과: 미리보기 모달 → 저장 (기존 언스크램블 흐름)
+- "입력 내용 따라 다른 룰" = 줄바꿈 구분 영문장 리스트 형태 자동 처리
+
+### 서버 ([api/generate-quiz.js](api/generate-quiz.js))
+- 새 mode `'unscramble-from-text'` 분기 (homophones-only 패턴 동일 구조)
+- `UNSCRAMBLE_FROM_TEXT_PROMPT` — VERBATIM 보존 강제, 청크 N±1, meaningKo 생성
+- `handleUnscrambleFromText`:
+  - sentences[] 검증 (3~400자, 최대 100문장, 중복 제거)
+  - GEMINI_MODELS 폴백 체인 (작업규칙 8)
+  - **원문 보존 검증** — chunkedSentence 의 `/` 제거 후 정규화(공백·대소문자) 비교
+  - 변형 감지 시 **원문 단어 단위 N등분 강제** (AI 가 변형해도 원문 100% 보존)
+  - 청크 누락 시도 동일 fallback
+
+### 클라 ([public/admin/js/app.js](public/admin/js/app.js))
+- `_qgBuildUnscrambleSnapSection` — UI (textarea + 📥붙여넣기 + 실행, Wordsnap 동일 디자인)
+- `_qgParseSentences` — 줄당 1문장 (빈 줄 스킵, 중복 제거, 3~400자)
+- `_qgUnscrambleSnapUpdateStatus` / `qgUnscrambleSnapPaste` / `qgRunUnscrambleSnap`
+- type 분기 — 기존 `word→_qgBuildWordsnapSection` 에 `unscramble→_qgBuildUnscrambleSnapSection` 추가
+- chunkCount 는 언스크램블 옵션 (`_qgCollectOpts('unscramble').chunkCount`) 값 사용
+- `qgRunUnscrambleSnap` → `_qgShowResultModal` (기존 미리보기 흐름 재사용)
+
+### qgSaveSet Book fallback (중요)
+- 기존 `qgSaveSet` 의 sourcePages 는 `q.sourcePageId` 기반 — 직접 입력은 sourcePageId='' → bookId 빈값 → **미지정 폴더 저장 위험**
+- fix: sourcePages 가 전부 빈 bookId/pageId 면 `_qgActiveBook` 단일 엔트리 생성 (Wordsnap qgRunWordsnap 패턴과 동일)
+- 직접 입력 언스크램블 세트도 활성 Book 폴더에 저장됨
+
+### 작업 규칙 추가
+- **AI 직접 입력 원문 보존 패턴** — Wordsnap(단어) / 언스크램블(문장) 처럼 사용자 입력을 AI 가 가공할 때, AI 가 원문 변형하면 서버에서 검증(정규화 비교) 후 원문 기반 강제 재구성. AI 응답 신뢰 X, 입력이 ground truth.
+- **AI Generator 직접 입력 = qgSaveSet Book fallback 필수** — sourcePageId 없는 직접 입력 세트는 sourcePages 비어 미지정 폴더로 빠짐. `_qgActiveBook` fallback 으로 활성 폴더 연결.
+
+## 파일 크기 / SW 캐시 (2026-05-18)
+- `api/generate-quiz.js`: +~130줄 (UNSCRAMBLE_FROM_TEXT_PROMPT + handleUnscrambleFromText)
+- `public/admin/js/app.js`: +~150줄 (언스크램블 직접 입력 UI·파서·실행 + qgSaveSet fallback)
+- SW 캐시: `kunsori-v541`
+
+## 진행률 (2026-05-18)
+- **AI Generator 직접 입력: ~100%** (단어시험 Wordsnap + 언스크램블 문장 입력)
+- 음성 인식·동음이의어·AI 사용량·멀티테넌시: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션, 2026-05-18)**:
+- ✅ 언스크램블 문장 직접 입력 (mode 'unscramble-from-text' + UI + 원문 보존 검증)
+- ✅ qgSaveSet Book fallback (직접 입력 세트 미지정 폴더 방지)
+- ✅ 작업 규칙 — AI 직접 입력 원문 보존 / qgSaveSet Book fallback
