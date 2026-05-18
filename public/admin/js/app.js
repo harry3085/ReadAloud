@@ -9368,6 +9368,26 @@ window.loadQuizGenerate = async () => {
   _qgRender();
 };
 
+// ── 새로고침 버튼 전용 wrapper — 캐시 무효화 + 재fetch + 완료 토스트 ──
+// 진입(메뉴 클릭)은 기존 함수 직접(캐시 활용). 새로고침만 강제 갱신 + 피드백.
+window.genRefresh = async () => {
+  showToast('AI OCR 새로고침 중...');
+  await loadGenerator();  // 항상 books/미배정 재fetch
+  showToast('✅ AI OCR 목록 새로고침 완료');
+};
+window.qgRefresh = async () => {
+  showToast('AI Generator 새로고침 중...');
+  _genBooks = []; _genChapters = []; _genPages = [];  // 캐시 비움 → 재fetch 강제
+  await loadQuizGenerate();
+  showToast('✅ AI Generator 새로고침 완료');
+};
+window.qsRefresh = async () => {
+  showToast('문제 세트 목록 새로고침 중...');
+  _qsInvalidateCache();  // 세트 캐시 무효 (Books·세트 모두 재fetch)
+  await loadQuestionSets();
+  showToast('✅ 문제 세트 목록 새로고침 완료');
+};
+
 // 난이도 표기 정규화 — 한글 '하/중/상' (현행) / 영어 'easy/medium/hard' / 옛 학년('중1' 등) 모두 영어로 매핑.
 // API 프롬프트에는 항상 'easy'/'medium'/'hard' 영어로 전달.
 function _qgMapDifficulty(d) {

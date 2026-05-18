@@ -886,7 +886,7 @@
   <div class="page" id="page-generator">
     <div class="page-header">
       <div><div class="page-title">📁 AI OCR</div><div class="page-sub">이미지를 OCR하여 Book › Chapter › Page 구조로 저장합니다</div></div>
-      <button class="btn btn-secondary" onclick="loadGenerator()">↺ 새로고침</button>
+      <button class="btn btn-secondary" onclick="genRefresh()">↺ 새로고침</button>
     </div>
 
     <!-- 이미지 업로드 (전체 폭) -->
@@ -1023,7 +1023,7 @@
   <div class="page" id="page-quiz-generate">
     <div class="page-header">
       <div><div class="page-title">✨ AI Generator</div><div class="page-sub">AI OCR Page를 선택하면 AI가 객관식 4지선다 문제를 만들어 줍니다</div></div>
-      <button class="btn btn-secondary" onclick="loadQuizGenerate()">↺ 새로고침</button>
+      <button class="btn btn-secondary" onclick="qgRefresh()">↺ 새로고침</button>
     </div>
     <div id="quizGenRoot"></div>
   </div>
@@ -1034,7 +1034,7 @@
       <div><div class="page-title">📋 문제 세트 목록</div><div class="page-sub">저장된 AI 문제 세트를 관리합니다</div></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" onclick="goPage('quiz-generate')">+ 새 세트 만들기</button>
-        <button class="btn btn-secondary" onclick="loadQuestionSets()">↺ 새로고침</button>
+        <button class="btn btn-secondary" onclick="qsRefresh()">↺ 새로고침</button>
       </div>
     </div>
     <div id="quizSetsRoot"></div>
