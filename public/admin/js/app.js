@@ -186,6 +186,29 @@ function _checkQuotaWarning(res){
 
 // ── 인증 체크 ──────────────────────────────────────────
 // 학원 컨텍스트 로드 — Custom Claims 우선, users 문서 폴백, 'default' 최종 폴백
+// 헤더 Version 표시 — SW 에 실제 캐시명 질의 (kunsori-v546 → "Version 5.4.6")
+// 학원장이 캐시 갱신 여부 자가진단 (강력 새로고침 후 숫자 바뀌면 갱신됨)
+async function _showAppVersion() {
+  try {
+    if (!navigator.serviceWorker) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sw = reg.active || navigator.serviceWorker.controller;
+    if (!sw) return;
+    const ch = new MessageChannel();
+    ch.port1.onmessage = (e) => {
+      const m = String(e.data || '').match(/\d+/);
+      if (!m) return;
+      const d = m[0];                                  // 예: '546'
+      const patch = d.slice(-1);
+      const minor = d.slice(-2, -1) || '0';
+      const major = d.slice(0, -2) || '0';
+      const el = document.getElementById('appVer');
+      if (el) el.textContent = `Version ${major}.${minor}.${patch}`;
+    };
+    sw.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+  } catch (_) {}
+}
+
 async function _loadMyAcademyContext(user, userDocData) {
   let academyId = null, role = null;
   try {
@@ -303,6 +326,7 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
   adminProfile = {uid: user.uid, ...snap.data()};
   await _loadMyAcademyContext(user, snap.data());
+  _showAppVersion();  // 헤더 Version 표시 (SW 캐시 질의, fire-and-forget)
   // T1: 학원장 마지막 로그인 시각 기록 (super_admin 제외, 권한 부족 시 silent)
   if (window.MY_ROLE !== 'super_admin' && window.MY_ACADEMY_ID) {
     try {
