@@ -9708,10 +9708,13 @@ function _qgRenderOptions(type) {
     return '';
   }).join('');
 
-  // 'word' (단어시험) 전용 Wordsnap 입력 섹션 — 통과점수 아래, AI 로 문제 생성 버튼 위
-  const wordsnapHtml = (type === 'word') ? _qgBuildWordsnapSection() : '';
-  panel.innerHTML = optionsHtml + wordsnapHtml;
+  // 'word' (단어시험) Wordsnap / 'unscramble' 직접 입력 섹션 — AI 생성 버튼 위
+  const snapHtml = (type === 'word') ? _qgBuildWordsnapSection()
+                 : (type === 'unscramble') ? _qgBuildUnscrambleSnapSection()
+                 : '';
+  panel.innerHTML = optionsHtml + snapHtml;
   if (type === 'word') setTimeout(() => window._qgWordsnapUpdateStatus?.(), 0);
+  if (type === 'unscramble') setTimeout(() => window._qgUnscrambleSnapUpdateStatus?.(), 0);
 
   if (btn) {
     if (!cfg.enabled) {
@@ -10205,6 +10208,141 @@ window.qgRunWordsnap = async () => {
   }
 };
 
+// ═══ 언스크램블 직접 입력 (한 줄 1 영문장 → AI 청크 분할 + 한글뜻) 2026-05-15 ═══
+function _qgBuildUnscrambleSnapSection() {
+  const bookNote = _qgActiveBook
+    ? `<span style="color:#0a7a3a;font-weight:700;">✓ 저장 위치: ${esc(_qgActiveBook.name)}${_qgActiveChapter ? ' · ' + esc(_qgActiveChapter.name) : ''}</span>`
+    : `<span style="color:#c33;">⚠ 우측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
+  return `
+    <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 문장 직접 입력 · 언스크램블</div>
+        <button class="btn btn-secondary" onclick="qgUnscrambleSnapPaste()"
+          style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
+      </div>
+      <div style="font-size:10px;margin-bottom:6px;line-height:1.5;">${bookNote}</div>
+      <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
+        <b>한 줄에 영어 문장 하나</b>씩 입력. 입력 문장은 <b>변경 없이 그대로</b> 청크 분할 + 한글뜻 자동 생성됩니다.
+      </div>
+      <textarea id="qgUnscrambleSnapInput" rows="5" spellcheck="false"
+        oninput="_qgUnscrambleSnapUpdateStatus()"
+        placeholder="The boy picked up the ball.&#10;She has been studying English for three years.&#10;I would like to make a reservation."
+        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
+      <div id="qgUnscrambleSnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
+      <button class="btn btn-primary" onclick="qgRunUnscrambleSnap()" id="qgUnscrambleSnapBtn"
+        style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
+        📋 문장으로 언스크램블 생성
+      </button>
+    </div>
+  `;
+}
+
+// 줄당 1 영문장 파싱 (빈 줄 스킵, 중복 제거). 반환: { sentences, errors }
+function _qgParseSentences(text) {
+  const lines = (text || '').split(/\r?\n/);
+  const sentences = [];
+  const errors = [];
+  const seen = new Set();
+  lines.forEach((line, i) => {
+    const s = line.trim();
+    if (!s) return;
+    if (s.length < 3)   { errors.push({ line: i + 1, msg: '문장이 너무 짧음' }); return; }
+    if (s.length > 400) { errors.push({ line: i + 1, msg: `문장 너무 김 (${s.length}자)` }); return; }
+    const key = s.toLowerCase();
+    if (seen.has(key)) { errors.push({ line: i + 1, msg: '중복 문장' }); return; }
+    seen.add(key);
+    sentences.push(s);
+  });
+  return { sentences, errors };
+}
+
+window._qgUnscrambleSnapUpdateStatus = () => {
+  const ta = document.getElementById('qgUnscrambleSnapInput');
+  const status = document.getElementById('qgUnscrambleSnapStatus');
+  if (!ta || !status) return;
+  if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
+  const { sentences, errors } = _qgParseSentences(ta.value);
+  const parts = [];
+  if (sentences.length) parts.push(`<span style="color:#0a7a3a;font-weight:700;">✓ ${sentences.length}개 문장</span>`);
+  if (errors.length)    parts.push(`<span style="color:#c33;">⚠ ${errors.length}줄 오류</span>`);
+  status.innerHTML = parts.join(' · ') || '<span style="color:#c33;">파싱 결과 없음</span>';
+};
+
+window.qgUnscrambleSnapPaste = async () => {
+  const ta = document.getElementById('qgUnscrambleSnapInput');
+  if (!ta) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text || '';
+    window._qgUnscrambleSnapUpdateStatus();
+    ta.focus();
+  } catch(e) {
+    showToast('클립보드 읽기 실패 — textarea 에 직접 Ctrl+V 로 붙여넣으세요');
+    ta.focus();
+  }
+};
+
+window.qgRunUnscrambleSnap = async () => {
+  const ta = document.getElementById('qgUnscrambleSnapInput');
+  if (!ta) return;
+  if (!_qgActiveBook) {
+    showAlert('Book 선택 필요', '우측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
+    return;
+  }
+  const { sentences, errors } = _qgParseSentences(ta.value);
+  if (sentences.length === 0) { showAlert('입력 확인', '입력된 문장이 없습니다 — 한 줄에 영어 문장 하나'); return; }
+
+  const chunkCount = parseInt(_qgCollectOpts('unscramble').chunkCount) || 4;
+  const errNote = errors.length ? `\n(오류 ${errors.length}줄 제외)` : '';
+  const ok = await showConfirm(
+    `${sentences.length}개 문장 → 언스크램블 생성?`,
+    `입력 문장 원문 그대로 청크 ${chunkCount}개 분할 + 한글뜻 자동 생성합니다.${errNote}`
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('qgUnscrambleSnapBtn');
+  if (btn) btn.disabled = true;
+  const status = document.getElementById('qgUnscrambleSnapStatus');
+  if (status) status.innerHTML = '<span style="color:var(--gray);">🤖 AI 청크 분할 + 한글뜻 생성 중... (5~15초)</span>';
+
+  try {
+    const t0 = Date.now();
+    const res = await _geminiFetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'unscramble-from-text', sentences, chunkCount }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[unscramble-from-text raw]', data.rawSnippet);
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error || 'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error || 'unknown'));
+      return;
+    }
+
+    _qgGenerated = data.questions || [];
+    _qgExcluded.clear();
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${sentences.length}문장</span>`;
+
+    // 기존 언스크램블과 동일한 결과 미리보기 모달 (옵션 B)
+    _qgShowResultModal({
+      ...data,
+      questions: _qgGenerated,
+      defaultName: _qgBuildDefaultName(),
+      _qgOpts: { type: 'unscramble', chunkCount },
+    });
+    ta.value = '';
+    window._qgUnscrambleSnapUpdateStatus();
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 // ─── Vocab API 호출 (Phase 6) ───
 async function _qgCallVocab(opts) {
   const btn = document.getElementById('qgGenBtn');
@@ -10635,7 +10773,7 @@ window.qgSaveSet = async () => {
   if (!(await showConfirm(`"${name}" 세트 저장`, `${finalQuestions.length}개 문제를 저장합니다.`))) return;
 
   // 출처 페이지 메타데이터 (세트에서 참조)
-  const sourcePages = [...new Set(finalQuestions.map(q => q.sourcePageId))]
+  let sourcePages = [...new Set(finalQuestions.map(q => q.sourcePageId))]
     .map(pid => {
       const p = _genPages.find(pp => pp.id === pid);
       if (!p) return { pageId: pid, pageTitle: '', bookId: '', chapterId: '' };
@@ -10646,6 +10784,16 @@ window.qgSaveSet = async () => {
         chapterId: p.chapterId || '',
       };
     });
+  // 직접 입력 (sourcePageId 전부 빈값 — 언스크램블 문장 직접 입력 등) → 활성 Book fallback
+  const allEmpty = sourcePages.every(sp => !sp.bookId && !sp.pageId);
+  if (allEmpty && (_qgActiveBook || _qgActiveChapter)) {
+    sourcePages = [{
+      pageId: '',
+      pageTitle: '직접 입력',
+      bookId: _qgActiveBook?.id || '',
+      chapterId: _qgActiveChapter?.id || '',
+    }];
+  }
 
   try {
     await addDoc(collection(db,'genQuestionSets'), {

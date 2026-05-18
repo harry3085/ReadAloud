@@ -557,7 +557,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType, sentences, chunkCount } = req.body || {};
 
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
@@ -570,6 +570,12 @@ module.exports = async function handler(req, res) {
     // 토큰 적음 (정상 vocab 호출의 1/10 수준).
     if (mode === 'homophones-only') {
       return await handleHomophonesOnly({ words, apiKey, res });
+    }
+
+    // ─── 언스크램블 직접 입력 분기 (한 줄 1 영문장 → 청크 분할 + 한글뜻) ───
+    // 입력 문장 원문 100% 보존 (변경·누락 절대 X). 청크 분할 + meaningKo 자동 생성.
+    if (mode === 'unscramble-from-text') {
+      return await handleUnscrambleFromText({ sentences, chunkCount, apiKey, res });
     }
 
     // ─── 입력 검증 ───
@@ -796,6 +802,132 @@ RULES:
 }
 
 The "results" array must include EVERY input word, in the same order, with empty array if no homophones.`;
+
+// 언스크램블 직접 입력 — 입력 문장 원문 보존 + 청크 분할 + 한글뜻 (2026-05-15)
+const UNSCRAMBLE_FROM_TEXT_PROMPT = `You are an English sentence unscramble exercise generator for Korean students.
+
+You receive a list of English sentences (one per line, entered directly by the teacher).
+For EACH sentence:
+1. Keep the sentence EXACTLY as given — VERBATIM. Every word, form, punctuation, capitalization, spelling MUST match the input. Do NOT paraphrase, summarize, combine, reorder, add, or remove anything. The joined (de-chunked) sentence MUST equal the input character-for-character (only '/' chunk separators added).
+2. Split into chunks using '/' as separator. Target chunk count is N — you may use N-1, N, or N+1 chunks when natural linguistic boundaries fit better. Stay within [N-1, N+1].
+   - SHORT (5-8 words): single words OK
+   - MEDIUM (8-15 words): phrases (noun/verb/prepositional phrases)
+   - LONG (15+ words): semantic meaning units (clauses, relative/participial phrases)
+   - ALWAYS respect natural linguistic boundaries.
+3. Provide a natural Korean translation (meaningKo) of the whole sentence.
+
+NEVER drop a sentence. Output EXACTLY one question per input sentence, in the SAME order.
+
+Output ONLY valid JSON (no markdown):
+{
+  "questions": [
+    {
+      "type": "unscramble",
+      "chunkedSentence": "The /boy picked up/ the ball",
+      "meaningKo": "그 소년이 공을 주웠다.",
+      "difficulty": "medium"
+    }
+  ]
+}`;
+
+async function handleUnscrambleFromText({ sentences, chunkCount, apiKey, res }) {
+  if (!Array.isArray(sentences) || sentences.length === 0) {
+    return res.status(400).json({ error: 'sentences array is required' });
+  }
+  const sanitized = sentences
+    .map(s => String(s || '').trim())
+    .filter(s => s && s.length >= 3 && s.length <= 400)
+    .slice(0, 100);
+  if (sanitized.length === 0) {
+    return res.status(400).json({ error: 'No valid sentences (length 3~400 required)' });
+  }
+  const N = Math.max(2, Math.min(10, parseInt(chunkCount) || 4));
+
+  const userPrompt = `Target chunk count N = ${N}.
+Generate one unscramble question for EACH of these ${sanitized.length} sentences (keep verbatim, split into chunks, add Korean meaning):
+
+${sanitized.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+Output ONLY the JSON object. EXACTLY ${sanitized.length} questions, same order.`;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (status) => status === 503 || status === 429;
+
+  let rawText = null, usedModel = null, lastError = null, lastStatus = null;
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await callGemini(model, apiKey, UNSCRAMBLE_FROM_TEXT_PROMPT, userPrompt);
+        if (result.ok) { usedModel = model; rawText = result.text; break outer; }
+        lastError = result.error; lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+        }
+        if (isTransient(lastStatus) && attempt === 0) { await sleep(800); continue; }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+  if (!rawText) {
+    return res.status(502).json({ error: 'All AI models failed', detail: lastError, triedModels: GEMINI_MODELS });
+  }
+
+  const parsed = parseAIResponse(rawText);
+  if (!parsed || !Array.isArray(parsed.questions)) {
+    return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
+  }
+
+  // 검증: chunkedSentence 의 '/' 제거 후 원문과 일치해야 (원문 보존 보장)
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const questions = [];
+  parsed.questions.forEach((qq, idx) => {
+    if (!qq || typeof qq !== 'object') return;
+    let chunked = String(qq.chunkedSentence || '').trim();
+    const orig = sanitized[idx] || '';
+    if (!orig) return;
+    if (!chunked) {
+      // AI 가 청크 누락 — 원문 N등분 fallback
+      const w = orig.split(/\s+/);
+      const per = Math.max(1, Math.ceil(w.length / N));
+      const parts = [];
+      for (let i = 0; i < w.length; i += per) parts.push(w.slice(i, i + per).join(' '));
+      chunked = parts.join(' / ');
+    }
+    const joined = chunked.replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    if (norm(joined) !== norm(orig)) {
+      // AI 가 원문 변형 — 원문 단어 단위 N등분 강제 (원문 100% 보존)
+      const w = orig.split(/\s+/);
+      const per = Math.max(1, Math.ceil(w.length / N));
+      const parts = [];
+      for (let i = 0; i < w.length; i += per) parts.push(w.slice(i, i + per).join(' '));
+      chunked = parts.join(' / ');
+    }
+    questions.push({
+      type: 'unscramble',
+      chunkedSentence: chunked,
+      meaningKo: String(qq.meaningKo || '').trim(),
+      sourcePageId: '',
+      sourcePageTitle: '직접 입력',
+      difficulty: qq.difficulty || 'medium',
+    });
+  });
+
+  if (questions.length === 0) {
+    return res.status(502).json({ error: 'No valid questions generated', rawSnippet: rawText.slice(0, 500) });
+  }
+
+  return res.status(200).json({
+    success: true,
+    mode: 'unscramble-from-text',
+    model: usedModel,
+    requestedCount: sanitized.length,
+    questions,
+  });
+}
 
 async function handleHomophonesOnly({ words, apiKey, res }) {
   if (!Array.isArray(words) || words.length === 0) {
