@@ -43,16 +43,16 @@ async function getEffectivePrompt(quizType) {
   return SYSTEM_PROMPTS[quizType];
 }
 
-// 모델 폴백 체인 (2026-04-27 유료 티어 전환):
-//   1차 2.5-flash-lite — GA 안정 + 빠름 + 저렴 (95%+ 1차 통과)
-//   2차 2.5-flash      — 같은 family (결과 일관성 ↑) + 더 capable
-//   3차 3.1-flash-lite — 다른 family (2.5 전체 장애 시 대체)
+// 모델 폴백 체인 (2026-05-18 재배치 — 2.5-flash-lite 503 급증 대응):
+//   1차 2.5-flash-lite — GA 안정 + 빠름 + 저렴 (평상시 1차 통과)
+//   2차 3.1-flash-lite — 신모델, 2.5-flash 보다 전 항목 저렴 + 빠름
+//   3차 2.5-flash      — 1·2 동시 장애 시만 (capable, 비쌈 → 최후)
 // 503/429 transient 에러는 같은 모델로 1회 재시도(800ms backoff) 후 다음 모델.
 // 4xx 비-rate-limit (400/401/403) 는 폴백 안 함 (동일 결과 예상).
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

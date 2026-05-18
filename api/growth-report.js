@@ -6,11 +6,11 @@
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 
-// 폴백 체인 (cleanup-ocr 와 동일)
+// 폴백 체인 (cleanup-ocr 와 동일, 2026-05-18 재배치): lite → 3.1-lite → 2.5-flash
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

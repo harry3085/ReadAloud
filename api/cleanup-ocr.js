@@ -6,11 +6,11 @@
 
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 
-// 폴백 체인 (2026-04-27 유료 티어 전환): 2.5-flash-lite → 2.5-flash → 3.1-flash-lite
+// 폴백 체인 (2026-05-18 재배치): 2.5-flash-lite → 3.1-flash-lite → 2.5-flash
 const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

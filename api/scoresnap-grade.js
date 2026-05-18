@@ -6,7 +6,7 @@
 // 정책 (No-Storage MVP):
 //   - 결과를 Firestore/Storage 에 저장 X. 응답으로만 반환
 //   - quota: 'generator' 재사용 (베타 동안 AI 호출 통합 카운터)
-//   - 폴백 체인: 2.5-flash → 2.5-flash-lite → 3.1-flash-lite
+//   - 폴백 체인: 2.5-flash → 3.1-flash-lite → 2.5-flash-lite (2026-05-18 재배치)
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
@@ -29,10 +29,12 @@ function _ensureAdminApp() {
   });
 }
 
+// Vision OCR — 1순위 2.5-flash 유지(인식 품질). 2·3순위 2026-05-18 재배치:
+// 3.1-flash-lite 우선(신모델·저렴), 2.5-flash-lite 최후.
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

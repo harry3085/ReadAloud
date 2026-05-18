@@ -19,9 +19,12 @@ function _ensureAdminApp() {
   });
 }
 
+// 폴백 체인 (2026-05-18 재배치): 2.5-flash-lite → 3.1-flash-lite
+// 단어 말하기는 5초→9초 타임아웃·재시도(B-1)라 속도 민감 — 2순위를
+// 2.5-flash 대신 더 빠르고 저렴한 3.1-flash-lite 로 (503 시 폴백 비용↓·지연↓).
 const MODELS = [
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
