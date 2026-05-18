@@ -5253,3 +5253,79 @@ genMovePages ① Book(이름순)·② Chapter(order순) → `_genRecentSort`
 - ✅ Chapter→Book 이동 모달 inline 새 Book
 - ✅ 이동 모달 리스트 최근순 통일 (방금 작업 항목 우선)
 - ✅ 작업 규칙 — async lazy race 가드 / lazy↔UX 충돌 해법 / 모달 내 동적 단계
+
+---
+
+## 2026-05-18 (이어서 2): 헤더 Version 표시 + 새로고침 버튼 7곳 토스트 피드백
+
+학원장 "새로고침 눌러도 반응 없어 됐는지 모름" + "버전 보이게". SW v546 → v549 (~4 commit).
+
+### 1) 헤더 Version 표시 (commit `8cb162f`·`565b89c`)
+
+학원장 캐시 갱신 자가진단용 — 강력 새로고침 후 숫자 바뀌면 최신.
+- `sw.js` message: `GET_VERSION` → MessageChannel 로 `CACHE_NAME` 회신
+- `_app.html`: `#appVer` span — **우측 학원장 이름(`#adminName`) 앞**
+  (default 학원장 계정명이 '큰소리영어'. 학원명은 좌측 로고 옆 별개)
+- `admin app.js _showAppVersion()`: SW 질의 → `kunsori-v549` →
+  `"Version 5.4.9"` (뒤1=patch / 그앞1=minor / 나머지=major).
+  onAuthStateChanged 후 fire-and-forget
+- SW 자체값 질의 → 클라 상수 어긋남 없이 정확
+
+### 2) 새로고침 버튼 7곳 — 토스트 + 차등 캐시 무효화 (commit `7a8d40a`·`81d4723`)
+
+증상: AI OCR/AI Generator/문제세트목록 등 ↺ 새로고침 눌러도 무반응.
++ 일부는 캐시 가드로 클릭해도 실제 갱신 안 됨 → 토스트만 달면 거짓 피드백.
+
+**진단 후 차등 적용** (진입=기존 함수 직접·캐시활용 / 새로고침만 wrapper):
+
+| 화면 | wrapper | 캐시 처리 (진단 근거) |
+|------|---------|----------------------|
+| AI OCR `genRefresh` | loadGenerator() | 항상 재fetch |
+| AI Generator `qgRefresh` | `_genBooks/Chapters/Pages=[]` → loadQuizGenerate() | `_genBooks` 캐시 skip 이라 무효화 필요 |
+| 문제세트목록 `qsRefresh` | `_qsInvalidateCache()` → loadQuestionSets() | 세트 캐시 `__initialized` 유지라 무효화 필요 |
+| 진도체크 `progRefresh` | `delete _prog.testsByDate[date]` → progRenderByDate | 그 날짜 캐시 hit 라 무효화 필요 |
+| 시험배정 `tpAssignRefresh` | _renderTestAssignDetail() | 매번 재fetch → 토스트만 |
+| 대시보드 `dashRefresh` | initDashboard() | 학생수 getCount·시험·AI사용량·달력·공지 매번 fresh, 미납만 결제캐시(자동무효) → **토스트만, 광범위 무효화 X** (무효화 시 reads 폭증) |
+| AI 사용량 `quotaRefresh` | loadQuotaUsage() | 매번 getDoc fresh → 토스트만 |
+
+모두 "새로고침 중..." → "✅ 완료" 2단. _app.html 6곳 + app.js 1곳 onclick → wrapper.
+
+핵심: 캐시 가드로 갱신 안 되던 곳만 무효화(거짓 피드백 방지), 이미
+fresh 한 곳은 토스트만(불필요 reads 안 늘림 — 학원장 reads 정책).
+
+---
+
+## 작업 규칙 추가 (2026-05-18 이어서 2)
+
+신규:
+- **새로고침 버튼 = 진입 함수 그대로 쓰면 거짓 피드백 위험** — 캐시
+  가드(lazy `__initialized` / `if(!_genBooks.length)` / `testsByDate[date]`)
+  있는 함수는 새로고침 클릭해도 skip. 새로고침 전용 wrapper 가 해당
+  캐시 무효화 후 재fetch + 토스트. **단 진단 먼저** — 이미 매번 fresh
+  한 함수(getCount/매getDoc)는 무효화 불필요(reads 낭비), 토스트만.
+- **대시보드류 복합 캐시는 광범위 무효화 금지** — 위젯별 캐시 정책
+  상이(getCount 매번 / 결제 _billingsByMonth 캐시·자동무효 / 달력 매번).
+  새로고침에서 통째 무효화하면 결제 fetch 폭증. 자체 무효(데이터 변경
+  시) 에 맡기고 새로고침은 함수 재실행(거의 fresh) + 토스트만.
+- **SW 버전 클라 노출 = SW 질의(MessageChannel)** — 클라 상수는 sw.js
+  와 어긋남. `GET_VERSION` postMessage → `event.ports[0].postMessage
+  (CACHE_NAME)`. 디버깅 목적엔 SW 실제값이어야 의미.
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-18 이어서 2)
+- `public/admin/js/app.js`: +~60줄 (_showAppVersion + 새로고침 wrapper 7개)
+- `public/admin/_app.html`: #appVer span + 새로고침 onclick 6곳 교체
+- `public/sw.js`: GET_VERSION 핸들러
+- SW 캐시: `kunsori-v549`
+
+## 진행률 (2026-05-18 이어서 2)
+- AI Generator/OCR 안정성: ~100% (변동 없음)
+- 학원장 앱 UX 피드백: **~100%** (헤더 Version + 새로고침 7곳 토스트·차등 갱신)
+- Gemini·성적리포트·결제·말하기: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션 이어서 2, 2026-05-18)**:
+- ✅ 헤더 Version 표시 (우측 학원장 이름 앞, SW 질의 → "Version 5.4.9")
+- ✅ 새로고침 버튼 7곳 — "중...→✅완료" 토스트 + 진단 근거 차등 캐시 무효화
+- ✅ 작업 규칙 — 새로고침 거짓 피드백 방지 / 복합 캐시 광범위 무효화 금지 / SW 버전 질의
