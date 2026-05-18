@@ -5258,6 +5258,10 @@ window.showScoreDetail = async(scoreId, testId) => {
     }
 
     const dateStr = `${s.date||''} ${s.createdAt?.toDate?s.createdAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''}`.trim();
+    // 녹음숙제 + recordings 있을 때만 [🔁 재평가] (한 줄 카드 최소화로 카드의 재평가 버튼이 모달로 이동)
+    const reEvalBtn = (isRecording && Array.isArray(comp?.recordings) && comp.recordings.length)
+      ? `<button class="btn btn-secondary" onclick="tpReEvaluateRecording('${esc(s.testId||'')}','${esc(s.uid||'')}','${esc(s.userName||'').replace(/'/g,"&#39;")}')" style="color:#7C3AED;border-color:#ddd6fe;" title="마지막 녹음을 AI 로 다시 평가 (학원 녹음 한도 +1)">🔁 재평가</button>`
+      : '';
     showModal(`
       <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
         <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -5317,7 +5321,8 @@ window.showScoreDetail = async(scoreId, testId) => {
           </div>
         </div>
 
-        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div>${reEvalBtn}</div>
           <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
         </div>
       </div>
