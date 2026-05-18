@@ -5084,6 +5084,8 @@ async function _vqTryAiFallback(webspeechHeard) {
   const progressTimers = [];
   progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.textContent = '🤖 AI 분석 중...'; }, 300));
   progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.innerHTML = '🤖 AI 분석 중... <span style="font-size:11px;color:#888;">(곧 도착)</span>'; }, 1200));
+  // 5초 경과 — 학생에게 늦어지는 중 안내 (9초 타임아웃 전 단계)
+  progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.innerHTML = '⏳ AI 응답이 늦어지고 있어요. 조금만 기다려주세요...'; }, 5000));
   const clearProgress = () => progressTimers.forEach(t => clearTimeout(t));
 
   try {
@@ -5091,9 +5093,9 @@ async function _vqTryAiFallback(webspeechHeard) {
     const idToken = await currentUser.getIdToken();
     const audioBase64 = await _blobToBase64(blob);
 
-    // 5초 타임아웃
+    // 9초 타임아웃 (503 폴백 여유 — 5초는 폴백 성공분도 버려 억울한 오답 다발, 2026-05-18)
     const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 5000);
+    const tid = setTimeout(() => ctrl.abort(), 9000);
     const r = await fetch('/api/check-word', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5130,9 +5132,28 @@ async function _vqTryAiFallback(webspeechHeard) {
   } catch (e) {
     clearProgress();
     console.error('[vqSpk] AI fallback:', e);
-    if (e.name === 'AbortError' && status) status.textContent = 'AI 응답이 늦어요. 다시 시도하세요.';
+    if (e.name === 'AbortError') {
+      // 9초 초과 — 오답 처리 X. 다시 녹음해 평가받을 수 있게 (B-1, 2026-05-18)
+      _vqSpkAllowRetry('⏱️ AI 응답이 너무 늦어요. 마이크를 눌러 다시 한번 시도해주세요.');
+      return;
+    }
     _vqSpkFinalize(false, webspeechHeard, { source: 'ai-error', aiError: e.message });
   }
+}
+
+// 단어 말하기 3차 AI 폴백 타임아웃 시 — 오답 잠금 없이 재녹음 허용 (B-1).
+// getUserMedia hang 복구(A안)와 동일 패턴: busy 해제 + attempt 롤백 + aiTried 리셋.
+function _vqSpkAllowRetry(msg) {
+  const s = _vqState;
+  if (s.answers[s.currentIdx]?._locked) return;
+  s.spk.busy = false;
+  s.spk.aiTried = false;        // 다음 시도에서 AI 다시 호출 가능
+  s.spk.lastAudioBlob = null;   // 이전 녹음 폐기 — 새로 녹음
+  s.spk.attempt = Math.max(0, (s.spk.attempt || 1) - 1);  // 3차 롤백 → 마이크 재시도 허용
+  const btn = document.getElementById('vqSpkMicBtn');
+  const status = document.getElementById('vqSpkStatus');
+  if (status) status.textContent = msg;
+  if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
 }
 
 // Blob → base64 (data URL 헤더 제거)
