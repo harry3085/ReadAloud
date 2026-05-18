@@ -5086,8 +5086,14 @@ function _adminUqBuildDetail(questions, answers){
       </div>`;
   }).join('');
 }
-function _adminRecBuildDetail(recordings){
+// 녹음숙제 회차별 상세 — 학원장 공유 빌더. #1 시험관리/시험목록/진도체크 학생별
+// 풀카드 와 #3 성적 상세 모달 이 동일 내용을 쓰도록 단일화. (시간·말소리%·속도WPM·
+// 점수·note·AI 피드백 모두 포함). clickSafe: 부모가 클릭 가능한 카드(#1)면
+// audio·details 클릭이 모달 열기와 충돌 안 하게 stopPropagation.
+function _adminRecBuildDetail(recordings, fullText, opts){
   if(!Array.isArray(recordings)||!recordings.length) return '';
+  const stop = (opts && opts.clickSafe) ? ' onclick="event.stopPropagation()"' : '';
+  const ftWords = String(fullText||'').trim().split(/\s+/).filter(Boolean).length;
   // Phase B: 통과/불통 폐기 — 모든 회차 동일 배경. Phase C: 카테고리 점수+코멘트 표시
   return recordings.map((r,i)=>{
     const score = (typeof r.score === 'number') ? r.score : null;
@@ -5098,23 +5104,27 @@ function _adminRecBuildDetail(recordings){
     const cc = r.categoryComments;
     const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
     const positives = fb?.positives || [];
+    const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
+    const dur = r.duration ? r.duration + '초' : '-';
+    const wpm = (r.duration > 0 && ftWords > 0) ? Math.round((ftWords / r.duration) * 60) : 0;
+    const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
     const catBadge = (label, color, scoreVal, comment) => {
       if (typeof scoreVal !== 'number' && !comment) return '';
       return `<div style="margin-top:3px;font-size:11px;line-height:1.5;"><span style="background:${color};color:white;padding:1px 7px;border-radius:3px;font-weight:700;margin-right:5px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
     };
     return `
       <div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
           ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
-          ${r.duration?`<span style="font-size:10px;color:var(--gray);">${r.duration}초</span>`:''}
+          <span style="font-size:10px;color:var(--gray);">${dur} · 말소리 ${va}${wpmTxt}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
-        ${audio?`<audio src="${esc(audio)}" controls preload="none" style="width:100%;height:30px;"></audio>`:''}
+        ${audio?`<audio src="${esc(audio)}" controls preload="none"${stop} style="width:100%;height:30px;"></audio>`:''}
         ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:6px;">${esc(r.note)}</div>`:''}
         ${(hasCat || positives.length || (Array.isArray(fb?.missedWords) && fb.missedWords.length) || (Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length) || (Array.isArray(fb?.tips) && fb.tips.length)) ? `
-          <details open style="margin-top:8px;">
+          <details open${stop} style="margin-top:8px;">
             <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
             <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:6px;font-size:11px;line-height:1.6;">
               ${hasCat ? `<div style="margin-bottom:6px;"><strong>📊 항목별 점수·코멘트</strong>
@@ -5138,7 +5148,7 @@ function _adminBuildDetail(mode, comp){
   if(m==='mcq')         return _adminMcqBuildDetail(comp.questions, comp.answers);
   if(m==='fill_blank')  return _adminFbBuildDetail(comp.questions, comp.answers, comp.detail);
   if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
-  if(m==='recording')   return _adminRecBuildDetail(comp.recordings);
+  if(m==='recording')   return _adminRecBuildDetail(comp.recordings, comp._recFullText || '');
   return '';
 }
 
@@ -5201,6 +5211,9 @@ window.showScoreDetail = async(scoreId, testId) => {
       (isRecording && Array.isArray(comp.recordings) && comp.recordings.length)
     );
     const isThisAttemptBest = hasDetail && comp.score === s.score && (comp.date||'') === (s.date||'');
+
+    // 녹음숙제 WPM 계산용 본문 — genTest 첫 문제 fullText (공유 빌더 _adminRecBuildDetail 인자)
+    if (comp && isRecording) comp._recFullText = genTest?.questions?.[0]?.fullText || '';
 
     let detailHtml;
     if(isThisAttemptBest){
@@ -14553,27 +14566,10 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   }
                   const cardBg = 'white';
                   const cardBorder = '#bae6fd';
-                  // 회차별 audio 리스트 (말소리 비율 + 속도 + 시간 + 마지막 회차에는 점수)
-                  // audio 에 stopPropagation — 재생 클릭이 카드 onclick (모달 열기) 과 충돌 방지
+                  // 회차별 상세 — #3 성적 상세 모달과 동일 내용 (공유 빌더 _adminRecBuildDetail).
+                  // clickSafe: audio·details 클릭이 카드 onclick(모달 열기) 과 충돌 방지.
                   const tq = (Array.isArray(t.questions) && t.questions[0]) || {};
                   const tqFullText = tq.fullText || '';
-                  const tqWords = tqFullText.trim().split(/\s+/).filter(Boolean).length;
-                  const roundsHtmlClickSafe = recs.map((r, i) => {
-                    const isLast = i === recs.length - 1;
-                    const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
-                    const dur = r.duration ? r.duration + '초' : '-';
-                    const wpm = (r.duration > 0 && tqWords > 0) ? Math.round((tqWords / r.duration) * 60) : 0;
-                    const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
-                    const scoreBadge = isLast && typeof r.score === 'number'
-                      ? `<span style="color:${headColor};font-weight:700;margin-left:6px;">${r.score}점</span>` : '';
-                    return `
-                      <div style="margin-top:6px;padding:6px 8px;background:#f9fafb;border-radius:4px;">
-                        <div style="font-size:10px;color:var(--gray);margin-bottom:3px;">
-                          ${i+1}회차 · ${dur} · 말소리 ${va}${wpmTxt}${scoreBadge}${isLast ? ' <span style="color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
-                        </div>
-                        <audio src="${esc(r.audioUrl||'')}" controls preload="none" onclick="event.stopPropagation()" style="width:100%;height:30px;"></audio>
-                      </div>`;
-                  }).join('');
                   // Phase B: 모든 제출 카드에 [🔁 재평가] 노출 (학원장이 점수 의심 시 재시도)
                   const reBtnRec = `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가합니다 (학원 녹음 한도 +1)" style="position:absolute;top:6px;right:32px;width:20px;height:20px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`;
                   return `
@@ -14585,34 +14581,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                         <span style="color:${headColor};font-weight:700;font-size:11px;">${headLabel}</span>
                       </div>
                       <div style="font-size:10px;color:var(--gray);margin-bottom:2px;">${esc(dateStr)} · 총 ${recs.length}회</div>
-                      ${roundsHtmlClickSafe}
-                      ${(() => {
-                        const cs = last?.categoryScores;
-                        const cc = last?.categoryComments;
-                        const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
-                        if (!fb && !hasCat) return '';
-                        const positives = fb?.positives || [];
-                        const catBadge = (label, color, scoreVal, comment) => {
-                          if (typeof scoreVal !== 'number' && !comment) return '';
-                          return `<div style="margin-top:2px;font-size:10px;"><span style="background:${color};color:white;padding:1px 6px;border-radius:3px;font-weight:700;margin-right:4px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
-                        };
-                        return `
-                          <details onclick="event.stopPropagation()" style="margin-top:8px;">
-                            <summary style="font-size:10px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
-                            <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:4px;font-size:10px;line-height:1.6;">
-                              ${hasCat ? `<div style="margin-bottom:5px;"><strong>📊 항목별 점수·코멘트</strong>
-                                ${catBadge('🔊 발음', '#3b82f6', cs?.pronunciation, cc?.pronunciation)}
-                                ${catBadge('🎵 억양', '#22c55e', cs?.intonation, cc?.intonation)}
-                                ${catBadge('🏃 속도', '#eab308', cs?.pace, cc?.pace)}
-                                ${catBadge('🎯 정확도', '#a855f7', cs?.accuracy, cc?.accuracy)}
-                              </div>` : ''}
-                              ${positives.length ? `<div style="margin-top:3px;"><strong>👍 잘한 점:</strong> ${positives.map(esc).join(' · ')}</div>` : ''}
-                              ${fb?.missedWords?.length ? `<div style="margin-top:3px;"><strong>📝 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
-                              ${fb?.weakPronunciation?.length ? `<div style="margin-top:3px;"><strong>🔊 발음 개선:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word)}</strong> — ${esc(p.issue)}</div>`).join('')}</div>` : ''}
-                              ${fb?.tips?.length ? `<div style="margin-top:3px;"><strong>💡 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
-                            </div>
-                          </details>`;
-                      })()}
+                      ${_adminRecBuildDetail(recs, tqFullText, { clickSafe: true })}
                     </div>
                   `;
                 }
