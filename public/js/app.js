@@ -4900,10 +4900,11 @@ window.vqSpkStart = async () => {
     return;
   }
 
-  // 2차+ 시도 — 이전 SR mic stream 자동 해제 시간 확보 (안드로이드 빨강→파랑 깜빡임 fix)
-  // rec.start() 직후 onerror 즉시 발화 또는 throw 회피
+  // 2차+ 시도 — 이전 SR 마이크 해제 대기 (안드로이드 빨강→파랑 깜빡임 fix +
+  // 3차 SR→MediaRecorder 핸드오프 hang 예방). 150ms 는 부족 → 400ms (B안 2026-05-18).
+  // SR 은 stream 미노출이라 track stop 불가 — abort()(위) + 충분한 대기로 해제 보장.
   if ((s.spk.attempt || 0) >= 1) {
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 400));
     if (s.answers[s.currentIdx]?._locked) { s.spk.busy = false; return; }
   }
 
