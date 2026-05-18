@@ -7195,6 +7195,8 @@ let _genPages = [], _genChapters = [], _genBooks = [];
 let _genImages = [];
 let _genCheckedPages = new Set(), _genCheckedChapters = new Set(), _genCheckedBooks = new Set();
 let _genActiveBook = null, _genActiveChapter = null, _genActivePage = null;
+// Book 클릭 lazy fetch race 가드 — 늦게 온 옛 응답 무시 (AI OCR genClickBook + AI Generator qgSelectBook 공용)
+let _genBookFetchToken = 0;
 let _genPageCur = 1;
 const _genPageSize = 20;
 
@@ -7580,27 +7582,34 @@ window.genClickBook = async (id) => {
   _genPageCur = 1;
   // Book 활성화 시 그 Book 의 Chapters + Pages lazy fetch (cache — 한 번만)
   if (_genActiveBook) {
-    const hasCh = _genChapters.some(c => c.bookId === _genActiveBook);
-    const hasPg = _genPages.some(p => p.bookId === _genActiveBook);
+    const bookId = _genActiveBook;
+    const hasCh = _genChapters.some(c => c.bookId === bookId);
+    const hasPg = _genPages.some(p => p.bookId === bookId);
     if (!hasCh || !hasPg) {
+      const tk = ++_genBookFetchToken;  // race 가드 — 늦게 온 옛 응답 무시
       try {
         const [cSnap, pSnap] = await Promise.all([
           hasCh ? Promise.resolve({docs:[]}) : getDocs(query(
             collection(db,'genChapters'),
             where('academyId','==', window.MY_ACADEMY_ID),
-            where('bookId','==', _genActiveBook),
+            where('bookId','==', bookId),
             orderBy('order','asc')
           )),
           hasPg ? Promise.resolve({docs:[]}) : getDocs(query(
             collection(db,'genPages'),
             where('academyId','==', window.MY_ACADEMY_ID),
-            where('bookId','==', _genActiveBook),
+            where('bookId','==', bookId),
             orderBy('serialNumber','asc')
           )),
         ]);
+        if (tk !== _genBookFetchToken) return;  // 그 사이 다른 Book 클릭됨 → 최신 클릭이 render 담당
         if (!hasCh) _genChapters = _genChapters.concat(cSnap.docs.map(d=>({id:d.id,...d.data()})));
         if (!hasPg) _genPages = _genPages.concat(pSnap.docs.map(d=>({id:d.id,...d.data()})));
-      } catch(e) { console.warn('[genClickBook] lazy fetch:', e); }
+      } catch(e) {
+        if (tk !== _genBookFetchToken) return;  // 옛 응답 에러는 무시
+        console.error('[genClickBook] lazy fetch 실패', e);
+        showToast('Chapter/Page 목록을 불러오지 못했어요 — Book 을 다시 클릭해주세요');
+      }
     }
   }
   _genRenderBooks(); _genRenderChapters(); _genRenderPages();
@@ -9539,6 +9548,7 @@ window.qgSelectBook = async (bookId) => {
     const hasCh = _genChapters.some(c => c.bookId === bookId);
     const hasPg = _genPages.some(p => p.bookId === bookId);
     if (!hasCh || !hasPg) {
+      const tk = ++_genBookFetchToken;  // race 가드 — 늦게 온 옛 응답 무시
       try {
         const [cSnap, pSnap] = await Promise.all([
           hasCh ? Promise.resolve({docs:[]}) : getDocs(query(
@@ -9554,9 +9564,14 @@ window.qgSelectBook = async (bookId) => {
             orderBy('serialNumber','asc')
           )),
         ]);
+        if (tk !== _genBookFetchToken) return;  // 그 사이 다른 Book 클릭됨 → 최신 클릭이 render 담당
         if (!hasCh) _genChapters = _genChapters.concat(cSnap.docs.map(d=>({id:d.id,...d.data()})));
         if (!hasPg) _genPages = _genPages.concat(pSnap.docs.map(d=>({id:d.id,...d.data()})));
-      } catch(e) { console.warn('[qgSelectBook] lazy fetch:', e); }
+      } catch(e) {
+        if (tk !== _genBookFetchToken) return;  // 옛 응답 에러는 무시
+        console.error('[qgSelectBook] lazy fetch 실패', e);
+        showToast('Chapter/Page 목록을 불러오지 못했어요 — Book 을 다시 클릭해주세요');
+      }
     }
   }
   _qgRender();
