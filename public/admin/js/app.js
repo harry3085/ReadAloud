@@ -8242,27 +8242,48 @@ window.genExcludeChapters = async () => {
 
 window.genMoveChapters = async () => {
   if (!_genCheckedChapters.size) return;
-  if (!_genBooks.length) { showAlert('입력 확인', 'Book이 없습니다. 먼저 Book을 생성하세요.'); return; }
   const books = _genRecentSort(_genBooks);
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
         <div style="font-size:17px;font-weight:700;line-height:1.3;">&#8594; Book 이동</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedChapters.size}개 Chapter 이동 · 최근 수정순</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_genCheckedChapters.size}개 Chapter 이동 · Book 선택 또는 새로 생성</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-          ${books.map(b=>`
-            <div onclick="genDoMoveChapters('${b.id}','${esc(b.name).replace(/'/g,"&#39;")}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
-              <div style="font-weight:600;font-size:13px;">${esc(b.name)}</div>
-              <div style="font-size:11px;color:var(--gray);">Chapter ${b.chapterCount||0}개</div>
-            </div>`).join('')}
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+          ${books.length ? books.map(b=>`
+            <div data-bid="${esc(b.id)}" data-bname="${esc(b.name)}" onclick="genDoMoveChapters(this.dataset.bid,this.dataset.bname)" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f0f0;transition:.15s;" onmouseover="this.style.background='var(--teal-light)'" onmouseout="this.style.background=''">
+              <div style="font-weight:600;font-size:13px;pointer-events:none;">${esc(b.name)}</div>
+              <div style="font-size:11px;color:var(--gray);pointer-events:none;">Chapter ${b.chapterCount||0}개</div>
+            </div>`).join('') : `<div style="padding:14px;text-align:center;color:#bbb;font-size:12px;font-style:italic;">Book 이 없습니다. 아래에서 새로 만드세요.</div>`}
+        </div>
+        <button class="btn btn-secondary" style="width:100%;padding:9px;font-size:12px;" onclick="genMoveChShowNewBook()">&#43; 새 Book 만들기</button>
+        <div id="genMoveChNewBookWrap" style="display:none;margin-top:10px;padding:12px;border:1px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+          <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">새 Book 이름 *</div>
+          <input id="genMoveChNewBookName" type="text" placeholder="예: Bricks Reading 1" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;" onkeydown="if(event.key==='Enter')genMoveChCreateBook()">
+          <button class="btn btn-primary" style="width:100%;padding:9px;font-size:12px;font-weight:700;margin-top:8px;" onclick="genMoveChCreateBook()">Book 생성 + ${_genCheckedChapters.size}개 Chapter 이동</button>
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
       </div>
     </div>`);
+};
+window.genMoveChShowNewBook = () => {
+  const w = document.getElementById('genMoveChNewBookWrap');
+  if (w) { w.style.display = 'block'; setTimeout(()=>document.getElementById('genMoveChNewBookName')?.focus(),50); }
+};
+window.genMoveChCreateBook = async () => {
+  const name = document.getElementById('genMoveChNewBookName')?.value.trim();
+  if (!name) { showAlert('입력 확인', 'Book 이름을 입력하세요.'); return; }
+  try {
+    const ref = await addDoc(collection(db,'genBooks'), {
+      name, chapterCount: 0, pageCount: 0,
+      createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
+      academyId: window.MY_ACADEMY_ID || 'default',
+    });
+    await genDoMoveChapters(ref.id, name);  // 생성한 Book 으로 즉시 Chapter 이동
+  } catch(e){ showToast('Book 생성 실패: '+e.message); }
 };
 window.genDoMoveChapters = async (bookId,bookName) => {
   const ids=[..._genCheckedChapters];
