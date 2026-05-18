@@ -14556,34 +14556,12 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const lastScore = (typeof last?.score === 'number') ? last.score : (c.score ?? c.latestFailedScore);
                   const headColor = '#0369a1';
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
-                  // 일자별 진도체크 등 단순 모드 — 다른 유형 카드와 동일한 한 줄 카드
-                  if (opts?.simpleRec) {
-                    return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
+                  // 진도체크·최근시험 모두 최소화 — 한 줄 카드. 클릭 시 상세 모달(#3)
+                  return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                       ${xBtnRec}
                       <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                       <div style="color:${headColor};">${headLabel}${dateStr ? ' · ' + esc(dateStr) : ''}</div>
                     </div>`;
-                  }
-                  const cardBg = 'white';
-                  const cardBorder = '#bae6fd';
-                  // 회차별 상세 — #3 성적 상세 모달과 동일 내용 (공유 빌더 _adminRecBuildDetail).
-                  // clickSafe: audio·details 클릭이 카드 onclick(모달 열기) 과 충돌 방지.
-                  const tq = (Array.isArray(t.questions) && t.questions[0]) || {};
-                  const tqFullText = tq.fullText || '';
-                  // Phase B: 모든 제출 카드에 [🔁 재평가] 노출 (학원장이 점수 의심 시 재시도)
-                  const reBtnRec = `<button onclick="event.stopPropagation();tpReEvaluateRecording('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="AI 재평가 — 마지막 녹음을 다시 평가합니다 (학원 녹음 한도 +1)" style="position:absolute;top:6px;right:32px;width:20px;height:20px;background:rgba(124,58,237,0.12);color:#7C3AED;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">🔁</button>`;
-                  return `
-                    <div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:10px 12px;font-size:11px;grid-column:span 2;position:relative;cursor:pointer;">
-                      ${reBtnRec}
-                      <button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>
-                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding-right:48px;">
-                        <div style="font-weight:700;color:var(--text);">${esc(s.name||'?')}</div>
-                        <span style="color:${headColor};font-weight:700;font-size:11px;">${headLabel}</span>
-                      </div>
-                      <div style="font-size:10px;color:var(--gray);margin-bottom:2px;">${esc(dateStr)} · 총 ${recs.length}회</div>
-                      ${_adminRecBuildDetail(recs, tqFullText, { clickSafe: true })}
-                    </div>
-                  `;
                 }
                 // 옛 데이터 (recordings 없이 latestFailedScore 또는 score 만)
                 // Phase B: 통과/불통 폐기 — "제출됨" 으로 통일
