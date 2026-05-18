@@ -5413,3 +5413,145 @@ fresh 한 곳은 토스트만(불필요 reads 안 늘림 — 학원장 reads 정
 - ✅ 학생앱 startVocab 신모델 + 객→주/주→객 그룹 정렬 + 옛 데이터 하위호환
 - ✅ 형식+슬라이더 한 줄 컴팩트 배치 (모달 폭 720, nowrap)
 - ✅ 작업 규칙 — 출제↔인쇄 UX 통일 / 데이터 모델 변경 하위호환 / 인덱스 동기 정렬
+
+---
+
+## 2026-05-18 (이어서 4): 녹음숙제 상세 통일·최소화 + 말하기 3차 hang + check-word 503 대응 + Gemini 폴백 재배치
+
+학원장 보고(녹음숙제 상세 경로마다 정보 다름) → 진단 → 통일·최소화.
+이어 말하기 3차 먹통 진단·수정, 503 급증 대응, 폴백 재배치까지.
+SW v549 → v558 (api 재배치는 SW 무관). 다수 commit.
+
+### 1) 녹음숙제 학원장 상세 — 단일 공유 빌더로 통일 (`62c1c54`)
+
+진단: 학원장이 보는 3경로가 각각 별도 렌더라 정보량 제각각 —
+#1 시험관리/시험목록/진도체크학생별 풀카드(시간·말소리%·속도 O, note X),
+#2 일자별 한 줄(요약), #3 성적상세모달(`_adminRecBuildDetail`, 시간만·
+말소리%/속도 X). 학생앱 `_rv2RenderResult`(#4)는 점수 비공개 정책 준수 확인.
+
+- `_adminRecBuildDetail(recordings, fullText, opts)` 단일 공유 빌더로
+  통일 — 회차별 시간·말소리%·속도(WPM)·점수·note·AI피드백 모두 포함
+- WPM용 fullText: `showScoreDetail` 이 `genTest.questions[0].fullText`
+  → `comp._recFullText` 전달 / #1 은 `tqFullText` 전달
+- `clickSafe` 옵션 — #1 카드는 부모 onclick(모달) 충돌 방지 stopPropagation
+- #1 인라인 회차·AI피드백 코드 제거 → 공유 빌더 호출
+- 부수: voiceActivity/duration 미보존 회차(재평가 등)는 "- · 말소리 -"
+  로 3경로 동일 표시 (누락 투명화)
+
+### 2) 진도체크·최근시험 녹음 카드 전체 최소화 (`8ac4729`)
+
+사용자 결정(한 줄 유지+클릭 시 동일 모달): `isSubmittedWithRecs` 풀카드
+폐기 — `opts.simpleRec` 조건 제거하고 **모든 녹음 제출 카드 한 줄**
+(이름·📤제출됨·N점·날짜), 클릭 → #3 공유 모달. 다른 시험 유형 카드와
+시각 통일. 옛 데이터·에러 카드는 이미 한 줄이라 변동 없음.
+
+### 3) 성적 상세 모달 [🔁 재평가] 버튼 (`3f4b11e`)
+
+한 줄 최소화로 카드의 재평가 진입점 소실 → showScoreDetail 풋터에
+[🔁 재평가] 추가 (recording + recordings 있을 때만). 풋터
+space-between (재평가 좌 / 닫기 우). `tpReEvaluateRecording` 호출.
+
+### 4) 단어 말하기 3차 먹통 (안드로이드 SR→MR 핸드오프) — A·B
+
+진단: 1·2차 SpeechRecognition(안드로이드 클라우드, 마이크 점유) →
+3차 `getUserMedia`(MediaRecorder) 전환 시 마이크 해제가 150ms 안에
+안 끝나 **getUserMedia 가 응답·reject 없이 hang** → 버튼 disabled +
+busy=true + attempt=MAX → 영구 먹통·복구 불가. 안드로이드 고유(iOS 무관).
+
+- **A안 (`a91ba7b`)**: `_gumWithTimeout` — getUserMedia 4초 타임아웃
+  (늦게 도착 stream track stop). hang 시 busy 해제·버튼 복구·attempt
+  롤백(재시도 허용)·finalize 안 함(잠그지 않음)
+- **B안 (`a50f7dd`)**: 2차+ SR 마이크 해제 대기 150ms→400ms (hang 예방).
+  SR 은 stream 미노출이라 abort()+대기로만 보장
+
+### 5) check-word 503 대응 — 타임아웃 9초·B-1 (`75cab80`)
+
+503 급증(Vercel 로그 30분 26건)으로 단어말하기 AI 폴백이 5초 초과 →
+서버는 200 성공인데 클라가 5초에 포기 → **억울한 오답 다발**(로그 16초
+케이스 확인). 단어말하기 5초 / 녹음숙제 30초 차이로 단어말하기만 취약.
+
+- check-word fetch 타임아웃 5000ms → **9000ms**
+- 5초 경과 시 진행 메시지 "AI 응답이 늦어지고 있어요" 추가 (3단계)
+- 9초 초과(AbortError) → 오답 처리 X. `_vqSpkAllowRetry`: busy 해제
+  + attempt 롤백 + aiTried 리셋 + blob 폐기 → "다시 시도" + 재녹음 가능
+  (B-1, getUserMedia hang 복구 A안과 동일 패턴)
+- AI 재배치는 이때 보류 결정 → 진단 후 §7 에서 실행
+
+### 6) AI 의존도 진단 스크립트 신규
+
+`scripts/diag/analyze-speaking-ai-dependence.js` — 말하기 답안 중
+`spkSource`(webspeech/ai/ai-error) 비율 + `spkAttempts` 분포, 기간
+필터(`--days` / `--from`/`--to` KST), `--academy`/`--top`. 데이터 한계:
+userCompleted 통과 응시만(작업규칙7), 타임아웃 B-1 케이스 미기록.
+
+측정 결과:
+- 14일: AI 도달 11%(미상 48% 희석) / 3일: **AI 도달 21.6%**(미상 2.2%
+  깨끗) / 당일: **22.1% + AI 서버오류 3→5% 상승**
+- 결론: AI 의존도 ~22% 높은 편 + 503 악화 추세 → 폴백 재배치 실행 근거
+
+### 7) Gemini 폴백 2순위 재배치 (`39ef11f`) — 보류 → 실행
+
+사용자 결정("모두 해놓고 결과 판단"). 메모리
+[project_gemini_fallback_reorder.md](memory/project_gemini_fallback_reorder.md)
+옵션 B 를 503 급증 + 진단 근거로 앞당겨 실행:
+
+- `2.5-flash-lite → 2.5-flash → 3.1-flash-lite`
+  ⇒ **`2.5-flash-lite → 3.1-flash-lite → 2.5-flash`**
+  (generate-quiz/check-recording/cleanup-ocr/growth-report +
+  recover-recording-errors)
+- check-word(2모델): `2.5-flash-lite → 2.5-flash`
+  ⇒ `2.5-flash-lite → 3.1-flash-lite` (속도·비용 민감)
+- scoresnap-grade(Vision): 1순위 2.5-flash 유지, 2·3 재배치
+  ⇒ `2.5-flash → 3.1-flash-lite → 2.5-flash-lite`
+- 근거: 3.1-flash-lite 가 2.5-flash 보다 전 항목 저렴+빠름. 2.5-flash
+  3순위 강등(audio 비용 큼, 1·2 동시 장애 시만). api 전용 → Vercel
+  즉시 반영, SW bump 불필요. 코드 주석 갱신(작업규칙8 본문은 차기 정리)
+
+---
+
+## 작업 규칙 추가 (2026-05-18 이어서 4)
+
+신규:
+- **여러 화면이 같은 데이터를 별도 렌더하면 단일 공유 빌더로** — 녹음
+  상세 3경로(#1 카드/#3 모달)처럼 정보량 드리프트 발생. 한 빌더 +
+  옵션(clickSafe 등)으로 통일. 요약 카드(#2)는 클릭→공유 모달로 일관.
+- **안드로이드 SR→MediaRecorder 핸드오프 = getUserMedia hang 위험** —
+  SpeechRecognition(안드로이드 클라우드)이 마이크 점유, 해제 비동기·느림.
+  전환 전 abort()+충분한 대기(≥400ms) + getUserMedia 타임아웃 래퍼 필수.
+  iOS(온디바이스 SR)는 무관 — 플랫폼별 별개 이슈 혼동 주의.
+- **latency-critical 클라 타임아웃은 초과 시 벌점 금지** — check-word
+  5초처럼 짧은 타임아웃은 503 폴백 초과 시 서버 성공분도 버려 억울한
+  오답. 타임아웃 = "여기까지 기다림" 일 뿐, 정답/오답 가르는 선 X →
+  초과 시 재시도(B-1)로 복구. 숫자 키우기보다 벌점 제거가 핵심.
+- **503 = 구글측 모델 용량(transient), 우리가 못 고침** — 대응은
+  재시도·폴백·타임아웃·벌점제거. 모델별 절대 빈도는 Vercel 로그/Cloud
+  Console 이 정확(Firestore 는 통과분만이라 과소). 의존도 추세는 진단
+  스크립트로 며칠 관찰 후 재배치 등 결정.
+- **api 전용 변경은 SW bump 불필요** — Vercel 서버리스 즉시 반영.
+  클라(public/) 무변경 시 SW 캐시 버전 안 올림 (5/17 preview→GA 선례).
+
+---
+
+## 파일 크기 / SW 캐시 (2026-05-18 이어서 4)
+- `public/admin/js/app.js`: 녹음 상세 통일(공유 빌더)·최소화·재평가 버튼 (~-30 순감)
+- `public/js/app.js`: 말하기 3차 hang A·B + check-word 9초·B-1 (+~50)
+- `api/*` 6개 + `scripts/admin/recover-recording-errors.js`: 폴백 체인 재배치
+- `scripts/diag/analyze-speaking-ai-dependence.js`: 신규 ~150줄
+- SW 캐시: `kunsori-v558` (api 재배치는 SW 무관)
+
+## 진행률 (2026-05-18 이어서 4)
+- 녹음숙제 학원장 상세: **~100%** (3경로 단일 빌더 통일·전체 최소화·재평가 모달)
+- 단어 말하기 안정성: **~95%** (3차 hang A·B + check-word 9초·B-1·폴백 재배치. 추세 관찰 중)
+- Gemini 폴백: **재배치 완료** (후속 추세 관찰만)
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션 이어서 4, 2026-05-18)**:
+- ✅ 녹음숙제 학원장 상세 3경로 단일 공유 빌더 통일 (`62c1c54`)
+- ✅ 진도체크·최근시험 녹음 카드 전체 한 줄 최소화 (`8ac4729`)
+- ✅ 성적 상세 모달 [🔁 재평가] 버튼 (`3f4b11e`)
+- ✅ 말하기 3차 getUserMedia hang — A(타임아웃 복구) `a91ba7b` + B(핸드오프 대기 400ms) `a50f7dd`
+- ✅ check-word 타임아웃 5→9초 + 늦음 안내 + 9초 초과 시 재녹음(B-1) `75cab80`
+- ✅ AI 의존도 진단 스크립트 신규 + 측정 (3일 AI 도달 21.6%, 서버오류 3→5%)
+- ✅ Gemini 폴백 2순위 재배치 (2.5-flash→3.1-flash-lite, 6+1곳) `39ef11f`
+- ✅ 메모리 project_gemini_fallback_reorder 완료 갱신 + MEMORY.md 인덱스
+- ✅ 작업 규칙 — 공유 빌더 / 안드 SR→MR hang / latency 타임아웃 벌점금지 / 503 본질 / api SW bump 불필요
