@@ -12152,6 +12152,105 @@ async function _fillMissingHomophones(questions) {
   return { filled: 0, total: missing.length };
 }
 
+// 말하기 부적합 휴리스틱 — 3글자 이하 / 1음절(모음 1덩어리). 클라 즉시 판정.
+function _tpSpeakingUnfitReasons(word) {
+  const clean = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+  const r = [];
+  if (!clean) return r;
+  if (clean.length <= 3) r.push('3글자 이하');
+  const vg = (clean.match(/[aeiouy]+/g) || []).length;
+  if (vg <= 1) r.push('1음절');
+  return r;
+}
+
+// 배정 전 게이트: 휴리스틱(3글자·1음절) + AI(의성어·사전없음) 로 부적합 단어 산출 →
+// 모달로 단어·사유·삭제버튼 표시. 학원장이 삭제하면 questions 에서 제거(in-place).
+// 반환: true=배정 계속 / false=취소. (vocab+speaking 출제에서만 호출)
+function _tpSpeakingUnfitGate(questions) {
+  return new Promise(async (resolve) => {
+    const vqs = questions.filter(q => q && q.word && (q.type === 'vocab' || !q.type));
+    const words = [...new Set(vqs.map(q => String(q.word).trim()).filter(Boolean))];
+    if (!words.length) return resolve(true);
+
+    const reasonMap = new Map();  // lower → Set(사유)
+    words.forEach(w => {
+      const rs = _tpSpeakingUnfitReasons(w);
+      if (rs.length) reasonMap.set(w.toLowerCase(), new Set(rs));
+    });
+
+    // AI: 의성어 / 사전에 없는 단어 (generator 쿼터 — 서버에서 카운트)
+    try {
+      const resp = await _geminiFetch('/api/generate-quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'speaking-unfit-check', words }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && Array.isArray(data.results)) {
+          data.results.forEach(rr => {
+            const lw = String(rr.word || '').toLowerCase();
+            if (rr.onomatopoeia || rr.notRealWord) {
+              if (!reasonMap.has(lw)) reasonMap.set(lw, new Set());
+              if (rr.onomatopoeia) reasonMap.get(lw).add('의성어');
+              if (rr.notRealWord) reasonMap.get(lw).add('사전에 없는 단어');
+            }
+          });
+        }
+      } else {
+        showToast('AI 부적합 검사 실패 — 글자/음절 기준만 표시');
+      }
+    } catch (e) {
+      showToast('AI 부적합 검사 실패 — 글자/음절 기준만 표시');
+    }
+
+    if (reasonMap.size === 0) return resolve(true);  // 부적합 없음 → 그대로 진행
+
+    const dispOf = (lw) => (vqs.find(q => String(q.word).toLowerCase() === lw)?.word) || lw;
+    const rowsHtml = () => {
+      if (reasonMap.size === 0) return '<div style="color:var(--gray);font-size:13px;padding:14px;text-align:center;">부적합 단어 없음 — 그대로 배정 가능</div>';
+      return [...reasonMap.entries()].map(([lw, set]) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
+          <div style="min-width:0;"><span style="font-weight:700;">${esc(dispOf(lw))}</span>
+            <span style="font-size:11px;color:var(--gray);"> · ${[...set].map(esc).join(' · ')}</span></div>
+          <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_tpUnfitDel('${esc(lw)}')">🗑 삭제</button>
+        </div>`).join('');
+    };
+    window._tpUnfitDel = (lw) => {
+      for (let i = questions.length - 1; i >= 0; i--) {
+        if (questions[i] && String(questions[i].word || '').toLowerCase() === lw) questions.splice(i, 1);
+      }
+      reasonMap.delete(lw);
+      const el = document.getElementById('_tpUnfitList');
+      if (el) el.innerHTML = rowsHtml();
+      const cnt = document.getElementById('_tpUnfitCnt');
+      if (cnt) cnt.textContent = `남은 문제 ${questions.length}개`;
+      showToast('삭제됨');
+    };
+    window._tpUnfitClose = (proceed) => {
+      window._tpUnfitDel = null; window._tpUnfitClose = null;
+      closeModal();
+      resolve(!!proceed);
+    };
+    showModal(`
+      <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:17px;font-weight:700;">🎤 말하기 부적합 단어 검토</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.5;">
+            음성 인식이 잘 안 되는 단어입니다 (짧음·1음절·의성어·사전에 없는 단어).<br>
+            🗑 삭제하면 <b>이 말하기 시험에서만</b> 빠집니다 (객관식·스펠링 형식엔 영향 없음).
+            <span id="_tpUnfitCnt" style="color:var(--text);font-weight:600;">남은 문제 ${questions.length}개</span>
+          </div>
+        </div>
+        <div style="padding:16px 22px;overflow-y:auto;flex:1;" id="_tpUnfitList">${rowsHtml()}</div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="_tpUnfitClose(false)">취소</button>
+          <button class="btn btn-primary" onclick="_tpUnfitClose(true)" style="font-weight:700;">이대로 배정하기 ▶</button>
+        </div>
+      </div>`);
+  });
+}
+
 window.qsSaveEdits = async () => {
   const st = _qsEditState;
   if (!st) return;
@@ -13626,6 +13725,10 @@ window.tpPublish = async () => {
     if (filled.total > 0) {
       console.log(`[tpPublish 안전망] 동음이의어 채움: ${filled.filled}/${filled.total}`);
     }
+    // 🎤 말하기 부적합 단어 검토 (배정 전, 학원장이 삭제 가능)
+    const proceed = await _tpSpeakingUnfitGate(questions);
+    if (!proceed) return;
+    if (questions.length === 0) { showAlert('배정 불가', '모든 단어를 삭제해 출제할 문제가 없습니다.'); return; }
   }
 
   const qcLine = questions.length < poolTotal

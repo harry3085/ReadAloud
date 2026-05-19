@@ -578,6 +578,12 @@ module.exports = async function handler(req, res) {
       return await handleUnscrambleFromText({ sentences, chunkCount, apiKey, res });
     }
 
+    // ─── 말하기 부적합 단어 판별 (의성어 / 사전에 없는 단어) ───
+    // 휴리스틱(3글자·1음절)은 클라가, 사전·의성어 판단만 AI. generator 쿼터(위에서 카운트됨).
+    if (mode === 'speaking-unfit-check') {
+      return await handleSpeakingUnfit({ words, apiKey, res });
+    }
+
     // ─── 입력 검증 ───
     if (!Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: 'pages array is required' });
@@ -1007,6 +1013,83 @@ Output ONLY the JSON object as specified.`;
   return res.status(200).json({
     success: true,
     mode: 'homophones-only',
+    model: usedModel,
+    count: results.length,
+    results,
+  });
+}
+
+const SPEAKING_UNFIT_PROMPT = `You classify English vocabulary words for a Korean students' SPEAKING (voice-recognition) test. For EACH given word output two booleans:
+- "onomatopoeia": true if it is primarily an imitative/sound-effect word (e.g., woof, buzz, splash, bang, meow, beep, vroom, boom, tick). A normal noun/verb that merely relates to sound is NOT onomatopoeia.
+- "notRealWord": true if it is NOT a standard English dictionary headword — e.g., a proper noun/name, brand, abbreviation/acronym, typo, non-English token, or made-up string. A common dictionary noun/verb/adjective/adverb = false.
+Output ONLY JSON: {"results":[{"word":"...","onomatopoeia":true|false,"notRealWord":true|false}, ...]} — one entry per input word, same order, no commentary.`;
+
+async function handleSpeakingUnfit({ words, apiKey, res }) {
+  if (!Array.isArray(words) || words.length === 0) {
+    return res.status(400).json({ error: 'words array is required' });
+  }
+  const sanitized = words
+    .map(w => String(w || '').trim())
+    .filter(w => w && w.length <= 60)
+    .slice(0, 300);
+  if (sanitized.length === 0) {
+    return res.status(400).json({ error: 'No valid words' });
+  }
+
+  const userPrompt = `Classify these ${sanitized.length} words:
+
+${sanitized.map((w, i) => `${i + 1}. ${w}`).join('\n')}
+
+Output ONLY the JSON object as specified.`;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (status) => status === 503 || status === 429;
+
+  let rawText = null, usedModel = null, lastError = null, lastStatus = null;
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await callGemini(model, apiKey, SPEAKING_UNFIT_PROMPT, userPrompt);
+        if (result.ok) { usedModel = model; rawText = result.text; break outer; }
+        lastError = result.error;
+        lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+        }
+        if (isTransient(lastStatus) && attempt === 0) { await sleep(800); continue; }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+
+  if (!rawText) {
+    return res.status(502).json({ error: 'All AI models failed', detail: lastError, triedModels: GEMINI_MODELS });
+  }
+
+  const parsed = parseAIResponse(rawText);
+  if (!parsed || !Array.isArray(parsed.results)) {
+    return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
+  }
+
+  const byLower = new Map();
+  for (const r of parsed.results) {
+    if (!r || typeof r !== 'object') continue;
+    const w = String(r.word || '').toLowerCase().trim();
+    if (!w) continue;
+    byLower.set(w, { onomatopoeia: !!r.onomatopoeia, notRealWord: !!r.notRealWord });
+  }
+  const results = sanitized.map(w => {
+    const f = byLower.get(w.toLowerCase()) || { onomatopoeia: false, notRealWord: false };
+    return { word: w, onomatopoeia: f.onomatopoeia, notRealWord: f.notRealWord };
+  });
+
+  return res.status(200).json({
+    success: true,
+    mode: 'speaking-unfit-check',
     model: usedModel,
     count: results.length,
     results,
