@@ -13306,7 +13306,7 @@ window.tpClearSel = () => {
 // 시험에서 특정 학생 제외 — excludedUids 추가 + userCompleted 삭제 + scores 매칭 삭제
 // 잘못 배정된 학생의 응시 기록이 성장 리포트에 영향 주지 않도록 완전 제거
 // 복구 UI 없음 — 다시 보게 하려면 시험 새로 배정
-window.tpExcludeStudent = async (testId, uid, studentName) => {
+window.tpExcludeStudent = async (testId, uid, studentName, btnEl) => {
   if (!testId || !uid) return;
   if (!(await showConfirm(
     `"${studentName || '학생'}" 시험 제외`,
@@ -13332,9 +13332,21 @@ window.tpExcludeStudent = async (testId, uid, studentName) => {
       }
     } catch(e) { console.warn('[tpExcludeStudent] scores cleanup:', e.message); }
     showToast('✓ 학생 제외 완료');
-    // 펼침 화면 다시 그리기 — 같은 행 다시 클릭하면 갱신된 상태 표시
-    await tpToggleTestProgress(testId);
-    await tpToggleTestProgress(testId);
+    // 재조회 없이 그 카드만 희미하게(취소선) 처리 — 여러 명 지워도 fetch 0회.
+    // 통계·목록은 그 시험을 다시 펼칠 때 갱신됨.
+    const card = btnEl && btnEl.parentElement;
+    if (card) {
+      card.style.opacity = '0.4';
+      card.style.textDecoration = 'line-through';
+      card.style.pointerEvents = 'none';
+      card.style.filter = 'grayscale(1)';
+      card.title = '제외됨 (다시 펼치면 사라짐)';
+      if (btnEl) btnEl.remove();
+    } else {
+      // btnEl 없을 때만 폴백 — 펼침 닫고 다시 (재조회)
+      await tpToggleTestProgress(testId);
+      await tpToggleTestProgress(testId);
+    }
   } catch(e) {
     showAlert('제외 실패', e.message);
   }
@@ -14648,7 +14660,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
               // 시험관리 페이지면 _activeTestType, 시험 목록이면 시험 doc 자체의 testMode/mode
               const tMode = (t.testMode || t.mode || '').toLowerCase();
               const recs = c.recordings || [];
-              const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+              const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
               // ── 녹음숙제 분기 — 회차별 audio + 마지막 AI 피드백 ──
               // Phase B: 통과/불통 폐기. 응시 흔적 있으면 모두 "📤 제출됨" 단일 카드
               // (옛 데이터 호환: completedAt 또는 latestFailedAt 있으면 응시)
@@ -14711,7 +14723,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
               const dateStr = c.date
                 || (c.latestAt?.toDate?.() ? _ymdKST(c.latestAt.toDate()) : '');
               const passScore = c.passScore || t.passScore || 80;
-              const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+              const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
               if (passed) {
                 return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                   ${xBtn}
@@ -14725,7 +14737,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                 <div style="color:#92400e;">⚠ ${score}점 (통과 ${passScore})</div>
               </div>`;
             }
-            const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}')" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+            const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
             return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
               ${xBtn}
               <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
