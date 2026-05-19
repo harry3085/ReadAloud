@@ -5666,3 +5666,51 @@ commit `9f2a03a`, SW v558→v559.
   배포 전 검증
 - **STT 15초 최소과금** — 짧은 단어 음성판정엔 Gemini-lite보다 비쌈.
   "STT가 싸다"는 일반 통념이 단어시험엔 반대 (공식 가격 WebFetch 확인)
+
+---
+
+## 2026-05-19 (이어서 2): 말하기 부적합 단어 출제 게이트 + 1음절 휴리스틱 폐기
+
+roll·up 류 ASR 한계 단어는 1번 가드로도 한계 → 출제(배정) 단계에서
+걸러내는 게이트 도입. SW v558→v567 (commit `83239e5`·`a0598f5`).
+
+### 1) 말하기 부적합 단어 배정 전 게이트 (`83239e5`, SW v566)
+
+vocab+speaking 출제 시 [배정하기] 클릭 → 배정 전 부적합 단어 목록 모달
+(단어·사유·🗑삭제). 학원장이 삭제하면 `questions` in-place splice 후 진행.
+- `api/generate-quiz.js` `mode === 'speaking-unfit-check'` 분기 +
+  `SPEAKING_UNFIT_PROMPT` + `handleSpeakingUnfit` (homophones-only 패턴).
+  quota/increment 는 상단에서 모든 mode 공통 — **generator 카운터**
+- 클라 `_tpSpeakingUnfitReasons`(휴리스틱) + `_tpSpeakingUnfitGate`(모달,
+  `_geminiFetch`, `_tpUnfitDel`/`_tpUnfitClose`), `tpPublish` 주입
+  (`_fillMissingHomophones` 뒤, vocab+speaking 만). 0개 남으면 배정 차단
+
+### 2) 1음절 휴리스틱 폐기 → AI hardForASR (`a0598f5`, SW v567)
+
+`wild`·`soft`·`feel`·`claim` 등 정상 단음절이 '1음절' 휴리스틱에 과다
+표시(roll(나쁨) vs wild(좋음) 구분 불가) → 사용자 결정 "1":
+- 휴리스틱 = **`3글자 이하`만** (up·be·go 객관 극단)
+- `SPEAKING_UNFIT_PROMPT` 에 `hardForASR` boolean 추가 — 한국 학생 발화
+  시 ASR 오인식 위험 높은 음향적 빈약·모호 단어(roll·up·be·err·owe)만
+  true, wild·soft·claim = false, **애매하면 false(과다표시 금지)**
+- 모달 사유 라벨 `ASR 인식 어려움` (의성어·사전없음과 함께)
+
+### 작업 규칙 추가 (2026-05-19 이어서 2)
+
+- **휴리스틱이 정상/위험을 못 가르면 폐기하고 AI 판단으로** — '1음절'
+  처럼 정상 단어(wild)와 위험 단어(roll)가 같은 특징을 공유하면 그
+  휴리스틱은 노이즈. 객관적 극단(3글자 이하)만 코드, 미묘한 판단은 AI
+  (애매하면 false 로 과다표시 억제 지시 필수)
+- **부적합 단어는 채점 보정 아닌 출제 단계 차단** — roll 류 ASR 한계
+  단어는 채점 가드(1번)·발음변형(2번)으로도 한계. 출제 시 학원장이
+  보고 빼는 게이트가 가장 확실. 채점 편향과 별개 레이어
+
+### 후속 / 보류
+
+- 2번 accentVariants — [memory/project_speaking_accent_variants.md] 등록.
+  말하기 인식 불만 재발 시 트리거 (1번+게이트 효과 관찰 후)
+
+## 파일 크기 / SW 캐시 (2026-05-19 이어서 2)
+- `api/generate-quiz.js`: +~80줄 (speaking-unfit-check + hardForASR)
+- `public/admin/js/app.js`: +~90줄 (게이트 모달·휴리스틱·tpPublish 주입)
+- SW 캐시: `kunsori-v567`
