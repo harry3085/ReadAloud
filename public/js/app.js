@@ -4958,7 +4958,8 @@ window.vqSpkStart = async () => {
 
   rec.onresult = (e) => {
     s.spk.srResolved = true;
-    const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones);
+    const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones,
+      (s.questions || []).map(qq => qq && qq.word), q.accentVariants);
     const heard = (e.results[0]?.[0]?.transcript || '').toLowerCase().trim();
     s.spk.lastHeard = heard;
     if (grading.correct) {
@@ -5621,51 +5622,75 @@ function _spkLevenshteinSimilarity(a, b) {
   return maxLen === 0 ? 1 : 1 - dist / maxLen;
 }
 
-// 음성 인식 결과(SpeechRecognitionResultList[0]) + 정답 영단어 + 엄격도 + 동음이의어 → 채점 결과
-// homophones: AI Generator/Wordsnap 단어시험 생성 시 채워두는 동음이의어 배열.
-//   Web Speech API 가 cereal 을 serial 로 들어도 정답 처리 (단어 지식 평가가 1차 목표).
-//   UI/인쇄/단어장에는 노출 X — 말하기 모드 채점에서만 사용.
-function _spkGradeAnswer(recognitionResults, correctEnglish, strictness, homophones) {
+// 단어 말하기 채점 — 정확일치 + 통합 가드 (닫힌후보 1번 + 발음코드 3번 + 동음이의어/발음변형)
+// 2026-05-19 검증: scripts/diag/test-spk-grading.js 14/14 통과.
+//   · 정확일치: 들린=정답/동음이의어/발음변형 (시험 내 다른 단어와 겹치는 후보는 제외 → false positive 차단)
+//   · 가드: 정답군 최고유사도(bestG)가 "이 시험의 다른 단어들" 최고유사도(bestO)를 마진 이상 앞설 때만 인정
+//       강한매칭 bestG>=임계 & gap>=0.15  /  임계미만 구제 bestG>=0.45 & gap>=0.30
+//   · 발음코드(metaphone-lite)는 가드 안 유사도에만 반영 (단독 통과 불가 — cat/cot 등 false positive 억제)
+// allWords: 이 시험의 모든 영단어(닫힌 후보군). accentVariants: AI 발음변형(2번, 후속 — 현재 미사용 가능).
+function _spkNorm(s) {
+  return String(s || '').normalize('NFKC').toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function _spkPcode(s) {
+  let x = _spkNorm(s).replace(/[^a-z]/g, '');
+  if (!x) return '';
+  x = x.replace(/ph/g, 'f').replace(/gh/g, '').replace(/ck/g, 'k')
+    .replace(/sch/g, 'sk').replace(/tch/g, 'ch')
+    .replace(/^wr/, 'r').replace(/^kn/, 'n').replace(/mb$/, 'm')
+    .replace(/c([eiy])/g, 's$1').replace(/c/g, 'k')
+    .replace(/q/g, 'k').replace(/x/g, 'ks').replace(/z/g, 's')
+    .replace(/w/g, '').replace(/h/g, '')
+    .replace(/[eiy]/g, 'i').replace(/(.)\1+/g, '$1').replace(/e$/, '');
+  return x;
+}
+function _spkPhoneticEqual(a, b) {
+  const ca = _spkPcode(a), cb = _spkPcode(b);
+  return ca.length >= 2 && ca === cb;
+}
+function _spkWordSim(said, w) {
+  return Math.max(_spkLevenshteinSimilarity(said, w), _spkPhoneticEqual(said, w) ? 0.92 : 0);
+}
+const _SPK_FLOOR = 0.45, _SPK_MARGIN = 0.15, _SPK_BIG_MARGIN = 0.30;
+
+function _spkGradeAnswer(recognitionResults, correctEnglish, strictness, homophones, allWords, accentVariants) {
   const cfg = SPK_STRICTNESS_CONFIG[strictness] || SPK_STRICTNESS_CONFIG.normal;
-  const ans = String(correctEnglish || '').toLowerCase().trim();
+  const ans = _spkNorm(correctEnglish);
   if (!ans) return { correct: false, alternatives: [] };
 
-  // 정답 후보 = [원래 정답, ...동음이의어] (모두 소문자·trim)
-  const validAnswers = [ans];
-  if (Array.isArray(homophones)) {
-    for (const h of homophones) {
-      const hh = String(h || '').toLowerCase().trim();
-      if (hh && hh !== ans) validAnswers.push(hh);
-    }
-  }
+  // 시험의 다른 단어들 (정답 제외)
+  const others = [];
+  for (const w of (allWords || [])) { const x = _spkNorm(w); if (x && x !== ans && !others.includes(x)) others.push(x); }
 
-  const alternatives = Array.from(recognitionResults || []).slice(0, cfg.maxAlternatives);
+  // 인정 후보 = 정답 + 동음이의어 + 발음변형. 단 다른 시험단어와 겹치는 건 제외(애매 → false positive 차단)
+  const group = [ans];
+  const addCand = (raw) => { const x = _spkNorm(raw); if (x && x !== ans && !group.includes(x) && !others.includes(x)) group.push(x); };
+  if (Array.isArray(homophones)) homophones.forEach(addCand);
+  if (Array.isArray(accentVariants)) accentVariants.forEach(addCand);
 
-  let bestSim = 0;
-  let bestHeard = '';
-  for (const alt of alternatives) {
-    const said = String(alt.transcript || '').toLowerCase().trim();
-    if (!said) continue;
-    // 모든 정답 후보(원래 + 동음이의어)에 대해 매칭 시도
-    for (const candidate of validAnswers) {
-      if (said === candidate) {
-        return { correct: true, matchedWith: said, similarity: 1.0, viaHomophone: candidate !== ans };
-      }
-      if (cfg.similarityThreshold < 1.0) {
-        const sim = _spkLevenshteinSimilarity(said, candidate);
-        if (sim >= cfg.similarityThreshold) {
-          return { correct: true, matchedWith: said, similarity: sim, viaHomophone: candidate !== ans };
-        }
-        if (sim > bestSim) { bestSim = sim; bestHeard = said; }
-      }
+  const alts = Array.from(recognitionResults || []).slice(0, cfg.maxAlternatives)
+    .map(a => _spkNorm(a && a.transcript)).filter(Boolean);
+
+  let trackSim = 0, trackHeard = '';
+  for (const said of alts) {
+    // 진짜 정확일치 — 항상 안전
+    for (const g of group) {
+      if (said === g) return { correct: true, matchedWith: said, similarity: 1, viaHomophone: g !== ans, via: 'exact' };
     }
+    let bestG = 0;
+    for (const g of group) { const s = _spkWordSim(said, g); if (s > bestG) bestG = s; }
+    let bestO = 0;
+    for (const o of others) { const s = _spkWordSim(said, o); if (s > bestO) bestO = s; }
+    const gap = bestG - bestO;
+    const strong = bestG >= cfg.similarityThreshold && gap >= _SPK_MARGIN;
+    const rescue = bestG >= _SPK_FLOOR && gap >= _SPK_BIG_MARGIN;
+    if (strong || rescue) {
+      return { correct: true, matchedWith: said, similarity: +bestG.toFixed(2), viaHomophone: false, via: strong ? 'strong' : 'rescue' };
+    }
+    if (bestG > trackSim) { trackSim = bestG; trackHeard = said; }
   }
-  return {
-    correct: false,
-    alternatives: alternatives.map(a => a.transcript || '').filter(Boolean),
-    bestSimilarity: bestSim,
-    bestHeard,
-  };
+  return { correct: false, alternatives: alts, bestSimilarity: trackSim, bestHeard: trackHeard };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
