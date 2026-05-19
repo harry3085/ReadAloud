@@ -5555,3 +5555,60 @@ userCompleted 통과 응시만(작업규칙7), 타임아웃 B-1 케이스 미기
 - ✅ Gemini 폴백 2순위 재배치 (2.5-flash→3.1-flash-lite, 6+1곳) `39ef11f`
 - ✅ 메모리 project_gemini_fallback_reorder 완료 갱신 + MEMORY.md 인덱스
 - ✅ 작업 규칙 — 공유 빌더 / 안드 SR→MR hang / latency 타임아웃 벌점금지 / 503 본질 / api SW bump 불필요
+
+---
+
+## 2026-05-19: Firestore 색인 최적화 — 작업지시서 검증 후 1/3만 적용
+
+외부 작업지시서 (`firestore-indexes-optimization-tasks.md`, 다른 LLM 이 Firebase 쿼리 통계 보고 작성) 받아 검증·진행. 코드 무수정 (색인 파일만). commit `91c40c4`.
+
+### 지시서 검증 — 3개 진단 중 2개가 코드와 불일치
+
+| 지시서 진단 | 실제 코드 검증 | 결정 |
+|------|------|------|
+| `(academyId, testId, reEvaluated)` 효율 128.10 | **운영 코드 아님** — `scripts/diag/test-length-vs-scores.js` 진단 스크립트 1회용. genTests 루프에서 시험마다 호출 ("12회 실행"=시험 12개). scores.reEvaluated 는 adminAction.js:199 재평가 시 박힘이나 adminAction 은 add only·쿼리 X | **제외** |
+| `(academyId, mode, userName)` 효율 71.70 | **userName where 0건** (grep). 성적 리포트 이름검색은 `_srBuildConstraints` 가 academyId+date+mode 로 fetch (색인 매칭 ✓) 후 클라 측 `scoreSearch` 필터. userName server-side X. Firebase 통계 추론 표기 오류 | **제외** (영원히 미사용) |
+| `(academyId, testId)` 효율 9.10 | **운영 실재** — 6619 `tpToggleTestProgress` (시험 진행현황 펼침), 6409 `_tlLoadScoresForTests` (진도체크/시험목록 통계). `academyId==+testId==` (orderBy 없음) 정확 매칭 색인 부재 → Firestore 가 academyId 단일 색인 선택 → 학원 점수 전체 받아 testId 메모리 필터 (664 받아 73 사용) | **적용** |
+
+→ 지시서대로 3개 다 넣었으면 2개는 죽은 색인 (슬롯 낭비 + 혼란). 지시서의 "운영 read 5,000/주" 는 `scripts/diag/` 진단 스크립트 1회 실행분 포함으로 부정확.
+
+### 적용 — scores `(academyId, testId)` 2-field 색인 1개
+
+```json
+{ "collectionGroup": "scores", "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "academyId", "order": "ASCENDING" },
+    { "fieldPath": "testId", "order": "ASCENDING" }
+  ]
+}
+```
+- 기존 색인 #1 (`academyId+testId+uid+createdAt`, 4-field) 그대로 유지 — 5182·13226·5340 (uid 쓰는 쿼리) 가 계속 사용. 추가만, 삭제 X
+- 효과: 시험 진행현황 펼침 / 시험별 통계 read **1/9 절감**. 학원 점수 누적 많을수록 격차 ↑
+- `firebase deploy --only firestore:indexes` 완료 (46 인덱스, scores 9개)
+- 검증 가이드: [docs/firestore-indexes-2026-05-19.md](docs/firestore-indexes-2026-05-19.md) (3일 후 쿼리 통계 재확인)
+
+### pushNotifications (Step 2 — 보고만)
+- 4516/4517 `getCountFromServer(academyId+sent)` — 페이지 진입당 2회 COUNT (비용 0, setInterval 아님)
+- 168회/7일 = 24/일 = 학원장 대시보드+메시지 진입 빈도. 색인 충분 → 조치 불필요 (지시서 결론과 일치)
+
+### 작업 규칙 재확인 (2026-05-02 TASK-4/10 정립분 강화)
+- **외부 작업지시서 = 출발점, 검증 필수** — 청구 내용 vs 실제 코드/데이터 대조 → 불일치 보고 → 확정 후 진행. LLM 생성 지시서는 Firebase 통계 추론 오류·진단 스크립트 혼입·컬렉션 혼동 가능. 임의로 지시서 안 따름
+- **사용자가 "현재 상황 고려" 명시 = 이 검증 단계 트리거** — 일반론을 이 프로젝트의 멀티테넌시 구조(academyId 격리·색인 prefix 규칙·scripts/diag 분리)에 대조
+- **Firebase 쿼리 통계 ≠ 운영 비용** — `scripts/diag/` 진단 스크립트 실행분도 통계에 집계. 필드명도 색인 추론으로 실제 where 와 다를 수 있음. 통계 → 코드 grep 검증 필수
+
+## 파일 크기 / SW 캐시 (2026-05-19)
+- `firestore.indexes.json`: +1 색인 (scores academyId+testId), 총 46개
+- `docs/firestore-indexes-2026-05-19.md`: 신규 결과 보고서
+- 코드(public/·api/) 무수정 — SW bump 없음
+
+## 진행률 (2026-05-19)
+- **Firestore 색인 최적화: ~95%** (운영 실재 비효율 1건 해결. reEvaluated 진단스크립트용은 보류)
+- 음성 인식·동음이의어·AI Generator·멀티테넌시: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**완료 (이 세션, 2026-05-19)**:
+- ✅ 작업지시서 검증 — scores 쿼리 10곳 + pushNotifications 전수 분석
+- ✅ scores (academyId, testId) 색인 추가 + 배포 (운영 1/9 절감)
+- ✅ 지시서 진단 2건 (reEvaluated/userName) 코드 불일치로 제외
+- ✅ 결과 보고서 docs/firestore-indexes-2026-05-19.md
+- ✅ 작업 규칙 — 외부 지시서 검증 필수 / Firebase 통계 ≠ 운영 비용
