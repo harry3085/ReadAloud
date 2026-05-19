@@ -4414,6 +4414,40 @@ let _vqState = {
   opts: null,
 };
 
+// ── 단어시험 중간 저장 (먹통/중단 시 이어풀기) — localStorage, 당일(KST) TTL ──
+// 1인1PC 타깃이라 localStorage 가 적절(개인·동기기·학원공유 불필요). 제출 완료/처음부터 선택 시 삭제.
+function _vqProgKey(testId) {
+  const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || 'anon';
+  return `vqProgress_${testId}_${uid}`;
+}
+function _vqClearProgress(testId) {
+  try { if (testId) localStorage.removeItem(_vqProgKey(testId)); } catch (_) {}
+}
+function _vqSaveProgress() {
+  try {
+    const s = _vqState;
+    if (!s || !s.test || !s.test.id || !Array.isArray(s.answers)) return false;
+    localStorage.setItem(_vqProgKey(s.test.id), JSON.stringify({
+      v: 1, testId: s.test.id, ymd: _ymdKST(), savedAt: Date.now(),
+      currentIdx: s.currentIdx || 0,
+      test: s.test, questions: s.questions, answers: s.answers, opts: s.opts,
+    }));
+    return true;
+  } catch (e) { console.warn('[vq] 진행 저장 실패', e); return false; }
+}
+function _vqLoadProgress(testId) {
+  try {
+    const raw = localStorage.getItem(_vqProgKey(testId));
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (!snap || snap.testId !== testId) return null;
+    if (snap.ymd !== _ymdKST()) { _vqClearProgress(testId); return null; }  // 당일만 유효
+    if (!Array.isArray(snap.questions) || !Array.isArray(snap.answers) || !snap.questions.length) return null;
+    if ((snap.currentIdx || 0) >= snap.questions.length) { _vqClearProgress(testId); return null; }
+    return snap;
+  } catch (_) { return null; }
+}
+
 window.goVocab = async () => {
   show('vocabList');
   await loadVocabList();
@@ -4431,6 +4465,33 @@ window.startVocab = async (testId, testName) => {
     const test = { id: testId, ...snap.data() };
     let questions = (test.questions || []).filter(q => q.type === 'vocab');
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+
+    // 중간 저장된 진행분 있으면 "이어서 풀까요?" 확인 (없으면 처음부터)
+    const _prog = _vqLoadProgress(testId);
+    if (_prog) {
+      const doneN = _prog.currentIdx || 0;
+      const totalN = _prog.questions.length;
+      if (await showConfirm('중단된 시험이 있어요', `${totalN}문제 중 ${doneN + 1}번부터 이어서 풀까요? (아니오 = 처음부터 다시)`)) {
+        _screenPrepare('vocabQuiz', '#vqProgressBar', () => {
+          if (typeof _vqBindSpellInput === 'function') _vqBindSpellInput();
+        });
+        const rOpts = _prog.opts || {};
+        if ((_prog.answers || []).some(a => a && a.format === 'speaking')) {
+          const ok = await _checkMicSupport({ needSpeech: true });
+          if (!ok) return;
+        }
+        _vqState = {
+          test: _prog.test, questions: _prog.questions,
+          currentIdx: Math.min(doneN, totalN - 1),
+          answers: _prog.answers, opts: rOpts,
+          spk: { attempt: 0, recognition: null, strictness: (rOpts && rOpts.speakingStrictness) || 'normal' },
+        };
+        show('vocabQuiz');
+        _vqRenderStep();
+        return;
+      }
+      _vqClearProgress(testId);   // "처음부터" → 저장분 삭제
+    }
 
     // 원본 템플릿 복원 + 스펠 input 리스너 재바인딩 (복원된 DOM 에는 기존 리스너 없음)
     _screenPrepare('vocabQuiz', '#vqProgressBar', () => {
@@ -5496,6 +5557,7 @@ async function _vqSubmit() {
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
     s._submitted = true;
+    _vqClearProgress(t.id);   // 제출 완료 → 중간 저장분 삭제
   } catch(e) {
     console.error(e);
     showToast('점수 저장 실패: ' + e.message);
@@ -5594,7 +5656,14 @@ window.vqViewPreviousResult = async (testId, testName) => {
 };
 
 window.quitVocab = async () => {
-  if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  if (!(await showConfirm('시험을 중단할까요?', ''))) return;
+  // 지금까지 푼 내용 저장 여부 묻기 → 저장 시 다음 진입에서 이어풀기
+  const save = await showConfirm('진행 내용을 저장할까요?', '저장하면 중단된 문제부터 이어서 풀 수 있어요. 단, 저장은 오늘(자정)까지만 유효하며 내일부터는 처음부터 다시 풀어야 해요.');
+  if (save) {
+    if (_vqSaveProgress()) showToast('저장 완료 — 오늘 안에 다시 열면 이어서 풀 수 있어요 (내일부터는 처음부터)');
+  } else if (_vqState?.test?.id) {
+    _vqClearProgress(_vqState.test.id);
+  }
   _vqStopTimer();
   // 음성 인식 정리 (speaking 모드 종료 시)
   if (_vqState?.spk?.recognition) {
