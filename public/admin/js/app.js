@@ -12152,18 +12152,17 @@ async function _fillMissingHomophones(questions) {
   return { filled: 0, total: missing.length };
 }
 
-// 말하기 부적합 휴리스틱 — 3글자 이하 / 1음절(모음 1덩어리). 클라 즉시 판정.
+// 말하기 부적합 휴리스틱 — 3글자 이하만 (객관적 극단). 클라 즉시 판정.
+// '1음절' 은 wild·soft·feel 같은 정상 단어를 과다 표시해 제거 — ASR 위험은 AI 가 판단.
 function _tpSpeakingUnfitReasons(word) {
   const clean = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
   const r = [];
   if (!clean) return r;
   if (clean.length <= 3) r.push('3글자 이하');
-  const vg = (clean.match(/[aeiouy]+/g) || []).length;
-  if (vg <= 1) r.push('1음절');
   return r;
 }
 
-// 배정 전 게이트: 휴리스틱(3글자·1음절) + AI(의성어·사전없음) 로 부적합 단어 산출 →
+// 배정 전 게이트: 휴리스틱(3글자 이하) + AI(의성어·사전없음·ASR위험) 로 부적합 단어 산출 →
 // 모달로 단어·사유·삭제버튼 표시. 학원장이 삭제하면 questions 에서 제거(in-place).
 // 반환: true=배정 계속 / false=취소. (vocab+speaking 출제에서만 호출)
 function _tpSpeakingUnfitGate(questions) {
@@ -12178,7 +12177,7 @@ function _tpSpeakingUnfitGate(questions) {
       if (rs.length) reasonMap.set(w.toLowerCase(), new Set(rs));
     });
 
-    // AI: 의성어 / 사전에 없는 단어 (generator 쿼터 — 서버에서 카운트)
+    // AI: 의성어 / 사전에 없는 단어 / ASR 오인식 위험 (generator 쿼터 — 서버에서 카운트)
     try {
       const resp = await _geminiFetch('/api/generate-quiz', {
         method: 'POST',
@@ -12190,10 +12189,11 @@ function _tpSpeakingUnfitGate(questions) {
         if (data.success && Array.isArray(data.results)) {
           data.results.forEach(rr => {
             const lw = String(rr.word || '').toLowerCase();
-            if (rr.onomatopoeia || rr.notRealWord) {
+            if (rr.onomatopoeia || rr.notRealWord || rr.hardForASR) {
               if (!reasonMap.has(lw)) reasonMap.set(lw, new Set());
               if (rr.onomatopoeia) reasonMap.get(lw).add('의성어');
               if (rr.notRealWord) reasonMap.get(lw).add('사전에 없는 단어');
+              if (rr.hardForASR) reasonMap.get(lw).add('ASR 인식 어려움');
             }
           });
         }

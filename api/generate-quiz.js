@@ -578,8 +578,8 @@ module.exports = async function handler(req, res) {
       return await handleUnscrambleFromText({ sentences, chunkCount, apiKey, res });
     }
 
-    // ─── 말하기 부적합 단어 판별 (의성어 / 사전에 없는 단어) ───
-    // 휴리스틱(3글자·1음절)은 클라가, 사전·의성어 판단만 AI. generator 쿼터(위에서 카운트됨).
+    // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
+    // 휴리스틱(3글자 이하)은 클라가, 의성어·사전·ASR위험 판단은 AI. generator 쿼터(위에서 카운트됨).
     if (mode === 'speaking-unfit-check') {
       return await handleSpeakingUnfit({ words, apiKey, res });
     }
@@ -1019,10 +1019,11 @@ Output ONLY the JSON object as specified.`;
   });
 }
 
-const SPEAKING_UNFIT_PROMPT = `You classify English vocabulary words for a Korean students' SPEAKING (voice-recognition) test. For EACH given word output two booleans:
+const SPEAKING_UNFIT_PROMPT = `You classify English vocabulary words for a Korean students' SPEAKING (voice-recognition) test. For EACH given word output three booleans:
 - "onomatopoeia": true if it is primarily an imitative/sound-effect word (e.g., woof, buzz, splash, bang, meow, beep, vroom, boom, tick). A normal noun/verb that merely relates to sound is NOT onomatopoeia.
 - "notRealWord": true if it is NOT a standard English dictionary headword — e.g., a proper noun/name, brand, abbreviation/acronym, typo, non-English token, or made-up string. A common dictionary noun/verb/adjective/adverb = false.
-Output ONLY JSON: {"results":[{"word":"...","onomatopoeia":true|false,"notRealWord":true|false}, ...]} — one entry per input word, same order, no commentary.`;
+- "hardForASR": true ONLY if a Korean student's spoken pronunciation of this word is highly likely to be MIS-recognized by a browser speech-recognition engine. These are acoustically sparse/ambiguous words: very short single-syllable words with a weak vowel or liquid/glide that Korean speakers blur (e.g., roll, up, be, err, owe, ore, awe, aria, lyre, ewe, eye). A common clear monosyllable that recognizes reliably (e.g., wild, soft, claim, feel, pass, big, run, jump) = false. When unsure, output false (do NOT over-flag normal vocabulary).
+Output ONLY JSON: {"results":[{"word":"...","onomatopoeia":true|false,"notRealWord":true|false,"hardForASR":true|false}, ...]} — one entry per input word, same order, no commentary.`;
 
 async function handleSpeakingUnfit({ words, apiKey, res }) {
   if (!Array.isArray(words) || words.length === 0) {
@@ -1080,11 +1081,11 @@ Output ONLY the JSON object as specified.`;
     if (!r || typeof r !== 'object') continue;
     const w = String(r.word || '').toLowerCase().trim();
     if (!w) continue;
-    byLower.set(w, { onomatopoeia: !!r.onomatopoeia, notRealWord: !!r.notRealWord });
+    byLower.set(w, { onomatopoeia: !!r.onomatopoeia, notRealWord: !!r.notRealWord, hardForASR: !!r.hardForASR });
   }
   const results = sanitized.map(w => {
-    const f = byLower.get(w.toLowerCase()) || { onomatopoeia: false, notRealWord: false };
-    return { word: w, onomatopoeia: f.onomatopoeia, notRealWord: f.notRealWord };
+    const f = byLower.get(w.toLowerCase()) || { onomatopoeia: false, notRealWord: false, hardForASR: false };
+    return { word: w, onomatopoeia: f.onomatopoeia, notRealWord: f.notRealWord, hardForASR: f.hardForASR };
   });
 
   return res.status(200).json({
