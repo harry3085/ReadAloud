@@ -3573,6 +3573,26 @@ window._playEnglishWord = (word) => {
   } catch (e) { console.warn('TTS 실패', e); }
 };
 
+// 말하기 결과 — 정답 단어 클릭 발음 (클릭마다 보통↔천천히 토글)
+let _vqAnsWord = '';
+let _vqAnsSlowNext = false;   // false=다음 클릭 보통, true=천천히
+window._vqSpeakAnswer = () => {
+  const w = _vqAnsWord;
+  if (!w || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const slow = _vqAnsSlowNext;
+    const u = new SpeechSynthesisUtterance(w);
+    u.lang = 'en-US';
+    u.rate = slow ? 0.55 : 1.0;   // 보통 1.0 / 천천히 0.55
+    u.pitch = 1.0;
+    window.speechSynthesis.speak(u);
+    _vqAnsSlowNext = !slow;       // 토글
+    const hint = document.getElementById('vqSpkAnsHint');
+    if (hint) hint.textContent = slow ? '🐢 천천히 — 다시 누르면 보통 속도' : '🔊 보통 — 다시 누르면 천천히';
+  } catch (e) { console.warn('TTS 실패', e); }
+};
+
 // "X처럼 들렸어요" 같은 한글 음역 멘트 제거 — 의미 없는 표현이라 학생 혼란
 // 패턴: "마이티처럼 들렸어요." / "X와 같이 들렸어요." 등
 function _cleanIssue(issue) {
@@ -5332,7 +5352,12 @@ function _vqSpkFinalize(correct, heard, meta) {
       heardEl.innerHTML = html;
     }
   }
-  if (answerEl) answerEl.textContent = `정답: ${q.word || ''}`;
+  if (answerEl) {
+    _vqAnsWord = q.word || '';
+    _vqAnsSlowNext = false;   // 새 결과 → 첫 클릭은 보통 속도
+    answerEl.innerHTML = `정답: <span onclick="_vqSpeakAnswer()" style="cursor:pointer;color:#0369a1;text-decoration:underline dotted;text-underline-offset:3px;" title="클릭하면 발음 — 다시 누르면 천천히">${esc(q.word || '')} 🔊</span>`
+      + `<div id="vqSpkAnsHint" style="font-size:11px;color:var(--gray);margin-top:3px;font-weight:400;">정답 단어를 누르면 발음 — 다시 누르면 천천히</div>`;
+  }
 
   // 영단어 정답 발음 들려주기 (학습 효과)
   if (q.word) _fbSpeakWords([q.word]);
