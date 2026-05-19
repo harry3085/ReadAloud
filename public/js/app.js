@@ -4580,19 +4580,25 @@ function _vqRenderStep() {
   }
 
   // 영역 전환: MCQ / 스펠 / 말하기
+  // 말하기는 카드 안 vqSpeakArea(내용·상태·결과) + 하단 vqSpkMicZone(마이크 버튼) 두 곳을 함께 토글
   const speakArea = document.getElementById('vqSpeakArea');
+  const micZone = document.getElementById('vqSpkMicZone');
   if (ans.format === 'mcq') {
     if (choicesArea) { choicesArea.style.display = 'flex'; _vqRenderChoices(ans, choicesArea); }
     if (spellBoxes) spellBoxes.style.display = 'none';
     if (speakArea) speakArea.style.display = 'none';
+    if (micZone) micZone.style.display = 'none';
   } else if (ans.format === 'speaking') {
     if (choicesArea) choicesArea.style.display = 'none';
     if (spellBoxes) spellBoxes.style.display = 'none';
-    if (speakArea) { speakArea.style.display = 'flex'; _vqSpkRenderArea(); }
+    if (speakArea) speakArea.style.display = 'flex';
+    if (micZone) micZone.style.display = 'flex';
+    _vqSpkRenderArea();
   } else {
     if (spellBoxes) { spellBoxes.style.display = ''; _vqRenderSpellBoxes(ans); }
     if (choicesArea) choicesArea.style.display = 'none';
     if (speakArea) speakArea.style.display = 'none';
+    if (micZone) micZone.style.display = 'none';
     // 스펠 input 초기화 + 포커스
     const inp = document.getElementById('vqSpellInput');
     if (inp) {

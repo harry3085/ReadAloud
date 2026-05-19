@@ -447,13 +447,10 @@
         <!-- 스펠링 박스 -->
         <div class="spell-boxes" id="vqSpellBoxes" style="display:none;padding:4px 0;"></div>
         <!-- 말하기 영역 (Speaking) -->
-        <div id="vqSpeakArea" style="display:none;flex-direction:column;align-items:center;padding:8px 0;gap:10px;">
-          <button id="vqSpkMicBtn" onclick="vqSpkStart()"
-            style="width:96px;height:96px;border-radius:50%;background:var(--c-brand);color:white;font-size:42px;border:0;cursor:pointer;box-shadow:0 4px 16px rgba(232,113,74,.35);transition:.15s;">🎤</button>
-          <div id="vqSpkStatus" style="font-size:13px;color:var(--gray);text-align:center;line-height:1.5;">마이크 버튼을 누르고 영어로 말해보세요</div>
+        <!-- 말하기: 내용·상태·결과만 카드 안 (마이크 버튼은 하단 vqSpkMicZone 으로 분리) -->
+        <div id="vqSpeakArea" style="display:none;flex-direction:column;align-items:center;padding:8px 0;gap:8px;">
+          <div id="vqSpkStatus" style="font-size:13px;color:var(--gray);text-align:center;line-height:1.5;">아래 마이크 버튼을 누르고 영어로 말해보세요</div>
           <div id="vqSpkAttempt" style="font-size:11px;color:#94a3b8;"></div>
-          <!-- 3차 발음 후 [완료] 버튼 (timeout/silence 와 race) -->
-          <button id="vqSpkDoneBtn" onclick="vqSpkDone()" style="display:none;padding:8px 22px;background:#10b981;color:white;border:0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✓ 완료</button>
           <!-- 인식 결과 영역 (정답/오답 시 표시) -->
           <div id="vqSpkResult" style="display:none;text-align:center;padding-top:6px;">
             <div id="vqSpkResultIcon" style="font-size:48px;line-height:1;"></div>
@@ -471,6 +468,14 @@
     </div>
 
     <div style="flex:1;"></div>
+
+    <!-- 말하기 전용: 마이크/완료 버튼 — 하단에 배치, 푸터(제출/SKIP)와 32px 간격(잘못 누름 방지) -->
+    <div id="vqSpkMicZone" style="display:none;flex-direction:column;align-items:center;gap:10px;margin-bottom:32px;flex-shrink:0;">
+      <button id="vqSpkMicBtn" onclick="vqSpkStart()"
+        style="width:96px;height:96px;border-radius:50%;background:var(--c-brand);color:white;font-size:42px;border:0;cursor:pointer;box-shadow:0 4px 16px rgba(232,113,74,.35);transition:.15s;">🎤</button>
+      <!-- 3차 발음 후 [완료] 버튼 (timeout/silence 와 race) -->
+      <button id="vqSpkDoneBtn" onclick="vqSpkDone()" style="display:none;padding:8px 22px;background:#10b981;color:white;border:0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✓ 완료</button>
+    </div>
 
     <div class="quiz-footer" style="margin-top:auto;">
       <div class="timer-circle">
