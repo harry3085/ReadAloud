@@ -5714,3 +5714,67 @@ vocab+speaking 출제 시 [배정하기] 클릭 → 배정 전 부적합 단어 
 - `api/generate-quiz.js`: +~80줄 (speaking-unfit-check + hardForASR)
 - `public/admin/js/app.js`: +~90줄 (게이트 모달·휴리스틱·tpPublish 주입)
 - SW 캐시: `kunsori-v567`
+
+---
+
+## 2026-05-19 (이어서 3): 진도체크 학생제외 재조회 0회 + 출제옵션 기본값 변경 + 폴백 진단
+
+SW v567→v569 (commit `bac6bd8`·`376b576`). 운영 점검 + UX/기본값 정비.
+
+### 1) 진도체크 학생 제외 시 재조회 0회 — A-1 (`bac6bd8`, SW v568)
+
+증상: 일자별 반별 진도체크에서 학생 카드 ✕(제외) 누를 때마다
+`tpExcludeStudent` 끝의 `tpToggleTestProgress` 2회(닫고 다시 = Firestore
+재조회) → 한 명 지울 때마다 그 시험 학생현황 전체 재조회.
+
+사용자 결정 흐름: 방법 A(재조회 폐기·카드만 처리) vs B(배치 확정) →
+A 선택 → "삭제 대기로 희미하게" 제안 → A-1(즉시 삭제 쓰기 + 카드 희미)
+vs A-2(진짜 대기·일괄 확정) → **A-1 확정**.
+
+- ✕ 클릭 → 삭제 쓰기(excludedUids·userCompleted·scores) 즉시 실행(현행),
+  확인 모달 학생당 1번(현행)
+- `tpToggleTestProgress` 2회 호출 **폐기** → 그 카드만 opacity 0.4 +
+  취소선 + grayscale + pointer-events:none, ✕ 버튼 제거
+- ✕ 버튼 3곳(일반/통과/녹음 카드) `tpExcludeStudent(...,this)` 로 btnEl
+  전달 → `btnEl.parentElement` 직접 dim. btnEl 없을 때만 옛 재조회 폴백(안전망)
+- 효과: 여러 명 지워도 **재조회 0회**. 통계·목록은 그 시험 다시 펼칠 때 갱신
+- tp(시험관리)·tl(시험목록)·pd(진도체크 일자별) 3경로 공통 적용
+
+### 2) 출제옵션 기본값 변경 (`376b576`, SW v569)
+
+신규 배정분에만 적용 (사용자 컨펌: 이전 출제분은 그때 옵션대로 유효, 폴백 미변경):
+- 녹음숙제 **최소시간** 기본 `?? 60` → `?? 20` 초 ([app.js:13514](public/admin/js/app.js))
+- 단어 말하기 **엄격도** 기본 `normal selected` → `lenient selected` +
+  저장 폴백 `|| 'normal'` → `|| 'lenient'` ([13586/13729](public/admin/js/app.js))
+- 미설정/옛 시험 클라 폴백(`speakingStrictness || 'normal'` 4곳,
+  cfg `minDurationSec:60`)은 **그대로** — 기존 시험 채점기준 불변(의도)
+
+### 3) 진단 — Vercel 로그 분석 (코드 변경 없음)
+
+- check-word 503 1건: `2.5-flash-lite` 503 → `3.1-flash-lite` 200, 4.2s
+  < 9s 타임아웃 → 5/18 폴백 재배치·타임아웃이 받쳐준 **정상 성공** (조치 X)
+- 녹음숙제 24h 42건 중 14건 폴백, **503 없음** → 원인은
+  `gemini-2.5-flash-lite` 200 응답인데 **JSON 파싱 실패**(스키마 무겁고
+  `maxOutputTokens:3000`+`temperature:0.9` 로 출력 잘림 → `_salvageTruncated`
+  복구 실패 → 같은모델 1회 재시도 → 다음 모델). 첫 200 호출 비용 청구·폐기
+- check-recording 폴백 조건 = (a) isRetryable HTTP(503/429/404) 또는
+  (b) 200 인데 parse 실패. 503 없으면 (b) 가 지배
+- **보류(컨펌 대기)**: 옵션 A(`maxOutputTokens` 3000→5000~6000, 잘림 근본
+  해소·temperature/피드백 정책 불변) 권장. 14건 첫 상태 200 확인 후 진행 예정
+
+### 작업 규칙 추가 (2026-05-19 이어서 3)
+
+- **재조회 없이 카드만 처리 패턴** — 행 단위 삭제/제외 후 전체 재조회
+  (`tpToggleTestProgress` 2회 등) 대신 btnEl→parentElement 직접 dim.
+  여러 건 처리 시 reads 0. 통계는 다음 펼침 때 갱신(허용). btnEl 폴백 유지
+- **기본값 변경은 신규 배정분만, 폴백 불변이 기본 안전** — 출제 모달
+  default 만 바꾸고 미설정/옛 데이터 클라 폴백은 두면 기존 시험 채점기준
+  불변. 폴백까지 바꾸려면 별도 컨펌(이미 응시분 영향)
+- **폴백 ≠ 실패, 503 ≠ parse-fail** — Vercel 로그 폴백 진단 시 첫 호출
+  상태코드 필수 확인. 503/429=구글 용량(우리 못 고침), 200 후 폴백=출력
+  잘림(우리가 maxOutputTokens 로 고침). 최종 200 이면 학생 영향=속도뿐
+
+## 파일 크기 / SW 캐시 (2026-05-19 이어서 3)
+- `public/admin/js/app.js`: +~15줄 (tpExcludeStudent dim + 기본값)
+- `public/sw.js`: v567 → v569
+- SW 캐시: `kunsori-v569`
