@@ -5095,6 +5095,18 @@ async function _vqTryAiFallback(webspeechHeard) {
   progressTimers.push(setTimeout(() => { if (status && !s.answers[s.currentIdx]?._locked) status.innerHTML = '⏳ AI 응답이 늦어지고 있어요. 조금만 기다려주세요...'; }, 5000));
   const clearProgress = () => progressTimers.forEach(t => clearTimeout(t));
 
+  // 마스터 워치독 — fetch뿐 아니라 토큰·base64·json 등 어디서 멈춰도 11초 후 강제 복구.
+  // (9초 AbortController 는 fetch 만 취소 → fetch 전/후에서 멈추면 영구 먹통이던 버그 fix)
+  let _aiDone = false;
+  const _aiWatchdog = setTimeout(() => {
+    if (_aiDone) return;
+    _aiDone = true;
+    clearProgress();
+    console.warn('[vqSpk] AI fallback 워치독 11s 발동 — 재시도 허용');
+    _vqSpkAllowRetry('⏱️ AI 응답이 너무 늦어요. 마이크를 눌러 다시 한번 시도해주세요.');
+  }, 11000);
+  const _aiClear = () => { _aiDone = true; clearTimeout(_aiWatchdog); };
+
   try {
     if (!currentUser) throw new Error('로그인 정보 없음');
     const idToken = await currentUser.getIdToken();
@@ -5115,6 +5127,8 @@ async function _vqTryAiFallback(webspeechHeard) {
       signal: ctrl.signal,
     });
     clearTimeout(tid);
+    if (_aiDone) return;   // 워치독이 이미 복구함 — 늦게 온 응답 무시 (이중 처리 방지)
+    _aiClear();
     clearProgress();
     const data = await r.json().catch(() => ({}));
 
@@ -5138,6 +5152,8 @@ async function _vqTryAiFallback(webspeechHeard) {
     }
   } catch (e) {
     clearProgress();
+    if (_aiDone) return;   // 워치독이 이미 복구함
+    _aiClear();
     console.error('[vqSpk] AI fallback:', e);
     if (e.name === 'AbortError') {
       // 9초 초과 — 오답 처리 X. 다시 녹음해 평가받을 수 있게 (B-1, 2026-05-18)
