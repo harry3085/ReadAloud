@@ -5612,3 +5612,57 @@ userCompleted 통과 응시만(작업규칙7), 타임아웃 B-1 케이스 미기
 - ✅ 지시서 진단 2건 (reEvaluated/userName) 코드 불일치로 제외
 - ✅ 결과 보고서 docs/firestore-indexes-2026-05-19.md
 - ✅ 작업 규칙 — 외부 지시서 검증 필수 / Firebase 통계 ≠ 운영 비용
+
+---
+
+## 2026-05-19 (이어서): 단어 말하기 채점 — 닫힌후보 가드 + 발음코드 (인식 불만 대응)
+
+Web Speech 인식 불안정으로 억울한 오답 불만 ↑. STT 도입 검토했으나
+**STT 15초 최소과금 → 단어시험엔 Gemini-lite보다 오히려 비쌈**(월 수백$)
+으로 폐기. Web Speech는 인식단계 편향 불가 → **채점(인정) 단계 편향**으로 해결.
+commit `9f2a03a`, SW v558→v559.
+
+### 적용 (1번 + 3번)
+
+`public/js/app.js _spkGradeAnswer` 재작성:
+- **1번 닫힌후보 가드**: 들린 단어를 "이 시험의 모든 단어(allWords)"와 비교.
+  정답군 최고유사도(bestG)가 다른 시험단어 최고(bestO)를 마진 이상
+  앞설 때만 인정. 강한매칭 `bestG≥임계 & gap≥0.15` / 임계미만 구제
+  `bestG≥0.45 & gap≥0.30`. → 무의미·다른시험단어·충돌은 거부
+- **3번 발음코드**(metaphone-lite `_spkPcode`): cereal≈serial 등 철자
+  달라도 소리 같으면 가드 안 유사도(0.92)로 반영. **단독 통과 불가**
+  (cat/cot 등 false positive 억제 — 가드가 최종 관문)
+- 정확일치 후보(동음이의어/발음변형)가 **다른 시험단어와 겹치면 후보
+  제외** — light/right 같은 충돌 false positive 원천 차단 (검증 핵심)
+- 호출부: `_vqState.questions` 단어목록을 allWords 로 전달.
+  accentVariants(2번) 인자는 받되 데이터는 후속
+- 검증: `scripts/diag/test-spk-grading.js` **14/14 통과** (억울한 오답
+  해소 + 엉뚱/다른단어/충돌 전부 차단 — 사용자 핵심 우려 확인)
+
+### 비용 비교 검증 (WebFetch 공식 확인)
+
+- Gemini 25토큰/초, lite 오디오 $0.30/1M·출력 $0.40/1M → check-word
+  1회 ≈ $0.0001 (거의 공짜)
+- STT 실시간 ~$0.016/분 **15초 최소 올림과금** → 단어 3초도 15초 청구
+  → STT 1회 ≈ Gemini 40배. **단어시험엔 STT가 비싼 안** (직관과 반대)
+- 결론: 현행(거의 $0) < A(전부 AI ~$15, 503 6~7배) ≪ B(STT ~$수백)
+  → 비용·안정성 모두 채점 가드(이번 작업)가 정답
+
+### 후속 (미완)
+
+- **2번 AI 발음변형(accentVariants)**: homophones 생성 파이프에 얹어
+  단어별 "한국식 ASR 오인식 변형"(R/L·F/P 등) 생성·저장. 1번 가드 위에서만
+  작동(겹치면 제외)이라 안전. 1번 효과 데이터 보고 필요시 추가
+- 효과 관찰: `analyze-speaking-ai-dependence.js` / `analyze-speaking-errors.js`
+
+### 작업 규칙 추가 (2026-05-19)
+
+- **인식 불안정은 인식단계 아닌 채점단계에서 편향** — 브라우저 Web Speech는
+  phrase hint 불가. "정답이 시험 내 다른 단어보다 확실히 더 닮았는가"
+  닫힌후보 비교가 STT phrase-hint 효과를 채점에서 무료·안전하게 모사
+- **인정 편향 추가 시 닫힌후보 가드 필수** — 동음이의어·발음변형·발음코드
+  어느 것도 단독 통과 X. 다른 시험단어와 겹치는 후보는 제외. false
+  positive("엉뚱한 답 정답처리")는 합성 테스트(test-spk-grading.js)로
+  배포 전 검증
+- **STT 15초 최소과금** — 짧은 단어 음성판정엔 Gemini-lite보다 비쌈.
+  "STT가 싸다"는 일반 통념이 단어시험엔 반대 (공식 가격 WebFetch 확인)
