@@ -4484,7 +4484,7 @@ window.startVocab = async (testId, testName) => {
           test: _prog.test, questions: _prog.questions,
           currentIdx: Math.min(doneN, totalN - 1),
           answers: _prog.answers, opts: rOpts,
-          spk: { attempt: 0, recognition: null, strictness: (rOpts && rOpts.speakingStrictness) || 'normal' },
+          spk: { attempt: 0, recognition: null, strictness: (rOpts && rOpts.speakingStrictness) || 'normal', gen: 0 },
         };
         show('vocabQuiz');
         _vqRenderStep();
@@ -4568,7 +4568,7 @@ window.startVocab = async (testId, testName) => {
 
     _vqState = {
       test, questions, currentIdx: 0, answers, opts,
-      spk: { attempt: 0, recognition: null, strictness: opts.speakingStrictness || 'normal' },
+      spk: { attempt: 0, recognition: null, strictness: opts.speakingStrictness || 'normal', gen: 0 },
     };
 
     show('vocabQuiz');
@@ -4856,7 +4856,8 @@ function _gumWithTimeout(constraints, ms) {
 }
 
 // 3차 전용 흐름 — MR 단독 (SR X) + 종료 감지 3가지 race (timeout / [완료] / silence)
-async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
+async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS, myGen) {
+  const _stale = () => (typeof myGen === 'number') && myGen !== s.spk.gen;
   const btn = document.getElementById('vqSpkMicBtn');
   const status = document.getElementById('vqSpkStatus');
   const attemptEl = document.getElementById('vqSpkAttempt');
@@ -4877,6 +4878,8 @@ async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
     if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
     return;  // finalize 안 함 — 잠그지 않고 재시도
   }
+  // 더 새 시도가 시작됨(연타) → 이 마이크는 버리고 종료 (옛 녹음이 새 시도 안 건드림)
+  if (_stale()) { try { stream.getTracks().forEach(t => t.stop()); } catch (_) {} return; }
   const candidates = [
     'audio/webm;codecs=opus', 'audio/webm',
     'audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/aac',
@@ -4905,7 +4908,7 @@ async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
   let ended = false;
   const doneBtnEl = document.getElementById('vqSpkDoneBtn');
   const triggerEnd = (reason) => {
-    if (ended || ans._locked) return;
+    if (ended || ans._locked || _stale()) return;
     ended = true;
     console.log('[vqSpk] (3차) end by:', reason);
     if (s.spk.silenceCleanup) { s.spk.silenceCleanup(); s.spk.silenceCleanup = null; }
@@ -4913,7 +4916,7 @@ async function _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS) {
     if (doneBtnEl) { doneBtnEl.style.display = 'none'; doneBtnEl.onclick = null; }
     if (recorder.state === 'recording') { try { recorder.stop(); } catch (_) {} }
     if (btn) { btn.style.background = MIC_BTN_IDLE; }
-    setTimeout(() => _vqTryAiFallback(''), 150);  // blob 처리 시간 확보
+    setTimeout(() => { if (_stale()) return; _vqTryAiFallback('', myGen); }, 150);  // blob 처리 시간 확보
   };
 
   // 1. Timeout 5초
@@ -4945,6 +4948,9 @@ window.vqSpkStart = async () => {
   if ((s.spk.attempt || 0) >= MAX_ATTEMPTS) return;
   if (s.spk.busy) return;
   s.spk.busy = true;
+  // 번호표(세대 토큰) — 이 시도 고유 번호. 더 새 시도가 시작되면(gen 증가) 옛 콜백·타이머 전부 무효.
+  const myGen = (s.spk.gen = (s.spk.gen || 0) + 1);
+  const _stale = () => myGen !== s.spk.gen;
 
   // 옛 SR 인스턴스 cleanup — 이전 시도의 onend 가 늦게 발화해서
   // 새 시도의 버튼 색을 푸른색으로 되돌리는 버그 방지 (2026-05-15)
@@ -4981,7 +4987,7 @@ window.vqSpkStart = async () => {
 
   // 3차 — MR 단독 (SR X) + 3가지 종료 감지 race (timeout / [완료] / silence)
   if (isFinalAttempt) {
-    return _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS);
+    return _vqStartFinalAttemptMR(s, ans, q, attempt, MAX_ATTEMPTS, myGen);
   }
 
   // ── 1·2차: SR 단독 (mic 단독 점유 → onresult 정상 발화 가능성 ↑) ──
@@ -5002,7 +5008,7 @@ window.vqSpkStart = async () => {
   s.spk.srResolved = false;
 
   const handleFail = (reasonText, heard, grading) => {
-    s.spk.busy = false;
+    if (_stale()) return;   // 더 새 시도가 시작됨 → 옛 실패는 무시 (연타 cross-talk 방지)
     // 1·2차 → 재시도 안내 (lock 안 함, 버튼 활성)
     // 유사도 기반 메시지 (2026-05-15 재조정):
     //   - 0.5 ≤ sim < 0.6 + 들린 단어 ≠ 정답: "들린단어 XXX" (비슷한 단어 안내)
@@ -5018,12 +5024,19 @@ window.vqSpkStart = async () => {
       msg = `❌ 다시 한번 발음해보세요 (${nextNo}/${MAX_ATTEMPTS})`;
     }
     if (status) status.textContent = msg;
-    if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = false; }
+    // 마이크 세션이 실제 풀릴 시간 확보 — 그동안 버튼 비활성·busy 유지 (연타 겹침 방지)
+    if (btn) { btn.style.background = MIC_BTN_IDLE; btn.disabled = true; }
+    setTimeout(() => {
+      if (_stale()) return;
+      s.spk.busy = false;
+      if (btn) btn.disabled = false;
+    }, 700);
   };
 
   rec.onstart = () => { console.log('[vqSpk] SR onstart, attempt:', attempt); };
 
   rec.onresult = (e) => {
+    if (_stale()) return;
     s.spk.srResolved = true;
     const grading = _spkGradeAnswer(e.results[0], q.word, s.spk.strictness, q.homophones,
       (s.questions || []).map(qq => qq && qq.word), q.accentVariants);
@@ -5039,6 +5052,7 @@ window.vqSpkStart = async () => {
   };
 
   rec.onerror = (e) => {
+    if (_stale()) return;
     s.spk.srResolved = true;
     console.warn('[vqSpk] error:', e.error, 'attempt:', attempt);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -5051,6 +5065,7 @@ window.vqSpkStart = async () => {
   };
 
   rec.onend = () => {
+    if (_stale()) return;
     console.log('[vqSpk] SR onend, resolved:', s.spk.srResolved, 'attempt:', attempt);
     // SR 결과 도착 X (애매한 발음) → 재시도 안내
     if (!s.spk.srResolved && !ans._locked) {
@@ -5101,13 +5116,15 @@ function _cleanAiReason(reason, targetWord, heard) {
 }
 
 // ── AI 폴백: Web Speech 2회 실패 후 마지막 오디오로 정밀 채점 ──
-async function _vqTryAiFallback(webspeechHeard) {
+async function _vqTryAiFallback(webspeechHeard, gen) {
   const s = _vqState;
   const q = s.questions[s.currentIdx];
   const status = document.getElementById('vqSpkStatus');
   const btn = document.getElementById('vqSpkMicBtn');
+  // 번호표 — 더 새 시도가 시작됐으면 이 AI 폴백은 통째로 무효 (연타 cross-talk 방지)
+  const _genStale = () => (typeof gen === 'number') && gen !== s.spk.gen;
 
-  if (s.answers[s.currentIdx]?._locked) return;
+  if (s.answers[s.currentIdx]?._locked || _genStale()) return;
 
   // 단어당 AI 호출 1회만
   if (s.spk.aiTried) {
@@ -5163,6 +5180,7 @@ async function _vqTryAiFallback(webspeechHeard) {
     if (_aiDone) return;
     _aiDone = true;
     clearProgress();
+    if (_genStale()) return;   // 더 새 시도가 진행 중 → 복구 호출 안 함 (새 녹음 안 건드림)
     console.warn('[vqSpk] AI fallback 워치독 11s 발동 — 재시도 허용');
     _vqSpkAllowRetry('⏱️ AI 응답이 너무 늦어요. 마이크를 눌러 다시 한번 시도해주세요.');
   }, 11000);
@@ -5188,7 +5206,7 @@ async function _vqTryAiFallback(webspeechHeard) {
       signal: ctrl.signal,
     });
     clearTimeout(tid);
-    if (_aiDone) return;   // 워치독이 이미 복구함 — 늦게 온 응답 무시 (이중 처리 방지)
+    if (_aiDone || _genStale()) return;   // 워치독 복구 or 더 새 시도 → 늦게 온 응답 무시
     _aiClear();
     clearProgress();
     const data = await r.json().catch(() => ({}));
@@ -5213,7 +5231,7 @@ async function _vqTryAiFallback(webspeechHeard) {
     }
   } catch (e) {
     clearProgress();
-    if (_aiDone) return;   // 워치독이 이미 복구함
+    if (_aiDone || _genStale()) return;   // 워치독 복구 or 더 새 시도 → 무시
     _aiClear();
     console.error('[vqSpk] AI fallback:', e);
     if (e.name === 'AbortError') {
