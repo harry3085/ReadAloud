@@ -13511,7 +13511,7 @@ window.tpOpenPublishModal = async () => {
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">최소 시간(초)</label>
                   <input type="number" id="tpRecMinDur" min="10" max="300" step="10"
-                    value="${q0.minDurationSec ?? 60}"
+                    value="${q0.minDurationSec ?? 20}"
                     style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
                 </div>
                 <div>
@@ -13583,8 +13583,8 @@ window.tpOpenPublishModal = async () => {
                   <div>
                     <label style="font-size:11px;font-weight:600;color:#78350f;">엄격도</label>
                     <select id="tpSpeakingStrictness" style="width:100%;padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:12px;margin-top:3px;background:white;">
-                      <option value="lenient">🟢 너그러움 (오타·비슷한 발음 허용)</option>
-                      <option value="normal" selected>🟡 보통 (일반 학습용)</option>
+                      <option value="lenient" selected>🟢 너그러움 (오타·비슷한 발음 허용)</option>
+                      <option value="normal">🟡 보통 (일반 학습용)</option>
                       <option value="strict">🔴 엄격 (정확한 발음만 인정)</option>
                     </select>
                   </div>
@@ -13726,7 +13726,7 @@ window.tpPublish = async () => {
     };
     // 🎤 말하기 모드일 때만 엄격도 저장
     if (fmt === 'speaking') {
-      vocabOptions.speakingStrictness = document.getElementById('tpSpeakingStrictness')?.value || 'normal';
+      vocabOptions.speakingStrictness = document.getElementById('tpSpeakingStrictness')?.value || 'lenient';
     }
   }
 
