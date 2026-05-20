@@ -92,7 +92,10 @@ RULES:
    - Wrong choices should be similar in length and style to the correct answer
    - Do NOT make wrong choices obviously absurd
 
-4. Difficulty:
+4. Difficulty (REBASED 2026-05-20 — shifted down to favor easier student levels):
+   - easy: direct fact-finding from passage; very simple comprehension; high-frequency common words only in question AND all 4 choices (초등~중1 수준)
+   - medium: light inference; common everyday vocabulary in question and choices (was the prior "easy")
+   - hard: deeper reasoning; common everyday words — NO rare/advanced/literary vocabulary in any choice (was the prior "medium")
    - Include a mix of easy / medium / hard when possible, based on available content.
    - Exact distribution is NOT required — prioritize good questions from the passage over hitting a target ratio.
 
@@ -178,8 +181,12 @@ QUESTION STEM PATTERNS (vary across questions)
 - Best transformation: "Which correctly transforms to passive voice?"
 
 ==========================================
-DIFFICULTY
+DIFFICULTY (REBASED 2026-05-20 — shifted down to favor easier student levels)
 ==========================================
+- easy: basic patterns (articles a/an, plurals, basic prepositions, present simple); short questions with high-frequency words ONLY in question and all 4 choices (초등~중1 수준)
+- medium: common patterns (past simple, basic modals can/will, prepositions of time/place); common everyday words (was the prior "easy")
+- hard: general patterns (simple passive, present perfect basic, comparatives/superlatives); common everyday vocabulary — NO rare or advanced words (was the prior "medium")
+
 Include a mix of easy / medium / hard when possible. Exact distribution NOT required.
 
 ==========================================
@@ -246,7 +253,10 @@ RULES:
 5. questionKo field: Use a simple instruction like "위 문장을 우리말로 해석하시오."
    (slight variations are fine, e.g., "아래 문장을 한국어로 옮기시오.").
 
-6. Difficulty:
+6. Difficulty (REBASED 2026-05-20 — shifted down by sentence length and vocabulary):
+   - easy: 5-8 words, very simple high-frequency words only (초등~중1 수준)
+   - medium: 8-12 words, simple common everyday vocabulary (was the prior "easy")
+   - hard: 10-15 words, common everyday words — NO rare/advanced/literary vocabulary (was the prior "medium")
    Include a mix of easy / medium / hard when possible.
    Exact distribution is NOT required.
 
@@ -360,10 +370,10 @@ When the input is a reading passage (TYPE B), apply the following:
    - Not too common (skip "go", "make", "have" etc. unless phrasal verbs)
    - Not proper nouns (names of people/places)
 
-6. Difficulty:
-   - easy: common 1000-word list
-   - medium: intermediate vocabulary
-   - hard: advanced vocabulary, less common words
+6. Difficulty (REBASED 2026-05-20 — shifted down to favor easier student levels):
+   - easy: most common 800-1000 high-frequency words (초등~중1 핵심 어휘 — go, eat, family, book, happy 등)
+   - medium: short, simple-structure sentences using basic 1000-word vocabulary only (was the prior "easy")
+   - hard: medium length, common grammar, everyday vocabulary (was the prior "medium" — NO rare/advanced/literary words)
 
 ═══════════════════════════════════════════════════════════════
 RULE 7: OUTPUT FORMAT (applies to BOTH modes)
@@ -418,10 +428,10 @@ RULES:
 
 4. Provide Korean meaning (natural translation) for the whole sentence.
 
-5. Difficulty:
-   - easy: short sentences with simple structure
-   - medium: medium length with common grammar
-   - hard: longer sentences with complex structure
+5. Difficulty (REBASED 2026-05-20 — shifted down to favor easier student levels):
+   - easy: very short sentences (≤8 words) with simple structure AND only high-frequency common words (800-1000 word range)
+   - medium: short sentences (8-12 words) with simple grammar and everyday common words (was the prior "easy")
+   - hard: medium length (10-14 words) with general grammar — common everyday vocabulary, NO relative clauses / participial phrases / complex structures, NO rare or advanced words (was the prior "medium")
 
 6. Output ONLY a valid JSON object (no markdown, no prose):
 {
@@ -460,10 +470,10 @@ RULES:
 
 4. questionKo field: Use simple instruction like "다음 문장을 큰 소리로 읽고 녹음하세요." (can vary slightly).
 
-5. Difficulty (by sentence length and vocabulary):
-   - easy: simple common words, 6-10 words
-   - medium: 10-15 words or some complex vocabulary
-   - hard: 15+ words or advanced vocabulary
+5. Difficulty (REBASED 2026-05-20 — by sentence length AND vocabulary, shifted down):
+   - easy: 5-8 words, only high-frequency basic words (초등~중1 수준)
+   - medium: 6-10 words, simple common everyday words (was the prior "easy")
+   - hard: 10-14 words, common everyday vocabulary — NO rare/advanced/literary words (was the prior "medium")
 
 6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
@@ -499,7 +509,10 @@ RULES:
 4. List the blank answers in order as they appear in the sentence, inside the "blanks" array.
    Use the exact form from the passage (matching case/number/tense).
 
-5. Difficulty:
+5. Difficulty (REBASED 2026-05-20 — shifted down to favor easier student levels):
+   - easy: very short sentences (5-9 words); blanks on high-frequency common words ONLY (초등~중1 수준)
+   - medium: short sentences (8-12 words); blanks on common everyday words (was the prior "easy")
+   - hard: medium length (10-15 words); blanks on common everyday words — NO rare/advanced/literary words (was the prior "medium")
    - Include a mix of easy / medium / hard when possible, based on available content.
    - Exact distribution is NOT required — prioritize verbatim sentences over hitting a target ratio.
 
