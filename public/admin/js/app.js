@@ -1942,6 +1942,7 @@ window.openNoticeModal = async() => {
             <input id="noticeTitle" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
             <textarea id="noticeContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;"></textarea></div>
+          ${_noticeAttachBoxHtml(null, [])}
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -1950,6 +1951,8 @@ window.openNoticeModal = async() => {
       </div>
     </div>
   `);
+  _noticeClearAttaches();
+  _noticeRenderAttaches();
   await pickerInit({
     boxEl: 'noticePickerBox',
     summaryEl: 'noticePickerSummary',
@@ -1962,12 +1965,19 @@ window.openNoticeModal = async() => {
 window.saveNotice = async() => {
   const title=document.getElementById('noticeTitle').value.trim();
   const content=document.getElementById('noticeContent').value.trim();
+  const expYmd = document.getElementById('noticeExpiresAt')?.value;
   const targets = pickerGetTargets();
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  if (!expYmd) { showAlert('입력 확인', '만료일을 선택하세요.'); return; }
   // 학원당 공지 한도 검사 (2026-05-14)
   const chk = await _checkContentLimit('notices');
   if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 추가해주세요.`); return; }
+  // 첨부 일괄 업로드
+  let attachments = [];
+  try { attachments = await _noticeUploadAll(); }
+  catch (e) { showAlert('첨부 업로드 실패', e.message); return; }
+  const expiresAt = new Date(expYmd + 'T23:59:59+09:00');  // KST 그날 끝까지 유효
   await addDoc(collection(db,'notices'),{
     title, content,
     targets,
@@ -1975,8 +1985,11 @@ window.saveNotice = async() => {
     date:_ymdKST(),
     createdAt:serverTimestamp(),
     academyId:window.MY_ACADEMY_ID||'default',
+    expiresAt,
+    attachments,
   });
-  closeModal(); showToast('공지가 등록됐어요!'); await loadNotices();
+  closeModal(); _noticeClearAttaches();
+  showToast('공지가 등록됐어요!'); await loadNotices();
 };
 window.deleteNotice = async(id) => {
   if(!await showConfirm('공지를 삭제할까요?'))return;
@@ -4308,6 +4321,121 @@ async function _msgUploadAttachIfAny() {
     throw e;
   }
 }
+
+// ── 공지 첨부 파일 (다중) — 학원장 공지 작성·수정 시 ──
+// 자료실/메시지와 동일 정책 (20MB/파일 + 화이트리스트 _msgAttachAllowed 재사용). 다중 첨부 지원
+let _noticePendingAttaches = [];  // [{ file:File|null, name, sizeKB, status:'pending'|'uploading'|'done', url? }]
+
+function _ymdAddDays(days) {
+  const t = Date.now() + days * 86400000 + 9 * 3600000;  // KST 기준 YMD
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+function _noticeAttachBoxHtml(expiresAtYmd, existingAttaches) {
+  const def = expiresAtYmd || _ymdAddDays(30);
+  return `
+    <div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📅 만료일 <span style="font-size:11px;">(이날까지 학생 다운로드 가능, 이후 만료 표시)</span></div>
+      <input id="noticeExpiresAt" type="date" value="${esc(def)}" min="${esc(_ymdAddDays(0))}" style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;">
+    </div>
+    <div>
+      <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📎 첨부 파일 <span style="font-size:11px;">(여러 파일 가능 · 파일당 최대 20MB)</span></div>
+      <div id="noticeAttachDrop"
+        ondragover="noticeDragOver(event)" ondragleave="noticeDragLeave(event)" ondrop="noticeDrop(event)"
+        onclick="document.getElementById('noticeAttachInput').click()"
+        style="border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;background:#fafafa;font-size:12px;color:var(--gray);">
+        파일을 끌어다 놓거나 클릭하여 선택 (여러 개 가능)
+        <input id="noticeAttachInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,image/*,text/*,.csv,.heic,.heif" onchange="noticePickAttach(event)" style="display:none;">
+      </div>
+      <div id="noticeAttachList" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;"></div>
+      <div style="font-size:11px;color:var(--gray);margin-top:6px;line-height:1.5;background:#f8f9fa;padding:8px 10px;border-radius:6px;">
+        ✅ PDF · Word · Excel · PowerPoint · 한글(hwp) · 이미지 · 텍스트<br>
+        ❌ 영상 · 압축파일 · 실행파일 · 음성 (Storage 악용 방지)<br>
+        💾 Storage 파일은 최대 1년 후 자동 삭제 (학생 표시는 만료일 기준)
+      </div>
+    </div>
+  `;
+}
+
+function _noticeRenderAttaches() {
+  const el = document.getElementById('noticeAttachList');
+  if (!el) return;
+  if (_noticePendingAttaches.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = _noticePendingAttaches.map((a, i) => {
+    const dot = a.status === 'done' ? '#16a34a' : (a.status === 'uploading' ? '#f59e0b' : '#94a3b8');
+    const label = a.status === 'done' ? '업로드됨' : (a.status === 'uploading' ? '업로드 중…' : '저장 시 업로드');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f8f9fa;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)} <span style="color:var(--gray);">(${a.sizeKB} KB) · ${label}</span></span>
+      <button type="button" onclick="noticeRemoveAttach(${i})" title="제외" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:0;width:20px;height:20px;line-height:1;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function _noticeAcceptFile(f) {
+  if (!f) return false;
+  if (f.size > 20 * 1024 * 1024) { showAlert('파일 크기 초과', `"${f.name}" — 20MB 이하만 첨부 가능.`); return false; }
+  if (!_msgAttachAllowed(f.type || '')) { showAlert('허용되지 않는 형식', `"${f.name}" — PDF·Office·한글·이미지·텍스트만 허용. 영상·압축·실행파일은 불가.`); return false; }
+  _noticePendingAttaches.push({ file: f, name: f.name, sizeKB: Math.round(f.size / 1024), status: 'pending' });
+  _noticeRenderAttaches();
+  return true;
+}
+
+window.noticePickAttach = (e) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+  for (const f of files) _noticeAcceptFile(f);
+  if (e.target) e.target.value = '';
+};
+window.noticeRemoveAttach = (idx) => {
+  if (idx < 0 || idx >= _noticePendingAttaches.length) return;
+  _noticePendingAttaches.splice(idx, 1);
+  _noticeRenderAttaches();
+};
+window.noticeDragOver = (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const el = document.getElementById('noticeAttachDrop');
+  if (el) { el.style.borderColor = 'var(--teal, #E8714A)'; el.style.background = '#fff7f4'; }
+};
+window.noticeDragLeave = (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const el = document.getElementById('noticeAttachDrop');
+  if (el) { el.style.borderColor = 'var(--border)'; el.style.background = '#fafafa'; }
+};
+window.noticeDrop = (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const el = document.getElementById('noticeAttachDrop');
+  if (el) { el.style.borderColor = 'var(--border)'; el.style.background = '#fafafa'; }
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  for (const f of files) _noticeAcceptFile(f);
+};
+
+async function _noticeUploadAll() {
+  const out = [];
+  for (const a of _noticePendingAttaches) {
+    if (a.status === 'done' && a.url) { out.push({ url: a.url, name: a.name, sizeKB: a.sizeKB }); continue; }
+    if (!a.file) continue;
+    a.status = 'uploading'; _noticeRenderAttaches();
+    try {
+      const safeName = a.file.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]+/g, '_');
+      const rand = Math.random().toString(36).slice(2, 8);
+      const path = `notices/${window.MY_ACADEMY_ID || 'default'}/${Date.now()}_${rand}_${safeName}`;
+      const r = ref(storage, path);
+      await uploadBytesResumable(r, a.file, { contentType: a.file.type || 'application/octet-stream' });
+      const url = await getDownloadURL(r);
+      a.status = 'done'; a.url = url;
+      _noticeRenderAttaches();
+      out.push({ url, name: a.name, sizeKB: a.sizeKB });
+    } catch (e) {
+      a.status = 'pending'; _noticeRenderAttaches();
+      throw new Error(`"${a.name}" 업로드 실패: ${e.message}`);
+    }
+  }
+  return out;
+}
+
+function _noticeClearAttaches() { _noticePendingAttaches = []; }
 
 window.sendMessage = async() => {
   const targets = pickerGetTargets();
@@ -7101,6 +7229,13 @@ window.editNotice = async(id) => {
     if (n.target === 'all') initialTargets = [{ type:'all', id:'__all__', name:'전체 학원생' }];
     else initialTargets = [{ type:'class', id:n.target, name:n.target+' 전체', groupName:n.target }];
   }
+  // 기존 만료일·첨부 prefill
+  const expYmd = n.expiresAt?.toDate?.()
+    ? new Date(n.expiresAt.toDate().getTime() + 9 * 3600000).toISOString().slice(0, 10)
+    : null;
+  _noticePendingAttaches = (Array.isArray(n.attachments) ? n.attachments : []).map(a => ({
+    file: null, name: a.name || '파일', sizeKB: a.sizeKB || 0, status: 'done', url: a.url,
+  }));
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -7117,6 +7252,7 @@ window.editNotice = async(id) => {
             <input id="enTitle" type="text" value="${(n.title||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="font-size:13px;color:var(--gray);margin-bottom:6px;">내용 *</div>
             <textarea id="enContent" rows="5" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;">${esc(n.content)||''}</textarea></div>
+          ${_noticeAttachBoxHtml(expYmd, _noticePendingAttaches)}
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -7125,6 +7261,7 @@ window.editNotice = async(id) => {
       </div>
     </div>
   `);
+  _noticeRenderAttaches();
   await pickerInit({
     boxEl: 'noticePickerBox',
     summaryEl: 'noticePickerSummary',
@@ -7137,16 +7274,26 @@ window.editNotice = async(id) => {
 window.updateNotice = async(id) => {
   const title = document.getElementById('enTitle').value.trim();
   const content = document.getElementById('enContent').value.trim();
+  const expYmd = document.getElementById('noticeExpiresAt')?.value;
   const targets = pickerGetTargets();
   if (!title||!content) { showAlert('입력 확인', '제목과 내용을 입력하세요.'); return; }
   if (!targets.length) { showAlert('입력 확인', '대상을 선택하세요.'); return; }
+  if (!expYmd) { showAlert('입력 확인', '만료일을 선택하세요.'); return; }
+  // 첨부 일괄 업로드 (기존 done 은 그대로, 신규 pending 만 업로드)
+  let attachments = [];
+  try { attachments = await _noticeUploadAll(); }
+  catch (e) { showAlert('첨부 업로드 실패', e.message); return; }
+  const expiresAt = new Date(expYmd + 'T23:59:59+09:00');
   await updateDoc(doc(db,'notices',id),{
     title, content,
     targets,
     targetSummary: pickerSummarize(targets),
+    expiresAt,
+    attachments,
     // 옛 단일 target 필드는 그대로 둠 (학생앱 폴백 표시용 — 데이터 삭제 시 자연 사라짐)
   });
-  closeModal(); showToast('✅ 공지가 수정됐어요!'); await loadNotices();
+  closeModal(); _noticeClearAttaches();
+  showToast('✅ 공지가 수정됐어요!'); await loadNotices();
 };
 
 function printExamPDF(words, examName, academy, date, ptype, qType){
