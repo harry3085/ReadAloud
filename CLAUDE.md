@@ -5778,3 +5778,84 @@ vs A-2(진짜 대기·일괄 확정) → **A-1 확정**.
 - `public/admin/js/app.js`: +~15줄 (tpExcludeStudent dim + 기본값)
 - `public/sw.js`: v567 → v569
 - SW 캐시: `kunsori-v569`
+
+---
+
+## 2026-05-20: 공지 다중 첨부·만료일 + 언스크램블 난이도 재정의 (정정 1회)
+
+SW v569→v570 (1회 bump, 공지). 언스크램블 변경은 api 전용 — SW bump 없음.
+
+### 1) 공지관리 파일 첨부 (commit `ea4d6b5`, SW v570)
+
+자료실·메시지와 동일 정책으로 공지에도 첨부 — 단 다중·만료일 사용자 지정.
+
+**학원장 (공지 작성·수정 모달):**
+- 📅 만료일 `<input type="date">` (기본 오늘+30일) — 학원장 자유 변경
+- 📎 다중 첨부 — 드래그&드롭 또는 클릭. 파일별 ✕ 제거
+- 검증: 파일당 20MB / PDF·Office·한글·이미지·텍스트 화이트리스트
+- 수정 모달은 기존 첨부 prefill (status:'done' + url, 새 파일만 저장 시 업로드)
+- 안내문 박스: 허용 형식·Storage 1년 자동삭제 명시
+
+**학생 (공지 화면):**
+- 공지 상세에 첨부 다운로드 버튼 N개 (📄 파일명·크기·↓)
+- "📎 N개 · YYYY-MM-DD 까지 다운로드 가능" 안내
+- **만료 후**: "🔒 첨부 파일 보관 만료 (YYYY-MM-DD 까지였음)" — 다운로드 차단
+- 목록(홈/전체): 제목 옆 📎 (만료면 🔒)
+
+**Storage·인프라:**
+- `notices/{academyId}/*` 경로 (storage.rules 에 이미 깔려있음 — 2026-05-02 미리 보강)
+- `scripts/admin/set-notice-attachments-lifecycle.js` 신규 (365일 GCS lifecycle 안전망)
+  - 사용자 지정 만료일은 학생앱 표시·차단용. Storage 자체는 1년 안전망. 객체별 정확 만료는
+    GCS Lifecycle 로 불가(일률 N일 룰만 가능) — cron 별도 인프라 필요. 베타엔 1년 안전망 단순
+- `--apply` 적용 완료 (기존 lifecycle: recordings 60일·messageAttachments 10일 + notices 365일 → 3개)
+
+**데이터 모델 (notices doc):**
+- `expiresAt: Timestamp` 추가
+- `attachments: [{ url, name, sizeKB }, ...]` 추가 (배열 — 메시지는 단수 `attachment` 와 분리)
+- 옛 공지(이 필드 없음)는 그대로 표시 — 첨부 영역 안 보임, 호환
+
+**구현 — 메시지 패턴 재사용**:
+- `_msgAttachAllowed(type)` 화이트리스트 검증 헬퍼 그대로 재사용
+- 헬퍼 5종 (`_noticeRenderAttaches`/`_noticeAcceptFile`/`_noticeUploadAll`/`_noticeClearAttaches`/`_noticeAttachBoxHtml`) + window 4종 (`noticePickAttach`/`noticeRemoveAttach`/`noticeDragOver`/`noticeDragLeave`/`noticeDrop`)
+- 학생앱: `_noticeAttExpired(n)`/`_noticeAttExpYmd(n)`/`_noticeAttachmentsHtml(n)` 3종 신규
+
+### 2) 언스크램블 난이도 한 단계씩 쉬운 쪽으로 재정의
+
+학생들이 어렵다 평가 → 사용자 결정: 현재 중→상, 하→중, 새 하=쉽고 고빈도. 단 처음
+7개 유형 모두 적용했다가 사용자 정정("언스크램블만") 으로 6개 원복, 언스크램블만 유지.
+
+**최종 언스크램블 새 정의** (commit `60f66ab` → `b805afb` 정정 후, [api/generate-quiz.js:421](api/generate-quiz.js#L421)):
+- 하 (NEW) = ≤8단어, 초등~중1 고빈도 단어만 (800-1000 word range)
+- 중 (NEW) = 8-12단어, 단순 문법 + 일상 기본 단어 (기존 하)
+- 상 (NEW) = 10-14단어, 일반 문법 + 일상 어휘. **관계절·분사구문 금지, 희귀/고급 단어 금지** (기존 중)
+- 옛 상(긴 문장 + 복잡 구조) **폐기**
+
+UI 라벨(상/중/하) 그대로 유지 — 학원장 같은 select 로 자동 한 단계 쉬운 출제 적용.
+옛 출제분(이미 박힌 difficulty 필드)은 그때 정의대로 표시·풀이됨, 무관.
+
+**나머지 6개 유형(vocab Type B / recording / MCQ-content / MCQ-grammar / subjective / fill_blank) — 원래 정의 그대로 유지** (사용자 의도).
+
+**원인 — 사용자 의도 오해**:
+- 사용자 흐름: "언스크램블 난이도?" → "어휘 수준은 어떻게 판단?" → "단어는 본문 안에만?" → "추천한 방식을 하로"
+- 직전 추천(B안)은 "5개 유형 모두 강화"였으나 사용자는 줄곧 언스크램블 맥락
+- "추천한 방식" = 'B안의 정신(쉬운/고빈도 단어)을 언스크램블 하에 적용'으로 봐야 했음. **맥락 끝까지 명확히 — 한 도메인 안 결정인지 전체 일괄인지 컨펌 필수**
+
+### 작업 규칙 추가 (2026-05-20)
+
+신규:
+- **"전체 유형 일괄 적용" vs "현재 맥락 한 유형만" 구분** — 사용자가 특정 유형(언스크램블)
+  맥락에서 난이도·옵션 변경을 지시하면 그 유형만으로 한정. "B안 추천=5개 유형 강화" 같이
+  내가 직전에 제시한 옵션이 광범위해도 사용자 채택 시점 발화 ("추천한 방식을 하로") 가 좁은
+  맥락(언스크램블)이면 좁게 해석. **확장 적용은 별도 컨펌**. [feedback_confirm_specs_before_work]
+  의 강한 적용 사례.
+- **객체별 정확 만료는 GCS Lifecycle 로 불가 — cron 필요** — `notices/expiresAt` 같이 doc 별
+  사용자 지정 만료일은 일률 lifecycle 룰(`age: N`)로 못 따라감. 정확 정리 원하면 Vercel cron
+  + admin SDK 가 만료된 doc 의 storage path 를 deleteObject. 베타엔 1년 안전망 단순 정책.
+
+## 파일 크기 / SW 캐시 (2026-05-20)
+- `api/generate-quiz.js`: 언스크램블 difficulty 정의 +3줄
+- `public/admin/js/app.js`: 공지 첨부 헬퍼·UI +~180줄
+- `public/js/app.js`: 공지 첨부 표시 +~30줄
+- `storage.rules`: notices/* 경로 이미 적용됨(2026-05-02) — 변경 없음
+- `scripts/admin/set-notice-attachments-lifecycle.js`: 신규 ~80줄
+- SW 캐시: `kunsori-v570`
