@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>음성 인식 테스트 — 단어 말하기</title>
+<style>
+*{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  max-width:620px;margin:0 auto;padding:16px;background:#f5f6f8;color:#222;}
+h1{font-size:20px;margin:8px 0;}
+.muted{color:#888;font-size:12px;word-break:break-all;}
+.card{background:#fff;border-radius:12px;padding:14px;margin:12px 0;
+  box-shadow:0 1px 4px rgba(0,0,0,.08);}
+label{display:block;font-size:13px;font-weight:700;margin:10px 0 4px;}
+input[type=text]{width:100%;padding:10px;font-size:16px;border:1px solid #ccc;
+  border-radius:8px;}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+button{flex:1;min-width:110px;padding:14px 8px;font-size:14px;font-weight:700;
+  border:none;border-radius:10px;color:#fff;cursor:pointer;line-height:1.3;}
+button:disabled{opacity:.4;}
+.b1{background:#2563eb;}
+.b2{background:#16a34a;}
+.b3{background:#7c3aed;}
+.bstop{background:#dc2626;}
+#mode{font-weight:700;font-size:14px;margin-top:8px;}
+#prompt{margin-top:4px;}
+.live{min-height:52px;border:2px dashed #cbd5e1;border-radius:8px;padding:10px;
+  margin-top:8px;font-size:20px;line-height:1.4;}
+.interim{color:#94a3b8;}
+.final{color:#111;font-weight:700;}
+.sub{font-size:12px;font-weight:700;color:#475569;margin:12px 0 4px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{border:1px solid #e2e8f0;padding:5px 6px;text-align:left;word-break:break-all;}
+th{background:#f1f5f9;}
+.verdict{margin-top:10px;padding:12px;border-radius:8px;font-weight:700;
+  font-size:15px;text-align:center;line-height:1.5;}
+.v-ok{background:#dcfce7;color:#15803d;}
+.v-near{background:#fef3c7;color:#b45309;}
+.v-no{background:#fee2e2;color:#b91c1c;}
+.log{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#1e293b;
+  color:#cbd5e1;border-radius:8px;padding:10px;white-space:pre-wrap;
+  max-height:240px;overflow:auto;margin-top:8px;}
+.metric{font-size:13px;margin:4px 0;}
+</style>
+</head>
+<body>
+<h1>음성 인식 테스트</h1>
+<div class="muted">단어 말하기 평가 방식 검증용 · 학생 앱과 분리된 독립 페이지</div>
+<div class="muted" id="ua"></div>
+
+<div class="card">
+  <label>목표 단어</label>
+  <input type="text" id="targetWord" value="right">
+  <label>한글 발음표기 <span class="muted">(2차 한국어 STT 비교용 · 선택)</span></label>
+  <input type="text" id="targetKo" value="라이트">
+  <label>3차 문장 <span class="muted">(목표 단어가 포함된 문장)</span></label>
+  <input type="text" id="targetSent" value="Turn right at the next corner">
+
+  <div class="btns">
+    <button class="b1" id="btn1" onclick="start('en')">1차<br>영어 STT</button>
+    <button class="b2" id="btn2" onclick="start('ko')">2차<br>한국어 STT</button>
+    <button class="b3" id="btn3" onclick="start('sentence')">3차<br>문장 말하기</button>
+  </div>
+  <div class="btns">
+    <button class="bstop" id="btnStop" onclick="stopRec()" disabled>중지</button>
+  </div>
+  <div id="mode"></div>
+  <div id="prompt" class="muted"></div>
+</div>
+
+<div class="card">
+  <div class="sub">실시간 인식 (말하는 즉시 문자화)</div>
+  <div class="live"><span class="final" id="final"></span> <span class="interim" id="interim"></span></div>
+  <div id="result"></div>
+</div>
+
+<div class="card">
+  <div class="sub">이벤트 로그</div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+var $=function(id){return document.getElementById(id);};
+$('ua').textContent=navigator.userAgent;
+var rec=null,t0=0,firstT=0;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+function lev(a,b){
+  a=a||'';b=b||'';
+  var m=a.length,n=b.length;
+  if(!m)return n;if(!n)return m;
+  var d=[],i,j;
+  for(i=0;i<=m;i++)d[i]=[i];
+  for(j=0;j<=n;j++)d[0][j]=j;
+  for(i=1;i<=m;i++)for(j=1;j<=n;j++){
+    var c=a[i-1]===b[j-1]?0:1;
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c);
+  }
+  return d[m][n];
+}
+function sim(a,b){
+  a=(a||'').toLowerCase().trim();b=(b||'').toLowerCase().trim();
+  if(!a&&!b)return 1;
+  var L=Math.max(a.length,b.length);
+  if(!L)return 0;
+  return 1-lev(a,b)/L;
+}
+function bestWordSim(sentence,target){
+  var words=(sentence||'').toLowerCase().replace(/[^a-z'\s가-힣]/g,' ').split(/\s+/).filter(Boolean);
+  var best=0,bestW='';
+  for(var i=0;i<words.length;i++){
+    var s=sim(words[i],target);
+    if(s>best){best=s;bestW=words[i];}
+  }
+  return {sim:best,word:bestW};
+}
+function log(msg){
+  var t=t0?((performance.now()-t0)/1000).toFixed(2):'-';
+  $('log').textContent+='['+t+'s] '+msg+'\n';
+  $('log').scrollTop=$('log').scrollHeight;
+}
+function stopRec(){if(rec){try{rec.stop();}catch(e){}}}
+function setBusy(b){
+  $('btn1').disabled=b;$('btn2').disabled=b;$('btn3').disabled=b;
+  $('btnStop').disabled=!b;
+}
+
+function start(mode){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('이 브라우저는 음성 인식(Web Speech API)을 지원하지 않습니다.');return;}
+  if(rec){try{rec.abort();}catch(e){}}
+  $('interim').textContent='';
+  $('final').textContent='';
+  $('result').innerHTML='';
+  $('log').textContent='';
+  firstT=0;
+
+  var target=$('targetWord').value.trim();
+  var lang=mode==='ko'?'ko-KR':'en-US';
+  var modeLabel=mode==='en'?'1차 · 영어 STT (en-US)':
+    mode==='ko'?'2차 · 한국어 STT (ko-KR)':'3차 · 문장 말하기 (en-US)';
+  $('mode').textContent=modeLabel;
+
+  if(mode==='sentence'){
+    var sent=$('targetSent').value.trim();
+    var re=new RegExp('\\b'+target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');
+    $('prompt').textContent='읽을 문장: '+sent.replace(re,'_____')+'   (빈칸 = '+target+')';
+  }else if(mode==='ko'){
+    $('prompt').textContent='"'+target+'" 를 영어로 발음하세요 (한국어 모드로 인식)';
+  }else{
+    $('prompt').textContent='"'+target+'" 를 영어로 발음하세요';
+  }
+
+  rec=new SR();
+  rec.lang=lang;
+  rec.continuous=false;
+  rec.interimResults=true;
+  rec.maxAlternatives=5;
+
+  ['audiostart','soundstart','speechstart','speechend','soundend','audioend']
+    .forEach(function(ev){rec['on'+ev]=function(){log('on'+ev);};});
+  rec.onstart=function(){log('onstart');};
+  rec.onnomatch=function(){log('onnomatch (일치 결과 없음)');};
+  rec.onerror=function(e){log('onerror: '+e.error);};
+  rec.onend=function(){
+    log('onend');
+    setBusy(false);
+    if(!firstT){
+      $('result').innerHTML='<div class="verdict v-no">인식 결과 없음 (onresult 미발생)<br>'+
+        '<span style="font-size:12px;font-weight:400;">발음이 인식 임계값에 못 미쳤거나 무음 — 안드로이드 Chrome의 전형적 한계 케이스</span></div>';
+    }
+  };
+  rec.onresult=function(e){
+    if(!firstT){firstT=performance.now();log('onresult (첫 결과 수신)');}
+    var interim='',finalRes=null;
+    for(var i=0;i<e.results.length;i++){
+      var r=e.results[i];
+      if(r.isFinal)finalRes=r;
+      else interim+=r[0].transcript;
+    }
+    $('interim').textContent=interim;
+    if(finalRes){
+      $('final').textContent=finalRes[0].transcript;
+      log('최종 결과: "'+finalRes[0].transcript+'"');
+      showResult(mode,target,finalRes);
+    }
+  };
+
+  t0=performance.now();
+  log('시작 — '+modeLabel);
+  setBusy(true);
+  try{rec.start();}catch(e){log('start 실패: '+e.message);setBusy(false);}
+}
+
+function showResult(mode,target,result){
+  var alts=[],i;
+  for(i=0;i<result.length;i++){
+    alts.push({t:result[i].transcript||'',c:result[i].confidence});
+  }
+  var elapsed=firstT?((firstT-t0)/1000).toFixed(2):'-';
+  var html='<div class="metric">첫 인식까지: <b>'+elapsed+'s</b> · 후보 수: <b>'+alts.length+'</b></div>';
+  html+='<div class="sub">인식 후보 (alternatives · 최대 5)</div>';
+  html+='<table><tr><th>#</th><th>인식 텍스트</th><th>신뢰도</th>';
+  if(mode!=='ko')html+='<th>목표 유사도</th>';
+  html+='</tr>';
+  var bestSim=0;
+  for(i=0;i<alts.length;i++){
+    var a=alts[i];
+    html+='<tr><td>'+(i+1)+'</td><td>'+esc(a.t)+'</td><td>'+
+      (a.c!=null&&a.c>0?(a.c*100).toFixed(0)+'%':'미제공')+'</td>';
+    if(mode!=='ko'){
+      var s;
+      if(mode==='sentence'){s=bestWordSim(a.t,target).sim;}
+      else s=sim(a.t,target);
+      if(s>bestSim)bestSim=s;
+      html+='<td>'+(s*100).toFixed(0)+'%</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</table>';
+
+  if(mode==='ko'){
+    var ko=$('targetKo').value.trim();
+    var heard=alts[0]?alts[0].t:'';
+    if(ko){
+      var ks=sim(heard,ko);
+      var cls=ks>=0.7?'v-ok':ks>=0.4?'v-near':'v-no';
+      html+='<div class="verdict '+cls+'">한글 인식: "'+esc(heard)+'"<br>'+
+        '발음표기 "'+esc(ko)+'" 와 유사도 '+(ks*100).toFixed(0)+'%</div>';
+    }else{
+      html+='<div class="verdict v-near">한글 인식 결과: "'+esc(heard)+'"<br>'+
+        '<span style="font-size:12px;font-weight:400;">한글 발음표기를 입력하면 유사도도 표시됩니다</span></div>';
+    }
+  }else if(mode==='sentence'){
+    var fin=alts[0]?alts[0].t:'';
+    var bw=bestWordSim(fin,target);
+    var found=bw.sim>=0.85;
+    var cls2=found?'v-ok':bw.sim>=0.6?'v-near':'v-no';
+    html+='<div class="verdict '+cls2+'">'+
+      (found?'문장 속에서 목표 단어 발견':'목표 단어 미발견')+'<br>'+
+      '가장 가까운 단어: "'+esc(bw.word)+'" ('+(bw.sim*100).toFixed(0)+'%)</div>';
+  }else{
+    var cls3=bestSim>=0.99?'v-ok':bestSim>=0.7?'v-near':'v-no';
+    var label=bestSim>=0.99?'정확 일치':bestSim>=0.7?'유사 (발음 차이 가능)':'불일치';
+    html+='<div class="verdict '+cls3+'">'+label+' · 최고 유사도 '+(bestSim*100).toFixed(0)+'%</div>';
+  }
+  $('result').innerHTML=html;
+}
+</script>
+</body>
+</html>
