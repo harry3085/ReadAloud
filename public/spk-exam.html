@@ -28,6 +28,8 @@ button:active{transform:scale(.97);}
 #qSent{font-size:22px;font-weight:700;line-height:1.6;color:#111;}
 #qSentKo{font-size:15px;color:#475569;margin-top:14px;line-height:1.6;}
 .hl{background:#fde68a;padding:1px 6px;border-radius:4px;font-weight:700;color:#92400e;}
+.blankhl{display:inline-block;min-width:88px;height:1.1em;background:#fde68a;
+  border-bottom:3px solid #f59e0b;border-radius:4px;vertical-align:-3px;}
 .hintarea{text-align:center;margin:12px 0 4px;}
 #hintBtn{background:#0891b2;padding:9px 16px;font-size:13px;}
 #hintView{margin-top:8px;font-size:20px;font-weight:800;letter-spacing:3px;
@@ -91,6 +93,7 @@ button:active{transform:scale(.97);}
   <div class="live" id="qLive" style="display:none;"></div>
   <div class="micwrap"><button id="micBtn" onclick="speak()">말하기</button></div>
   <div class="status" id="qStatus"></div>
+  <button class="fullbtn" id="nextBtn" onclick="goNext()" style="display:none;">다음 문제</button>
 </div>
 
 <div id="resultScreen" style="display:none;">
@@ -259,6 +262,7 @@ function renderQ(){
   updateHint();
   renderStageView();
   $('micBtn').disabled=false;
+  $('nextBtn').style.display='none';
 }
 function renderStageView(){
   var it=EX.items[EX.idx];
@@ -282,7 +286,7 @@ function renderStageView(){
     $('qLive').textContent='';
     $('hintArea').style.display='none';
     var re=new RegExp('\\b'+reEsc(it[0])+'\\b','i');
-    $('qSent').innerHTML=esc(it[3]).replace(re,function(m){return '<span class="hl">'+m+'</span>';});
+    $('qSent').innerHTML=esc(it[3]).replace(re,'<span class="blankhl"></span>');
     $('qSentKo').innerHTML=esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>');
     $('qStatus').textContent='문장 전체를 또박또박 읽어보세요';
     $('qStatus').className='status';
@@ -290,7 +294,7 @@ function renderStageView(){
 }
 function useHint(){
   var w=EX.items[EX.idx][0];
-  if(EX.hint<w.length)EX.hint++;
+  if(EX.hint<2 && EX.hint<w.length)EX.hint++;
   updateHint();
 }
 function updateHint(){
@@ -301,7 +305,9 @@ function updateHint(){
     var rest=w.slice(EX.hint).replace(/[^ ]/g,'_');
     $('hintView').textContent=shown+rest;
   }
-  $('hintBtn').disabled=EX.hint>=w.length;
+  var left=2-EX.hint;
+  $('hintBtn').disabled=EX.hint>=2||EX.hint>=w.length;
+  $('hintBtn').textContent='힌트 ('+(left>0?left+'회 남음':'없음')+')';
 }
 function speak(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -354,7 +360,7 @@ function grade(it,finalRes){
     $('qStatus').className='status ok';
     EX.results.push({word:target,correct:true,stage:EX.stage,hint:EX.hint});
     $('micBtn').disabled=true;
-    setTimeout(nextQ,1600);
+    showNext();
   }else if(EX.stage<3){
     EX.stage++;
     renderStageView();
@@ -365,8 +371,17 @@ function grade(it,finalRes){
     $('qStatus').className='status no';
     EX.results.push({word:target,correct:false,stage:0,hint:EX.hint});
     $('micBtn').disabled=true;
-    setTimeout(nextQ,2400);
+    showNext();
   }
+}
+function showNext(){
+  var last=EX.idx>=EX.items.length-1;
+  $('nextBtn').textContent=last?'결과 보기':'다음 문제';
+  $('nextBtn').style.display='block';
+}
+function goNext(){
+  $('nextBtn').style.display='none';
+  nextQ();
 }
 function nextQ(){
   EX.idx++;
