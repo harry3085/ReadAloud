@@ -512,12 +512,10 @@
       </div>
     </div>
 
-    <!-- 섞인 청크 버튼들 -->
-    <div style="padding:4px 14px 10px;flex-shrink:0;">
+    <!-- 섞인 청크 버튼들 (긴 문장 시 _uqFitContent 가 글자 단계 축소 + 안전망 스크롤) -->
+    <div id="uqChunkArea" style="padding:4px 14px 10px;flex:1;min-height:0;overflow-y:hidden;">
       <div id="uqChunkBox" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
-
-    <div style="flex:1;"></div>
 
     <div class="quiz-footer" style="margin-top:auto;">
       <div class="timer-circle">

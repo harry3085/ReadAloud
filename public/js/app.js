@@ -5965,6 +5965,39 @@ function _uqRenderStep() {
 
   _uqUpdateSubmitBtn();
   _uqStartTimer();
+
+  // 긴 문장 시 한글뜻·완성중·청크 글자를 단계적으로 축소 (15→13px), 그래도 안 들어가면 청크만 스크롤
+  requestAnimationFrame(_uqFitContent);
+}
+
+// 단계 정의 — 한글뜻 / 완성중인 문장 / 청크 버튼 글자 사이즈
+const _UQ_FONT_TIERS = [
+  { mean: 15, built: 14, chunk: 15 },  // tier 0 (기본)
+  { mean: 14, built: 13, chunk: 14 },  // tier 1
+  { mean: 13, built: 13, chunk: 13 },  // tier 2 (최소)
+];
+function _uqApplyFontTier(tier) {
+  const meanEl = document.getElementById('uqMeaningKo');
+  const builtEl = document.getElementById('uqBuilt');
+  const chunkArea = document.getElementById('uqChunkArea');
+  if (meanEl) meanEl.style.fontSize = tier.mean + 'px';
+  if (builtEl) builtEl.style.fontSize = tier.built + 'px';
+  if (chunkArea) {
+    chunkArea.querySelectorAll('button').forEach(b => {
+      b.style.fontSize = tier.chunk + 'px';
+    });
+  }
+}
+function _uqFitContent() {
+  const chunkArea = document.getElementById('uqChunkArea');
+  if (!chunkArea) return;
+  chunkArea.style.overflowY = 'hidden';
+  for (let i = 0; i < _UQ_FONT_TIERS.length; i++) {
+    _uqApplyFontTier(_UQ_FONT_TIERS[i]);
+    if (chunkArea.scrollHeight <= chunkArea.clientHeight + 2) return;
+  }
+  // 13px 까지 줄여도 안 들어가면 청크 영역만 스크롤 (안전망)
+  chunkArea.style.overflowY = 'auto';
 }
 
 function _uqUpdateSubmitBtn() {
