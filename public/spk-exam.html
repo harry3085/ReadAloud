@@ -3,107 +3,162 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#E8714A">
 <title>단어 말하기 모의 시험</title>
 <style>
 *{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+:root{
+  --teal:#E8714A;--teal-dark:#D85A30;--cream:#FFF0E8;
+  --grad:linear-gradient(160deg,#E8714A,#D85A30);
+  --text:#222;--gray:#888;--bg:#FFF8F5;
+}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  max-width:560px;margin:0 auto;padding:16px;background:#f5f6f8;color:#222;
-  -webkit-tap-highlight-color:transparent;}
-h1{font-size:21px;margin:6px 0;}
-.muted{color:#888;font-size:13px;line-height:1.6;}
-.card{background:#fff;border-radius:14px;padding:18px;margin:12px 0;
-  box-shadow:0 1px 6px rgba(0,0,0,.08);}
-.numbtns{display:flex;gap:10px;margin-top:14px;}
-.numbtns button{flex:1;padding:18px 0;font-size:17px;}
-button{border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;
-  background:#2563eb;}
-button:disabled{opacity:.45;}
-button:active{transform:scale(.97);}
-#progress{font-size:13px;color:#64748b;font-weight:700;text-align:center;margin:4px 0 6px;}
-#qStage{margin:2px 0 10px;font-weight:700;font-size:14px;color:#7c3aed;text-align:center;}
-.qcard{background:#fff;border-radius:14px;padding:26px 18px;
-  box-shadow:0 1px 6px rgba(0,0,0,.08);text-align:center;}
-.mlabel{font-size:13px;color:#64748b;font-weight:700;}
-.mword{font-size:30px;font-weight:800;color:#111;margin-top:10px;line-height:1.4;}
-#qSent{font-size:22px;font-weight:700;line-height:1.6;color:#111;}
-#qSentKo{font-size:15px;color:#475569;margin-top:14px;line-height:1.6;}
-.hl{background:#fde68a;padding:1px 6px;border-radius:4px;font-weight:700;color:#92400e;}
-.blankhl{display:inline-block;min-width:88px;height:1.1em;background:#fde68a;
-  border-bottom:3px solid #f59e0b;border-radius:4px;vertical-align:-3px;}
-.hintarea{text-align:center;margin:12px 0 4px;}
-#hintBtn{background:#0891b2;padding:9px 16px;font-size:13px;}
-#hintView{margin-top:8px;font-size:20px;font-weight:800;letter-spacing:3px;
-  color:#0891b2;font-family:ui-monospace,Menlo,monospace;min-height:24px;}
-.live{min-height:42px;border:2px dashed #cbd5e1;border-radius:10px;padding:10px;
-  margin:8px 0;font-size:19px;text-align:center;color:#334155;}
-.micwrap{text-align:center;margin:10px 0;}
-#micBtn{width:128px;height:128px;border-radius:50%;font-size:17px;
-  background:#16a34a;box-shadow:0 4px 14px rgba(22,163,74,.35);}
-#micBtn.rec{background:#dc2626;box-shadow:0 4px 14px rgba(220,38,38,.4);}
-.status{margin-top:10px;padding:12px;border-radius:10px;font-size:15px;
-  font-weight:700;text-align:center;line-height:1.5;background:#f1f5f9;color:#334155;}
+  background:var(--bg);color:var(--text);-webkit-tap-highlight-color:transparent;}
+.screen{min-height:100vh;display:flex;flex-direction:column;background:var(--bg);
+  max-width:560px;margin:0 auto;}
+
+/* 시작 화면 */
+.start-hero{background:var(--grad);padding:54px 28px 40px;text-align:center;color:#fff;}
+.start-hero h1{font-size:24px;margin:0;font-weight:800;}
+.start-hero p{font-size:13px;opacity:.9;margin:8px 0 0;}
+.start-body{padding:22px 20px;}
+.info-card{background:#fff;border-radius:18px;padding:20px;
+  box-shadow:0 4px 16px rgba(232,113,74,.12);}
+.info-card .desc{font-size:14px;color:#555;line-height:1.7;}
+.info-card .hl-inline{background:#fde68a;padding:1px 6px;border-radius:4px;
+  color:#92400e;font-weight:700;}
+.picklabel{font-weight:700;margin:18px 0 10px;font-size:14px;}
+.numbtns{display:flex;gap:10px;}
+.numbtns button{flex:1;padding:20px 0;font-size:17px;font-weight:700;border:0;
+  border-radius:14px;background:var(--grad);color:#fff;cursor:pointer;
+  box-shadow:0 3px 10px rgba(232,113,74,.3);}
+.numbtns button:active{transform:scale(.97);}
+
+/* 시험 화면 */
+.quiz-header{display:flex;align-items:center;gap:12px;padding:18px 20px 6px;flex-shrink:0;}
+.progress-bar-wrap{flex:1;height:8px;background:var(--cream);border-radius:4px;}
+.progress-bar-fill{height:8px;background:var(--teal);border-radius:4px;transition:width .3s;}
+.progress-pill{font-size:12px;font-weight:700;color:var(--teal);min-width:48px;text-align:right;}
+.stage-note{text-align:center;font-size:12px;color:var(--gray);font-weight:600;
+  margin:6px 0 4px;flex-shrink:0;}
+
+.qcard{margin:6px 16px 0;background:#fff;border-radius:20px;overflow:hidden;
+  box-shadow:0 4px 16px rgba(232,113,74,.12);flex-shrink:0;}
+.qcard-head{background:var(--grad);padding:20px 18px;}
+.qcard-head .label{font-size:11px;color:rgba(255,255,255,.8);margin-bottom:6px;}
+.qcard-head .big{font-size:25px;font-weight:800;color:#fff;line-height:1.45;
+  word-break:break-word;}
+.qcard-body{padding:16px 18px;min-height:62px;}
+.blankhl{display:inline-block;min-width:78px;height:1.05em;
+  background:rgba(255,255,255,.32);border-bottom:3px solid #fff;
+  border-radius:4px;vertical-align:-3px;}
+.qko{font-size:15px;color:#475569;line-height:1.7;}
+.hl{background:#fde68a;padding:1px 6px;border-radius:4px;color:#92400e;font-weight:700;}
+
+.hintzone{text-align:center;}
+.hintbtn{background:#fff;border:2px solid var(--teal);color:var(--teal);
+  border-radius:11px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;}
+.hintbtn:disabled{opacity:.4;}
+.hintview{margin-top:10px;font-size:22px;font-weight:800;letter-spacing:4px;
+  color:var(--teal);font-family:ui-monospace,Menlo,monospace;min-height:26px;}
+.live{margin-top:10px;min-height:40px;border:2px dashed #e5d5cc;border-radius:12px;
+  padding:10px;font-size:19px;text-align:center;color:#334155;}
+
+.spacer{flex:1;}
+.miczone{display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:14px 0;flex-shrink:0;}
+.micbtn{width:104px;height:104px;border-radius:50%;background:var(--teal);color:#fff;
+  font-size:44px;border:0;cursor:pointer;box-shadow:0 4px 16px rgba(232,113,74,.35);
+  transition:.15s;}
+.micbtn.rec{background:#dc2626;box-shadow:0 4px 16px rgba(220,38,38,.4);}
+.micbtn:disabled{opacity:.5;}
+.micbtn:active{transform:scale(.96);}
+.status{margin:0 16px;padding:13px;border-radius:12px;font-size:15px;font-weight:700;
+  text-align:center;line-height:1.5;background:var(--cream);color:var(--teal-dark);
+  flex-shrink:0;}
 .status.ok{background:#dcfce7;color:#15803d;}
 .status.no{background:#fee2e2;color:#b91c1c;}
 .status.retry{background:#fef3c7;color:#b45309;}
-#score{text-align:center;}
-#score .big{font-size:48px;font-weight:800;color:#2563eb;}
-.ritem{display:flex;justify-content:space-between;padding:10px 12px;
-  border-radius:8px;margin:6px 0;font-size:14px;font-weight:700;}
-.r-ok{background:#dcfce7;color:#15803d;}
-.r-near{background:#fef3c7;color:#b45309;}
-.r-no{background:#fee2e2;color:#b91c1c;}
-.fullbtn{width:100%;padding:16px;font-size:16px;margin-top:14px;}
+.nextbtn{margin:12px 16px 18px;padding:16px;font-size:17px;font-weight:700;border:0;
+  border-radius:14px;background:var(--teal);color:#fff;cursor:pointer;
+  box-shadow:0 2px 8px rgba(232,113,74,.3);flex-shrink:0;}
+.nextbtn:active{opacity:.8;}
+
+/* 결과 화면 */
+.result-hero{background:var(--grad);padding:44px 20px;text-align:center;color:#fff;}
+.result-hero h1{font-size:22px;margin:0 0 14px;font-weight:800;}
+.result-score{font-size:60px;font-weight:800;line-height:1;}
+.result-sub{font-size:16px;font-weight:700;opacity:.9;margin-top:6px;}
+.result-body{padding:18px 16px;}
+.rlist-title{font-size:13px;font-weight:700;color:#475569;margin:4px 4px 8px;}
+.ritem{display:flex;justify-content:space-between;align-items:center;
+  padding:11px 14px;border-radius:12px;margin:6px 0;font-size:14px;font-weight:700;
+  background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.06);}
+.rtag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:8px;}
+.t-ok{background:#dcfce7;color:#15803d;}
+.t-near{background:#fef3c7;color:#b45309;}
+.t-no{background:#fee2e2;color:#b91c1c;}
+.fullbtn{margin:16px;padding:16px;font-size:16px;font-weight:700;border:0;
+  border-radius:14px;background:var(--teal);color:#fff;cursor:pointer;}
+.uatxt{font-size:11px;color:#bbb;padding:0 20px 16px;word-break:break-all;}
 </style>
 </head>
 <body>
 
-<div id="startScreen">
-  <h1>단어 말하기 모의 시험</h1>
-  <div class="card">
-    <div class="muted">
-      한글 뜻을 보고 영어 단어를 말하는 시험입니다.<br><br>
-      1·2차 — 한글 뜻만 보고 단어를 말합니다.<br>
-      3차 — 문장이 공개되며, 문장 전체를 읽습니다.<br>
-      단어가 떠오르지 않으면 <b>힌트</b>로 스펠링을 하나씩 볼 수 있습니다.
-    </div>
-    <div style="font-weight:700;margin-top:16px;">문제 수를 선택하세요</div>
-    <div class="numbtns">
-      <button onclick="startExam(5)">5문제</button>
-      <button onclick="startExam(10)">10문제</button>
-      <button onclick="startExam(20)">20문제</button>
-    </div>
+<div id="startScreen" class="screen">
+  <div class="start-hero">
+    <h1>단어 말하기 모의 시험</h1>
+    <p>한글 뜻을 보고 영어 단어를 말해보세요</p>
   </div>
-  <div class="muted" id="ua"></div>
+  <div class="start-body">
+    <div class="info-card">
+      <div class="desc">
+        1·2차 — 한글 뜻만 보고 단어를 말합니다.<br>
+        3차 — 문장이 공개되며 문장 전체를 읽습니다.<br>
+        단어가 떠오르지 않으면 <span class="hl-inline">힌트</span>로
+        스펠링을 2글자까지 볼 수 있습니다.
+      </div>
+      <div class="picklabel">문제 수를 선택하세요</div>
+      <div class="numbtns">
+        <button onclick="startExam(5)">5문제</button>
+        <button onclick="startExam(10)">10문제</button>
+        <button onclick="startExam(20)">20문제</button>
+      </div>
+    </div>
+    <div class="uatxt" id="ua"></div>
+  </div>
 </div>
 
-<div id="quizScreen" style="display:none;">
-  <div id="progress"></div>
-  <div id="qStage"></div>
+<div id="quizScreen" class="screen" style="display:none;">
+  <div class="quiz-header">
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pBar" style="width:0%;"></div></div>
+    <div class="progress-pill" id="pPill"></div>
+  </div>
+  <div class="stage-note" id="stageNote"></div>
   <div class="qcard">
-    <div id="qMeaning"></div>
-    <div id="qSentBox" style="display:none;">
-      <div id="qSent"></div>
-      <div id="qSentKo"></div>
-    </div>
+    <div class="qcard-head" id="qHead"></div>
+    <div class="qcard-body" id="qBody"></div>
   </div>
-  <div class="hintarea" id="hintArea">
-    <button id="hintBtn" onclick="useHint()">힌트 (스펠링 한 글자)</button>
-    <div id="hintView"></div>
+  <div class="spacer"></div>
+  <div class="miczone">
+    <button class="micbtn" id="micBtn" onclick="speak()">🎤</button>
   </div>
-  <div class="live" id="qLive" style="display:none;"></div>
-  <div class="micwrap"><button id="micBtn" onclick="speak()">말하기</button></div>
   <div class="status" id="qStatus"></div>
-  <button class="fullbtn" id="nextBtn" onclick="goNext()" style="display:none;">다음 문제</button>
+  <button class="nextbtn" id="nextBtn" onclick="goNext()" style="display:none;">다음 문제</button>
 </div>
 
-<div id="resultScreen" style="display:none;">
-  <h1>시험 결과</h1>
-  <div class="card"><div id="score"></div></div>
-  <div class="card">
-    <div style="font-weight:700;font-size:13px;color:#475569;margin-bottom:6px;">문항별 결과</div>
-    <div id="itemList"></div>
+<div id="resultScreen" class="screen" style="display:none;">
+  <div class="result-hero">
+    <h1>시험 결과</h1>
+    <div class="result-score" id="scoreNum"></div>
+    <div class="result-sub" id="scoreSub"></div>
   </div>
-  <button class="fullbtn" onclick="location.reload()">다시 하기</button>
+  <div class="result-body">
+    <div class="rlist-title">문항별 결과</div>
+    <div id="itemList"></div>
+    <button class="fullbtn" onclick="location.reload()">다시 하기</button>
+  </div>
 </div>
 
 <script>
@@ -243,7 +298,7 @@ function shuffle(a){
 }
 function show(id){
   ['startScreen','quizScreen','resultScreen'].forEach(function(s){
-    $(s).style.display=s===id?'block':'none';
+    $(s).style.display=s===id?'flex':'none';
   });
 }
 function startExam(n){
@@ -258,36 +313,34 @@ function meaningOf(it){
 }
 function renderQ(){
   EX.stage=1;EX.hint=0;
-  $('progress').textContent='문제 '+(EX.idx+1)+' / '+EX.items.length;
-  updateHint();
-  renderStageView();
-  $('micBtn').disabled=false;
+  $('pPill').textContent=(EX.idx+1)+' / '+EX.items.length;
+  $('pBar').style.width=Math.round((EX.idx+1)/EX.items.length*100)+'%';
   $('nextBtn').style.display='none';
+  $('micBtn').disabled=false;
+  renderStageView();
 }
 function renderStageView(){
   var it=EX.items[EX.idx];
-  $('qStage').textContent=EX.stage+'차 시도';
+  $('stageNote').textContent=EX.stage+'차 시도';
   if(EX.stage<3){
-    // 1·2차 — 한글 뜻만 (영어 문장·실시간 표기 없음)
-    $('qMeaning').style.display='block';
-    $('qSentBox').style.display='none';
-    $('qLive').style.display='none';
-    $('hintArea').style.display='block';
-    $('qMeaning').innerHTML='<div class="mlabel">이 뜻의 영어 단어를 말하세요</div>'+
-      '<div class="mword">'+esc(meaningOf(it))+'</div>';
+    // 1·2차 — 한글 뜻만 (영어 문장·실시간 표기 X)
+    $('qHead').innerHTML='<div class="label">이 뜻의 영어 단어를 말하세요</div>'+
+      '<div class="big">'+esc(meaningOf(it))+'</div>';
+    $('qBody').innerHTML='<div class="hintzone">'+
+      '<button class="hintbtn" id="hintBtn" onclick="useHint()">힌트</button>'+
+      '<div class="hintview" id="hintView"></div></div>';
+    updateHint();
     $('qStatus').textContent=EX.stage===1?'마이크를 누르고 말하세요':
       '다시 한번 — 단어를 또박또박 말하세요';
     $('qStatus').className='status';
   }else{
-    // 3차 — 문장 공개 + 실시간 표기
-    $('qMeaning').style.display='none';
-    $('qSentBox').style.display='block';
-    $('qLive').style.display='block';
-    $('qLive').textContent='';
-    $('hintArea').style.display='none';
+    // 3차 — 문장 공개(목표 단어 빈칸) + 해석 + 실시간 표기
     var re=new RegExp('\\b'+reEsc(it[0])+'\\b','i');
-    $('qSent').innerHTML=esc(it[3]).replace(re,'<span class="blankhl"></span>');
-    $('qSentKo').innerHTML=esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>');
+    $('qHead').innerHTML='<div class="label">문장 전체를 읽어보세요</div>'+
+      '<div class="big">'+esc(it[3]).replace(re,'<span class="blankhl"></span>')+'</div>';
+    $('qBody').innerHTML='<div class="qko">'+
+      esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>')+'</div>'+
+      '<div class="live" id="qLive"></div>';
     $('qStatus').textContent='문장 전체를 또박또박 읽어보세요';
     $('qStatus').className='status';
   }
@@ -299,15 +352,17 @@ function useHint(){
 }
 function updateHint(){
   var w=EX.items[EX.idx][0];
-  if(EX.hint<=0){$('hintView').textContent='';}
+  var hv=$('hintView'),hb=$('hintBtn');
+  if(!hv||!hb)return;
+  if(EX.hint<=0)hv.textContent='';
   else{
     var shown=w.slice(0,EX.hint);
     var rest=w.slice(EX.hint).replace(/[^ ]/g,'_');
-    $('hintView').textContent=shown+rest;
+    hv.textContent=shown+rest;
   }
   var left=2-EX.hint;
-  $('hintBtn').disabled=EX.hint>=2||EX.hint>=w.length;
-  $('hintBtn').textContent='힌트 ('+(left>0?left+'회 남음':'없음')+')';
+  hb.disabled=EX.hint>=2||EX.hint>=w.length;
+  hb.textContent='힌트 ('+(left>0?left+'회 남음':'없음')+')';
 }
 function speak(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -319,9 +374,9 @@ function speak(){
   rec.lang=EX.stage===2?'ko-KR':'en-US';
   rec.continuous=false;rec.interimResults=true;rec.maxAlternatives=5;
   $('micBtn').disabled=true;
-  $('micBtn').textContent='듣는 중...';
-  $('micBtn').className='rec';
-  if(EX.stage===3)$('qLive').textContent='';
+  $('micBtn').className='micbtn rec';
+  var lv=$('qLive');
+  if(lv)lv.textContent='';
   var finalRes=null;
   rec.onresult=function(e){
     var interim='';
@@ -329,18 +384,17 @@ function speak(){
       var r=e.results[i];
       if(r.isFinal)finalRes=r;else interim+=r[0].transcript;
     }
-    // 실시간 표기는 3차에서만 (1·2차는 답 노출 방지)
-    if(EX.stage===3)$('qLive').textContent=interim||(finalRes?finalRes[0].transcript:'');
+    var el=$('qLive');  // 실시간 표기는 3차에만 존재
+    if(el)el.textContent=interim||(finalRes?finalRes[0].transcript:'');
   };
   rec.onerror=function(){};
   rec.onend=function(){
     $('micBtn').disabled=false;
-    $('micBtn').textContent='말하기';
-    $('micBtn').className='';
+    $('micBtn').className='micbtn';
     grade(it,finalRes);
   };
   try{rec.start();}catch(e){
-    $('micBtn').disabled=false;$('micBtn').textContent='말하기';$('micBtn').className='';
+    $('micBtn').disabled=false;$('micBtn').className='micbtn';
   }
 }
 function grade(it,finalRes){
@@ -392,17 +446,18 @@ function showResult(){
   show('resultScreen');
   var correct=EX.results.filter(function(r){return r.correct;}).length;
   var total=EX.results.length||1;
-  $('score').innerHTML='<div class="big">'+correct+' / '+EX.results.length+'</div>'+
-    '<div style="font-size:18px;font-weight:700;color:#475569;">'+Math.round(correct/total*100)+'점</div>';
+  $('scoreNum').textContent=Math.round(correct/total*100)+'점';
+  $('scoreSub').textContent=correct+' / '+EX.results.length+' 정답';
   var html='';
   EX.results.forEach(function(r,i){
     var label,cls;
-    if(!r.correct){label='오답';cls='r-no';}
-    else if(r.stage===1){label='1차 통과';cls='r-ok';}
-    else if(r.stage===2){label='2차 통과 (발음 연습 권장)';cls='r-near';}
-    else {label='3차 통과 (문장으로)';cls='r-near';}
-    if(r.hint>0)label+=' · 힌트 '+r.hint;
-    html+='<div class="ritem '+cls+'"><span>'+(i+1)+'. '+esc(r.word)+'</span><span>'+label+'</span></div>';
+    if(!r.correct){label='오답';cls='t-no';}
+    else if(r.stage===1){label='1차 통과';cls='t-ok';}
+    else if(r.stage===2){label='2차 통과';cls='t-near';}
+    else {label='3차 통과';cls='t-near';}
+    var hint=r.hint>0?' · 힌트 '+r.hint:'';
+    html+='<div class="ritem"><span>'+(i+1)+'. '+esc(r.word)+'</span>'+
+      '<span class="rtag '+cls+'">'+label+hint+'</span></div>';
   });
   $('itemList').innerHTML=html;
 }
