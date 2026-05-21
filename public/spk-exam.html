@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>단어 말하기 모의 시험</title>
+<style>
+*{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  max-width:560px;margin:0 auto;padding:16px;background:#f5f6f8;color:#222;
+  -webkit-tap-highlight-color:transparent;}
+h1{font-size:21px;margin:6px 0;}
+.muted{color:#888;font-size:13px;line-height:1.6;}
+.card{background:#fff;border-radius:14px;padding:18px;margin:12px 0;
+  box-shadow:0 1px 6px rgba(0,0,0,.08);}
+.numbtns{display:flex;gap:10px;margin-top:14px;}
+.numbtns button{flex:1;padding:18px 0;font-size:17px;}
+button{border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;
+  background:#2563eb;}
+button:disabled{opacity:.45;}
+button:active{transform:scale(.97);}
+#progress{font-size:13px;color:#64748b;font-weight:700;text-align:center;margin:4px 0 10px;}
+.qcard{background:#fff;border-radius:14px;padding:22px 18px;
+  box-shadow:0 1px 6px rgba(0,0,0,.08);text-align:center;}
+#qSent{font-size:23px;font-weight:700;line-height:1.6;color:#111;}
+.blank{display:inline-block;min-width:80px;border-bottom:3px solid #2563eb;
+  color:transparent;}
+#qSentKo{font-size:15px;color:#475569;margin-top:14px;line-height:1.6;}
+.hl{background:#fde68a;padding:1px 6px;border-radius:4px;font-weight:700;color:#92400e;}
+#qStage{margin:16px 0 4px;font-weight:700;font-size:14px;color:#7c3aed;text-align:center;}
+.live{min-height:40px;border:2px dashed #cbd5e1;border-radius:10px;padding:10px;
+  margin:8px 0;font-size:19px;text-align:center;color:#334155;}
+.micwrap{text-align:center;margin:10px 0;}
+#micBtn{width:130px;height:130px;border-radius:50%;font-size:17px;
+  background:#16a34a;box-shadow:0 4px 14px rgba(22,163,74,.35);}
+#micBtn.rec{background:#dc2626;box-shadow:0 4px 14px rgba(220,38,38,.4);}
+.status{margin-top:10px;padding:12px;border-radius:10px;font-size:15px;
+  font-weight:700;text-align:center;line-height:1.5;background:#f1f5f9;color:#334155;}
+.status.ok{background:#dcfce7;color:#15803d;}
+.status.no{background:#fee2e2;color:#b91c1c;}
+.status.retry{background:#fef3c7;color:#b45309;}
+#score{text-align:center;}
+#score .big{font-size:48px;font-weight:800;color:#2563eb;}
+.ritem{display:flex;justify-content:space-between;padding:10px 12px;
+  border-radius:8px;margin:6px 0;font-size:14px;font-weight:700;}
+.r-ok{background:#dcfce7;color:#15803d;}
+.r-near{background:#fef3c7;color:#b45309;}
+.r-no{background:#fee2e2;color:#b91c1c;}
+.fullbtn{width:100%;padding:16px;font-size:16px;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>단어 말하기 모의 시험</h1>
+  <div class="card">
+    <div class="muted">
+      빈칸에 들어갈 영어 단어를 말하는 시험입니다.<br>
+      해석의 <span class="hl">노란 부분</span>이 빈칸 단어의 뜻입니다.<br><br>
+      단어만 말해도, 문장 전체를 읽어도 됩니다.<br>
+      잘 인식되지 않으면 2·3차로 다시 기회가 주어집니다.
+    </div>
+    <div style="font-weight:700;margin-top:16px;">문제 수를 선택하세요</div>
+    <div class="numbtns">
+      <button onclick="startExam(5)">5문제</button>
+      <button onclick="startExam(10)">10문제</button>
+      <button onclick="startExam(20)">20문제</button>
+    </div>
+  </div>
+  <div class="muted" id="ua"></div>
+</div>
+
+<div id="quizScreen" style="display:none;">
+  <div id="progress"></div>
+  <div class="qcard">
+    <div id="qSent"></div>
+    <div id="qSentKo"></div>
+  </div>
+  <div id="qStage"></div>
+  <div class="live" id="qLive"></div>
+  <div class="micwrap"><button id="micBtn" onclick="speak()">말하기</button></div>
+  <div class="status" id="qStatus"></div>
+</div>
+
+<div id="resultScreen" style="display:none;">
+  <h1>시험 결과</h1>
+  <div class="card">
+    <div id="score"></div>
+  </div>
+  <div class="card">
+    <div style="font-weight:700;font-size:13px;color:#475569;margin-bottom:6px;">문항별 결과</div>
+    <div id="itemList"></div>
+  </div>
+  <button class="fullbtn" onclick="location.reload()">다시 하기</button>
+</div>
+
+<script>
+var $=function(id){return document.getElementById(id);};
+$('ua').textContent=navigator.userAgent;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function reEsc(s){return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+
+function lev(a,b){
+  a=a||'';b=b||'';
+  var m=a.length,n=b.length;
+  if(!m)return n;if(!n)return m;
+  var d=[],i,j;
+  for(i=0;i<=m;i++)d[i]=[i];
+  for(j=0;j<=n;j++)d[0][j]=j;
+  for(i=1;i<=m;i++)for(j=1;j<=n;j++){
+    var c=a[i-1]===b[j-1]?0:1;
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c);
+  }
+  return d[m][n];
+}
+function sim(a,b){
+  a=(a||'').toLowerCase().trim();b=(b||'').toLowerCase().trim();
+  if(!a&&!b)return 1;
+  var L=Math.max(a.length,b.length);
+  if(!L)return 0;
+  return 1-lev(a,b)/L;
+}
+function simNoSpace(a,b){
+  return sim((a||'').replace(/\s/g,''),(b||'').replace(/\s/g,''));
+}
+// 문장에서 목표(한 단어 또는 구)만 찾아 비교 — 다른 단어는 비교 X
+function bestPhraseSim(sentence,target){
+  var sw=(sentence||'').toLowerCase().replace(/[^a-z'\s가-힣]/g,' ').split(/\s+/).filter(Boolean);
+  var tw=(target||'').toLowerCase().split(/\s+/).filter(Boolean);
+  var n=tw.length;
+  if(!n||!sw.length)return 0;
+  var tj=tw.join(''),best=0;
+  for(var i=0;i+n<=sw.length;i++){
+    var win=sw.slice(i,i+n);
+    var s=Math.max(sim(win.join(' '),tw.join(' ')),sim(win.join(''),tj));
+    if(s>best)best=s;
+  }
+  if(n>1)for(var j=0;j<sw.length;j++){
+    var s2=sim(sw[j],tj);
+    if(s2>best)best=s2;
+  }
+  return best;
+}
+
+// [단어, 빈도, 한글발음표기, 영어문장, 부적합사유, 해석([]=빈칸 단어 뜻)]
+var AI_WORDS=[
+  ['whip',15,'윕','He will whip the cream','','그는 크림을 [휘저을] 것이다'],
+  ['stuff',14,'스터프','Put your stuff in the bag','','가방에 네 [물건]을 넣어라'],
+  ['trick',11,'트릭','The magic trick made us happy','','그 마술 [묘기]는 우리를 즐겁게 했다'],
+  ['feel',11,'필','Today I feel much better','','오늘 나는 훨씬 더 좋게 [느낀다]'],
+  ['blob',10,'블롭','A big blob of paint fell','','큰 페인트 [방울]이 떨어졌다'],
+  ['roll up',9,'롤 업','Please roll up the carpet','','양탄자를 [말아] 주세요'],
+  ['wild',8,'와일드','I saw a wild horse','','나는 [야생] 말을 보았다'],
+  ['destroy',8,'디스트로이','The big storm will destroy houses','','큰 폭풍이 집들을 [파괴할] 것이다'],
+  ['be destroyed',8,'비 디스트로이드','The old house will be destroyed soon','','그 낡은 집은 곧 [파괴될] 것이다'],
+  ['astound',7,'어스타운드','The magic will astound the kids','','그 마술은 아이들을 [놀라게 할] 것이다'],
+  ['amaze',7,'어메이즈','Magic tricks always amaze kids','','마술은 항상 아이들을 [놀라게 한다]'],
+  ['ought to',7,'오트 투','You really ought to sleep','','너는 정말 잠을 [자야 한다]'],
+  ['very',7,'베리','The soup is very hot','','그 수프는 [매우] 뜨겁다'],
+  ['pass',7,'패스','Can you pass the salt','','소금 좀 [건네]줄래?'],
+  ['smell',7,'스멜','I can smell fresh bread','','나는 신선한 빵 [냄새를 맡을] 수 있다'],
+  ['cans of squirt cheese',6,'캔즈 오브 스쿼트 치즈','She bought cans of squirt cheese today','','그녀는 오늘 [스프레이 치즈 캔]을 샀다'],
+  ['tease',6,'티즈','Do not tease your sister','','네 동생을 [놀리지] 마라'],
+  ['dibble dibble',6,'디블 디블','I heard a dibble dibble sound','의성어·사전에 없는 표현','나는 [디블디블] 소리를 들었다'],
+  ['fuel',5,'퓨얼','The car needs fuel now','','그 차는 지금 [연료]가 필요하다'],
+  ['squirt',5,'스쿼트','The kids squirt water outside','','아이들이 밖에서 물을 [뿜는다]'],
+  ['horn',5,'혼','The car horn is very loud','','그 차 [경적]은 매우 시끄럽다'],
+  ['pirate treasure',4,'파이럿 트레저','They found pirate treasure here','','그들은 여기서 [해적 보물]을 찾았다'],
+  ['go wild',4,'고 와일드','The fans go wild outside','','팬들이 밖에서 [열광한다]'],
+  ['door',4,'도어','Please close the door now','','지금 [문]을 닫아 주세요'],
+  ['as though',4,'애즈 도우','He acts as though he knows','','그는 [마치 아는 것처럼] 행동한다'],
+  ['claim',4,'클레임','She will claim the prize','','그녀는 그 상을 [요구할] 것이다'],
+  ['be replaced',3,'비 리플레이스드','The old light will be replaced soon','','그 낡은 전등은 곧 [교체될] 것이다'],
+  ['gooey',3,'구이','I like the gooey cheese','','나는 [끈적한] 치즈를 좋아한다'],
+  ['respond',3,'리스폰드','Did you respond to her message','','너는 그녀의 메시지에 [답했]니?'],
+  ['training lesson',3,'트레이닝 레슨','I have a training lesson today','','나는 오늘 [훈련 수업]이 있다'],
+  ['earn',3,'언','I want to earn more money','','나는 더 많은 돈을 [벌고] 싶다'],
+  ['vegetable',3,'베지터블','I eat a vegetable every day','','나는 매일 [채소]를 먹는다'],
+  ['dig for',3,'딕 포','Dogs dig for old bones','','개들은 오래된 뼈를 [찾아 판다]'],
+  ['assume',3,'어슘','Do not assume the wrong answer','','틀린 답을 [짐작하지] 마라'],
+  ['soft',3,'소프트','I like the soft warm blanket','','나는 [부드럽]고 따뜻한 담요를 좋아한다'],
+  ['build',2,'빌드','They will build a new house','','그들은 새 집을 [지을] 것이다'],
+  ['mineral',2,'미네랄','We drink clean mineral water','','우리는 깨끗한 [광물] 물을 마신다'],
+  ['be limited',2,'비 리미티드','The free tickets will be limited today','','무료 표는 오늘 [제한될] 것이다'],
+  ['natural',2,'내추럴','We use natural honey here','','우리는 여기서 [자연산] 꿀을 쓴다'],
+  ['his own lunch',2,'히즈 오운 런치','He packs his own lunch daily','','그는 매일 [자기 점심]을 싼다'],
+  ['grayish-brown',2,'그레이시 브라운','The dog has grayish-brown fur','','그 개는 [회갈색] 털을 가졌다'],
+  ['after school',2,'애프터 스쿨','We meet after school every day','','우리는 매일 [방과 후에] 만난다'],
+  ['beast',2,'비스트','The big beast lived in caves','','그 큰 [짐승]은 동굴에 살았다'],
+  ['decide',2,'디사이드','You must decide the answer now','','너는 지금 답을 [결정해야] 한다'],
+  ['set up',2,'셋 업','Let us set up the tent','','텐트를 [설치]하자'],
+  ['extra',2,'엑스트라','I have an extra sharp pencil','','나는 [여분의] 뾰족한 연필이 있다'],
+  ['product',2,'프로덕트','This new product works very well','','이 새 [제품]은 매우 잘 작동한다'],
+  ['any person',2,'애니 퍼슨','Almost any person can join','','거의 [누구나] 참여할 수 있다'],
+  ['profit',2,'프로핏','The shop made a profit today','','그 가게는 오늘 [이익]을 냈다'],
+  ['service',2,'서비스','The hotel service was very good','','그 호텔 [서비스]는 매우 좋았다'],
+  ['butterfly',2,'버터플라이','A pretty butterfly sat on flowers','','예쁜 [나비]가 꽃에 앉았다'],
+  ['cat',2,'캣','My black cat is sleeping now','3글자 짧은 단어','내 검은 [고양이]가 지금 자고 있다'],
+  ['think',2,'씽크','I really think you are right','','나는 네가 옳다고 정말 [생각한다]'],
+  ['roll',2,'롤','The round ball will roll down','','둥근 공이 [굴러] 내려갈 것이다'],
+  ['futuristic',2,'퓨처리스틱','The new futuristic car looks cool','','그 새 [미래적인] 차는 멋져 보인다'],
+  ['dowel',2,'다월','He used a wooden dowel here','','그는 여기서 [나무못]을 썼다'],
+  ['assign',2,'어사인','The teacher will assign new homework','','선생님이 새 숙제를 [내줄] 것이다'],
+  ['killed',2,'킬드','The cold frost killed the plants','','차가운 서리가 식물을 [죽였다]'],
+  ['pack up',2,'팩 업','Please pack up your school things','','네 학교 물건을 [챙겨라]'],
+  ['trouble',2,'트러블','He got into trouble at school','','그는 학교에서 [곤란]에 빠졌다'],
+  ['strange',2,'스트레인지','I heard a strange loud sound','','나는 [이상한] 큰 소리를 들었다'],
+  ['sholy',2,'숄리','sholy','사전에 없는 단어','[사전에 없는 단어]'],
+  ['meat-thing',2,'미트 씽','He cooked a strange meat-thing','사전에 없는 조어','그는 이상한 [고기 같은 것]을 요리했다'],
+  ['gag',2,'개그','The funny gag made us laugh','3글자 짧은 단어','그 웃긴 [개그]는 우리를 웃게 했다'],
+  ['material',2,'머티리얼','This soft material feels nice','','이 부드러운 [재료]는 느낌이 좋다'],
+  ['pursuit',2,'퍼슈트','He runs in pursuit of dreams','','그는 꿈을 [좇아] 달린다'],
+  ['in terms of',2,'인 텀즈 오브','It is cheap in terms of price','','그것은 가격 [면에서] 싸다'],
+  ['whisper',2,'위스퍼','We must whisper in the library','','우리는 도서관에서 [속삭여야] 한다'],
+  ['choo choo',2,'추 추','The choo choo train moved fast','의성어 — 기차 소리','그 [칙칙폭폭] 기차가 빠르게 움직였다'],
+  ['rooster',2,'루스터','The loud rooster calls every morning','','시끄러운 [수탉]이 매일 아침 운다'],
+  ['volleyball',2,'발리볼','We often play volleyball after school','','우리는 방과 후에 자주 [배구]를 한다'],
+  ['rental shop',2,'렌탈 샵','The small rental shop opens early','','그 작은 [대여점]은 일찍 연다']
+];
+var POOL=AI_WORDS.filter(function(w){return !w[4];});  // 부적합 단어 제외
+
+var EX={items:[],idx:0,stage:1,results:[],rec:null};
+
+function shuffle(a){
+  a=a.slice();
+  for(var i=a.length-1;i>0;i--){
+    var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;
+  }
+  return a;
+}
+function show(id){
+  ['startScreen','quizScreen','resultScreen'].forEach(function(s){
+    $(s).style.display=s===id?'block':'none';
+  });
+}
+function startExam(n){
+  EX.items=shuffle(POOL).slice(0,Math.min(n,POOL.length));
+  EX.idx=0;EX.results=[];
+  show('quizScreen');
+  renderQ();
+}
+function renderQ(){
+  var it=EX.items[EX.idx];
+  EX.stage=1;
+  $('progress').textContent='문제 '+(EX.idx+1)+' / '+EX.items.length;
+  var re=new RegExp('\\b'+reEsc(it[0])+'\\b','i');
+  $('qSent').innerHTML=esc(it[3]).replace(re,'<span class="blank">'+esc(it[0])+'</span>');
+  $('qSentKo').innerHTML=esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>');
+  $('qLive').textContent='';
+  setStage();
+  $('micBtn').disabled=false;
+}
+function setStage(){
+  var msg=EX.stage===1?'마이크를 누르고 빈칸 단어를 말하세요 (단어만, 또는 문장 전체)':
+    EX.stage===2?'다시 한번 — 빈칸 단어를 또박또박 말하세요':
+    '마지막 — 문장 전체를 또박또박 읽어보세요';
+  $('qStage').textContent=EX.stage+'차 시도';
+  $('qStatus').textContent=msg;
+  $('qStatus').className='status';
+}
+function speak(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('이 브라우저는 음성 인식을 지원하지 않습니다.');return;}
+  if(EX.rec){try{EX.rec.abort();}catch(e){}}
+  var it=EX.items[EX.idx];
+  var rec=new SR();
+  EX.rec=rec;
+  rec.lang=EX.stage===2?'ko-KR':'en-US';
+  rec.continuous=false;rec.interimResults=true;rec.maxAlternatives=5;
+  $('micBtn').disabled=true;
+  $('micBtn').textContent='듣는 중...';
+  $('micBtn').className='rec';
+  $('qLive').textContent='';
+  var finalRes=null;
+  rec.onresult=function(e){
+    var interim='';
+    for(var i=0;i<e.results.length;i++){
+      var r=e.results[i];
+      if(r.isFinal)finalRes=r;else interim+=r[0].transcript;
+    }
+    $('qLive').textContent=interim||(finalRes?finalRes[0].transcript:'');
+  };
+  rec.onerror=function(){};
+  rec.onend=function(){
+    $('micBtn').disabled=false;
+    $('micBtn').textContent='말하기';
+    $('micBtn').className='';
+    grade(it,finalRes);
+  };
+  try{rec.start();}catch(e){
+    $('micBtn').disabled=false;$('micBtn').textContent='말하기';$('micBtn').className='';
+  }
+}
+function grade(it,finalRes){
+  var target=it[0],heard='',best=0;
+  if(finalRes){
+    heard=finalRes[0].transcript||'';
+    for(var i=0;i<finalRes.length;i++){
+      var t=finalRes[i].transcript||'';
+      var s=EX.stage===2?simNoSpace(t,it[2]):bestPhraseSim(t,target);
+      if(s>best)best=s;
+    }
+  }
+  $('qLive').textContent=heard||'(인식 결과 없음)';
+  if(best>=0.7){
+    var msg=EX.stage===1?'정답!':
+      EX.stage===2?'정답! 영어 발음을 조금 더 또박또박 연습해볼까요?':
+      '정답! 문장으로 잘 읽었어요';
+    $('qStatus').textContent=msg;
+    $('qStatus').className='status ok';
+    EX.results.push({word:target,correct:true,stage:EX.stage});
+    $('micBtn').disabled=true;
+    setTimeout(nextQ,1600);
+  }else if(EX.stage<3){
+    EX.stage++;
+    setStage();
+    $('qStatus').textContent='다르게 들렸어요 — '+$('qStatus').textContent;
+    $('qStatus').className='status retry';
+  }else{
+    $('qStatus').textContent='아쉬워요. 정답은 "'+esc(target)+'" 입니다.';
+    $('qStatus').className='status no';
+    EX.results.push({word:target,correct:false,stage:0});
+    $('micBtn').disabled=true;
+    setTimeout(nextQ,2400);
+  }
+}
+function nextQ(){
+  EX.idx++;
+  if(EX.idx>=EX.items.length)showResult();
+  else renderQ();
+}
+function showResult(){
+  show('resultScreen');
+  var correct=EX.results.filter(function(r){return r.correct;}).length;
+  var total=EX.results.length||1;
+  $('score').innerHTML='<div class="big">'+correct+' / '+EX.results.length+'</div>'+
+    '<div style="font-size:18px;font-weight:700;color:#475569;">'+Math.round(correct/total*100)+'점</div>';
+  var html='';
+  EX.results.forEach(function(r,i){
+    var label,cls;
+    if(!r.correct){label='오답';cls='r-no';}
+    else if(r.stage===1){label='1차 통과';cls='r-ok';}
+    else if(r.stage===2){label='2차 통과 (발음 연습 권장)';cls='r-near';}
+    else {label='3차 통과 (문장으로)';cls='r-near';}
+    html+='<div class="ritem '+cls+'"><span>'+(i+1)+'. '+esc(r.word)+'</span><span>'+label+'</span></div>';
+  });
+  $('itemList').innerHTML=html;
+}
+</script>
+</body>
+</html>
