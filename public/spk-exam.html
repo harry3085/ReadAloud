@@ -19,19 +19,23 @@ button{border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;
   background:#2563eb;}
 button:disabled{opacity:.45;}
 button:active{transform:scale(.97);}
-#progress{font-size:13px;color:#64748b;font-weight:700;text-align:center;margin:4px 0 10px;}
-.qcard{background:#fff;border-radius:14px;padding:22px 18px;
+#progress{font-size:13px;color:#64748b;font-weight:700;text-align:center;margin:4px 0 6px;}
+#qStage{margin:2px 0 10px;font-weight:700;font-size:14px;color:#7c3aed;text-align:center;}
+.qcard{background:#fff;border-radius:14px;padding:26px 18px;
   box-shadow:0 1px 6px rgba(0,0,0,.08);text-align:center;}
-#qSent{font-size:23px;font-weight:700;line-height:1.6;color:#111;}
-.blank{display:inline-block;min-width:80px;border-bottom:3px solid #2563eb;
-  color:transparent;}
+.mlabel{font-size:13px;color:#64748b;font-weight:700;}
+.mword{font-size:30px;font-weight:800;color:#111;margin-top:10px;line-height:1.4;}
+#qSent{font-size:22px;font-weight:700;line-height:1.6;color:#111;}
 #qSentKo{font-size:15px;color:#475569;margin-top:14px;line-height:1.6;}
 .hl{background:#fde68a;padding:1px 6px;border-radius:4px;font-weight:700;color:#92400e;}
-#qStage{margin:16px 0 4px;font-weight:700;font-size:14px;color:#7c3aed;text-align:center;}
-.live{min-height:40px;border:2px dashed #cbd5e1;border-radius:10px;padding:10px;
+.hintarea{text-align:center;margin:12px 0 4px;}
+#hintBtn{background:#0891b2;padding:9px 16px;font-size:13px;}
+#hintView{margin-top:8px;font-size:20px;font-weight:800;letter-spacing:3px;
+  color:#0891b2;font-family:ui-monospace,Menlo,monospace;min-height:24px;}
+.live{min-height:42px;border:2px dashed #cbd5e1;border-radius:10px;padding:10px;
   margin:8px 0;font-size:19px;text-align:center;color:#334155;}
 .micwrap{text-align:center;margin:10px 0;}
-#micBtn{width:130px;height:130px;border-radius:50%;font-size:17px;
+#micBtn{width:128px;height:128px;border-radius:50%;font-size:17px;
   background:#16a34a;box-shadow:0 4px 14px rgba(22,163,74,.35);}
 #micBtn.rec{background:#dc2626;box-shadow:0 4px 14px rgba(220,38,38,.4);}
 .status{margin-top:10px;padding:12px;border-radius:10px;font-size:15px;
@@ -55,10 +59,10 @@ button:active{transform:scale(.97);}
   <h1>단어 말하기 모의 시험</h1>
   <div class="card">
     <div class="muted">
-      빈칸에 들어갈 영어 단어를 말하는 시험입니다.<br>
-      해석의 <span class="hl">노란 부분</span>이 빈칸 단어의 뜻입니다.<br><br>
-      단어만 말해도, 문장 전체를 읽어도 됩니다.<br>
-      잘 인식되지 않으면 2·3차로 다시 기회가 주어집니다.
+      한글 뜻을 보고 영어 단어를 말하는 시험입니다.<br><br>
+      1·2차 — 한글 뜻만 보고 단어를 말합니다.<br>
+      3차 — 문장이 공개되며, 문장 전체를 읽습니다.<br>
+      단어가 떠오르지 않으면 <b>힌트</b>로 스펠링을 하나씩 볼 수 있습니다.
     </div>
     <div style="font-weight:700;margin-top:16px;">문제 수를 선택하세요</div>
     <div class="numbtns">
@@ -72,21 +76,26 @@ button:active{transform:scale(.97);}
 
 <div id="quizScreen" style="display:none;">
   <div id="progress"></div>
-  <div class="qcard">
-    <div id="qSent"></div>
-    <div id="qSentKo"></div>
-  </div>
   <div id="qStage"></div>
-  <div class="live" id="qLive"></div>
+  <div class="qcard">
+    <div id="qMeaning"></div>
+    <div id="qSentBox" style="display:none;">
+      <div id="qSent"></div>
+      <div id="qSentKo"></div>
+    </div>
+  </div>
+  <div class="hintarea" id="hintArea">
+    <button id="hintBtn" onclick="useHint()">힌트 (스펠링 한 글자)</button>
+    <div id="hintView"></div>
+  </div>
+  <div class="live" id="qLive" style="display:none;"></div>
   <div class="micwrap"><button id="micBtn" onclick="speak()">말하기</button></div>
   <div class="status" id="qStatus"></div>
 </div>
 
 <div id="resultScreen" style="display:none;">
   <h1>시험 결과</h1>
-  <div class="card">
-    <div id="score"></div>
-  </div>
+  <div class="card"><div id="score"></div></div>
   <div class="card">
     <div style="font-weight:700;font-size:13px;color:#475569;margin-bottom:6px;">문항별 결과</div>
     <div id="itemList"></div>
@@ -125,7 +134,6 @@ function sim(a,b){
 function simNoSpace(a,b){
   return sim((a||'').replace(/\s/g,''),(b||'').replace(/\s/g,''));
 }
-// 문장에서 목표(한 단어 또는 구)만 찾아 비교 — 다른 단어는 비교 X
 function bestPhraseSim(sentence,target){
   var sw=(sentence||'').toLowerCase().replace(/[^a-z'\s가-힣]/g,' ').split(/\s+/).filter(Boolean);
   var tw=(target||'').toLowerCase().split(/\s+/).filter(Boolean);
@@ -219,9 +227,9 @@ var AI_WORDS=[
   ['volleyball',2,'발리볼','We often play volleyball after school','','우리는 방과 후에 자주 [배구]를 한다'],
   ['rental shop',2,'렌탈 샵','The small rental shop opens early','','그 작은 [대여점]은 일찍 연다']
 ];
-var POOL=AI_WORDS.filter(function(w){return !w[4];});  // 부적합 단어 제외
+var POOL=AI_WORDS.filter(function(w){return !w[4];});
 
-var EX={items:[],idx:0,stage:1,results:[],rec:null};
+var EX={items:[],idx:0,stage:1,hint:0,results:[],rec:null};
 
 function shuffle(a){
   a=a.slice();
@@ -241,24 +249,59 @@ function startExam(n){
   show('quizScreen');
   renderQ();
 }
+function meaningOf(it){
+  var m=it[5].match(/\[([^\]]+)\]/);
+  return m?m[1]:it[0];
+}
 function renderQ(){
-  var it=EX.items[EX.idx];
-  EX.stage=1;
+  EX.stage=1;EX.hint=0;
   $('progress').textContent='문제 '+(EX.idx+1)+' / '+EX.items.length;
-  var re=new RegExp('\\b'+reEsc(it[0])+'\\b','i');
-  $('qSent').innerHTML=esc(it[3]).replace(re,'<span class="blank">'+esc(it[0])+'</span>');
-  $('qSentKo').innerHTML=esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>');
-  $('qLive').textContent='';
-  setStage();
+  updateHint();
+  renderStageView();
   $('micBtn').disabled=false;
 }
-function setStage(){
-  var msg=EX.stage===1?'마이크를 누르고 빈칸 단어를 말하세요 (단어만, 또는 문장 전체)':
-    EX.stage===2?'다시 한번 — 빈칸 단어를 또박또박 말하세요':
-    '마지막 — 문장 전체를 또박또박 읽어보세요';
+function renderStageView(){
+  var it=EX.items[EX.idx];
   $('qStage').textContent=EX.stage+'차 시도';
-  $('qStatus').textContent=msg;
-  $('qStatus').className='status';
+  if(EX.stage<3){
+    // 1·2차 — 한글 뜻만 (영어 문장·실시간 표기 없음)
+    $('qMeaning').style.display='block';
+    $('qSentBox').style.display='none';
+    $('qLive').style.display='none';
+    $('hintArea').style.display='block';
+    $('qMeaning').innerHTML='<div class="mlabel">이 뜻의 영어 단어를 말하세요</div>'+
+      '<div class="mword">'+esc(meaningOf(it))+'</div>';
+    $('qStatus').textContent=EX.stage===1?'마이크를 누르고 말하세요':
+      '다시 한번 — 단어를 또박또박 말하세요';
+    $('qStatus').className='status';
+  }else{
+    // 3차 — 문장 공개 + 실시간 표기
+    $('qMeaning').style.display='none';
+    $('qSentBox').style.display='block';
+    $('qLive').style.display='block';
+    $('qLive').textContent='';
+    $('hintArea').style.display='none';
+    var re=new RegExp('\\b'+reEsc(it[0])+'\\b','i');
+    $('qSent').innerHTML=esc(it[3]).replace(re,function(m){return '<span class="hl">'+m+'</span>';});
+    $('qSentKo').innerHTML=esc(it[5]).replace(/\[([^\]]+)\]/g,'<span class="hl">$1</span>');
+    $('qStatus').textContent='문장 전체를 또박또박 읽어보세요';
+    $('qStatus').className='status';
+  }
+}
+function useHint(){
+  var w=EX.items[EX.idx][0];
+  if(EX.hint<w.length)EX.hint++;
+  updateHint();
+}
+function updateHint(){
+  var w=EX.items[EX.idx][0];
+  if(EX.hint<=0){$('hintView').textContent='';}
+  else{
+    var shown=w.slice(0,EX.hint);
+    var rest=w.slice(EX.hint).replace(/[^ ]/g,'_');
+    $('hintView').textContent=shown+rest;
+  }
+  $('hintBtn').disabled=EX.hint>=w.length;
 }
 function speak(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -272,7 +315,7 @@ function speak(){
   $('micBtn').disabled=true;
   $('micBtn').textContent='듣는 중...';
   $('micBtn').className='rec';
-  $('qLive').textContent='';
+  if(EX.stage===3)$('qLive').textContent='';
   var finalRes=null;
   rec.onresult=function(e){
     var interim='';
@@ -280,7 +323,8 @@ function speak(){
       var r=e.results[i];
       if(r.isFinal)finalRes=r;else interim+=r[0].transcript;
     }
-    $('qLive').textContent=interim||(finalRes?finalRes[0].transcript:'');
+    // 실시간 표기는 3차에서만 (1·2차는 답 노출 방지)
+    if(EX.stage===3)$('qLive').textContent=interim||(finalRes?finalRes[0].transcript:'');
   };
   rec.onerror=function(){};
   rec.onend=function(){
@@ -294,34 +338,32 @@ function speak(){
   }
 }
 function grade(it,finalRes){
-  var target=it[0],heard='',best=0;
+  var target=it[0],best=0;
   if(finalRes){
-    heard=finalRes[0].transcript||'';
     for(var i=0;i<finalRes.length;i++){
       var t=finalRes[i].transcript||'';
       var s=EX.stage===2?simNoSpace(t,it[2]):bestPhraseSim(t,target);
       if(s>best)best=s;
     }
   }
-  $('qLive').textContent=heard||'(인식 결과 없음)';
   if(best>=0.7){
     var msg=EX.stage===1?'정답!':
       EX.stage===2?'정답! 영어 발음을 조금 더 또박또박 연습해볼까요?':
       '정답! 문장으로 잘 읽었어요';
     $('qStatus').textContent=msg;
     $('qStatus').className='status ok';
-    EX.results.push({word:target,correct:true,stage:EX.stage});
+    EX.results.push({word:target,correct:true,stage:EX.stage,hint:EX.hint});
     $('micBtn').disabled=true;
     setTimeout(nextQ,1600);
   }else if(EX.stage<3){
     EX.stage++;
-    setStage();
+    renderStageView();
     $('qStatus').textContent='다르게 들렸어요 — '+$('qStatus').textContent;
     $('qStatus').className='status retry';
   }else{
     $('qStatus').textContent='아쉬워요. 정답은 "'+esc(target)+'" 입니다.';
     $('qStatus').className='status no';
-    EX.results.push({word:target,correct:false,stage:0});
+    EX.results.push({word:target,correct:false,stage:0,hint:EX.hint});
     $('micBtn').disabled=true;
     setTimeout(nextQ,2400);
   }
@@ -344,6 +386,7 @@ function showResult(){
     else if(r.stage===1){label='1차 통과';cls='r-ok';}
     else if(r.stage===2){label='2차 통과 (발음 연습 권장)';cls='r-near';}
     else {label='3차 통과 (문장으로)';cls='r-near';}
+    if(r.hint>0)label+=' · 힌트 '+r.hint;
     html+='<div class="ritem '+cls+'"><span>'+(i+1)+'. '+esc(r.word)+'</span><span>'+label+'</span></div>';
   });
   $('itemList').innerHTML=html;
