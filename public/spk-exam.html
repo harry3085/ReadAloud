@@ -68,13 +68,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   margin:0 2px;border-bottom-width:2px;vertical-align:-2px;}
 .spell-inline .sp-gap{display:inline-block;width:7px;}
 
-/* 정답 노출 — 카드 아래 */
-.answerbox{margin:10px 16px 0;padding:12px;background:#dcfce7;border-radius:14px;
-  text-align:center;flex-shrink:0;}
-.answerbox .alabel{font-size:11px;color:#15803d;font-weight:700;}
-.answerbox .aword{font-size:26px;font-weight:800;color:#15803d;margin-top:2px;
-  letter-spacing:1px;}
-
 .spacer{flex:1;}
 .live{margin:8px 16px 0;min-height:42px;border:2px dashed #e5d5cc;border-radius:12px;
   padding:10px;font-size:19px;text-align:center;color:#334155;flex-shrink:0;}
@@ -85,9 +78,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .micbtn.rec{background:#dc2626;box-shadow:0 4px 16px rgba(220,38,38,.4);}
 .micbtn:disabled{opacity:.5;}
 .micbtn:active{transform:scale(.96);}
-.status{margin:0 16px;padding:13px;border-radius:12px;font-size:15px;font-weight:700;
+.status{margin:10px 16px 0;padding:13px;border-radius:12px;font-size:15px;font-weight:700;
   text-align:center;line-height:1.5;background:var(--cream);color:var(--teal-dark);
   flex-shrink:0;}
+.status b{font-size:19px;}
 .status.ok{background:#dcfce7;color:#15803d;}
 .status.no{background:#fee2e2;color:#b91c1c;}
 .status.retry{background:#fef3c7;color:#b45309;}
@@ -158,11 +152,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     <div class="qcard-head" id="qHead"></div>
     <div class="qcard-body" id="qBody"></div>
   </div>
-  <div class="answerbox" id="answerBox" style="display:none;"></div>
+  <div class="status" id="qStatus"></div>
   <div class="spacer"></div>
   <div class="live" id="qLive" style="display:none;"></div>
   <div class="miczone"><button class="micbtn" id="micBtn" onclick="speak()">🎤</button></div>
-  <div class="status" id="qStatus"></div>
   <div class="btnrow">
     <button class="rowbtn hint" id="hintBtn" onclick="useHint()">힌트</button>
     <button class="rowbtn next" id="nextBtn" onclick="goNext()" disabled>다음</button>
@@ -335,7 +328,6 @@ function renderQ(){
   EX.stage=1;EX.hint=0;
   $('pPill').textContent=(EX.idx+1)+' / '+EX.items.length;
   $('pBar').style.width=Math.round((EX.idx+1)/EX.items.length*100)+'%';
-  $('answerBox').style.display='none';
   $('nextBtn').disabled=true;
   $('skipBtn').disabled=false;
   $('micBtn').disabled=false;
@@ -385,12 +377,6 @@ function renderAnswerSlot(){
       '<span class="spell-inline">'+spellBoxes(w)+'</span>';
     qs.innerHTML=esc(it[3]).replace(re,fill);
   }
-}
-// 채점 후 정답 단어 — 카드(문제 박스) 아래 answerBox 에 노출
-function revealAnswer(){
-  var w=EX.items[EX.idx][0];
-  $('answerBox').innerHTML='<div class="alabel">정답</div><div class="aword">'+esc(w)+'</div>';
-  $('answerBox').style.display='block';
 }
 function useHint(){
   var w=EX.items[EX.idx][0];
@@ -447,7 +433,7 @@ function grade(it,finalRes){
     var msg=EX.stage===1?'정답!':
       EX.stage===2?'정답! 영어 발음을 조금 더 또박또박 연습해볼까요?':
       '정답! 문장으로 잘 읽었어요';
-    $('qStatus').textContent=msg;
+    $('qStatus').innerHTML=esc(msg)+'<br><b>'+esc(target)+'</b>';
     $('qStatus').className='status ok';
     EX.results.push({word:target,correct:true,stage:EX.stage,hint:EX.hint});
     finishQuestion();
@@ -458,7 +444,7 @@ function grade(it,finalRes){
     $('qStatus').className='status retry';
     $('micBtn').disabled=false;
   }else{
-    $('qStatus').textContent='아쉬워요. 정답을 확인하세요.';
+    $('qStatus').innerHTML='아쉬워요. 정답: <b>'+esc(target)+'</b>';
     $('qStatus').className='status no';
     EX.results.push({word:target,correct:false,stage:0,hint:EX.hint});
     finishQuestion();
@@ -466,7 +452,6 @@ function grade(it,finalRes){
 }
 // 채점 종료 — 정답 노출 + 버튼 상태(다음만 활성)
 function finishQuestion(){
-  revealAnswer();
   $('micBtn').disabled=true;
   $('hintBtn').disabled=true;
   $('skipBtn').disabled=true;
