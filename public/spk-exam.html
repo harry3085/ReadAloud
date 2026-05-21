@@ -60,6 +60,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 /* 정답칸 빈칸 스펠링 */
 .ansslot{text-align:center;padding:6px 0;}
 .slot-hint-msg{color:var(--gray);font-size:13px;}
+.answer-reveal{font-size:30px;font-weight:800;color:#15803d;letter-spacing:1px;}
+.answer-inline{background:#dcfce7;color:#15803d;padding:2px 9px;border-radius:5px;
+  font-weight:800;}
 .sp-box{display:inline-block;border-bottom:3px solid var(--teal);text-align:center;
   font-weight:800;color:var(--teal);}
 .ansslot .sp-box{width:30px;height:40px;line-height:40px;font-size:23px;margin:0 4px;}
@@ -373,6 +376,20 @@ function renderAnswerSlot(){
     qs.innerHTML=esc(it[3]).replace(re,fill);
   }
 }
+// 채점 후 정답 단어 노출 — 1·2차 정답칸 / 3차 문장 빈칸 자리
+function revealAnswer(){
+  var it=EX.items[EX.idx],w=it[0];
+  if(EX.stage<3){
+    var slot=$('ansSlot');
+    if(slot)slot.innerHTML='<div class="answer-reveal">'+esc(w)+'</div>';
+  }else{
+    var qs=$('qSent');
+    if(qs){
+      var re=new RegExp('\\b'+reEsc(w)+'\\b','i');
+      qs.innerHTML=esc(it[3]).replace(re,'<span class="answer-inline">'+esc(w)+'</span>');
+    }
+  }
+}
 function useHint(){
   var w=EX.items[EX.idx][0];
   if(EX.hint<2 && EX.hint<w.length)EX.hint++;
@@ -433,6 +450,7 @@ function grade(it,finalRes){
     $('qStatus').textContent=msg;
     $('qStatus').className='status ok';
     EX.results.push({word:target,correct:true,stage:EX.stage,hint:EX.hint});
+    revealAnswer();
     $('micBtn').disabled=true;
     showNext();
   }else if(EX.stage<3){
@@ -444,6 +462,7 @@ function grade(it,finalRes){
     $('qStatus').textContent='아쉬워요. 정답은 "'+esc(target)+'" 입니다.';
     $('qStatus').className='status no';
     EX.results.push({word:target,correct:false,stage:0,hint:EX.hint});
+    revealAnswer();
     $('micBtn').disabled=true;
     showNext();
   }
