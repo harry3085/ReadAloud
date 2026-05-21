@@ -91,9 +91,11 @@ function _compYmd(c) {
       const ymd = _compYmd(c);
       if (!inRange(ymd)) { skippedByDate++; continue; }
       const answers = Array.isArray(c.answers) ? c.answers : [];
+      const questions = Array.isArray(c.questions) ? c.questions : [];
       if (!answers.length) continue;
       scannedComps++;
-      for (const a of answers) {
+      for (let i = 0; i < answers.length; i++) {
+        const a = answers[i];
         if (!a || a.format !== 'speaking') continue;
         totalSpeakingAns++;
         const sCount = parseInt(a.spkAttempts);
@@ -105,7 +107,8 @@ function _compYmd(c) {
         else if (s === 'ai-error') src['ai-error']++;
         else src.other++;
         if (s === 'ai' || s === 'ai-error') {
-          const w = String(a._word || a.word || '').toLowerCase().trim();
+          const q = questions[i] || {};
+          const w = String(a._word || a.word || q.word || '').toLowerCase().trim();
           if (w) wordToAi[w] = (wordToAi[w] || 0) + 1;
           if (a.spkCorrect) aiCorrect++; else aiWrong++;
         }
