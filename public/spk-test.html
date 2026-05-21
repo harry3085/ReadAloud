@@ -263,22 +263,80 @@ function showResult(mode,target,result){
 
 // 최근 7일(5/16~5/22) 단어 말하기에서 3차 AI 로 넘어간 단어 — 빈도순
 // (한글 섞인 패턴·변화형 표기 제외, 빈도 2회 이상)
+// [단어, 빈도, 한글발음표기(기본값), 3차 문장] — 한글표기·문장은 기본값, 직접 수정 가능
 var AI_WORDS=[
-  ['whip',15],['stuff',14],['trick',11],['feel',11],['blob',10],
-  ['roll up',9],['wild',8],['destroy',8],['be destroyed',8],
-  ['astound',7],['amaze',7],['ought to',7],['very',7],['pass',7],['smell',7],
-  ['cans of squirt cheese',6],['tease',6],['dibble dibble',6],
-  ['fuel',5],['squirt',5],['horn',5],
-  ['pirate treasure',4],['go wild',4],['door',4],['as though',4],['claim',4],
-  ['be replaced',3],['gooey',3],['respond',3],['training lesson',3],['earn',3],
-  ['vegetable',3],['dig for',3],['assume',3],['soft',3],
-  ['build',2],['mineral',2],['be limited',2],['natural',2],['his own lunch',2],
-  ['grayish-brown',2],['after school',2],['beast',2],['decide',2],['set up',2],
-  ['extra',2],['product',2],['any person',2],['profit',2],['service',2],
-  ['butterfly',2],['cat',2],['think',2],['roll',2],['futuristic',2],['dowel',2],
-  ['assign',2],['killed',2],['pack up',2],['trouble',2],['strange',2],['sholy',2],
-  ['meat-thing',2],['gag',2],['material',2],['pursuit',2],['in terms of',2],
-  ['whisper',2],['choo choo',2],['rooster',2],['volleyball',2],['rental shop',2]
+  ['whip',15,'윕','He will whip the cream'],
+  ['stuff',14,'스터프','Put your stuff in the bag'],
+  ['trick',11,'트릭','The magician did a trick'],
+  ['feel',11,'필','I feel better than yesterday'],
+  ['blob',10,'블롭','A blob of paint fell down'],
+  ['roll up',9,'롤 업','Roll up the carpet'],
+  ['wild',8,'와일드','The wild animal ran away'],
+  ['destroy',8,'디스트로이','The storm will destroy the house'],
+  ['be destroyed',8,'비 디스트로이드','The old house will be destroyed'],
+  ['astound',7,'어스타운드','The news will astound you'],
+  ['amaze',7,'어메이즈','Magic tricks amaze me'],
+  ['ought to',7,'오트 투','You ought to rest early'],
+  ['very',7,'베리','This soup is very hot'],
+  ['pass',7,'패스','Please pass me the salt'],
+  ['smell',7,'스멜','I smell fresh bread'],
+  ['cans of squirt cheese',6,'캔즈 오브 스쿼트 치즈','She bought cans of squirt cheese'],
+  ['tease',6,'티즈','Do not tease your sister'],
+  ['dibble dibble',6,'디블 디블','I heard a dibble dibble sound'],
+  ['fuel',5,'퓨얼','The car needs more fuel'],
+  ['squirt',5,'스쿼트','Squirt some water on the plant'],
+  ['horn',5,'혼','The car horn is very loud'],
+  ['pirate treasure',4,'파이럿 트레저','We found pirate treasure'],
+  ['go wild',4,'고 와일드','The fans go wild'],
+  ['door',4,'도어','Please close the door'],
+  ['as though',4,'애즈 도우','He runs as though he is late'],
+  ['claim',4,'클레임','She will claim the prize'],
+  ['be replaced',3,'비 리플레이스드','The light will be replaced'],
+  ['gooey',3,'구이','The candy is soft and gooey'],
+  ['respond',3,'리스폰드','Please respond to my message'],
+  ['training lesson',3,'트레이닝 레슨','I have a training lesson today'],
+  ['earn',3,'언','I earn money by working'],
+  ['vegetable',3,'베지터블','A carrot is a vegetable'],
+  ['dig for',3,'딕 포','Dogs dig for bones'],
+  ['assume',3,'어슘','Do not assume the answer'],
+  ['soft',3,'소프트','The pillow is very soft'],
+  ['build',2,'빌드','They will build a new house'],
+  ['mineral',2,'미네랄','Iron is a mineral'],
+  ['be limited',2,'비 리미티드','The tickets will be limited'],
+  ['natural',2,'내추럴','Honey is a natural food'],
+  ['his own lunch',2,'히즈 오운 런치','He packs his own lunch'],
+  ['grayish-brown',2,'그레이시 브라운','The dog has grayish-brown fur'],
+  ['after school',2,'애프터 스쿨','We meet after school'],
+  ['beast',2,'비스트','The beast lived in the forest'],
+  ['decide',2,'디사이드','You must decide now'],
+  ['set up',2,'셋 업','We set up the tent'],
+  ['extra',2,'엑스트라','I have an extra pencil'],
+  ['product',2,'프로덕트','This product is brand new'],
+  ['any person',2,'애니 퍼슨','Any person can join us'],
+  ['profit',2,'프로핏','The shop made a profit'],
+  ['service',2,'서비스','The hotel service is good'],
+  ['butterfly',2,'버터플라이','A butterfly has pretty wings'],
+  ['cat',2,'캣','The cat is sleeping now'],
+  ['think',2,'씽크','I think you are right'],
+  ['roll',2,'롤','The ball will roll down'],
+  ['futuristic',2,'퓨처리스틱','The car looks futuristic'],
+  ['dowel',2,'다월','He used a wooden dowel'],
+  ['assign',2,'어사인','The teacher will assign homework'],
+  ['killed',2,'킬드','The frost killed the plant'],
+  ['pack up',2,'팩 업','Please pack up your things'],
+  ['trouble',2,'트러블','He is in big trouble'],
+  ['strange',2,'스트레인지','I heard a strange sound'],
+  ['sholy',2,'숄리','sholy'],
+  ['meat-thing',2,'미트 씽','He made a meat-thing'],
+  ['gag',2,'개그','The clown told a funny gag'],
+  ['material',2,'머티리얼','This material is very soft'],
+  ['pursuit',2,'퍼슈트','He is in pursuit of a dream'],
+  ['in terms of',2,'인 텀즈 오브','It is cheap in terms of price'],
+  ['whisper',2,'위스퍼','Please whisper in the library'],
+  ['choo choo',2,'추 추','The train goes choo choo'],
+  ['rooster',2,'루스터','The rooster crows in the morning'],
+  ['volleyball',2,'발리볼','We play volleyball at school'],
+  ['rental shop',2,'렌탈 샵','The rental shop is closed today']
 ];
 (function(){
   var sel=$('wordPick');
@@ -294,9 +352,11 @@ var AI_WORDS=[
 function pickWord(){
   var v=$('wordPick').value;
   if(!v)return;
+  var found=null;
+  for(var i=0;i<AI_WORDS.length;i++){if(AI_WORDS[i][0]===v){found=AI_WORDS[i];break;}}
   $('targetWord').value=v;
-  $('targetKo').value='';
-  $('targetSent').value='';
+  $('targetKo').value=found&&found[2]?found[2]:'';
+  $('targetSent').value=found&&found[3]?found[3]:'';
 }
 function playWord(){
   var w=$('targetWord').value.trim();
