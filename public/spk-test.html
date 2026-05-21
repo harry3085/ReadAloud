@@ -31,6 +31,8 @@ button:disabled{opacity:.4;}
 .bstop{background:#dc2626;}
 #mode{font-weight:700;font-size:14px;margin-top:8px;}
 #prompt{margin-top:4px;}
+.unfit{margin-top:8px;padding:8px 10px;background:#fef3c7;color:#92400e;
+  border-radius:6px;font-size:13px;font-weight:700;}
 .live{min-height:52px;border:2px dashed #cbd5e1;border-radius:8px;padding:10px;
   margin-top:8px;font-size:20px;line-height:1.4;}
 .interim{color:#94a3b8;}
@@ -40,7 +42,7 @@ table{width:100%;border-collapse:collapse;font-size:13px;}
 th,td{border:1px solid #e2e8f0;padding:5px 6px;text-align:left;word-break:break-all;}
 th{background:#f1f5f9;}
 .verdict{margin-top:10px;padding:12px;border-radius:8px;font-weight:700;
-  font-size:15px;text-align:center;line-height:1.5;}
+  font-size:16px;text-align:center;line-height:1.5;}
 .v-ok{background:#dcfce7;color:#15803d;}
 .v-near{background:#fef3c7;color:#b45309;}
 .v-no{background:#fee2e2;color:#b91c1c;}
@@ -60,13 +62,13 @@ th{background:#f1f5f9;}
   <select id="wordPick" onchange="pickWord()"></select>
   <label>목표 단어</label>
   <div class="wordrow">
-    <input type="text" id="targetWord" value="right">
+    <input type="text" id="targetWord" value="right" oninput="showUnfit('')">
     <button type="button" class="bplay" onclick="playWord()">정답 발음 듣기</button>
   </div>
-  <label>한글 발음표기 <span class="muted">(2차 한국어 STT 비교용 · 선택)</span></label>
+  <label>한글 발음표기 <span class="muted">(2차 한국어 STT 비교용 · 공백 무시하고 비교)</span></label>
   <input type="text" id="targetKo" value="라이트">
-  <label>3차 문장 <span class="muted">(목표 단어가 포함된 문장)</span></label>
-  <input type="text" id="targetSent" value="Turn right at the next corner">
+  <label>3차 문장 <span class="muted">(목표 단어를 문장 가운데 배치)</span></label>
+  <input type="text" id="targetSent" value="Please turn right at the next corner">
 
   <div class="btns">
     <button class="b1" id="btn1" onclick="start('en')">1차<br>영어 STT</button>
@@ -78,6 +80,7 @@ th{background:#f1f5f9;}
   </div>
   <div id="mode"></div>
   <div id="prompt" class="muted"></div>
+  <div id="unfit"></div>
 </div>
 
 <div class="card">
@@ -119,12 +122,28 @@ function sim(a,b){
   if(!L)return 0;
   return 1-lev(a,b)/L;
 }
-function bestWordSim(sentence,target){
-  var words=(sentence||'').toLowerCase().replace(/[^a-z'\s가-힣]/g,' ').split(/\s+/).filter(Boolean);
+// 공백 무시 비교 — STT 가 두 단어를 붙여 인식하는 케이스 대응 (피드백 1)
+function simNoSpace(a,b){
+  return sim((a||'').replace(/\s/g,''),(b||'').replace(/\s/g,''));
+}
+// 문장 안에서 목표(한 단어 또는 여러 단어 구)를 찾는 유사도 (피드백 2)
+function bestPhraseSim(sentence,target){
+  var sw=(sentence||'').toLowerCase().replace(/[^a-z'\s가-힣]/g,' ').split(/\s+/).filter(Boolean);
+  var tw=(target||'').toLowerCase().split(/\s+/).filter(Boolean);
+  var n=tw.length;
+  if(!n||!sw.length)return {sim:0,word:''};
+  var tgtJoin=tw.join('');
   var best=0,bestW='';
-  for(var i=0;i<words.length;i++){
-    var s=sim(words[i],target);
-    if(s>best){best=s;bestW=words[i];}
+  for(var i=0;i+n<=sw.length;i++){
+    var win=sw.slice(i,i+n);
+    var s=Math.max(sim(win.join(' '),tw.join(' ')),sim(win.join(''),tgtJoin));
+    if(s>best){best=s;bestW=win.join(' ');}
+  }
+  if(n>1){  // 구를 STT 가 한 단어로 붙여 인식한 경우
+    for(var j=0;j<sw.length;j++){
+      var s2=sim(sw[j],tgtJoin);
+      if(s2>best){best=s2;bestW=sw[j];}
+    }
   }
   return {sim:best,word:bestW};
 }
@@ -180,8 +199,8 @@ function start(mode){
     log('onend');
     setBusy(false);
     if(!firstT){
-      $('result').innerHTML='<div class="verdict v-no">인식 결과 없음 (onresult 미발생)<br>'+
-        '<span style="font-size:12px;font-weight:400;">발음이 인식 임계값에 못 미쳤거나 무음 — 안드로이드 Chrome의 전형적 한계 케이스</span></div>';
+      $('result').innerHTML='<div class="verdict v-no">오답<br>'+
+        '<span style="font-size:12px;font-weight:400;">인식 결과 없음 (onresult 미발생) — 발음이 인식 임계값에 못 미쳤거나 무음. 안드로이드 Chrome 의 전형적 한계 케이스.</span></div>';
     }
   };
   rec.onresult=function(e){
@@ -217,15 +236,15 @@ function showResult(mode,target,result){
   html+='<table><tr><th>#</th><th>인식 텍스트</th><th>신뢰도</th>';
   if(mode!=='ko')html+='<th>목표 유사도</th>';
   html+='</tr>';
-  var bestSim=0;
+  var bestSim=0,bestWord='';
   for(i=0;i<alts.length;i++){
     var a=alts[i];
-    html+='<tr><td>'+(i+1)+'</td><td>'+esc(a.t)+'</td><td>'+
+    html+='<tr><td>'+(i+1)+'</td><td>'+esc(a.t||'(빈 결과)')+'</td><td>'+
       (a.c!=null&&a.c>0?(a.c*100).toFixed(0)+'%':'미제공')+'</td>';
     if(mode!=='ko'){
       var s;
-      if(mode==='sentence'){s=bestWordSim(a.t,target).sim;}
-      else s=sim(a.t,target);
+      if(mode==='sentence'){var bp=bestPhraseSim(a.t,target);s=bp.sim;if(s>bestSim){bestWord=bp.word;}}
+      else {s=sim(a.t,target);if(s>bestSim){bestWord=a.t;}}
       if(s>bestSim)bestSim=s;
       html+='<td>'+(s*100).toFixed(0)+'%</td>';
     }
@@ -233,110 +252,112 @@ function showResult(mode,target,result){
   }
   html+='</table>';
 
+  var v;
   if(mode==='ko'){
     var ko=$('targetKo').value.trim();
     var heard=alts[0]?alts[0].t:'';
-    if(ko){
-      var ks=sim(heard,ko);
-      var cls=ks>=0.7?'v-ok':ks>=0.4?'v-near':'v-no';
-      html+='<div class="verdict '+cls+'">한글 인식: "'+esc(heard)+'"<br>'+
-        '발음표기 "'+esc(ko)+'" 와 유사도 '+(ks*100).toFixed(0)+'%</div>';
+    if(!ko){
+      v={cls:'v-near',title:'판정 보류',sub:'한글 인식 "'+esc(heard)+'" — 발음표기를 입력하면 정답/오답이 표시됩니다'};
     }else{
-      html+='<div class="verdict v-near">한글 인식 결과: "'+esc(heard)+'"<br>'+
-        '<span style="font-size:12px;font-weight:400;">한글 발음표기를 입력하면 유사도도 표시됩니다</span></div>';
+      var ks=simNoSpace(heard,ko);
+      if(ks>=0.7) v={cls:'v-ok',title:'정답',sub:'한글 인식 "'+esc(heard)+'" ≈ 발음표기 "'+esc(ko)+'" (공백 무시 유사도 '+(ks*100).toFixed(0)+'%)'};
+      else v={cls:'v-no',title:'오답',sub:'사유: 한글 인식 "'+esc(heard)+'" 가 발음표기 "'+esc(ko)+'" 와 다름 (공백 무시 유사도 '+(ks*100).toFixed(0)+'%)'};
     }
-  }else if(mode==='sentence'){
-    var fin=alts[0]?alts[0].t:'';
-    var bw=bestWordSim(fin,target);
-    var found=bw.sim>=0.85;
-    var cls2=found?'v-ok':bw.sim>=0.6?'v-near':'v-no';
-    html+='<div class="verdict '+cls2+'">'+
-      (found?'문장 속에서 목표 단어 발견':'목표 단어 미발견')+'<br>'+
-      '가장 가까운 단어: "'+esc(bw.word)+'" ('+(bw.sim*100).toFixed(0)+'%)</div>';
   }else{
-    var cls3=bestSim>=0.99?'v-ok':bestSim>=0.7?'v-near':'v-no';
-    var label=bestSim>=0.99?'정확 일치':bestSim>=0.7?'유사 (발음 차이 가능)':'불일치';
-    html+='<div class="verdict '+cls3+'">'+label+' · 최고 유사도 '+(bestSim*100).toFixed(0)+'%</div>';
+    var heard0=alts[0]?alts[0].t:'';
+    if(bestSim>=0.85){
+      v={cls:'v-ok',title:'정답',sub:(mode==='sentence'?'문장 속에서 목표 단어 발견':'정확하게 인식됨')+' (유사도 '+(bestSim*100).toFixed(0)+'%)'};
+    }else if(bestSim>=0.7){
+      v={cls:'v-near',title:'정답 (발음 차이 있음)',sub:'유사도 '+(bestSim*100).toFixed(0)+'% — 인식되었으나 정확하지 않음'};
+    }else{
+      var reason;
+      if(!heard0) reason='인식 결과 없음 — 발음이 약하거나 무음 (안드로이드 한계 케이스)';
+      else if(mode==='sentence') reason='문장에서 목표 단어를 못 찾음 — 가장 가까운 단어 "'+esc(bestWord)+'" ('+(bestSim*100).toFixed(0)+'%)';
+      else reason='다른 단어로 인식됨 "'+esc(heard0)+'" — 목표와 유사도 '+(bestSim*100).toFixed(0)+'%';
+      v={cls:'v-no',title:'오답',sub:'사유: '+reason};
+    }
   }
+  html+='<div class="verdict '+v.cls+'">'+v.title+'<br>'+
+    '<span style="font-size:12px;font-weight:400;">'+v.sub+'</span></div>';
   $('result').innerHTML=html;
 }
 
 // 최근 7일(5/16~5/22) 단어 말하기에서 3차 AI 로 넘어간 단어 — 빈도순
 // (한글 섞인 패턴·변화형 표기 제외, 빈도 2회 이상)
-// [단어, 빈도, 한글발음표기(기본값), 3차 문장] — 한글표기·문장은 기본값, 직접 수정 가능
+// [단어, 빈도, 한글발음표기, 3차 문장(목표 단어 가운데 배치), 말하기 부적합 사유]
 var AI_WORDS=[
-  ['whip',15,'윕','He will whip the cream'],
-  ['stuff',14,'스터프','Put your stuff in the bag'],
-  ['trick',11,'트릭','The magician did a trick'],
-  ['feel',11,'필','I feel better than yesterday'],
-  ['blob',10,'블롭','A blob of paint fell down'],
-  ['roll up',9,'롤 업','Roll up the carpet'],
-  ['wild',8,'와일드','The wild animal ran away'],
-  ['destroy',8,'디스트로이','The storm will destroy the house'],
-  ['be destroyed',8,'비 디스트로이드','The old house will be destroyed'],
-  ['astound',7,'어스타운드','The news will astound you'],
-  ['amaze',7,'어메이즈','Magic tricks amaze me'],
-  ['ought to',7,'오트 투','You ought to rest early'],
-  ['very',7,'베리','This soup is very hot'],
-  ['pass',7,'패스','Please pass me the salt'],
-  ['smell',7,'스멜','I smell fresh bread'],
-  ['cans of squirt cheese',6,'캔즈 오브 스쿼트 치즈','She bought cans of squirt cheese'],
-  ['tease',6,'티즈','Do not tease your sister'],
-  ['dibble dibble',6,'디블 디블','I heard a dibble dibble sound'],
-  ['fuel',5,'퓨얼','The car needs more fuel'],
-  ['squirt',5,'스쿼트','Squirt some water on the plant'],
-  ['horn',5,'혼','The car horn is very loud'],
-  ['pirate treasure',4,'파이럿 트레저','We found pirate treasure'],
-  ['go wild',4,'고 와일드','The fans go wild'],
-  ['door',4,'도어','Please close the door'],
-  ['as though',4,'애즈 도우','He runs as though he is late'],
-  ['claim',4,'클레임','She will claim the prize'],
-  ['be replaced',3,'비 리플레이스드','The light will be replaced'],
-  ['gooey',3,'구이','The candy is soft and gooey'],
-  ['respond',3,'리스폰드','Please respond to my message'],
-  ['training lesson',3,'트레이닝 레슨','I have a training lesson today'],
-  ['earn',3,'언','I earn money by working'],
-  ['vegetable',3,'베지터블','A carrot is a vegetable'],
-  ['dig for',3,'딕 포','Dogs dig for bones'],
-  ['assume',3,'어슘','Do not assume the answer'],
-  ['soft',3,'소프트','The pillow is very soft'],
-  ['build',2,'빌드','They will build a new house'],
-  ['mineral',2,'미네랄','Iron is a mineral'],
-  ['be limited',2,'비 리미티드','The tickets will be limited'],
-  ['natural',2,'내추럴','Honey is a natural food'],
-  ['his own lunch',2,'히즈 오운 런치','He packs his own lunch'],
-  ['grayish-brown',2,'그레이시 브라운','The dog has grayish-brown fur'],
-  ['after school',2,'애프터 스쿨','We meet after school'],
-  ['beast',2,'비스트','The beast lived in the forest'],
-  ['decide',2,'디사이드','You must decide now'],
-  ['set up',2,'셋 업','We set up the tent'],
-  ['extra',2,'엑스트라','I have an extra pencil'],
-  ['product',2,'프로덕트','This product is brand new'],
-  ['any person',2,'애니 퍼슨','Any person can join us'],
-  ['profit',2,'프로핏','The shop made a profit'],
-  ['service',2,'서비스','The hotel service is good'],
-  ['butterfly',2,'버터플라이','A butterfly has pretty wings'],
-  ['cat',2,'캣','The cat is sleeping now'],
-  ['think',2,'씽크','I think you are right'],
-  ['roll',2,'롤','The ball will roll down'],
-  ['futuristic',2,'퓨처리스틱','The car looks futuristic'],
-  ['dowel',2,'다월','He used a wooden dowel'],
-  ['assign',2,'어사인','The teacher will assign homework'],
-  ['killed',2,'킬드','The frost killed the plant'],
-  ['pack up',2,'팩 업','Please pack up your things'],
-  ['trouble',2,'트러블','He is in big trouble'],
-  ['strange',2,'스트레인지','I heard a strange sound'],
-  ['sholy',2,'숄리','sholy'],
-  ['meat-thing',2,'미트 씽','He made a meat-thing'],
-  ['gag',2,'개그','The clown told a funny gag'],
-  ['material',2,'머티리얼','This material is very soft'],
-  ['pursuit',2,'퍼슈트','He is in pursuit of a dream'],
-  ['in terms of',2,'인 텀즈 오브','It is cheap in terms of price'],
-  ['whisper',2,'위스퍼','Please whisper in the library'],
-  ['choo choo',2,'추 추','The train goes choo choo'],
-  ['rooster',2,'루스터','The rooster crows in the morning'],
-  ['volleyball',2,'발리볼','We play volleyball at school'],
-  ['rental shop',2,'렌탈 샵','The rental shop is closed today']
+  ['whip',15,'윕','He will whip the fresh cream',''],
+  ['stuff',14,'스터프','Put your stuff into the bag',''],
+  ['trick',11,'트릭','The clever magic trick amazed everyone',''],
+  ['feel',11,'필','Today I feel much better now',''],
+  ['blob',10,'블롭','A big blob of paint fell',''],
+  ['roll up',9,'롤 업','Please roll up the long carpet',''],
+  ['wild',8,'와일드','I saw a wild horse there',''],
+  ['destroy',8,'디스트로이','The big storm will destroy houses',''],
+  ['be destroyed',8,'비 디스트로이드','The old house will be destroyed soon',''],
+  ['astound',7,'어스타운드','The magic will astound the children',''],
+  ['amaze',7,'어메이즈','Magic tricks always amaze young kids',''],
+  ['ought to',7,'오트 투','You really ought to sleep early',''],
+  ['very',7,'베리','The warm soup is very tasty',''],
+  ['pass',7,'패스','Can you pass the salt please',''],
+  ['smell',7,'스멜','I can smell fresh warm bread',''],
+  ['cans of squirt cheese',6,'캔즈 오브 스쿼트 치즈','She bought cans of squirt cheese today',''],
+  ['tease',6,'티즈','Do not tease your little sister',''],
+  ['dibble dibble',6,'디블 디블','The dibble dibble noise was strange','의성어·사전에 없는 표현 — 인식 불안정'],
+  ['fuel',5,'퓨얼','The old car needs fuel now',''],
+  ['squirt',5,'스쿼트','The kids squirt water on plants',''],
+  ['horn',5,'혼','The loud car horn scared me',''],
+  ['pirate treasure',4,'파이럿 트레저','They found pirate treasure on islands',''],
+  ['go wild',4,'고 와일드','The happy fans go wild outside',''],
+  ['door',4,'도어','Please close the front door now',''],
+  ['as though',4,'애즈 도우','He acts as though he knows',''],
+  ['claim',4,'클레임','She will claim her prize tomorrow',''],
+  ['be replaced',3,'비 리플레이스드','The old light will be replaced soon',''],
+  ['gooey',3,'구이','I love the gooey melted cheese',''],
+  ['respond',3,'리스폰드','Did you respond to her message',''],
+  ['training lesson',3,'트레이닝 레슨','I have a training lesson today',''],
+  ['earn',3,'언','I want to earn more money',''],
+  ['vegetable',3,'베지터블','I eat a vegetable every day',''],
+  ['dig for',3,'딕 포','The dogs dig for old bones',''],
+  ['assume',3,'어슘','Do not assume the wrong answer',''],
+  ['soft',3,'소프트','I like the soft warm blanket',''],
+  ['build',2,'빌드','They will build a new house',''],
+  ['mineral',2,'미네랄','This mineral water tastes very clean',''],
+  ['be limited',2,'비 리미티드','The free tickets will be limited',''],
+  ['natural',2,'내추럴','We use natural honey for cooking',''],
+  ['his own lunch',2,'히즈 오운 런치','He always packs his own lunch',''],
+  ['grayish-brown',2,'그레이시 브라운','The dog has grayish-brown soft fur',''],
+  ['after school',2,'애프터 스쿨','We always meet after school today',''],
+  ['beast',2,'비스트','The huge beast lived in caves',''],
+  ['decide',2,'디사이드','You must decide the answer now',''],
+  ['set up',2,'셋 업','Let us set up the tent',''],
+  ['extra',2,'엑스트라','I have an extra sharp pencil',''],
+  ['product',2,'프로덕트','This new product works very well',''],
+  ['any person',2,'애니 퍼슨','Almost any person can join us',''],
+  ['profit',2,'프로핏','The shop made a profit today',''],
+  ['service',2,'서비스','The hotel service was very good',''],
+  ['butterfly',2,'버터플라이','A pretty butterfly landed on flowers',''],
+  ['cat',2,'캣','My black cat is sleeping now','3글자 짧은 단어 — 음향 정보 적어 변별 약함'],
+  ['think',2,'씽크','I really think you are right',''],
+  ['roll',2,'롤','The round ball will roll downhill',''],
+  ['futuristic',2,'퓨처리스틱','The new futuristic car looks cool',''],
+  ['dowel',2,'다월','He used a wooden dowel here',''],
+  ['assign',2,'어사인','The teacher will assign new homework',''],
+  ['killed',2,'킬드','The cold frost killed the plants',''],
+  ['pack up',2,'팩 업','Please pack up your school things',''],
+  ['trouble',2,'트러블','He got into trouble at school',''],
+  ['strange',2,'스트레인지','I heard a strange loud sound',''],
+  ['sholy',2,'숄리','sholy','사전에 없는 단어 — 데이터 오류 의심'],
+  ['meat-thing',2,'미트 씽','He cooked a strange meat-thing today','사전에 없는 조어 (합성어)'],
+  ['gag',2,'개그','The funny gag made us laugh','3글자 짧은 단어 — 음향 정보 적어 변별 약함'],
+  ['material',2,'머티리얼','This soft material feels very nice',''],
+  ['pursuit',2,'퍼슈트','He is in pursuit of success',''],
+  ['in terms of',2,'인 텀즈 오브','It is cheap in terms of price',''],
+  ['whisper',2,'위스퍼','We must whisper inside the library',''],
+  ['choo choo',2,'추 추','The choo choo train moved fast','의성어 — 기차 소리 (인식 불안정)'],
+  ['rooster',2,'루스터','The loud rooster crows every morning',''],
+  ['volleyball',2,'발리볼','We often play volleyball after school',''],
+  ['rental shop',2,'렌탈 샵','The small rental shop opens early','']
 ];
 (function(){
   var sel=$('wordPick');
@@ -345,7 +366,7 @@ var AI_WORDS=[
   sel.appendChild(o0);
   AI_WORDS.forEach(function(p){
     var o=document.createElement('option');
-    o.value=p[0];o.textContent=p[0]+'  ('+p[1]+'회)';
+    o.value=p[0];o.textContent=p[0]+'  ('+p[1]+'회)'+(p[4]?'  ⚠ 부적합':'');
     sel.appendChild(o);
   });
 })();
@@ -357,6 +378,10 @@ function pickWord(){
   $('targetWord').value=v;
   $('targetKo').value=found&&found[2]?found[2]:'';
   $('targetSent').value=found&&found[3]?found[3]:'';
+  showUnfit(found&&found[4]?found[4]:'');
+}
+function showUnfit(reason){
+  $('unfit').innerHTML=reason?'<div class="unfit">말하기 부적합 단어 — 사유: '+esc(reason)+'</div>':'';
 }
 function playWord(){
   var w=$('targetWord').value.trim();
