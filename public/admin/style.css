@@ -188,6 +188,9 @@ tbody td.td-sm{font-size:12px;}
 /* ── 페이지 전환 ── */
 .page{display:none;}
 .page.active{display:block;}
+/* AI OCR — 화면 높이에 정확히 맞춰 전체 스크롤 방지 (genGrid 가 남은 공간 차지) */
+#page-generator.active{display:flex;flex-direction:column;
+  height:calc(100vh - var(--header-h) - 48px);}
 
 /* ── 반응형 ── */
 @media(max-width:1200px){.dash-grid-3{grid-template-columns:280px 1fr;}.bigcal-wrap{grid-template-columns:minmax(0,1fr) 240px;}}
