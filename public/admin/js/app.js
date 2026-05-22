@@ -4510,9 +4510,29 @@ function _msgBodyPreview(txt) {
 const _MSG_ONE_LINE = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
 // 날짜 필터 (기본 어제) — 메시지 관리(초안)·발송 이력 각각
 let _msgDraftDate = '', _msgSentDate = '';
+// 검색 — 검색어 있으면 날짜 무시, 최근 100개 캐시에서 클라 필터
+let _msgDraftSearch = '', _msgSentSearch = '';
+let _msgDraftCache = null, _msgSentCache = null;
+let _msgDraftSearchT = null, _msgSentSearchT = null;
 function _msgDayRange(ymd){
   const start = new Date(ymd + 'T00:00:00+09:00');
   return { start, end: new Date(start.getTime() + 86400000) };
+}
+// 검색용 — 최근 100개 fetch (날짜 무관). 캐시해서 검색어 바뀌어도 재요청 X
+async function _msgFetchAll(sent){
+  const snap = await getDocs(query(collection(db,'pushNotifications'),
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('sent','==', sent),
+    orderBy('createdAt','desc'),
+    limit(100)));
+  return snap.docs;
+}
+// 제목·내용·받는사람(반·학생 이름) 부분 일치
+function _msgMatch(d, q){
+  const n = d.data();
+  const parts = [n.title||'', n.body||'', n.targetSummary||''];
+  if (Array.isArray(n.targets)) for (const t of n.targets) parts.push(t.name||'', t.groupName||'');
+  return parts.join(' ').toLowerCase().includes(q);
 }
 
 function _msgRenderDraft(d) {
@@ -4566,7 +4586,7 @@ function _msgRenderDraftSection() {
   const docs = _msgDraftState.docs;
   const cards = docs.length
     ? docs.map(_msgRenderDraft).join('')
-    : '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">저장된 초안이 없습니다</div>';
+    : `<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">${_msgDraftSearch?'검색 결과가 없습니다':'저장된 초안이 없습니다'}</div>`;
   const more = _msgDraftState.exhausted
     ? (docs.length > 0 ? '<div style="text-align:center;color:#888;padding:8px;font-size:11px;">모두 표시됨</div>' : '')
     : '<button class="btn btn-secondary" style="display:block;margin:8px auto;font-size:12px;padding:5px 14px;" onclick="loadMoreMsgDrafts()">+ 더 보기</button>';
@@ -4579,7 +4599,7 @@ function _msgRenderSentSection() {
   const docs = _msgSentState.docs;
   const cards = docs.length
     ? docs.map(_msgRenderSent).join('')
-    : '<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">발송 이력이 없습니다</div>';
+    : `<div style="color:#bbb;font-size:13px;text-align:center;padding:20px;">${_msgSentSearch?'검색 결과가 없습니다':'발송 이력이 없습니다'}</div>`;
   const more = _msgSentState.exhausted
     ? (docs.length > 0 ? '<div style="text-align:center;color:#888;padding:8px;font-size:11px;">모두 표시됨</div>' : '')
     : '<button class="btn btn-secondary" style="display:block;margin:8px auto;font-size:12px;padding:5px 14px;" onclick="loadMoreMsgSent()">+ 더 보기</button>';
@@ -4643,6 +4663,8 @@ window.loadMoreMsgSent = async() => {
 
 window.msgChangeDraftDate = async () => {
   _msgDraftDate = (document.getElementById('msgDraftDate')||{}).value || '';
+  _msgDraftSearch = '';
+  { const s = document.getElementById('msgDraftSearch'); if (s) s.value = ''; }
   _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
   const el = document.getElementById('savedMsgDrafts');
   if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중</div>';
@@ -4652,6 +4674,8 @@ window.msgChangeDraftDate = async () => {
 };
 window.msgChangeSentDate = async () => {
   _msgSentDate = (document.getElementById('msgSentDate')||{}).value || '';
+  _msgSentSearch = '';
+  { const s = document.getElementById('msgSentSearch'); if (s) s.value = ''; }
   _msgSentState = { lastDoc: null, exhausted: false, docs: [] };
   _msgExpandedSentId = null;
   const el = document.getElementById('savedMsgSent');
@@ -4660,6 +4684,43 @@ window.msgChangeSentDate = async () => {
   catch (e) { console.error(e); }
   _msgRenderSentSection();
 };
+
+// 검색 (debounce 300ms) — 검색어 있으면 캐시 100개에서 필터, 비우면 날짜 모드 복귀
+window.msgChangeDraftSearch = () => {
+  clearTimeout(_msgDraftSearchT);
+  _msgDraftSearchT = setTimeout(_msgRunDraftSearch, 300);
+};
+async function _msgRunDraftSearch(){
+  _msgDraftSearch = ((document.getElementById('msgDraftSearch')||{}).value || '').trim();
+  if (!_msgDraftSearch) { window.msgChangeDraftDate(); return; }
+  const el = document.getElementById('savedMsgDrafts');
+  if (!_msgDraftCache) {
+    if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중</div>';
+    try { _msgDraftCache = await _msgFetchAll(false); }
+    catch (e) { console.error(e); _msgDraftCache = []; }
+  }
+  const q = _msgDraftSearch.toLowerCase();
+  _msgDraftState = { lastDoc: null, exhausted: true, docs: _msgDraftCache.filter(d => _msgMatch(d, q)) };
+  _msgRenderDraftSection();
+}
+window.msgChangeSentSearch = () => {
+  clearTimeout(_msgSentSearchT);
+  _msgSentSearchT = setTimeout(_msgRunSentSearch, 300);
+};
+async function _msgRunSentSearch(){
+  _msgSentSearch = ((document.getElementById('msgSentSearch')||{}).value || '').trim();
+  if (!_msgSentSearch) { window.msgChangeSentDate(); return; }
+  _msgExpandedSentId = null;
+  const el = document.getElementById('savedMsgSent');
+  if (!_msgSentCache) {
+    if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중</div>';
+    try { _msgSentCache = await _msgFetchAll(true); }
+    catch (e) { console.error(e); _msgSentCache = []; }
+  }
+  const q = _msgSentSearch.toLowerCase();
+  _msgSentState = { lastDoc: null, exhausted: true, docs: _msgSentCache.filter(d => _msgMatch(d, q)) };
+  _msgRenderSentSection();
+}
 
 async function loadMessages(){
   const draftEl = document.getElementById('savedMsgDrafts');
@@ -4672,6 +4733,11 @@ async function loadMessages(){
   _msgDraftDate = _msgYest; _msgSentDate = _msgYest;
   const _dd = document.getElementById('msgDraftDate'); if (_dd) _dd.value = _msgYest;
   const _sd = document.getElementById('msgSentDate'); if (_sd) _sd.value = _msgYest;
+  // 검색 캐시·입력 리셋 (loadMessages 는 발송·삭제 후에도 호출 → 캐시 자동 무효화)
+  _msgDraftSearch = ''; _msgSentSearch = '';
+  _msgDraftCache = null; _msgSentCache = null;
+  const _dsr = document.getElementById('msgDraftSearch'); if (_dsr) _dsr.value = '';
+  const _ssr = document.getElementById('msgSentSearch'); if (_ssr) _ssr.value = '';
   // state 리셋
   _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
   _msgSentState  = { lastDoc: null, exhausted: false, docs: [] };
