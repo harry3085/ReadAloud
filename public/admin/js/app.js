@@ -4512,19 +4512,21 @@ const _MSG_ONE_LINE = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 let _msgDraftDate = '', _msgSentDate = '';
 // 검색 — 검색어 있으면 날짜 무시, 최근 100개 캐시에서 클라 필터
 let _msgDraftSearch = '', _msgSentSearch = '';
-let _msgDraftCache = null, _msgSentCache = null;
+let _msgDraftCache = null, _msgSentCache = null, _msgLimits = null;
 let _msgDraftSearchT = null, _msgSentSearchT = null;
 function _msgDayRange(ymd){
   const start = new Date(ymd + 'T00:00:00+09:00');
   return { start, end: new Date(start.getTime() + 86400000) };
 }
-// 검색용 — 최근 100개 fetch (날짜 무관). 캐시해서 검색어 바뀌어도 재요청 X
+// 검색용 — 학원 메시지 저장 한도(플랜·학생수 기준)만큼 fetch (날짜 무관).
+// 한도 = 저장 가능 최대치라 그 범위가 검색 대상 전부 → 누락 0. 캐시해서 재요청 X
 async function _msgFetchAll(sent){
+  const max = (_msgLimits && (sent ? _msgLimits.sentMessagesPerAcademy : _msgLimits.draftsPerAcademy)) || 100;
   const snap = await getDocs(query(collection(db,'pushNotifications'),
     where('academyId','==', window.MY_ACADEMY_ID),
     where('sent','==', sent),
     orderBy('createdAt','desc'),
-    limit(100)));
+    limit(max)));
   return snap.docs;
 }
 // 제목·내용·받는사람(반·학생 이름) 부분 일치
@@ -4753,6 +4755,7 @@ async function loadMessages(){
         getCountFromServer(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('sent','==',false))),
         getCountFromServer(query(collection(db,'pushNotifications'),where('academyId','==',window.MY_ACADEMY_ID),where('sent','==',true))),
       ]);
+      _msgLimits = limits;  // 검색 fetch 범위 기준
       const dl = document.getElementById('msgDraftLimit');
       if (dl) dl.textContent = `(${dCount.data().count}/${limits.draftsPerAcademy} 저장됨)`;
       const sl = document.getElementById('msgSentLimit');
