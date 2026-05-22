@@ -4536,6 +4536,11 @@ function _msgMatch(d, q){
   if (Array.isArray(n.targets)) for (const t of n.targets) parts.push(t.name||'', t.groupName||'');
   return parts.join(' ').toLowerCase().includes(q);
 }
+// 한도 표시 span 의 첫 숫자(저장 개수) -1 — 삭제 후 즉시 반영
+function _msgDecLimit(spanId){
+  const el = document.getElementById(spanId);
+  if (el) el.textContent = el.textContent.replace(/\d+/, m => Math.max(0, parseInt(m) - 1));
+}
 
 function _msgRenderDraft(d) {
   const n = d.data();
@@ -4934,7 +4939,11 @@ window.delDraftMsg = async(id) => {
   try{
     await deleteDoc(doc(db,'pushNotifications',id));
     showToast('삭제됐어요.');
-    await loadMessages();
+    // 현재 날짜·검색 상태 유지하며 그 카드만 제거 (연이어 삭제 가능)
+    _msgDraftState.docs = _msgDraftState.docs.filter(d => d.id !== id);
+    if (_msgDraftCache) _msgDraftCache = _msgDraftCache.filter(d => d.id !== id);
+    _msgDecLimit('msgDraftLimit');
+    _msgRenderDraftSection();
   }catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
@@ -4963,7 +4972,12 @@ window.delMsg = async(id) => {
     // 발송 이력 본체 삭제
     await deleteDoc(doc(db,'pushNotifications',id));
     showToast(`삭제 완료 (학생 알림 ${userNotifSnap.size}건 포함)`);
-    await loadMessages();
+    // 현재 날짜·검색 상태 유지하며 그 카드만 제거 (연이어 삭제 가능)
+    if (_msgExpandedSentId === id) _msgExpandedSentId = null;
+    _msgSentState.docs = _msgSentState.docs.filter(d => d.id !== id);
+    if (_msgSentCache) _msgSentCache = _msgSentCache.filter(d => d.id !== id);
+    _msgDecLimit('msgSentLimit');
+    _msgRenderSentSection();
   } catch(e) {
     console.error('[delMsg]', e);
     showToast('삭제 실패: ' + (e.message || e.code));
