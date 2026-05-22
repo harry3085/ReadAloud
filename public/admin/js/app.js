@@ -4508,6 +4508,12 @@ function _msgBodyPreview(txt) {
   return `<div style="font-size:12px;color:var(--gray);margin-top:2px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s}</div>`;
 }
 const _MSG_ONE_LINE = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+// 날짜 필터 (기본 어제) — 메시지 관리(초안)·발송 이력 각각
+let _msgDraftDate = '', _msgSentDate = '';
+function _msgDayRange(ymd){
+  const start = new Date(ymd + 'T00:00:00+09:00');
+  return { start, end: new Date(start.getTime() + 86400000) };
+}
 
 function _msgRenderDraft(d) {
   const n = d.data();
@@ -4517,9 +4523,11 @@ function _msgRenderDraft(d) {
     onmouseover="this.style.background='#fef6e7'" onmouseout="this.style.background='#fffbf3'">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
       <div style="flex:1 1 0;min-width:0;overflow:hidden;">
-        <div style="font-size:13px;font-weight:600;${_MSG_ONE_LINE}">${esc(n.title)||''}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <div style="font-size:13px;font-weight:600;flex:1 1 0;min-width:0;${_MSG_ONE_LINE}">${esc(n.title)||''}</div>
+          <div style="font-size:11px;color:#bbb;flex-shrink:0;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
+        </div>
         ${_msgBodyPreview(n.body)}
-        <div style="font-size:11px;color:#bbb;margin-top:4px;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''}</div>
       </div>
       <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
     </div>
@@ -4536,9 +4544,11 @@ function _msgRenderSent(d) {
       onmouseover="if(_msgExpandedSentId!=='${d.id}')this.style.background='#f0fafa'" onmouseout="if(_msgExpandedSentId!=='${d.id}')this.style.background=''">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
         <div style="flex:1 1 0;min-width:0;overflow:hidden;">
-          <div style="font-size:13px;font-weight:600;${_MSG_ONE_LINE}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
+          <div style="display:flex;align-items:baseline;gap:8px;">
+            <div style="font-size:13px;font-weight:600;flex:1 1 0;min-width:0;${_MSG_ONE_LINE}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
+            <div style="font-size:11px;color:#bbb;flex-shrink:0;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
+          </div>
           ${_msgBodyPreview(n.body)}
-          <div style="font-size:11px;color:#bbb;margin-top:4px;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0;">
           <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
@@ -4589,8 +4599,12 @@ async function _msgFetchDrafts(useCursor) {
   const constraints = [
     where('academyId','==', window.MY_ACADEMY_ID),
     where('sent','==', false),
-    orderBy('createdAt','desc'),
   ];
+  if (_msgDraftDate) {
+    const r = _msgDayRange(_msgDraftDate);
+    constraints.push(where('createdAt','>=', r.start), where('createdAt','<', r.end));
+  }
+  constraints.push(orderBy('createdAt','desc'));
   if (useCursor && _msgDraftState.lastDoc) constraints.push(startAfter(_msgDraftState.lastDoc));
   constraints.push(limit(MSG_PAGE_SIZE));
   const snap = await getDocs(query(collection(db, 'pushNotifications'), ...constraints));
@@ -4602,8 +4616,12 @@ async function _msgFetchSent(useCursor) {
   const constraints = [
     where('academyId','==', window.MY_ACADEMY_ID),
     where('sent','==', true),
-    orderBy('createdAt','desc'),
   ];
+  if (_msgSentDate) {
+    const r = _msgDayRange(_msgSentDate);
+    constraints.push(where('createdAt','>=', r.start), where('createdAt','<', r.end));
+  }
+  constraints.push(orderBy('createdAt','desc'));
   if (useCursor && _msgSentState.lastDoc) constraints.push(startAfter(_msgSentState.lastDoc));
   constraints.push(limit(MSG_PAGE_SIZE));
   const snap = await getDocs(query(collection(db, 'pushNotifications'), ...constraints));
@@ -4623,12 +4641,37 @@ window.loadMoreMsgSent = async() => {
   _msgRenderSentSection();
 };
 
+window.msgChangeDraftDate = async () => {
+  _msgDraftDate = (document.getElementById('msgDraftDate')||{}).value || '';
+  _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
+  const el = document.getElementById('savedMsgDrafts');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중</div>';
+  try { _msgDraftState.docs = await _msgFetchDrafts(false); }
+  catch (e) { console.error(e); }
+  _msgRenderDraftSection();
+};
+window.msgChangeSentDate = async () => {
+  _msgSentDate = (document.getElementById('msgSentDate')||{}).value || '';
+  _msgSentState = { lastDoc: null, exhausted: false, docs: [] };
+  _msgExpandedSentId = null;
+  const el = document.getElementById('savedMsgSent');
+  if (el) el.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중</div>';
+  try { _msgSentState.docs = await _msgFetchSent(false); }
+  catch (e) { console.error(e); }
+  _msgRenderSentSection();
+};
+
 async function loadMessages(){
   const draftEl = document.getElementById('savedMsgDrafts');
   const sentEl  = document.getElementById('savedMsgSent');
   if (!draftEl || !sentEl) return;
   _msgInitResizer();
   try { await _msgInitPicker([]); } catch (e) { console.warn('[picker init]', e); }
+  // 날짜 필터 기본값 = 어제
+  const _msgYest = _ymdKST(new Date(Date.now() - 86400000));
+  _msgDraftDate = _msgYest; _msgSentDate = _msgYest;
+  const _dd = document.getElementById('msgDraftDate'); if (_dd) _dd.value = _msgYest;
+  const _sd = document.getElementById('msgSentDate'); if (_sd) _sd.value = _msgYest;
   // state 리셋
   _msgDraftState = { lastDoc: null, exhausted: false, docs: [] };
   _msgSentState  = { lastDoc: null, exhausted: false, docs: [] };
