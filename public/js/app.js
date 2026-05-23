@@ -4703,25 +4703,33 @@ function _vqRenderStep() {
   }
 
   // 영역 전환: MCQ / 스펠 / 말하기
-  // 말하기는 카드 안 vqSpeakArea(내용·상태·결과) + 하단 vqSpkMicZone(마이크 버튼) 두 곳을 함께 토글
+  // 말하기는 카드 안 vqSpeakArea + 하단 vqSpkLive(실시간 STT) + vqSpkMicZone(마이크 버튼) + footer hintBtn 토글
   const speakArea = document.getElementById('vqSpeakArea');
   const micZone = document.getElementById('vqSpkMicZone');
+  const liveZone = document.getElementById('vqSpkLive');
+  const hintBtnFooter = document.getElementById('vqSpkHintBtn');
   if (ans.format === 'mcq') {
     if (choicesArea) { choicesArea.style.display = 'flex'; _vqRenderChoices(ans, choicesArea); }
     if (spellBoxes) spellBoxes.style.display = 'none';
     if (speakArea) speakArea.style.display = 'none';
     if (micZone) micZone.style.display = 'none';
+    if (liveZone) liveZone.style.display = 'none';
+    if (hintBtnFooter) hintBtnFooter.style.display = 'none';
   } else if (ans.format === 'speaking') {
     if (choicesArea) choicesArea.style.display = 'none';
     if (spellBoxes) spellBoxes.style.display = 'none';
     if (speakArea) speakArea.style.display = 'flex';
     if (micZone) micZone.style.display = 'flex';
+    if (liveZone) liveZone.style.display = 'none';   // 3차 진입 시에만 표시 — _vqSpkStart 에서 처리
+    if (hintBtnFooter) hintBtnFooter.style.display = 'inline-block';   // footer 에 항상 표시 (정답 시도 유지)
     _vqSpkRenderArea();
   } else {
     if (spellBoxes) { spellBoxes.style.display = ''; _vqRenderSpellBoxes(ans); }
     if (choicesArea) choicesArea.style.display = 'none';
     if (speakArea) speakArea.style.display = 'none';
     if (micZone) micZone.style.display = 'none';
+    if (liveZone) liveZone.style.display = 'none';
+    if (hintBtnFooter) hintBtnFooter.style.display = 'none';
     // 스펠 input 초기화 + 포커스
     const inp = document.getElementById('vqSpellInput');
     if (inp) {
@@ -4853,9 +4861,12 @@ function _vqSpkRenderArea() {
   if (status) status.textContent = ans._locked ? '✓ 채점 완료' : '마이크 버튼을 누르고 영어로 말해보세요';
   if (attemptEl) attemptEl.textContent = '';
   if (result) result.style.display = ans._locked ? 'block' : 'none';
-  if (hintBtn) hintBtn.style.display = ans._locked ? 'none' : 'inline-block';
+  // 힌트 버튼은 footer 에 있음 — _vqRenderStep 가 표시 토글, 여기선 disabled/라벨만 갱신
   if (hintBoxes) { hintBoxes.style.display = 'none'; hintBoxes.innerHTML = ''; }
   if (sentArea) { sentArea.style.display = 'none'; }
+  // 라이브 STT 영역 초기화 — 3차 진입 시에만 표시
+  const liveEl = document.getElementById('vqSpkLive');
+  if (liveEl) { liveEl.style.display = 'none'; liveEl.textContent = ''; }
   _vqUpdateHintBtn();
 }
 
@@ -4944,13 +4955,13 @@ function _vqUpdateHintBtn() {
   const q = s.questions[s.currentIdx];
   const btn = document.getElementById('vqSpkHintBtn');
   if (!btn || !q) return;
+  // footer 의 힌트 버튼 — 정답 나와도 사라지지 않게 위치 유지 (혼란 방지). 채점 완료 시 disabled.
   const ans = s.answers[s.currentIdx];
-  if (ans?._locked) { btn.style.display = 'none'; return; }
   const w = String(q.word || '');
   const max = Math.min(2, w.replace(/\s/g, '').length);
   const left = max - s.spk.hint;
-  btn.disabled = s.spk.hint >= max;
-  btn.textContent = `힌트${left > 0 ? ` (${left}회)` : ''}`;
+  btn.disabled = !!ans?._locked || s.spk.hint >= max;
+  btn.textContent = `힌트${left > 0 && !ans?._locked ? ` (${left}회)` : ''}`;
 }
 
 // 힌트 클릭 — 스펠링 한 글자 추가 노출 (최대 2글자, 점수 영향 없음)
@@ -5031,7 +5042,8 @@ window.vqSpkStart = async () => {
   const rec = new SR();
   rec.lang = (stage === 'ko2') ? 'ko-KR' : 'en-US';
   rec.continuous = false;
-  rec.interimResults = false;
+  // 3차만 interim 활성 — 실시간 STT 표시 (학생이 자기 발음 즉시 확인 가능)
+  rec.interimResults = (stage === 'sent3');
   rec.maxAlternatives = 5;
   s.spk.recognition = rec;
 
@@ -5041,25 +5053,29 @@ window.vqSpkStart = async () => {
   const sentArea = document.getElementById('vqSpkSentenceArea');
   const sentEl = document.getElementById('vqSpkSentence');
   const sentKoEl = document.getElementById('vqSpkSentenceKo');
+  const liveEl = document.getElementById('vqSpkLive');
 
   if (btn) { btn.style.background = MIC_BTN_RECORDING; btn.disabled = true; }
   if (attemptEl) attemptEl.textContent = `${attempt}/${MAX_ATTEMPTS}`;
-  if (status) {
-    if (stage === 'ko2') status.innerHTML = '🔴 듣고 있어요... <span style="font-size:11px;color:#888;">(한국어 인식 — 정답 단어를 그대로 영어로 발음)</span>';
-    else if (stage === 'sent3') status.innerHTML = '🔴 듣고 있어요... <span style="font-size:11px;color:#888;">(아래 문장을 또박또박 읽어보세요)</span>';
-    else status.textContent = '🔴 듣고 있어요...';
-  }
-  // 3차 — 빈칸 문장 표시
+  // 안내 문구 단순화 — 평가 방식까지 알릴 필요 없음
+  if (status) status.textContent = '🔴 듣고 있어요...';
+  // 3차 — 빈칸 문장 표시 (목표 단어 가림 + 다른 배경색) + 한글 해석은 강조 표시
   if (sentArea && sentEl && sentKoEl) {
     if (stage === 'sent3' && q.speakingSent) {
-      // 목표 단어를 노란 강조로 (학생이 어디를 읽어야 하는지 명확히)
+      // 목표 단어 가림 — 글자색을 배경과 같게 + select 방지
       const re = new RegExp('\\b' + String(q.word || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-      const sentHtml = esc(q.speakingSent).replace(re, m => `<span style="background:#fde68a;padding:0 4px;border-radius:3px;color:#92400e;">${m}</span>`);
+      const sentHtml = esc(q.speakingSent).replace(re, m => `<span style="background:#94a3b8;color:#94a3b8;user-select:none;padding:0 8px;border-radius:4px;letter-spacing:1px;">${m}</span>`);
       sentEl.innerHTML = sentHtml;
-      sentKoEl.innerHTML = q.speakingSentKo ? esc(q.speakingSentKo).replace(/\[([^\]]+)\]/g, '<span style="background:#fde68a;padding:0 4px;border-radius:3px;color:#92400e;">$1</span>') : '';
+      sentKoEl.innerHTML = q.speakingSentKo ? esc(q.speakingSentKo).replace(/\[([^\]]+)\]/g, '<span style="background:#fde68a;padding:0 4px;border-radius:3px;color:#92400e;font-weight:700;">$1</span>') : '';
       sentArea.style.display = 'block';
+      // 3차 라이브 STT 영역 활성화 (마이크 위)
+      if (liveEl) {
+        liveEl.style.display = 'block';
+        liveEl.innerHTML = '<span style="color:#94a3b8;font-size:13px;">말하기 시작하면 여기에 표시됩니다</span>';
+      }
     } else {
       sentArea.style.display = 'none';
+      if (liveEl) { liveEl.style.display = 'none'; liveEl.textContent = ''; }
     }
   }
 
@@ -5119,6 +5135,21 @@ window.vqSpkStart = async () => {
 
   rec.onresult = (e) => {
     if (_stale()) return;
+    // 3차 interim 처리 — 실시간 발음 텍스트 vqSpkLive 에 표시
+    if (stage === 'sent3' && liveEl) {
+      let interim = '', finalT = '';
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalT += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      const interimColor = '#94a3b8';
+      liveEl.innerHTML = (finalT ? `<span style="color:#111;font-weight:700;">${esc(finalT)}</span>` : '') +
+        (interim ? `<span style="color:${interimColor};"> ${esc(interim)}</span>` : '');
+    }
+    // 최종 결과가 도착했을 때만 채점 (interim 만으로 채점 X)
+    const hasFinal = Array.from(e.results).some(r => r.isFinal);
+    if (!hasFinal) return;
     s.spk.srResolved = true;
     const g = gradeFromResult(e);
     s.spk.lastHeard = g.heard;
@@ -5195,9 +5226,10 @@ function _vqSpkFinalize(correct, heard, meta) {
   const icon = document.getElementById('vqSpkResultIcon');
   const heardEl = document.getElementById('vqSpkHeard');
   const answerEl = document.getElementById('vqSpkAnswer');
-  const hintBtn = document.getElementById('vqSpkHintBtn');
   const hintBoxes = document.getElementById('vqSpkHintBoxes');
   const sentArea = document.getElementById('vqSpkSentenceArea');
+  const sentEl = document.getElementById('vqSpkSentence');
+  const liveEl = document.getElementById('vqSpkLive');
   if (btn) { btn.disabled = true; btn.style.background = '#cbd5e1'; }
   if (status) status.textContent = '';
   if (result) result.style.display = 'block';
@@ -5205,10 +5237,27 @@ function _vqSpkFinalize(correct, heard, meta) {
     icon.textContent = correct ? '⭐' : '❌';
     icon.style.color = correct ? '#22c55e' : '#dc2626';
   }
-  // 채점 완료 → 힌트 버튼/스펠링 박스/문장 영역 숨김 (결과만 보이게)
-  if (hintBtn) hintBtn.style.display = 'none';
+  // 힌트 버튼은 footer 에 있어 위치 유지 (정답 시도 사라지지 않게) — _vqUpdateHintBtn 에서 disabled 처리
+  _vqUpdateHintBtn();
   if (hintBoxes) hintBoxes.style.display = 'none';
-  if (sentArea) sentArea.style.display = 'none';
+  // 라이브 STT 영역 채점 완료 시 숨김
+  if (liveEl) { liveEl.style.display = 'none'; liveEl.textContent = ''; }
+  // 3차 정답 시 sentArea 유지 + 목표 단어 노출 + 클릭 재발음. 그 외엔 숨김.
+  const src3 = String(meta?.source || '').toLowerCase() === 'webspeech-3';
+  if (sentArea && sentEl && correct && src3 && q.speakingSent) {
+    const re = new RegExp('\\b' + String(q.word || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    const sentHtml = esc(q.speakingSent).replace(re, m =>
+      `<span style="background:#dcfce7;padding:0 4px;border-radius:3px;color:#047857;font-weight:800;">${m}</span>`
+    );
+    sentEl.innerHTML = sentHtml + ' <span style="font-size:13px;color:#0369a1;text-decoration:underline dotted;">🔊</span>';
+    sentEl.style.cursor = 'pointer';
+    sentEl.title = '클릭하면 다시 듣기';
+    sentEl.onclick = () => _fbSpeakWords([q.speakingSent]);
+    sentArea.style.display = 'block';
+  } else if (sentArea) {
+    sentArea.style.display = 'none';
+    if (sentEl) { sentEl.onclick = null; sentEl.style.cursor = ''; }
+  }
 
   // ── 결과 메시지 분기 ──
   // 통과: 차수에 따라 다른 안내 (1차=정확 / 2차=한국어 STT 통과 / 3차=문장 안에서 통과)
@@ -5243,8 +5292,14 @@ function _vqSpkFinalize(correct, heard, meta) {
       + `<div id="vqSpkAnsHint" style="font-size:11px;color:var(--gray);margin-top:3px;font-weight:400;">정답 단어를 누르면 발음 — 다시 누르면 천천히</div>`;
   }
 
-  // 영단어 정답 발음 들려주기 (학습 효과)
-  if (q.word) _fbSpeakWords([q.word]);
+  // 정답 발음 들려주기 (학습 효과)
+  // 3차 정답 → 문장 전체 (학생이 단어가 들어간 자연스러운 문장 학습)
+  // 그 외(1·2차 정답 / 오답) → 단어만
+  if (correct && src3 && q.speakingSent) {
+    _fbSpeakWords([q.speakingSent]);
+  } else if (q.word) {
+    _fbSpeakWords([q.word]);
+  }
 
   if (typeof _vqShowNextButton === 'function') _vqShowNextButton();
 }
