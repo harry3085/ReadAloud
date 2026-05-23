@@ -69,7 +69,7 @@ const MAX_PAGES = 30;
 
 // ─── 문제 타입별 시스템 프롬프트 ───
 const SYSTEM_PROMPTS = {
-  mcq: `You are an English reading comprehension quiz generator for Korean middle/high school students.
+  mcq: `You are an English reading comprehension quiz generator for Korean students.
 
 Your task is to create 4-choice multiple-choice questions based on given English passages.
 
@@ -92,11 +92,50 @@ RULES:
    - Wrong choices should be similar in length and style to the correct answer
    - Do NOT make wrong choices obviously absurd
 
-4. Difficulty:
-   - Include a mix of easy / medium / hard when possible, based on available content.
-   - Exact distribution is NOT required — prioritize good questions from the passage over hitting a target ratio.
+4. VOCABULARY MIRRORING (CRITICAL — Korean students are reading at the passage's level):
+   The vocabulary in your QUESTION and ALL FOUR CHOICES must stay at or below the passage's level.
 
-5. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+   PRIORITY 1 — Use words that ACTUALLY APPEAR in the passage. Reuse the passage's nouns,
+   verbs, adjectives, and key phrases whenever possible. A question phrased with the
+   passage's own words is always better than one with synonyms.
+
+   PRIORITY 2 — When a word not in the passage is needed (question words like what/who/why,
+   conjunctions like and/but/because, etc.), use only VERY COMMON basic vocabulary that
+   any student at the passage's level would know.
+
+   NEVER introduce advanced or abstract vocabulary that doesn't fit the passage's level.
+   For elementary or early-middle-school level passages, the following words are FORBIDDEN
+   in the question and choices (this list is illustrative, not exhaustive):
+     consequence, demonstrate, occur, indicate, primarily, sufficient, encounter,
+     eventual, eventually, significant, factor, regarding, particularly, dynamics,
+     implication, ultimately, encounter, abandon, perceive, anticipate, comprise,
+     attribute, demonstrate, illustrate, signify, constitute, emphasize, reinforce.
+
+   GOOD example (passage talks about "Sam saw a wolf, told villagers, they didn't believe him"):
+     Q: "What happened to the sheep when the villagers did not believe Sam?"
+     (uses 'happened', 'sheep', 'villagers', 'believe', 'Sam' — all from passage)
+
+   BAD example (same passage):
+     Q: "What was the consequence of the villagers' disbelief?"
+     (uses 'consequence', 'disbelief' — not in passage, too advanced)
+
+   If you cannot phrase a meaningful question using the passage's vocabulary,
+   skip that question idea and find a different angle. Quality at the right level >
+   forcing complex questions.
+
+5. Difficulty — controls THINKING DEPTH only (vocabulary stays at passage level per Rule 4):
+   - easy: FACT-FINDING. Answer is directly stated in ONE sentence of the passage.
+     Use what/who/when/where/which questions. Student just locates the matching sentence.
+   - medium: COMPREHENSION. Answer requires combining 2–3 sentences, or understanding
+     cause-effect, comparison, sequence, or word meaning from context.
+   - hard: INFERENCE. Answer is NOT directly stated. Student must infer the author's
+     implied meaning, character motivation, lesson, or theme from the whole passage.
+   - Include a mix when possible; exact distribution NOT required.
+   - REGARDLESS of difficulty, the vocabulary level rule above is absolute — hard questions
+     can still be phrased with passage words (a "hard" inference question is hard because
+     of WHAT is asked, not because of unfamiliar words).
+
+6. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
   "questions": [
     {
