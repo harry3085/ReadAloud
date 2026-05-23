@@ -778,36 +778,72 @@ module.exports = async function handler(req, res) {
 // ─── 동음이의어 전용 프롬프트 ───
 // 단어 리스트 → 각 단어의 영어 동음이의어 추출. 단어 시험 말하기 모드 채점 보조.
 // 출력: { results: [{ word, homophones: [] }] } — 입력 순서·소문자 유지.
-const HOMOPHONES_PROMPT = `You are an English homophones identifier for Korean students' speaking vocabulary tests.
+// 2026-05-23: 단어 말하기 1·2·3차 흐름 (영어 STT → 한국어 STT → 빈칸 문장 STT) 도입으로
+// homophones 단일 출력에서 4필드(homophones / koPron / sentence / sentenceKo) 동시 생성으로 확장.
+// AI 호출 1회로 출제 시점 데이터 일괄 생성.
+const HOMOPHONES_PROMPT = `You generate speaking-test data for Korean students learning English vocabulary.
 
-For each given English word or phrase, list any English homophones — sound-alike words that pronounce identically (or near-identically) in standard American English and that a speech recognition system would commonly confuse with the input.
+For each given English word or phrase, output FOUR fields: homophones, koPron, sentence, sentenceKo.
+
+═══ FIELD 1: homophones ═══
+List any English homophones — sound-alike words that pronounce identically (or near-identically) in standard American English and that a speech recognition system would commonly confuse with the input.
 
 RULES:
 1. Only list TRUE homophones (same pronunciation, different spelling/meaning).
    Examples: cereal/serial, piece/peace, weak/week, weather/whether, your/you're, their/there/they're, flower/flour, knight/night.
-   NOT homophones: cat/cot, mat/mate, bit/beat — these have clearly different vowels and should NOT be listed.
+   NOT homophones: cat/cot, mat/mate, bit/beat — clearly different vowels, do NOT list.
+2. Multi-word phrases: list phrases that sound identical only if a true phrase-level homophone exists. Otherwise [].
+3. Include even very short single-syllable homophones (high/hi, by/bye/buy, two/to/too, be/bee, see/sea).
+4. EXACT lowercase form (no capitalization, no quotes, no extra spaces).
+5. If a word has NO true homophones, return [] — do NOT invent any.
 
-2. Multi-word phrases: list phrases that sound identical (e.g., "be served"/"be surveyed") only if a true phrase-level homophone exists. Otherwise return [].
+═══ FIELD 2: koPron (Korean pronunciation guide) ═══
+A natural Korean transliteration that a Korean student would write down after hearing the word — used as ground truth for matching ko-KR speech recognition output (Korean students saying the English word, but the STT engine running in Korean mode).
 
-3. SHORT WORDS — Include even very short single-syllable homophones (greeting/interjection words count too).
-   Examples: high/hi, by/bye/buy, two/to/too, ate/eight, ant/aunt, ad/add, be/bee, see/sea.
-   Do NOT exclude a homophone just because it's a short or common word.
+RULES:
+1. Use only Korean hangul + spaces. NO English letters, NO numbers, NO punctuation.
+2. Match the conventional Korean transliteration used in Korean schools/dictionaries.
+   Examples: right → 라이트, cereal → 시리얼, ought to → 오트 투, grayish-brown → 그레이시 브라운, vegetable → 베지터블, squirt → 스쿼트.
+3. Multi-word phrases: separate each word with a single space (matching English word boundary).
+4. NEVER leave empty. If the word is unusual, give your best phonetic Korean approximation.
 
-4. Output the EXACT lowercase form (no capitalization, no quotes, no extra spaces).
+═══ FIELD 3: sentence (English example sentence) ═══
+A short English sentence containing the target word/phrase, used for the 3rd-attempt sentence-reading mode.
 
-5. If a word has NO true homophones, return an empty array — do NOT invent any. False positives are worse than empty results.
+RULES:
+1. Length: 5–10 words total (short, easy to read aloud).
+2. The target word MUST appear EXACTLY ONCE, matching the input form (case-insensitive, but keep lowercase unless the target is a proper noun).
+   - If input is "roll up", the sentence must contain "roll up" verbatim (not "rolls up" or "rolled up").
+   - If input is "be destroyed", the sentence must contain "be destroyed" verbatim.
+3. Place the target word in the MIDDLE of the sentence when possible (not at the very start or very end).
+4. The OTHER words in the sentence must be from the most common 500–1000 English words (CEFR A1 level).
+   - GOOD: I eat cereal every morning. / Please turn right at the corner. / The big wind will destroy houses.
+   - BAD (uses rare words): The carpet stored the cereal. / The frost destroys plants annually.
+5. Use only standard letters (a-z, A-Z), spaces, apostrophe ('), and a single trailing period or question mark. NO commas, NO quotes, NO dashes other than within the target itself.
+6. NEVER leave empty.
 
-6. Output ONLY a valid JSON object (no markdown, no prose):
+═══ FIELD 4: sentenceKo (Korean translation of the sentence) ═══
+A natural Korean translation of the sentence above, with the part that corresponds to the target word wrapped in [square brackets].
+
+RULES:
+1. Translate the WHOLE sentence naturally into Korean.
+2. Wrap the portion that translates the target word/phrase in [square brackets]. EXACTLY ONE pair of brackets per sentence.
+   - Example: target=right, sentence="Please turn right at the corner.", sentenceKo="모퉁이에서 [오른쪽으로] 도세요."
+   - Example: target=destroy, sentence="The big wind will destroy houses.", sentenceKo="큰 바람이 집들을 [파괴할] 것이다."
+3. Use only Korean hangul, basic punctuation (. ? ,) and the [] brackets. NO English letters in the translation itself.
+4. NEVER leave empty.
+
+═══ OUTPUT ═══
+Output ONLY a valid JSON object (no markdown, no prose):
 {
   "results": [
-    { "word": "cereal", "homophones": ["serial"] },
-    { "word": "piece", "homophones": ["peace"] },
-    { "word": "cat", "homophones": [] },
-    { "word": "their", "homophones": ["there", "they're"] }
+    { "word": "cereal", "homophones": ["serial"], "koPron": "시리얼", "sentence": "I eat cereal every morning.", "sentenceKo": "나는 매일 아침 [시리얼]을 먹는다." },
+    { "word": "right", "homophones": ["write", "rite"], "koPron": "라이트", "sentence": "Please turn right at the corner.", "sentenceKo": "모퉁이에서 [오른쪽으로] 도세요." },
+    { "word": "cat", "homophones": [], "koPron": "캣", "sentence": "My black cat is sleeping now.", "sentenceKo": "내 검은 [고양이]가 지금 자고 있다." }
   ]
 }
 
-The "results" array must include EVERY input word, in the same order, with empty array if no homophones.`;
+The "results" array must include EVERY input word, in the same order, with ALL FOUR fields populated.`;
 
 // 언스크램블 직접 입력 — 입력 문장 원문 보존 + 청크 분할 + 한글뜻 (2026-05-15)
 const UNSCRAMBLE_FROM_TEXT_PROMPT = `You are an English sentence unscramble exercise generator for Korean students.
@@ -990,25 +1026,68 @@ Output ONLY the JSON object as specified.`;
     return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
   }
 
-  // 입력 단어 → 동음이의어 매핑 (input order 보존)
+  // 입력 단어 → 4필드 매핑 (input order 보존)
+  // 검증 실패 필드는 빈 값으로 — tpPublish 게이트에서 누락 단어 차단
   const mapByLower = new Map();
   for (const r of parsed.results) {
     if (!r || typeof r !== 'object') continue;
     const w = String(r.word || '').toLowerCase().trim();
     if (!w) continue;
+
+    // homophones
     const homos = Array.isArray(r.homophones) ? r.homophones : [];
-    const cleaned = Array.from(new Set(
+    const cleanedHomos = Array.from(new Set(
       homos
         .map(h => String(h || '').toLowerCase().trim())
         .filter(h => h && h !== w && h.length >= 2 && h.length <= 60)
     )).slice(0, 5);
-    mapByLower.set(w, cleaned);
+
+    // koPron — 한글만 (영문/숫자/특수문자 제거 후 비어있으면 빈값)
+    let koPron = String(r.koPron || '').trim();
+    if (koPron && !/^[가-힣\s]+$/.test(koPron)) {
+      koPron = koPron.replace(/[^가-힣\s]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    // sentence — 5~10단어 + 목표 단어 포함 + 영문/공백/'/-/.?만
+    let sentence = String(r.sentence || '').trim();
+    if (sentence) {
+      // 허용 문자 외 제거 (콤마·쉼표·기타 문장부호 제거)
+      const cleanedSent = sentence.replace(/[^a-zA-Z'\s\-.?]/g, '').replace(/\s+/g, ' ').trim();
+      const wordCount = cleanedSent.split(/\s+/).filter(Boolean).length;
+      // 목표 단어가 sentence 내에 포함되는지 (word boundary, case-insensitive)
+      const targetRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      if (wordCount >= 4 && wordCount <= 12 && targetRe.test(cleanedSent)) {
+        sentence = cleanedSent;
+      } else {
+        sentence = '';
+      }
+    }
+
+    // sentenceKo — 한글 포함 + [대괄호] 쌍 정확히 1개
+    let sentenceKo = String(r.sentenceKo || '').trim();
+    if (sentenceKo) {
+      const hasHangul = /[가-힣]/.test(sentenceKo);
+      const openCount = (sentenceKo.match(/\[/g) || []).length;
+      const closeCount = (sentenceKo.match(/\]/g) || []).length;
+      const hasBracket = openCount === 1 && closeCount === 1 && sentenceKo.indexOf('[') < sentenceKo.indexOf(']');
+      // 영문 금지 (괄호 안 포함 — 전부 한글 번역이어야 함)
+      const hasEnglish = /[a-zA-Z]/.test(sentenceKo);
+      if (!hasHangul || !hasBracket || hasEnglish) sentenceKo = '';
+    }
+
+    mapByLower.set(w, { homophones: cleanedHomos, koPron, sentence, sentenceKo });
   }
 
-  const results = sanitized.map(w => ({
-    word: w,
-    homophones: mapByLower.get(w.toLowerCase()) || [],
-  }));
+  const results = sanitized.map(w => {
+    const m = mapByLower.get(w.toLowerCase()) || {};
+    return {
+      word: w,
+      homophones: m.homophones || [],
+      koPron: m.koPron || '',
+      sentence: m.sentence || '',
+      sentenceKo: m.sentenceKo || '',
+    };
+  });
 
   return res.status(200).json({
     success: true,

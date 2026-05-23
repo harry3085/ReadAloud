@@ -5252,13 +5252,27 @@ function _adminVqBuildDetail(questions, answers){
         <div style="font-size:11px;color:var(--gray);">
           ${isSpeaking
             ? (() => {
+                // 차수별 통과 라벨 (2026-05-23 신 흐름)
+                // webspeech-1/2/3 = 어느 차수에서 통과/실패 / 옛 데이터: 'webspeech'(1차) / 'ai'(AI 통과) / 'ai-error'(AI 오류)
+                const src = String(a.spkSource || '').toLowerCase();
+                let _stageHtml = '';
+                if (isCorrect) {
+                  if (src === 'webspeech-1' || src === 'webspeech') _stageHtml = ' · <span style="color:#059669;font-weight:600;">1차 통과</span>';
+                  else if (src === 'webspeech-2') _stageHtml = ' · <span style="color:#CA8A04;font-weight:600;">2차 통과 (한국어)</span>';
+                  else if (src === 'webspeech-3') _stageHtml = ' · <span style="color:#CA8A04;font-weight:600;">3차 통과 (문장)</span>';
+                  else if (src === 'ai') _stageHtml = ' · <span style="color:#7C3AED;font-weight:600;">AI 통과 (옛)</span>';
+                }
+                // AI 정확도 (옛 데이터만 — 새 흐름엔 없음)
                 const _c = a.spkAiConfidence;
                 const _accHtml = (typeof _c === 'number')
                   ? ` · <span style="color:${_c>=90?'#059669':_c>=70?'#CA8A04':'#dc2626'};">정확도 ${_c}%</span>`
                   : '';
                 const _att = a.spkAttempts;
                 const _attHtml = (typeof _att === 'number' && _att > 0) ? ` · ${_att}회` : '';
-                return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>${_accHtml}${_attHtml}`;
+                // 힌트 사용 (신 흐름 — 점수 영향 없음, 학원장 참고용)
+                const _hint = a.spkHintUsed;
+                const _hintHtml = (typeof _hint === 'number' && _hint > 0) ? ` · <span style="color:#7C3AED;">힌트 ${_hint}자</span>` : '';
+                return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>${_stageHtml}${_accHtml}${_attHtml}${_hintHtml}`;
               })()
             : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}`}
         </div>
@@ -12472,15 +12486,17 @@ window.qsCloseEdit = async () => {
   closeModal();
 };
 
-// ─── 동음이의어 누락 단어 AI 채움 헬퍼 (vocab questions 만 대상) ───────
-// homophones 가 Array 가 아닌 단어만 추출 → AI 호출 (mode='homophones-only')
-// 실패 시 빈 배열 채움 (다음 호출에 다시 시도 안 함 — 무한 루프 방지)
+// ─── 단어 말하기 출제 데이터 AI 채움 헬퍼 (vocab questions 만 대상) ─────
+// 4필드 동시 생성: homophones / speakingKoPron / speakingSent / speakingSentKo (AI 호출 1회)
 // 호출자: qsSaveEdits (세트 수정 저장 시) / tpPublish (출제 안전망, vocab+speaking 만)
-// 반환: { filled: N, total: M } — N=실제 동음이의어 받은 단어 수, M=호출 대상 단어 수
+// 누락 조건: 4필드 중 하나라도 빠진 단어 → AI 호출 대상.
+// 실패 시 누락 필드는 빈값/빈배열로 (tpPublish 게이트가 차단). 다음 호출에 재시도 안 함 — 무한 루프 방지.
+// 반환: { filled: N, total: M } — N=4필드 모두 받은 단어 수, M=호출 대상 단어 수
 async function _fillMissingHomophones(questions) {
   if (!Array.isArray(questions) || questions.length === 0) return { filled: 0, total: 0 };
   const missing = questions.filter(q =>
-    q && q.word && (q.type === 'vocab' || !q.type) && !Array.isArray(q.homophones)
+    q && q.word && (q.type === 'vocab' || !q.type) &&
+    (!Array.isArray(q.homophones) || !q.speakingKoPron || !q.speakingSent || !q.speakingSentKo)
   );
   if (missing.length === 0) return { filled: 0, total: 0 };
   try {
@@ -12492,19 +12508,35 @@ async function _fillMissingHomophones(questions) {
     if (resp.ok) {
       const data = await resp.json();
       if (data.success && Array.isArray(data.results)) {
-        const map = new Map(data.results.map(r => [String(r.word || '').toLowerCase(), r.homophones || []]));
+        const map = new Map(data.results.map(r => [
+          String(r.word || '').toLowerCase(),
+          {
+            homophones: Array.isArray(r.homophones) ? r.homophones : [],
+            koPron: String(r.koPron || ''),
+            sentence: String(r.sentence || ''),
+            sentenceKo: String(r.sentenceKo || ''),
+          }
+        ]));
         let filled = 0;
         missing.forEach(q => {
-          q.homophones = map.get(q.word.toLowerCase()) || [];
-          if (q.homophones.length) filled++;
+          const m = map.get(q.word.toLowerCase()) || {};
+          if (!Array.isArray(q.homophones)) q.homophones = m.homophones || [];
+          if (!q.speakingKoPron) q.speakingKoPron = m.koPron || '';
+          if (!q.speakingSent) q.speakingSent = m.sentence || '';
+          if (!q.speakingSentKo) q.speakingSentKo = m.sentenceKo || '';
+          if (q.speakingKoPron && q.speakingSent && q.speakingSentKo) filled++;
         });
         return { filled, total: missing.length };
       }
     }
-    missing.forEach(q => { q.homophones = []; });
+    missing.forEach(q => {
+      if (!Array.isArray(q.homophones)) q.homophones = [];
+    });
   } catch (e) {
     console.warn('[homophones] AI failed:', e.message);
-    missing.forEach(q => { q.homophones = []; });
+    missing.forEach(q => {
+      if (!Array.isArray(q.homophones)) q.homophones = [];
+    });
   }
   return { filled: 0, total: missing.length };
 }
@@ -14087,17 +14119,33 @@ window.tpPublish = async () => {
     }
   }
 
-  // 안전망: vocab+speaking 일 때 누락 단어 동음이의어 자동 채움 (옛 세트 / API 수정 / import 케이스)
+  // 안전망: vocab+speaking 일 때 말하기 출제 데이터(homophones/koPron/sent/sentKo) 자동 채움
   // 정상 시나리오 (Wordsnap·AI Generator·세트 수정 저장) 면 이미 채워져 있어 0 호출 — skip
   if (cfg.testMode === 'vocab' && vocabOptions?.format === 'speaking') {
     const filled = await _fillMissingHomophones(questions);
     if (filled.total > 0) {
-      console.log(`[tpPublish 안전망] 동음이의어 채움: ${filled.filled}/${filled.total}`);
+      console.log(`[tpPublish 안전망] 말하기 데이터 채움: ${filled.filled}/${filled.total}`);
     }
     // 🎤 말하기 부적합 단어 검토 (배정 전, 학원장이 삭제 가능)
     const proceed = await _tpSpeakingUnfitGate(questions);
     if (!proceed) return;
     if (questions.length === 0) { showAlert('배정 불가', '모든 단어를 삭제해 출제할 문제가 없습니다.'); return; }
+
+    // 말하기 출제 데이터 누락 검증 — AI 실패 / 검증 거부된 단어가 남아있으면 배정 차단
+    // (학생앱 1·2·3차 흐름이 koPron/sent/sentKo 에 의존하므로 누락 시 응시 불가)
+    const incomplete = questions.filter(q =>
+      q && q.word && (q.type === 'vocab' || !q.type) &&
+      (!q.speakingKoPron || !q.speakingSent || !q.speakingSentKo)
+    );
+    if (incomplete.length > 0) {
+      const sample = incomplete.slice(0, 5).map(q => q.word).join(', ');
+      const more = incomplete.length > 5 ? ` 외 ${incomplete.length - 5}개` : '';
+      showAlert(
+        '배정 불가 — 말하기 데이터 누락',
+        `말하기 출제 데이터(한글 발음표기·예문)가 비어있는 단어가 ${incomplete.length}개 있습니다:\n${sample}${more}\n\nAI 일시 오류 가능성 — 잠시 후 다시 시도하거나, 해당 단어를 세트에서 제외하세요.`
+      );
+      return;
+    }
   }
 
   const qcLine = questions.length < poolTotal

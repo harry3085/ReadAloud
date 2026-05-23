@@ -11,6 +11,7 @@
 //   node scripts/migrate/backfill-vocab-homophones.js --sets-only       # genQuestionSets 만
 //   node scripts/migrate/backfill-vocab-homophones.js --testId=XXX      # 특정 시험만
 //   node scripts/migrate/backfill-vocab-homophones.js --setId=XXX       # 특정 세트만
+//   node scripts/migrate/backfill-vocab-homophones.js --academyId=XXX   # 특정 학원만
 
 const { getDb } = require('../lib/firebase-admin');
 
@@ -97,9 +98,12 @@ async function processDoc(db, col, docId, dryRun) {
   const setsOnly = process.argv.includes('--sets-only');
   const testIdArg = process.argv.find(a => a.startsWith('--testId='))?.split('=')[1];
   const setIdArg = process.argv.find(a => a.startsWith('--setId='))?.split('=')[1];
+  const academyIdArg = process.argv.find(a => a.startsWith('--academyId='))?.split('=')[1];
   const db = getDb();
 
-  console.log(`\n=== vocab homophones 백필 ${apply ? '(APPLY)' : '(DRY-RUN)'} ===\n`);
+  console.log(`\n=== vocab homophones 백필 ${apply ? '(APPLY)' : '(DRY-RUN)'} ===`);
+  if (academyIdArg) console.log(`학원: ${academyIdArg}`);
+  console.log('');
 
   let updated = 0;
 
@@ -111,8 +115,10 @@ async function processDoc(db, col, docId, dryRun) {
   } else {
     // genQuestionSets (sourceType='vocab')
     if (!testsOnly) {
-      console.log('[genQuestionSets] sourceType=vocab\n');
-      const snap = await db.collection('genQuestionSets').where('sourceType', '==', 'vocab').get();
+      console.log('[genQuestionSets] sourceType=vocab' + (academyIdArg ? ` + academyId=${academyIdArg}` : '') + '\n');
+      let q = db.collection('genQuestionSets').where('sourceType', '==', 'vocab');
+      if (academyIdArg) q = q.where('academyId', '==', academyIdArg);
+      const snap = await q.get();
       console.log(`  ${snap.size}건 발견\n`);
       for (const d of snap.docs) {
         if (await processDoc(db, 'genQuestionSets', d.id, !apply)) updated++;
@@ -121,8 +127,10 @@ async function processDoc(db, col, docId, dryRun) {
 
     // genTests (vocab + word 있는 questions)
     if (!setsOnly) {
-      console.log('\n[genTests] testMode=vocab\n');
-      const snap = await db.collection('genTests').where('testMode', '==', 'vocab').get();
+      console.log('\n[genTests] testMode=vocab' + (academyIdArg ? ` + academyId=${academyIdArg}` : '') + '\n');
+      let q = db.collection('genTests').where('testMode', '==', 'vocab');
+      if (academyIdArg) q = q.where('academyId', '==', academyIdArg);
+      const snap = await q.get();
       console.log(`  ${snap.size}건 발견\n`);
       for (const d of snap.docs) {
         if (await processDoc(db, 'genTests', d.id, !apply)) updated++;
