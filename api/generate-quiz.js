@@ -9,7 +9,7 @@
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const { postProcessMCQ } = require('./_lib/quiz-post-process');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 // firebase-admin 앱 초기화 보장 — GET 경로는 verifyAndCheckQuota 를 안 거쳐서
 // 별도로 초기화 안 하면 getFirestore() 가 throw 함.
@@ -27,20 +27,41 @@ function _ensureAdminApp() {
 }
 
 // appConfig/aiPrompts (Firestore 글로벌 default) → 코드 상수 fallback.
-// super_admin 이 super 앱에서 편집한 default 가 즉시 모든 학원에 반영됨.
-// 호출당 read 1회 ($0.0000006) — 캐시 미적용 (즉시 반영 우선).
+// 2026-05-24 단방향 자동 sync 도입:
+//   코드 default 와 Firestore 값이 다르면 코드 → Firestore 자동 덮어쓰기.
+//   배포 후 첫 호출 시 자동 동기. super_admin 의 super 앱 편집은 다음 deploy 까지 유효 (코드와 다르면 reset).
+//   학원장 본인 커스텀(academies/{id}.customPrompts)은 customSystemPrompt 로 별도 전달 — 이 함수에 안 닿음.
+// 호출당 read 1회 ($0.0000006). 갱신 필요 시 write 1회 추가 — 동기 후엔 매번 read 만.
 async function getEffectivePrompt(quizType) {
+  const codeDefault = SYSTEM_PROMPTS[quizType];
   try {
     _ensureAdminApp();
-    const snap = await getFirestore().doc('appConfig/aiPrompts').get();
-    if (snap.exists) {
-      const v = snap.data()[quizType];
-      if (typeof v === 'string' && v.length > 20) return v;
+    const ref = getFirestore().doc('appConfig/aiPrompts');
+    const snap = await ref.get();
+    const data = snap.exists ? snap.data() : {};
+    const fsVal = data[quizType];
+
+    // 자동 sync — Firestore 값이 코드 default 와 다르면 코드 → Firestore 덮어쓰기.
+    // 의도: 코드를 진실 출처로 단일화. super 앱 편집은 일시적 (다음 deploy 시 코드로 덮임).
+    if (codeDefault && fsVal !== codeDefault) {
+      try {
+        await ref.set({
+          [quizType]: codeDefault,
+          _updatedAt: FieldValue.serverTimestamp(),
+          _updatedBy: 'auto-sync (code default)',
+        }, { merge: true });
+        console.log(`[generate-quiz] auto-synced ${quizType}: Firestore ← code default (${codeDefault.length} chars)`);
+      } catch (syncErr) {
+        console.warn(`[generate-quiz] auto-sync ${quizType} failed:`, syncErr.message);
+      }
+      return codeDefault;
     }
+
+    if (typeof fsVal === 'string' && fsVal.length > 20) return fsVal;
   } catch (e) {
     console.warn('[generate-quiz] appConfig/aiPrompts read failed:', e.message);
   }
-  return SYSTEM_PROMPTS[quizType];
+  return codeDefault;
 }
 
 // 모델 폴백 체인 (2026-05-18 재배치 — 2.5-flash-lite 503 급증 대응):
@@ -246,68 +267,58 @@ OUTPUT FORMAT
 
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
-  subjective: `You are an English-to-Korean translation exercise generator for Korean middle/high school students.
-Your task is to create "translate this sentence" questions from given English passages for a printed test paper (no auto-grading — students write by hand).
-
+  subjective: `You are an English reading comprehension test generator for Korean middle/high school students.
+The students have already memorized the textbook passages thoroughly. Your task is to test whether they truly UNDERSTAND the story/content, not whether they can pattern-match memorized phrases.
+Create paraphrased summary sentences that retell the passage's storyline using different sentence structures and expressions, then ask students to translate them into Korean.
 RULES:
-
-1. Pick or construct ONE meaningful sentence per question. Avoid trivial sentences (e.g., "Hello.").
-   Prefer sentences with substantive content that test grammar, vocabulary, or comprehension.
-
-2. SOURCE FAITHFULNESS (relaxed):
-   The sentences should be GROUNDED in the passage but may be lightly adapted when needed.
-
-   PREFERRED — in this priority order:
-   (a) Use a sentence from the passage VERBATIM (best for accuracy and fairness)
-   (b) Combine or adapt material from the passage while keeping the original vocabulary,
-       key phrases, and grammatical patterns intact
-   (c) Construct a new sentence that uses the passage's vocabulary and themes naturally
-
-   ALLOWED:
-   - Light rephrasing for clarity (e.g., breaking a long sentence into a clearer one)
-   - Combining ideas from adjacent sentences
-   - Adjusting tense or pronouns to make a self-contained sentence
-   - Using key vocabulary from the passage in a slightly different context
-
-   NOT ALLOWED:
-   - Introducing vocabulary, names, or concepts that don't appear in the passage
-   - Contradicting facts from the passage
-   - Creating sentences that have no connection to the passage content
-
-3. SENTENCE LENGTH (recommended, not strict):
-   Aim for sentences of roughly 15-20 words. This range works best for translation practice.
-   Slight deviations are fine if the sentence is otherwise good. Avoid extreme cases
-   (under 5 words or over 30 words).
-
-4. For each sentence, provide a natural Korean translation that a teacher would accept
-   as a model answer (sampleAnswerKo). It should be fluent Korean, not literal word-by-word.
-
-5. questionKo field: Use a simple instruction like "위 문장을 우리말로 해석하시오."
-   (slight variations are fine, e.g., "아래 문장을 한국어로 옮기시오.").
-
-6. Difficulty:
-   Include a mix of easy / medium / hard when possible.
-   Exact distribution is NOT required.
-
-7. If you genuinely cannot construct enough quality sentences from the passage's content,
-   it is OK to return fewer than requested. Quality over quantity.
-
-8. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+1. Read the passage and identify the storyline, key events, character actions, cause-effect relationships, or main arguments. Focus on the FLOW of content (what happens, why, what follows).
+2. Construct a NEW English sentence that PARAPHRASES a piece of the storyline. The sentence should:
+   - Convey content from the passage in DIFFERENT words and DIFFERENT sentence structure
+   - NOT match any sentence pattern that appears in the passage
+   - Be recognizable as the passage's content ONLY if the student truly understood the story
+   - A student who merely memorized the passage word-for-word should find this sentence unfamiliar in form, even though the meaning is from the passage
+3. VOCABULARY CONSTRAINT (important):
+   - Use vocabulary at or BELOW the passage's difficulty level
+   - Prefer simple, common words that a student at this level already knows
+   - Do NOT introduce advanced or unfamiliar vocabulary just to make the sentence "different"
+   - The challenge should come from comprehension, not from unfamiliar words
+4. PARAPHRASING TECHNIQUES to use (vary across questions):
+   - Change active voice to passive (or vice versa)
+   - Replace specific phrases with synonyms or simpler equivalents
+   - Restructure clause order (e.g., move the cause before the effect, or vice versa)
+   - Combine two short ideas into one sentence with a conjunction
+   - Express the same fact from a different character's perspective
+   - Use a generic descriptor instead of a specific name where it doesn't lose meaning
+5. Each summary sentence MUST be EXACTLY ONE sentence (one period at the end). You MAY use commas, conjunctions, and relative clauses to combine ideas WITHIN a single sentence.
+6. Each summary sentence MUST have 30 words or fewer. Aim for around 15-25 words.
+7. The sentence must accurately reflect what happens in the passage. Do not contradict the passage or invent events that aren't there. Do not introduce characters or items that don't appear.
+8. The sentence must be self-contained — avoid pronouns without clear antecedents; use names or descriptors when needed.
+9. For each sentence, provide a natural Korean translation that a teacher would accept as a model answer (sampleAnswerKo). Fluent Korean, not literal word-by-word.
+10. questionKo field: Use simple instruction like "위 문장을 우리말로 해석하시오." (slight variations are fine).
+11. explanation field: Provide brief notes (1-2 items max) — typically a paraphrase note (e.g., "본문의 X 부분을 다른 표현으로 바꿈") or a key vocabulary point.
+12. Difficulty:
+    - easy: simple paraphrase with mostly identical vocabulary
+    - medium: structural change + some vocabulary substitution
+    - hard: significant restructuring + multiple synonym substitutions
+    - Include a mix when possible.
+13. When multiple passages are given, distribute questions across them (1-3 per passage).
+14. If the passage's storyline is too thin to support meaningful paraphrasing, RETURN FEWER questions. Quality over quantity.
+15. Before outputting each sentence, verify: (a) it ends with exactly one period, (b) it has 30 words or fewer, (c) it uses different wording/structure than the passage, (d) it does NOT contain vocabulary harder than the passage. If any check fails, rewrite the sentence.
+16. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
 {
   "questions": [
     {
       "type": "subjective",
-      "sentence": "The brave knight fought the dragon with great courage.",
+      "sentence": "Although her friend felt afraid, the young girl wanted to investigate the strange noise from the barn.",
       "questionKo": "위 문장을 우리말로 해석하시오.",
-      "sampleAnswerKo": "용감한 기사는 대단한 용기로 용과 싸웠다.",
-      "explanation": "fought = 싸우다(과거), courage = 용기",
+      "sampleAnswerKo": "친구는 두려워했지만, 그 어린 소녀는 헛간에서 들리는 이상한 소리를 살펴보고 싶어 했다.",
+      "explanation": "본문의 'Mia wanted to check it out, but her friend was too scared'를 종속절(although)로 재구성",
       "sourcePageId": "the id you were given",
       "sourcePageTitle": "the title you were given",
       "difficulty": "medium"
     }
   ]
 }
-
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
   vocab: `You are an English vocabulary test generator for Korean middle/high school students.
