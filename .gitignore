@@ -42,3 +42,16 @@ _scratch/
 
 # 로컬 테스트 페이지
 public/ocr-test.html
+
+# Visual Studio IDE 폴더
+.vs/
+
+# 임시 JSON / CLAUDE.md 백업 (분리 작업 산출물)
+*-tmp.json
+CLAUDE.md.backup-*
+
+# 로컬 API 테스트 (평문 키 사고 재발 방지 — 2026-05-23)
+test-*.ps1
+
+# 일회용 진단 스크립트 (그때그때 만들어 쓰는 도구, repo 보관 X)
+scripts/diag/
