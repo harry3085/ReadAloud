@@ -5240,10 +5240,11 @@ function _vqSpkFinalize(correct, heard, meta) {
   // 힌트 버튼은 footer 에 있어 위치 유지 (정답 시도 사라지지 않게) — _vqUpdateHintBtn 에서 disabled 처리
   _vqUpdateHintBtn();
   if (hintBoxes) hintBoxes.style.display = 'none';
-  // 라이브 STT 영역 채점 완료 시 숨김
-  if (liveEl) { liveEl.style.display = 'none'; liveEl.textContent = ''; }
-  // 3차 정답 시 sentArea 유지 + 목표 단어 노출 + 클릭 재발음. 그 외엔 숨김.
+  // 3차 (sent3) 일 땐 라이브 STT 유지 — 학생이 자기 발음 인식 결과 확인 가능.
+  // 1·2차는 어차피 display:none 이라 무관. 다음 문제 진입 시 _vqSpkRenderArea 가 초기화.
   const src3 = String(meta?.source || '').toLowerCase() === 'webspeech-3';
+  if (liveEl && !src3) { liveEl.style.display = 'none'; liveEl.textContent = ''; }
+  // 3차 정답 시 sentArea 유지 + 목표 단어 노출 + 클릭 재발음. 그 외엔 숨김.
   if (sentArea && sentEl && correct && src3 && q.speakingSent) {
     const re = new RegExp('\\b' + String(q.word || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
     const sentHtml = esc(q.speakingSent).replace(re, m =>
