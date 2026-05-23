@@ -1548,3 +1548,120 @@ SW 무관.
 - `public/admin/style.css`·`_app.html`·`js/app.js`: AI OCR flex + 메시지 관리 정비
 - `public/spk-test.html`·`spk-exam.html`: 빈칸 문장 8개 단어 교체
 - SW 캐시: `kunsori-v576`
+
+---
+
+## 2026-05-23 ~ 24: 단어 말하기 신 흐름 통합 + AI 프롬프트·클린업 프리셋 동기 모델 통일
+
+SW v577 → v588 (~13 commit).
+
+### 1) 단어 말하기 1·2·3차 흐름 전면 개편 (응시 시점 AI 0)
+
+옛: 1·2차 영어 STT → 3차 MediaRecorder + check-word AI (503 9.7~52초 지연 위험).
+신: **1차 영어 STT (en-US, 닫힌후보 가드 유지) → 2차 한국어 STT (ko-KR, 한글 발음표기
+매칭, 임계 0.7) → 3차 영어 빈칸 문장 STT (en-US, 목표 단어 부분 매칭, 임계 0.7)**.
+
+- 출제 시점 `HOMOPHONES_PROMPT` 5필드 동시 생성 (homophones / koPron / sentence /
+  sentenceKo / speakingTip) → 응시 시점 AI 호출 0 (check-word 폐기)
+- check-word.js / MediaRecorder / silenceDetection / gumWithTimeout / blobToBase64 /
+  cleanAiReason / _vqStartFinalAttemptMR — ~250줄 제거
+- tpPublish 검증 게이트 — 4필드 누락 시 배정 차단
+- 백필 스크립트 신규 — default 학원 vocab+speaking 161건 처리 (1500+ 단어, 4필드 자동 채움)
+- 옛 시험 + 백필 안 된 단어는 학생앱 폴백 (1·2·3차 모두 영어 SR)
+- 학생 힌트 UI — 스펠링 2글자, 점수 영향 없음. footer 위치(마이크 zone 움직임 방지)
+- 학원장 베타 피드백 2차례 반영:
+  · 1차: 힌트 footer 이동 / 2차 안내 단순화 / 3차 빈칸 회색 박스 가림 / 3차 라이브 STT /
+    3차 정답 시 문장 노출·자동 발음·클릭 재생
+  · 2차: 2차 통과 "한국식 발음" 멘트 제거 → speakingTip(5번째 필드, 단어별 발음 코칭
+    25자, 예: "R 발음 — 혀 끝 말지 말기") / 정답 카드 글자 22px / 🔊 30px
+- 3차 채점 완료 후 vqSpkLive 박스 유지 — 학생이 자기 발음 인식 결과 확인
+
+신규 spkSource 값: `webspeech-1` / `webspeech-2` / `webspeech-3`. 학원장 상세 /
+학생 상세 / analyze-speaking-ai-dependence.js 모두 신 값 대응.
+
+iOS Safari Web Speech 정상 동작 확인 (아이패드 spk-test.html 테스트). 회귀 우려 해소.
+
+### 2) AI 프롬프트·클린업 프리셋 동기 모델 통일
+
+학원장 "AR 1.5 본문에 'consequence' 같은 어른 어휘" 보고 → mcq(본문이해)
+**VOCABULARY MIRRORING 규칙** + 난이도 사고 단계(FACT-FINDING/COMPREHENSION/INFERENCE)
+명확화. 그 과정에서 코드 default vs Firestore super 글로벌 갈라짐 발견:
+
+7개 AI 프롬프트 중 4개(mcq/mcq_grammar/subjective/unscramble)가 2026-05-10 super
+편집분 그대로. 그 이후 코드 변경 4건이 운영 미반영.
+
+**자동 sync 도입 시도 + 즉시 철회** (902e4bd → dad90e8):
+- 단방향 자동 sync(코드 → Firestore) 도입했더니 super 편집 후 코드 박기 전에
+  학원장 출제 한 번에 super 편집 손실 → 자동 sync 제거
+
+**최종 정책** — Firestore(super 글로벌) = 진실 출처. 양방향 동기는 명시 요청 시에만.
+```
+[학원 커스텀] academies/{id}.customPrompts / customCleanupPresets  ← 영구, 우선
+   ↓ 없으면
+[super 글로벌] appConfig/aiPrompts / appConfig/cleanupPresets       ← 진실 출처
+   ↓ 글로벌 비었을 때만
+[코드 default]                                                     ← emergency fallback
+```
+
+**클린업 프리셋 모델 변경** — 옛 "학원 본인 컬렉션이 진실 출처(genCleanupPresets) +
+super 글로벌은 시드만" 구조 → AI 프롬프트와 동일 구조로 통일:
+- super 글로벌이 진실 출처 + 학원 추가/수정만 `academies/{id}.customCleanupPresets`
+- 마이그레이션 4개 학원 학원 커스텀 보존 (default "객관식 문법문제 생성" 1771자 등)
+- `_cleanupLoadPresets`/Save/Duplicate/Delete 재작성. `_cleanupSeedDefaults` 폐기
+- Firestore 규칙 `academies/{id}` update 키에 `customCleanupPresets` 추가
+
+**도구**:
+- `scripts/admin/push-aiprompt-to-firestore.js` — 코드 → Firestore 박기 (AI 프롬프트)
+- `scripts/migrate/cleanup-presets-to-academy-custom.js` — 옛 학원 컬렉션 → 학원 커스텀
+- `scripts/diag/check-aiprompts-sync.js` — 코드 vs Firestore 차이 진단
+- 향후 사용자 요청 시 admin SDK 로 양방향 동기
+
+**super 앱 화면 안내** (public/super/index.html): AI 프롬프트 + 클린업 프리셋
+헤더에 동기화 필수 빨간색 경고. 클린업 "시드값" 표현 폐기.
+
+### 작업 규칙 추가 (2026-05-23~24)
+
+- **응시 시점 AI 호출 0 패턴** — 학생 응시 흐름은 AI 호출 없이 동작하도록 설계.
+  필요한 AI 데이터는 **출제 시점**에 미리 생성·박음. 503/타임아웃 운영 리스크 제거.
+  tpPublish 게이트로 데이터 누락 시 배정 차단.
+- **단방향 자동 sync 는 의도와 반대로 작동할 수 있음** — 코드를 진실 출처로 가정한
+  단방향 sync(코드 → Firestore)는 super 앱 편집을 즉시 손실시킴. 코드 vs Firestore
+  양쪽 모두 의미 있는 변경 경로일 때는 **자동 sync 제거 + 명시 요청 트리거**가 정답.
+  Firestore 가 진실 출처면 코드는 fallback 만.
+- **시드 모델 vs 진실 출처 모델 구분** — 옛 클린업 프리셋처럼 "글로벌 default 는
+  시드만, 학원 본인 컬렉션이 진실 출처" 구조는 super 편집이 기존 학원에 반영 안 됨.
+  AI 프롬프트처럼 **글로벌 진실 출처 + 학원 커스텀 별도** 가 일관성 ↑.
+- **본문이해 mcq 어휘 mirroring** — AI가 본문 어휘 풀에서 벗어난 어른 단어
+  (consequence/demonstrate 등) 끌어 쓰면 학생 당황. **본문 어휘 우선 + 학년 흔한
+  단어 보조**로 강제. 난이도 상/중/하는 **사고 단계**(사실/이해/추론) 한 축만 조절.
+- **양방향 동기 자동화는 코드 측 제약으로 불가** — 코드는 git/deploy 만 변경 가능.
+  Firestore → 코드 자동 동기 안 됨. 가장 안전: 사용자 명시 요청 시에만 양방향 처리.
+
+## 파일 크기 / SW 캐시 (2026-05-23~24)
+- `public/js/app.js`: 단어 말하기 1·2·3차 흐름 + 헬퍼 (~+300줄, check-word 등 ~-250줄)
+- `public/admin/js/app.js`: tpPublish 게이트 / _fillMissingHomophones 5필드 / 클린업
+  Save·Duplicate·Delete 신 모델 + _cleanupSeedDefaults 폐기 / 학원장 상세 차수 라벨
+- `public/_app.html`: sentence area + 라이브 STT live area + 힌트 버튼 footer
+- `api/generate-quiz.js`: HOMOPHONES_PROMPT 5필드 + mcq MIRRORING + subjective 갱신
+- `public/super/index.html`: 동기화 필수 빨간색 안내 (AI 프롬프트 + 클린업)
+- `firestore.rules`: academies update 키에 customCleanupPresets 추가
+- 신규 스크립트:
+  · `scripts/migrate/backfill-vocab-speaking-data.js` (백필)
+  · `scripts/migrate/cleanup-presets-to-academy-custom.js` (클린업 이동)
+  · `scripts/admin/push-aiprompt-to-firestore.js` (코드 → Firestore 동기)
+  · `scripts/diag/check-aiprompts-sync.js` (진단)
+- SW 캐시: `kunsori-v577` → `kunsori-v588`
+
+## 진행률 (2026-05-23~24)
+- **단어 말하기 신 흐름 통합: ~100%** (Phase 1~5 + 학원장 베타 피드백 2차례 + iOS 정상 + AI 호출 0)
+- **AI 프롬프트·클린업 프리셋 동기 모델 통일: ~100%** (Firestore 진실 출처, 학원 커스텀,
+  코드 fallback, super 앱 안내, 양방향 동기 도구)
+- 본문이해 mcq 어휘 mirroring + 사고 단계 명확화: ~100%
+- 멀티테넌시·super 앱·결제: 변동 없음
+- Phase 5 출시 준비: 0%
+
+**다음 세션 후보**:
+- 옛 `genCleanupPresets` 컬렉션 안전 삭제 (운용 1~2일 안정 확인 후, 명시 트리거)
+- 단어 말하기 베타 결과 관찰 + 추가 튜닝 (speakingTip 품질·정답 문장 노출 UX 등)
+- 백필 안 된 시험 단어 (sent 검증 실패 ~7%) 재호출 검토
+- Phase 5 출시 준비 (도메인·약관·결제 PG)
