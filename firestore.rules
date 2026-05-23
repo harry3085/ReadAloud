@@ -251,6 +251,8 @@ service cloud.firestore {
             'usage',
             'branding',
             'customPrompts',
+            'customCleanupPresets',
+            'customCleanupPresetsUpdatedAt',
           ])
       );
     }

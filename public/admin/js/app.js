@@ -8858,16 +8858,50 @@ let _cleanupBatchResults = [];      // 일괄 처리 결과 (비교·적용용)
 let _cleanupBatchTabIdx = 0;        // 일괄 결과 모달에서 보고 있는 탭 인덱스
 let _cleanupBatchPresetName = '';   // 현재 일괄 처리 중인 프리셋 이름
 
-// ─── 프리셋 로드 + 최초 시드 ───
+// ─── 프리셋 로드 (2026-05-24 모델 변경) ───
+// 모델: super 글로벌(appConfig/cleanupPresets) + 학원 커스텀(academies/{id}.customCleanupPresets)
+// 병합 규칙: 같은 이름은 학원 커스텀 우선 (= AI 프롬프트 customSystemPrompt 와 동일 모델)
+// id 형식: 'global:이름' 또는 'custom:이름' (Firestore doc id 가 아닌 이름 기반 합성 id)
 async function _cleanupLoadPresets() {
   try {
-    const snap = await getDocs(query(collection(db, 'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order', 'asc')));
-    _cleanupPresets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (_cleanupPresets.length === 0) {
-      await _cleanupSeedDefaults();
-      const snap2 = await getDocs(query(collection(db, 'genCleanupPresets'),where('academyId','==',window.MY_ACADEMY_ID), orderBy('order', 'asc')));
-      _cleanupPresets = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 1. 글로벌 default 로드
+    const globalArr = await _getEffectiveCleanupDefaults();
+
+    // 2. 학원 커스텀 로드 (academies/{id}.customCleanupPresets)
+    let customArr = [];
+    try {
+      const acSnap = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'));
+      if (acSnap.exists()) {
+        const v = acSnap.data().customCleanupPresets;
+        if (Array.isArray(v)) customArr = v;
+      }
+    } catch (e) {
+      console.warn('[cleanup] academy customCleanupPresets read failed:', e.message);
     }
+
+    // 3. 병합 — 같은 이름은 학원 커스텀 우선. 학원 신규 프리셋은 끝에 추가.
+    const customByName = new Map();
+    customArr.forEach(p => { if (p?.name) customByName.set(p.name, p); });
+
+    const merged = [];
+    globalArr.forEach(g => {
+      if (!g?.name) return;
+      const c = customByName.get(g.name);
+      if (c) {
+        merged.push({ ...c, _source: 'academy-custom', id: 'custom:' + g.name });
+        customByName.delete(g.name);  // 사용 표시
+      } else {
+        merged.push({ ...g, _source: 'global', id: 'global:' + g.name });
+      }
+    });
+    // 학원이 추가한 새 프리셋 (글로벌에 없는 이름) — 나머지
+    for (const c of customByName.values()) {
+      merged.push({ ...c, _source: 'academy-custom', id: 'custom:' + c.name });
+    }
+    // order 로 안정 정렬 (학원 신규는 끝)
+    merged.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    _cleanupPresets = merged;
     _cleanupRenderEditorSelect();
   } catch (e) {
     console.error('cleanup presets load error:', e);
@@ -8899,35 +8933,8 @@ async function _cleanupGetGlobalDefaultsByName(forceRefresh = false) {
   return _cleanupGlobalDefaultsByName;
 }
 
-// 시드 race 회피 — 한 세션 안 중복 호출 차단
-let _cleanupSeeding = false;
-async function _cleanupSeedDefaults() {
-  if (_cleanupSeeding) return;
-  _cleanupSeeding = true;
-  try {
-    const uid = auth.currentUser?.uid || '';
-    const defaults = await _getEffectiveCleanupDefaults();
-    // 시드 직전 다시 한 번 검사 (다른 탭/요청 race 회피) — 이미 있는 이름 skip
-    const existingSnap = await getDocs(query(
-      collection(db, 'genCleanupPresets'),
-      where('academyId', '==', window.MY_ACADEMY_ID || 'default')
-    ));
-    const existingNames = new Set(existingSnap.docs.map(d => d.data().name));
-    const toAdd = defaults.filter(p => p?.name && !existingNames.has(p.name));
-    if (toAdd.length === 0) return;
-    await Promise.all(toAdd.map(p =>
-      addDoc(collection(db, 'genCleanupPresets'), {
-        ...p,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: uid,
-        academyId: window.MY_ACADEMY_ID || 'default',
-      })
-    ));
-  } finally {
-    _cleanupSeeding = false;
-  }
-}
+// 2026-05-24 신 모델 도입으로 폐기됨 — 자동 시드 불필요 (글로벌 default 가 항상 보장).
+// _cleanupLoadPresets 가 글로벌 + 학원 customCleanupPresets 병합하므로 첫 로드부터 프리셋 표시.
 
 // ─── 에디터 드롭다운 렌더 ───
 function _cleanupRenderEditorSelect() {
@@ -9458,6 +9465,9 @@ window.cleanupEditPreset = (id) => {
   showModal(html);
 };
 
+// 2026-05-24 신 모델: 학원 customCleanupPresets 배열 조작.
+// id 형식: 'global:이름' / 'custom:이름' / 빈값(신규)
+// 글로벌 항목 편집·삭제 시도 → 학원 커스텀으로 오버라이드 또는 복원 흐름.
 window.cleanupSavePreset = async (id) => {
   const name = document.getElementById('cleanupEditName')?.value.trim() || '';
   const description = document.getElementById('cleanupEditDesc')?.value.trim() || '';
@@ -9467,23 +9477,23 @@ window.cleanupSavePreset = async (id) => {
   if (name.length < 1) { showAlert('입력 확인', '이름을 입력하세요'); return; }
   if (prompt.trim().length < 10) { showAlert('입력 확인', '프롬프트는 최소 10자 이상이어야 합니다'); return; }
 
+  const idParts = id ? id.split(':') : [];
+  const oldName = idParts[1] || '';
+
   try {
-    if (id) {
-      await updateDoc(doc(db, 'genCleanupPresets', id), {
-        name, description, prompt, order,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await addDoc(collection(db, 'genCleanupPresets'), {
-        name, description, prompt, order,
-        isDefault: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: auth.currentUser?.uid || '',
-        academyId: window.MY_ACADEMY_ID || 'default',
-      });
-    }
-    showToast(id ? '수정 완료' : '추가 완료');
+    const acRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
+    const acSnap = await getDoc(acRef);
+    const currentCustom = Array.isArray(acSnap.data()?.customCleanupPresets) ? acSnap.data().customCleanupPresets : [];
+
+    // 옛 이름 + 새 이름 둘 다 학원 커스텀에서 제거 (이름 변경 시 옛 항목도 정리)
+    const nextCustom = currentCustom.filter(p => p.name !== oldName && p.name !== name);
+    nextCustom.push({ name, description, prompt, order, isDefault: false });
+
+    await updateDoc(acRef, {
+      customCleanupPresets: nextCustom,
+      customCleanupPresetsUpdatedAt: serverTimestamp(),
+    });
+    showToast(oldName && oldName === name ? '수정 완료' : '추가 완료');
     await _cleanupLoadPresets();
     await _cleanupRenderPresetManager();
   } catch (e) {
@@ -9495,16 +9505,26 @@ window.cleanupDuplicatePreset = async (id) => {
   const p = _cleanupPresets.find(x => x.id === id);
   if (!p) return;
   try {
-    await addDoc(collection(db, 'genCleanupPresets'), {
-      name: p.name + ' (복제)',
+    const acRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
+    const acSnap = await getDoc(acRef);
+    const currentCustom = Array.isArray(acSnap.data()?.customCleanupPresets) ? acSnap.data().customCleanupPresets : [];
+
+    // 중복 이름 회피
+    const allNames = new Set([..._cleanupPresets.map(x => x.name), ...currentCustom.map(x => x.name)]);
+    let dupName = p.name + ' (복제)';
+    let n = 2;
+    while (allNames.has(dupName)) dupName = `${p.name} (복제${n++})`;
+
+    const next = [...currentCustom, {
+      name: dupName,
       description: p.description || '',
       prompt: p.prompt || '',
       order: (p.order || 0) + 1,
       isDefault: false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdBy: auth.currentUser?.uid || '',
-      academyId: window.MY_ACADEMY_ID || 'default',
+    }];
+    await updateDoc(acRef, {
+      customCleanupPresets: next,
+      customCleanupPresetsUpdatedAt: serverTimestamp(),
     });
     showToast('복제 완료');
     await _cleanupLoadPresets();
@@ -9517,17 +9537,36 @@ window.cleanupDuplicatePreset = async (id) => {
 window.cleanupDeletePreset = async (id) => {
   const p = _cleanupPresets.find(x => x.id === id);
   if (!p) return;
-  const globals = await _cleanupGetGlobalDefaultsByName();
-  if (globals[p.name]) {
-    showAlert('삭제 불가', '기본 프리셋은 삭제할 수 없습니다. 편집해서 사용하시거나 [↺ 기본값] 으로 글로벌 default 와 동기화하세요.');
+
+  if (p._source === 'global') {
+    showAlert('삭제 불가', '글로벌 기본 프리셋은 삭제할 수 없습니다.\n사용을 원치 않으면 그냥 사용하지 않으시거나, 편집해서 학원 커스텀으로 만드세요.');
     return;
   }
-  const ok = await showConfirm(`"${p.name}" 프리셋을 삭제하시겠습니까?`, '삭제된 프리셋은 복구할 수 없습니다.');
+
+  // 학원 커스텀 — 글로벌에 같은 이름 있으면 "오버라이드" → 글로벌 복원
+  // 없으면 학원 자체 신규 → 완전 삭제 (복구 불가)
+  const globals = await _cleanupGetGlobalDefaultsByName();
+  const isOverride = !!globals[p.name];
+  const title = isOverride
+    ? `"${p.name}" 학원 커스텀을 제거할까요?`
+    : `"${p.name}" 프리셋을 삭제할까요?`;
+  const sub = isOverride
+    ? '글로벌 기본 프리셋으로 돌아갑니다.'
+    : '학원 자체 신규 프리셋이라 복구할 수 없습니다.';
+  const ok = await showConfirm(title, sub);
   if (!ok) return;
+
   try {
-    await deleteDoc(doc(db, 'genCleanupPresets', id));
-    showToast('삭제됨');
-    // 활성 프리셋이 삭제되면 에디터 선택 해제
+    const acRef = doc(db, 'academies', window.MY_ACADEMY_ID || 'default');
+    const acSnap = await getDoc(acRef);
+    const currentCustom = Array.isArray(acSnap.data()?.customCleanupPresets) ? acSnap.data().customCleanupPresets : [];
+    const next = currentCustom.filter(x => x.name !== p.name);
+
+    await updateDoc(acRef, {
+      customCleanupPresets: next,
+      customCleanupPresetsUpdatedAt: serverTimestamp(),
+    });
+    showToast(isOverride ? '글로벌로 복원됨' : '삭제됨');
     if (_cleanupActivePresetId === id) _cleanupActivePresetId = '';
     await _cleanupLoadPresets();
     await _cleanupRenderPresetManager();
