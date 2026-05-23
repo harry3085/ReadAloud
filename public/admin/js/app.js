@@ -9550,6 +9550,8 @@ const _QS_COL_DEFAULTS = {
 let _qgActiveBook = null;     // {id, name} | null
 let _qgActiveChapter = null;  // {id, name, bookId} | null
 let _qgCurrentType = 'mcq';   // 현재 선택된 문제 유형
+let _qgWordsnapDraft = '';        // Book 클릭 등으로 _qgRender 시 textarea 보존 (2026-05-23)
+let _qgUnscrambleSnapDraft = '';  // 동일
 
 // ─── 유형별 옵션 스키마 (Phase 2.5) ───
 // enabled:false 인 유형은 UI에는 보이되 [생성] 클릭 시 "Phase X 이후 구현 예정" 토스트
@@ -10524,7 +10526,7 @@ async function _qgCallRecording(opts) {
 function _qgBuildWordsnapSection() {
   const bookNote = _qgActiveBook
     ? `<span style="color:#0a7a3a;font-weight:700;">✓ 저장 위치: ${esc(_qgActiveBook.name)}${_qgActiveChapter ? ' · ' + esc(_qgActiveChapter.name) : ''}</span>`
-    : `<span style="color:#c33;">⚠ 우측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
+    : `<span style="color:#c33;">⚠ 좌측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
@@ -10539,7 +10541,7 @@ function _qgBuildWordsnapSection() {
       <textarea id="qgWordsnapInput" rows="5" spellcheck="false"
         oninput="_qgWordsnapUpdateStatus()"
         placeholder="apple&#9;사과&#10;banana&#9;바나나&#10;give up&#9;포기하다"
-        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
+        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;">${esc(_qgWordsnapDraft)}</textarea>
       <div id="qgWordsnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
       <button class="btn btn-primary" onclick="qgRunWordsnap()" id="qgWordsnapBtn"
         style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
@@ -10592,6 +10594,7 @@ window._qgWordsnapUpdateStatus = () => {
   const ta = document.getElementById('qgWordsnapInput');
   const status = document.getElementById('qgWordsnapStatus');
   if (!ta || !status) return;
+  _qgWordsnapDraft = ta.value;  // re-render 시 보존 (Book 클릭 등)
   if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
   const { questions, errors } = _qgParseWordsnap(ta.value);
   const parts = [];
@@ -10620,7 +10623,7 @@ window.qgRunWordsnap = async () => {
 
   // Book 필수 — 미지정 세트 발생 차단 (2026-05-14)
   if (!_qgActiveBook) {
-    showAlert('Book 선택 필요', '우측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
+    showAlert('Book 선택 필요', '좌측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
     return;
   }
 
@@ -10696,6 +10699,7 @@ window.qgRunWordsnap = async () => {
     const homoNote = homophonesFilled > 0 ? ` · 동음이의어 ${homophonesFilled}건` : '';
     showToast(`✓ "${setName}" 저장됨 (${questions.length}단어${homoNote})`);
     ta.value = '';
+    _qgWordsnapDraft = '';
     window._qgWordsnapUpdateStatus();
     _qsInvalidateCache();
     setTimeout(() => goPage('quiz-sets'), 400);
@@ -10710,7 +10714,7 @@ window.qgRunWordsnap = async () => {
 function _qgBuildUnscrambleSnapSection() {
   const bookNote = _qgActiveBook
     ? `<span style="color:#0a7a3a;font-weight:700;">✓ 저장 위치: ${esc(_qgActiveBook.name)}${_qgActiveChapter ? ' · ' + esc(_qgActiveChapter.name) : ''}</span>`
-    : `<span style="color:#c33;">⚠ 우측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
+    : `<span style="color:#c33;">⚠ 좌측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
@@ -10725,7 +10729,7 @@ function _qgBuildUnscrambleSnapSection() {
       <textarea id="qgUnscrambleSnapInput" rows="5" spellcheck="false"
         oninput="_qgUnscrambleSnapUpdateStatus()"
         placeholder="The boy picked up the ball.&#10;She has been studying English for three years.&#10;I would like to make a reservation."
-        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;"></textarea>
+        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;">${esc(_qgUnscrambleSnapDraft)}</textarea>
       <div id="qgUnscrambleSnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
       <button class="btn btn-primary" onclick="qgRunUnscrambleSnap()" id="qgUnscrambleSnapBtn"
         style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
@@ -10758,6 +10762,7 @@ window._qgUnscrambleSnapUpdateStatus = () => {
   const ta = document.getElementById('qgUnscrambleSnapInput');
   const status = document.getElementById('qgUnscrambleSnapStatus');
   if (!ta || !status) return;
+  _qgUnscrambleSnapDraft = ta.value;  // re-render 시 보존 (Book 클릭 등)
   if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
   const { sentences, errors } = _qgParseSentences(ta.value);
   const parts = [];
@@ -10784,7 +10789,7 @@ window.qgRunUnscrambleSnap = async () => {
   const ta = document.getElementById('qgUnscrambleSnapInput');
   if (!ta) return;
   if (!_qgActiveBook) {
-    showAlert('Book 선택 필요', '우측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
+    showAlert('Book 선택 필요', '좌측에서 Book 폴더를 먼저 선택해야 저장됩니다. (저장 위치 지정 필수)');
     return;
   }
   const { sentences, errors } = _qgParseSentences(ta.value);
@@ -10832,6 +10837,7 @@ window.qgRunUnscrambleSnap = async () => {
       _qgOpts: { type: 'unscramble', chunkCount },
     });
     ta.value = '';
+    _qgUnscrambleSnapDraft = '';
     window._qgUnscrambleSnapUpdateStatus();
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
