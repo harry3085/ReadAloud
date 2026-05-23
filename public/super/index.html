@@ -158,7 +158,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-shrink:0;">
         <div>
           <div style="font-weight:700;font-size:16px;">🤖 AI 프롬프트 default</div>
-          <div style="font-size:12px;color:var(--gray);margin-top:3px;">학원장 앱의 AI Generator 가 사용하는 시스템 프롬프트. 갱신 즉시 모든 학원에 반영.</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px;">학원장 앱의 AI Generator 가 사용하는 시스템 프롬프트. 갱신 즉시 모든 학원에 반영 (학원 커스텀 우선).</div>
+          <div style="font-size:12px;color:#dc2626;margin-top:5px;font-weight:600;line-height:1.5;">⚠ 동기화 필수: 여기서 변경 시 코드 default(api/generate-quiz.js SYSTEM_PROMPTS)도 동일하게 박아야 함.<br>반대로 코드 default 수정 시에도 여기에 박아야 학원장에 반영됨. 양방향 자동 동기 없음.</div>
         </div>
         <div style="display:flex;gap:6px;">
           <button class="btn btn-secondary" id="promptsReloadBtn" onclick="loadPromptsConfig()">↻ 다시 로드</button>
@@ -184,7 +185,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-shrink:0;">
         <div>
           <div style="font-weight:700;font-size:16px;">🧹 클린업 프리셋 default</div>
-          <div style="font-size:12px;color:var(--gray);margin-top:3px;">학원장 앱 AI OCR 의 정리 프리셋 시드값. 학원이 처음 진입 시 시드, [기본값 복원] 버튼이 이 값 사용.</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px;">학원장 앱 AI OCR 의 정리 프리셋. 갱신 즉시 모든 학원에 반영 (학원 커스텀 우선).</div>
+          <div style="font-size:12px;color:#dc2626;margin-top:5px;font-weight:600;line-height:1.5;">⚠ 동기화 필수: 여기서 변경 시 코드 default(public/admin/js/app.js _CLEANUP_DEFAULT_PRESETS)도 동일하게 박아야 함.<br>반대로 코드 default 수정 시에도 여기에 박아야 학원장에 반영됨. 양방향 자동 동기 없음.</div>
         </div>
         <div style="display:flex;gap:6px;">
           <button class="btn btn-secondary" onclick="loadPresetsConfig()">↻ 다시 로드</button>
