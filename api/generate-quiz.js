@@ -833,17 +833,34 @@ RULES:
 3. Use only Korean hangul, basic punctuation (. ? ,) and the [] brackets. NO English letters in the translation itself.
 4. NEVER leave empty.
 
+═══ FIELD 5: speakingTip (pronunciation coaching for Korean learners) ═══
+A short, SPECIFIC Korean coaching tip about the pronunciation difficulty Korean learners typically face with this exact word.
+
+RULES:
+1. Maximum 25 hangul characters (short — read at a glance).
+2. Only Korean hangul + basic punctuation (. , / ~). NO English letters except when quoting a sound (e.g., "R", "L", "th", "F").
+3. Focus on the SPECIFIC sound or part of THIS word that's hard for Korean speakers — not generic advice.
+   GOOD examples:
+     "right" → "R 발음 — 혀 끝 말지 말기"
+     "fast" → "F 발음 — 아랫입술 살짝"
+     "think" → "th — 혀 끝 이 사이로"
+     "rice" → "R 발음 / lice 와 다름"
+     "world" → "월드 아닌 워얼드"
+     "vegetable" → "베지터블 — 4음절"
+   BAD (generic): "또박또박 발음하기", "정확하게 말하기", "천천히 말하기"
+4. If THIS specific word has no particular Korean-learner difficulty (e.g., very simple words like "cat", "dog", "book"), return empty string "".
+
 ═══ OUTPUT ═══
 Output ONLY a valid JSON object (no markdown, no prose):
 {
   "results": [
-    { "word": "cereal", "homophones": ["serial"], "koPron": "시리얼", "sentence": "I eat cereal every morning.", "sentenceKo": "나는 매일 아침 [시리얼]을 먹는다." },
-    { "word": "right", "homophones": ["write", "rite"], "koPron": "라이트", "sentence": "Please turn right at the corner.", "sentenceKo": "모퉁이에서 [오른쪽으로] 도세요." },
-    { "word": "cat", "homophones": [], "koPron": "캣", "sentence": "My black cat is sleeping now.", "sentenceKo": "내 검은 [고양이]가 지금 자고 있다." }
+    { "word": "cereal", "homophones": ["serial"], "koPron": "시리얼", "sentence": "I eat cereal every morning.", "sentenceKo": "나는 매일 아침 [시리얼]을 먹는다.", "speakingTip": "" },
+    { "word": "right", "homophones": ["write", "rite"], "koPron": "라이트", "sentence": "Please turn right at the corner.", "sentenceKo": "모퉁이에서 [오른쪽으로] 도세요.", "speakingTip": "R 발음 — 혀 끝 말지 말기" },
+    { "word": "think", "homophones": [], "koPron": "씽크", "sentence": "I think you are smart.", "sentenceKo": "너는 똑똑하다고 [생각해].", "speakingTip": "th — 혀 끝 이 사이로" }
   ]
 }
 
-The "results" array must include EVERY input word, in the same order, with ALL FOUR fields populated.`;
+The "results" array must include EVERY input word, in the same order, with ALL FIVE fields populated (speakingTip can be "" if no specific difficulty).`;
 
 // 언스크램블 직접 입력 — 입력 문장 원문 보존 + 청크 분할 + 한글뜻 (2026-05-15)
 const UNSCRAMBLE_FROM_TEXT_PROMPT = `You are an English sentence unscramble exercise generator for Korean students.
@@ -1075,7 +1092,15 @@ Output ONLY the JSON object as specified.`;
       if (!hasHangul || !hasBracket || hasEnglish) sentenceKo = '';
     }
 
-    mapByLower.set(w, { homophones: cleanedHomos, koPron, sentence, sentenceKo });
+    // speakingTip — 한글 포함 + 길이 ≤ 50 (안전망, 프롬프트 25자 + 여유)
+    // 영문 일부 허용 (R/L/th/F 같은 발음 기호 인용). 단 한글 한 글자 이상 필수.
+    let speakingTip = String(r.speakingTip || '').trim();
+    if (speakingTip) {
+      const hasHangulTip = /[가-힣]/.test(speakingTip);
+      if (!hasHangulTip || speakingTip.length > 50) speakingTip = '';
+    }
+
+    mapByLower.set(w, { homophones: cleanedHomos, koPron, sentence, sentenceKo, speakingTip });
   }
 
   const results = sanitized.map(w => {
@@ -1086,6 +1111,7 @@ Output ONLY the JSON object as specified.`;
       koPron: m.koPron || '',
       sentence: m.sentence || '',
       sentenceKo: m.sentenceKo || '',
+      speakingTip: m.speakingTip || '',
     };
   });
 

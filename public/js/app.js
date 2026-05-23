@@ -5260,36 +5260,39 @@ function _vqSpkFinalize(correct, heard, meta) {
   }
 
   // ── 결과 메시지 분기 ──
-  // 통과: 차수에 따라 다른 안내 (1차=정확 / 2차=한국어 STT 통과 / 3차=문장 안에서 통과)
+  // 통과: 차수별 안내. 2차 통과는 평가 방식 멘트 제거하고 q.speakingTip 있으면 코칭만 표시.
   // 오답: "X처럼 들렸어요" + 정답 노출
   if (heardEl) {
     const src = String(meta?.source || '').toLowerCase();
+    const tip = String(q.speakingTip || '').trim();
     if (correct) {
-      if (src === 'webspeech-1' || src === 'webspeech') {
-        // 1차 통과 — 깔끔한 정답, 부가 표시 X
-        heardEl.innerHTML = '';
-      } else if (src === 'webspeech-2') {
-        heardEl.innerHTML = '<div style="font-size:12px;color:#f59e0b;margin-top:4px;">한국식 발음으로 인식됐어요 — 영어 발음을 조금 더 또박또박 연습해보세요</div>';
-      } else if (src === 'webspeech-3') {
-        heardEl.innerHTML = '<div style="font-size:12px;color:#f59e0b;margin-top:4px;">문장에서 잘 찾아 읽었어요 — 단어만으로 발음하는 연습도 해보세요</div>';
+      if (src === 'webspeech-2' && tip) {
+        // 2차 통과 + 단어별 코칭 — 발음 팁만 (한국식 인식 멘트 제거)
+        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
+      } else if (src === 'webspeech-3' && tip) {
+        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
       } else {
+        // 1차 정답 또는 tip 없음 — 부가 표시 X (깔끔하게)
         heardEl.innerHTML = '';
       }
     } else {
+      // 오답 — 들린 단어 (부수적 — 한 단계 작게)
       let html = '';
       if (heard) {
-        html += `<div style="font-size:13px;color:#6b7280;">"<strong>${esc(heard)}</strong>"로 들렸어요</div>`;
+        html += `<div style="font-size:12px;color:#6b7280;">"<strong>${esc(heard)}</strong>"로 들렸어요</div>`;
       } else {
-        html += `<div style="font-size:13px;color:#9ca3af;">음성이 명확하지 않았어요</div>`;
+        html += `<div style="font-size:12px;color:#9ca3af;">음성이 명확하지 않았어요</div>`;
       }
+      // 오답 시 코칭도 노출 (학습 효과)
+      if (tip) html += `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
       heardEl.innerHTML = html;
     }
   }
   if (answerEl) {
     _vqAnsWord = q.word || '';
     _vqAnsSlowNext = false;   // 새 결과 → 첫 클릭은 보통 속도
-    answerEl.innerHTML = `정답: <span onclick="_vqSpeakAnswer()" style="cursor:pointer;color:#0369a1;text-decoration:underline dotted;text-underline-offset:3px;" title="클릭하면 발음 — 다시 누르면 천천히">${esc(q.word || '')} 🔊</span>`
-      + `<div id="vqSpkAnsHint" style="font-size:11px;color:var(--gray);margin-top:3px;font-weight:400;">정답 단어를 누르면 발음 — 다시 누르면 천천히</div>`;
+    // 글자 크기: 문제 부분(vqPrompt) 22px 와 같게. 🔊 이모지는 더 크게 (28px) — 누르면 발음하는 직관성. 안내 텍스트 제거.
+    answerEl.innerHTML = `<span style="font-size:22px;font-weight:800;color:#222;">정답: <span onclick="_vqSpeakAnswer()" style="cursor:pointer;color:#0369a1;text-decoration:underline dotted;text-underline-offset:4px;" title="클릭하면 다시 듣기 — 다시 누르면 천천히">${esc(q.word || '')}</span></span> <span onclick="_vqSpeakAnswer()" style="cursor:pointer;font-size:30px;vertical-align:middle;display:inline-block;margin-left:4px;" title="클릭하면 다시 듣기">🔊</span>`;
   }
 
   // 정답 발음 들려주기 (학습 효과)

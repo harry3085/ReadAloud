@@ -12515,6 +12515,7 @@ async function _fillMissingHomophones(questions) {
             koPron: String(r.koPron || ''),
             sentence: String(r.sentence || ''),
             sentenceKo: String(r.sentenceKo || ''),
+            speakingTip: String(r.speakingTip || ''),
           }
         ]));
         let filled = 0;
@@ -12524,6 +12525,8 @@ async function _fillMissingHomophones(questions) {
           if (!q.speakingKoPron) q.speakingKoPron = m.koPron || '';
           if (!q.speakingSent) q.speakingSent = m.sentence || '';
           if (!q.speakingSentKo) q.speakingSentKo = m.sentenceKo || '';
+          // speakingTip 은 optional — AI 가 빈문자열 줄 수도 있음 (단순한 단어). 누락이 정상 케이스라 검증 안 함
+          if (!q.speakingTip && m.speakingTip) q.speakingTip = m.speakingTip;
           if (q.speakingKoPron && q.speakingSent && q.speakingSentKo) filled++;
         });
         return { filled, total: missing.length };
