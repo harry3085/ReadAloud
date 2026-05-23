@@ -9,7 +9,7 @@
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const { postProcessMCQ } = require('./_lib/quiz-post-process');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore } = require('firebase-admin/firestore');
 
 // firebase-admin 앱 초기화 보장 — GET 경로는 verifyAndCheckQuota 를 안 거쳐서
 // 별도로 초기화 안 하면 getFirestore() 가 throw 함.
@@ -26,42 +26,25 @@ function _ensureAdminApp() {
   });
 }
 
-// appConfig/aiPrompts (Firestore 글로벌 default) → 코드 상수 fallback.
-// 2026-05-24 단방향 자동 sync 도입:
-//   코드 default 와 Firestore 값이 다르면 코드 → Firestore 자동 덮어쓰기.
-//   배포 후 첫 호출 시 자동 동기. super_admin 의 super 앱 편집은 다음 deploy 까지 유효 (코드와 다르면 reset).
-//   학원장 본인 커스텀(academies/{id}.customPrompts)은 customSystemPrompt 로 별도 전달 — 이 함수에 안 닿음.
-// 호출당 read 1회 ($0.0000006). 갱신 필요 시 write 1회 추가 — 동기 후엔 매번 read 만.
+// appConfig/aiPrompts (Firestore 글로벌 default) = super 글로벌 = 진실 출처.
+// 2026-05-24 정책: 학원장이 보는 결과는 언제나 Firestore 값. 코드 default 는 Firestore
+//   에 키 자체가 없을 때만 사용되는 emergency fallback. 양방향 동기는 사용자가
+//   명시적으로 코드↔Firestore 박기 요청 시에만 진행 (자동 sync 없음).
+//   학원장 본인 커스텀(academies/{id}.customPrompts)은 customSystemPrompt 로 별도 전달
+//   — 이 함수에 안 닿음.
+// 호출당 Firestore read 1회 ($0.0000006).
 async function getEffectivePrompt(quizType) {
-  const codeDefault = SYSTEM_PROMPTS[quizType];
   try {
     _ensureAdminApp();
-    const ref = getFirestore().doc('appConfig/aiPrompts');
-    const snap = await ref.get();
-    const data = snap.exists ? snap.data() : {};
-    const fsVal = data[quizType];
-
-    // 자동 sync — Firestore 값이 코드 default 와 다르면 코드 → Firestore 덮어쓰기.
-    // 의도: 코드를 진실 출처로 단일화. super 앱 편집은 일시적 (다음 deploy 시 코드로 덮임).
-    if (codeDefault && fsVal !== codeDefault) {
-      try {
-        await ref.set({
-          [quizType]: codeDefault,
-          _updatedAt: FieldValue.serverTimestamp(),
-          _updatedBy: 'auto-sync (code default)',
-        }, { merge: true });
-        console.log(`[generate-quiz] auto-synced ${quizType}: Firestore ← code default (${codeDefault.length} chars)`);
-      } catch (syncErr) {
-        console.warn(`[generate-quiz] auto-sync ${quizType} failed:`, syncErr.message);
-      }
-      return codeDefault;
+    const snap = await getFirestore().doc('appConfig/aiPrompts').get();
+    if (snap.exists) {
+      const v = snap.data()[quizType];
+      if (typeof v === 'string' && v.length > 20) return v;
     }
-
-    if (typeof fsVal === 'string' && fsVal.length > 20) return fsVal;
   } catch (e) {
     console.warn('[generate-quiz] appConfig/aiPrompts read failed:', e.message);
   }
-  return codeDefault;
+  return SYSTEM_PROMPTS[quizType];
 }
 
 // 모델 폴백 체인 (2026-05-18 재배치 — 2.5-flash-lite 503 급증 대응):
