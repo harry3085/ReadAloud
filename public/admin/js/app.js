@@ -9816,7 +9816,7 @@ function _qgRender() {
             ✨ AI 로 문제 생성
           </button>
           <div style="margin-top:6px;font-size:10px;color:var(--gray);line-height:1.5;text-align:center;">
-            Page 는 최대 20개 동시 작업 가능하며,<br>본문 20자 미만의 Page 는 작업에서 제외됩니다.
+            Page 는 최대 30개 동시 작업 가능합니다.
           </div>
           <div id="qgStatus" style="margin-top:8px;font-size:11px;color:var(--gray);text-align:center;min-height:16px;"></div>
 
@@ -9898,7 +9898,7 @@ function _qgFilteredChapters() {
 }
 
 function _qgFilteredPages() {
-  let all = (_genPages || []).filter(p => (p.text||'').trim().length >= 20);
+  let all = (_genPages || []).filter(p => (p.text||'').trim().length > 0);
   if (_qgActiveChapter) {
     all = all.filter(p => p.chapterId === _qgActiveChapter.id);
   } else if (_qgActiveBook) {
@@ -10291,10 +10291,10 @@ window.qgGenerate = async () => {
     if (status0) status0.innerHTML = `<span style="color:#c33;">Page 를 먼저 선택하세요</span>`;
     return;
   }
-  if (_qgSelectedPageIds.size > 20) {
+  if (_qgSelectedPageIds.size > 30) {
     const status0 = document.getElementById('qgStatus');
-    if (status0) status0.innerHTML = `<span style="color:#c33;">⚠️ Page 수를 20이하로 줄이세요 (현재 ${_qgSelectedPageIds.size}개)</span>`;
-    showToast('Page 수를 20이하로 줄이세요');
+    if (status0) status0.innerHTML = `<span style="color:#c33;">⚠️ Page 수를 30이하로 줄이세요 (현재 ${_qgSelectedPageIds.size}개)</span>`;
+    showToast('Page 수를 30이하로 줄이세요');
     return;
   }
 

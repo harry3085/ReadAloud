@@ -65,7 +65,7 @@ const MAX_COUNT_BY_TYPE = {
   recording: 50,
   unscramble: 50,
 };
-const MAX_PAGES = 20;
+const MAX_PAGES = 30;
 
 // ─── 문제 타입별 시스템 프롬프트 ───
 const SYSTEM_PROMPTS = {
@@ -620,10 +620,10 @@ module.exports = async function handler(req, res) {
       id: String(p.id || '').slice(0, 100),
       title: String(p.title || '').slice(0, 200),
       text: String(p.text || '').trim().slice(0, MAX_CHARS_PER_PAGE),
-    })).filter(p => p.text.length > 20);
+    })).filter(p => p.text.length > 0);
 
     if (normalizedPages.length === 0) {
-      return res.status(400).json({ error: 'No valid page content (min 20 chars per page)' });
+      return res.status(400).json({ error: 'No valid page content' });
     }
 
     // ─── 프롬프트 구성 ───
