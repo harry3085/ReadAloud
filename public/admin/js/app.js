@@ -8195,12 +8195,20 @@ window.genDoEditPage = async (pid) => {
 };
 
 // 여러 Page 선택 + [수정] → 병합 모달
+// 정렬: 이름순 자연 정렬 (Page 리스트 '이름순▼' 과 동일 — localeCompare 'ko' numeric:true)
+// 학원장이 ▲▼ 또는 드래그로 미세 조정 가능 (_genMergePages 상태 직접 변형)
+let _genMergePages = [];
+let _genMergeDragId = '';
+
 function _genOpenMergePagesModal() {
   const ids = [..._genCheckedPages];
   const pages = ids.map(id => _genPages.find(p => p.id === id)).filter(Boolean);
-  // serialNumber 오름차순 (없으면 끝으로)
-  pages.sort((a, b) => (a.serialNumber || 9e9) - (b.serialNumber || 9e9));
+  // 이름순 자연 정렬 (Page 리스트와 동일)
+  pages.sort((a, b) =>
+    String(a.title || '').localeCompare(String(b.title || ''), 'ko', { numeric: true }));
   if (pages.length < 2) return;
+
+  _genMergePages = pages;
 
   // 챕터 일치 검사
   const chapterIds = [...new Set(pages.map(p => p.chapterId || ''))];
@@ -8209,13 +8217,6 @@ function _genOpenMergePagesModal() {
   const chapterInfo = sameChapter
     ? `같은 챕터 <b>'${esc(targetChapter.chapterName || '-')}'</b> 로 배정`
     : '챕터 다름 (또는 미배정 섞임) → <b>미배정</b> 으로 저장';
-
-  const list = pages.map((p, i) => `
-    <li style="margin-bottom:4px;">
-      <span style="color:var(--gray);">${i + 1}.</span>
-      <b>${esc(p.title || '-')}</b>
-      <span style="color:var(--gray);font-size:11px;">${esc((p.text || '').slice(0, 40))}${(p.text || '').length > 40 ? '…' : ''}</span>
-    </li>`).join('');
 
   const defaultTitle = (pages[0].title || 'Page') + ' (병합)';
 
@@ -8226,8 +8227,8 @@ function _genOpenMergePagesModal() {
         <div style="margin-top:6px;font-size:13px;color:var(--gray);">선택된 ${pages.length}개 페이지의 본문을 순서대로 합쳐 1개로 만듭니다.</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
-        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">병합될 페이지 (이 순서)</div>
-        <ol style="font-size:13px;line-height:1.6;padding-left:22px;margin:0 0 14px 0;">${list}</ol>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">병합될 페이지 — 이름순 자동 정렬 (드래그 또는 ▲▼ 로 순서 조정 가능)</div>
+        <ol id="gnMList" style="font-size:13px;line-height:1.6;padding:0;margin:0 0 14px 0;list-style:none;">${_genMergeBuildListItems()}</ol>
         <div style="font-size:12px;color:var(--text);margin-bottom:14px;background:#fafafa;border:1px solid var(--border);border-radius:6px;padding:8px 10px;">→ ${chapterInfo}</div>
 
         <div style="margin-bottom:14px;">
@@ -8236,27 +8237,103 @@ function _genOpenMergePagesModal() {
         </div>
 
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none;">
-          <input id="gnMDel" type="checkbox" checked style="width:16px;height:16px;cursor:pointer;">
-          <span>병합 후 원본 ${pages.length}개 삭제 <span style="color:var(--gray);font-size:11px;">(해제 시 원본 보존)</span></span>
+          <input id="gnMDel" type="checkbox" style="width:16px;height:16px;cursor:pointer;">
+          <span>병합 후 원본 ${pages.length}개 삭제 <span style="color:var(--gray);font-size:11px;">(기본 보존 — 체크 시 삭제)</span></span>
         </label>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-        <button class="btn btn-primary" onclick="genDoMergePages('${ids.join(',')}')">✂ 병합 실행</button>
+        <button class="btn btn-primary" onclick="genDoMergePages()">✂ 병합 실행</button>
       </div>
     </div>`);
 }
 
-window.genDoMergePages = async (idsCsv) => {
-  const ids = idsCsv.split(',').filter(Boolean);
+function _genMergeBuildListItems() {
+  const n = _genMergePages.length;
+  return _genMergePages.map((p, i) => {
+    const isFirst = i === 0;
+    const isLast = i === n - 1;
+    const upStyle = isFirst ? 'opacity:0.3;cursor:not-allowed;' : 'cursor:pointer;';
+    const downStyle = isLast ? 'opacity:0.3;cursor:not-allowed;' : 'cursor:pointer;';
+    const preview = (p.text || '').slice(0, 40);
+    const more = (p.text || '').length > 40 ? '…' : '';
+    return `
+    <li draggable="true" data-id="${p.id}"
+        ondragstart="genMergeDragStart(event,'${p.id}')"
+        ondragover="genMergeDragOver(event)"
+        ondrop="genMergeDrop(event,'${p.id}')"
+        ondragend="genMergeDragEnd(event)"
+        style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:#fff;cursor:move;">
+      <span style="color:var(--gray);font-size:11px;font-weight:700;min-width:18px;text-align:right;">${i + 1}.</span>
+      <span style="color:#bbb;font-size:14px;line-height:1;" title="드래그해서 순서 이동">⋮⋮</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title || '-')}</div>
+        <div style="color:var(--gray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(preview)}${more}</div>
+      </div>
+      <button onclick="genMergeMoveUp('${p.id}')" ${isFirst ? 'disabled' : ''}
+        style="padding:2px 8px;border:1px solid var(--border);background:#fff;border-radius:4px;font-size:13px;${upStyle}">▲</button>
+      <button onclick="genMergeMoveDown('${p.id}')" ${isLast ? 'disabled' : ''}
+        style="padding:2px 8px;border:1px solid var(--border);background:#fff;border-radius:4px;font-size:13px;${downStyle}">▼</button>
+    </li>`;
+  }).join('');
+}
+
+function _genMergeRefreshList() {
+  const el = document.getElementById('gnMList');
+  if (el) el.innerHTML = _genMergeBuildListItems();
+}
+
+window.genMergeMoveUp = (id) => {
+  const i = _genMergePages.findIndex(p => p.id === id);
+  if (i <= 0) return;
+  [_genMergePages[i - 1], _genMergePages[i]] = [_genMergePages[i], _genMergePages[i - 1]];
+  _genMergeRefreshList();
+};
+window.genMergeMoveDown = (id) => {
+  const i = _genMergePages.findIndex(p => p.id === id);
+  if (i < 0 || i >= _genMergePages.length - 1) return;
+  [_genMergePages[i], _genMergePages[i + 1]] = [_genMergePages[i + 1], _genMergePages[i]];
+  _genMergeRefreshList();
+};
+window.genMergeDragStart = (e, id) => {
+  _genMergeDragId = id;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', id); } catch (_) {}
+  }
+  if (e.currentTarget) e.currentTarget.style.opacity = '0.4';
+};
+window.genMergeDragOver = (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+};
+window.genMergeDrop = (e, targetId) => {
+  e.preventDefault();
+  const fromId = _genMergeDragId;
+  _genMergeDragId = '';
+  if (!fromId || fromId === targetId) { _genMergeRefreshList(); return; }
+  const fromIdx = _genMergePages.findIndex(p => p.id === fromId);
+  const toIdx = _genMergePages.findIndex(p => p.id === targetId);
+  if (fromIdx < 0 || toIdx < 0) return;
+  const [moved] = _genMergePages.splice(fromIdx, 1);
+  _genMergePages.splice(toIdx, 0, moved);
+  _genMergeRefreshList();
+};
+window.genMergeDragEnd = (e) => {
+  _genMergeDragId = '';
+  if (e.currentTarget && e.currentTarget.style) e.currentTarget.style.opacity = '';
+};
+
+window.genDoMergePages = async () => {
   const newTitle = (document.getElementById('gnMT')?.value || '').trim();
   const deleteOriginals = !!document.getElementById('gnMDel')?.checked;
 
   if (!newTitle) { showAlert('입력 확인', '새 Page 제목을 입력하세요.'); return; }
 
-  const pages = ids.map(id => _genPages.find(p => p.id === id)).filter(Boolean);
+  // 현재 _genMergePages 순서 그대로 사용 (학원장이 ▲▼/드래그로 조정한 결과)
+  const pages = _genMergePages.slice();
   if (pages.length < 2) { showToast('병합할 페이지가 부족합니다'); return; }
-  pages.sort((a, b) => (a.serialNumber || 9e9) - (b.serialNumber || 9e9));
+  const ids = pages.map(p => p.id);
 
   // 본문 합치기 — 사이에 빈 줄
   const mergedText = pages.map(p => (p.text || '').trim()).filter(Boolean).join('\n\n');
@@ -8292,6 +8369,7 @@ window.genDoMergePages = async (idsCsv) => {
     }
 
     _genCheckedPages.clear();
+    _genMergePages = [];
     closeModal();
     await loadGenerator({keepActive:true});
     showToast(deleteOriginals
