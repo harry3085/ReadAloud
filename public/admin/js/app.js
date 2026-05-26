@@ -15238,7 +15238,10 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 
 // UI 에서 쓰는 타입명. 'word'(단어시험) 는 API 호출 시 'vocab' 으로 변환 필요.
 // mcq_grammar 은 mcq 의 subType='grammar' 와 연결 (별도 프롬프트 키).
-const _qgAiPromptTypes = ['mcq', 'mcq_grammar', 'fill_blank', 'subjective', 'recording', 'word', 'unscramble'];
+// subjective_verbatim 은 subjective 의 sentenceMode='verbatim' 과 연결 (별도 프롬프트 키).
+// 순서 (학원장 편집 모달 탭): 단어 → 빈칸 → 언스크램블 → 객관식 본문이해 → 객관식 문법 →
+//   해석 변형 → 해석 유지 → 녹음숙제 (2026-05-24 학원장 요청)
+const _qgAiPromptTypes = ['word', 'fill_blank', 'unscramble', 'mcq', 'mcq_grammar', 'subjective', 'subjective_verbatim', 'recording'];
 // UI 타입 → API 타입 변환 (/api/generate-quiz GET/POST 에 전달)
 const _qgUiToApiType = { word: 'vocab' };
 function _qgApiTypeOf(uiType) { return _qgUiToApiType[uiType] || uiType; }
@@ -15371,10 +15374,13 @@ window.qgOpenPromptModal = async () => {
   await _qgLoadPromptIntoTextarea(_qgPromptEditingType);
 };
 
-// QG_TYPE_OPTIONS 에 없는 별칭 키들 (mcq_grammar 같은 subType 별 프롬프트)
+// QG_TYPE_OPTIONS 에 없는 별칭 키들 (mcq_grammar / subjective_verbatim 같은 subType 별 프롬프트)
+// 동일 키가 QG_TYPE_OPTIONS 에 있어도 alias 가 우선 (해석하기 변형/유지 구분 필요)
 const _QG_PROMPT_ALIAS_LABELS = {
-  mcq:         { icon: '📖', label: '객관식 (본문이해)' },
-  mcq_grammar: { icon: '📐', label: '객관식 (문법)' },
+  mcq:                 { icon: '📖', label: '객관식 (본문이해)' },
+  mcq_grammar:         { icon: '📐', label: '객관식 (문법)' },
+  subjective:          { icon: '✍️', label: '해석하기_주관식 (변형)' },
+  subjective_verbatim: { icon: '📄', label: '해석하기_주관식 (유지)' },
 };
 
 function _qgRenderPromptTabs() {
