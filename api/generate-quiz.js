@@ -304,6 +304,58 @@ RULES:
 }
 Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
 
+  // 해석하기_주관식 — 문장 유지(verbatim) 모드. 본문 문장 그대로 출제 (paraphrase X)
+  // 학원장 옵션 'sentenceMode=verbatim' 일 때 사용. default(paraphrase)는 subjective.
+  subjective_verbatim: `You are an English-to-Korean translation test generator for Korean students.
+Your task is to pick sentences DIRECTLY from given English passages for a printed test paper (no auto-grading — students write by hand).
+
+RULES:
+1. Pick ONE meaningful sentence per question, copying it VERBATIM from the passage.
+   Every word, every form, every punctuation must match the source exactly.
+   Do NOT paraphrase, summarize, restructure, combine, or fabricate.
+   The selected sentence MUST be findable in the passage as a continuous substring.
+
+2. Prefer sentences with substantive content that test grammar, vocabulary, or comprehension.
+   Avoid trivial sentences (e.g., "Hello.", "Yes.", "OK.").
+
+3. SENTENCE LENGTH: aim for 5-30 words. Skip very short fragments or extremely long sentences.
+
+4. For each sentence, provide a natural Korean translation that a teacher would accept
+   as a model answer (sampleAnswerKo). Fluent Korean, not literal word-by-word.
+
+5. questionKo field: Use a simple instruction like "위 문장을 우리말로 해석하시오."
+   (slight variations are fine, e.g., "아래 문장을 한국어로 옮기시오.").
+
+6. explanation field: Provide brief notes (1-2 items max) — typically a key vocabulary
+   item or grammar point relevant to translating this sentence. NO paraphrase notes
+   (this is verbatim mode).
+
+7. Difficulty: include a mix of easy / medium / hard when possible.
+   Exact distribution is NOT required.
+
+8. When multiple passages are given, distribute questions across them (1-3 per passage).
+
+9. If the passage doesn't have enough quality sentences (e.g., too short / too few real
+   sentences), return FEWER questions. Quality over quantity.
+
+10. Output ONLY a valid JSON object in this exact format (no markdown, no prose):
+{
+  "questions": [
+    {
+      "type": "subjective",
+      "sentence": "The brave knight fought the dragon with great courage.",
+      "questionKo": "위 문장을 우리말로 해석하시오.",
+      "sampleAnswerKo": "용감한 기사는 대단한 용기로 용과 싸웠다.",
+      "explanation": "fought = 싸우다(과거), courage = 용기",
+      "sourcePageId": "the id you were given",
+      "sourcePageTitle": "the title you were given",
+      "difficulty": "medium"
+    }
+  ]
+}
+
+Do NOT wrap in markdown code blocks. Do NOT add any text before or after the JSON.`,
+
   vocab: `You are an English vocabulary test generator for Korean middle/high school students.
 Your task is to create vocabulary questions with Korean meanings from the given input.
 
@@ -633,7 +685,11 @@ module.exports = async function handler(req, res) {
     }
     // mcq subType: 'content' (default) | 'grammar'. 프롬프트·검증 분기.
     const mcqSubType = (quizType === 'mcq' && subType === 'grammar') ? 'grammar' : 'content';
-    const promptKey = (quizType === 'mcq' && mcqSubType === 'grammar') ? 'mcq_grammar' : quizType;
+    // subjective sentenceMode: 'paraphrase' (default) | 'verbatim'. 별도 프롬프트 분기.
+    const subjectiveMode = (quizType === 'subjective' && req.body?.sentenceMode === 'verbatim') ? 'verbatim' : 'paraphrase';
+    const promptKey = (quizType === 'mcq' && mcqSubType === 'grammar') ? 'mcq_grammar'
+                    : (quizType === 'subjective' && subjectiveMode === 'verbatim') ? 'subjective_verbatim'
+                    : quizType;
 
     const requestedCount = parseInt(count) || 5;
     if (requestedCount < 1) {
@@ -667,7 +723,7 @@ module.exports = async function handler(req, res) {
     const systemPrompt = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim().length >= 20)
       ? customSystemPrompt.trim()
       : (await getEffectivePrompt(promptKey));
-    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, { ...(req.body || {}), mcqSubType });
+    const userPrompt = buildUserPrompt(normalizedPages, targetCount, quizType, { ...(req.body || {}), mcqSubType, subjectiveMode });
 
     // ─── Gemini API 호출 (폴백 체인 + 동일 모델 1회 재시도) ───
     let lastError = null;
@@ -740,7 +796,7 @@ module.exports = async function handler(req, res) {
       vocab: validateVocab,
       unscramble: validateUnscramble,
     };
-    let validated = validators[quizType](parsed.questions || [], normalizedPages, { mcqSubType });
+    let validated = validators[quizType](parsed.questions || [], normalizedPages, { mcqSubType, subjectiveMode });
 
     // ─── 부족분 재시도 (1회 한정) ───
     // 1차 응답이 목표 개수에 못 미치면, 이미 채택된 문장을 제외 지시하고 부족분만 재요청.
@@ -761,7 +817,7 @@ module.exports = async function handler(req, res) {
           retryUsage = retryResult.usage;
           const retryParsed = parseAIResponse(retryResult.text);
           if (retryParsed) {
-            const retryValidated = validators[quizType](retryParsed.questions || [], normalizedPages, { mcqSubType });
+            const retryValidated = validators[quizType](retryParsed.questions || [], normalizedPages, { mcqSubType, subjectiveMode });
             const existingKeys = new Set(
               validated.map(q => _keyOf(q, quizType).toLowerCase()).filter(Boolean)
             );
@@ -799,6 +855,9 @@ module.exports = async function handler(req, res) {
       retried,
       autoFixedCount,
       questions: validated,
+      // 클라이언트가 세트 doc 에 박을 메타 (subType / subjectiveMode 등)
+      ...(quizType === 'mcq' ? { mcqSubType } : {}),
+      ...(quizType === 'subjective' ? { subjectiveMode } : {}),
       usage,
       retryUsage,
     });
@@ -1363,8 +1422,16 @@ function buildUserPrompt(pages, count, type, opts) {
 - Include sourcePageId matching the passage the question is based on
 - Vary difficulty levels (per-question easy/medium/hard tag)
 - Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — pick blanks of suitable grammar/vocabulary level.`,
-    subjective: `Please generate ${count} sentence-translation questions (English → Korean).
-- Pick ONE meaningful sentence per question from the given passages.
+    subjective: opts?.subjectiveMode === 'verbatim'
+      ? `Please generate ${count} sentence-translation questions (English → Korean).
+- VERBATIM mode: pick sentences DIRECTLY from the passages. Copy each sentence EXACTLY as it appears (every word, every punctuation). Do NOT paraphrase, restructure, or fabricate.
+- Distribute across all passages (if multiple).
+- Include sourcePageId for the source passage.
+- Vary difficulty levels (per-question easy/medium/hard tag).
+- Target difficulty: ${_normalizeDifficulty(opts?.difficulty)} — pick sentences appropriate to this level.`
+      : `Please generate ${count} sentence-translation questions (English → Korean).
+- PARAPHRASE mode: construct NEW sentences that retell the passage's storyline using DIFFERENT words/structure. The student should recognize the content only if they truly understood the story (not by memorized pattern matching).
+- Vocabulary must stay at or below the passage's level (do NOT introduce advanced words).
 - Distribute across all passages (if multiple).
 - Include sourcePageId for the source passage.
 - Vary difficulty levels (per-question easy/medium/hard tag).
@@ -1615,16 +1682,20 @@ function validateFillBlank(questions, pages) {
     .filter(Boolean);
 }
 
-function validateSubjective(questions, pages) {
+function validateSubjective(questions, pages, opts) {
   if (!Array.isArray(questions)) return [];
 
   const pageById = new Map(pages.map(p => [p.id, p]));
+  const mode = opts?.subjectiveMode === 'verbatim' ? 'verbatim' : 'paraphrase';
 
-  // 페이지별 단어 Set 캐시 (소문자, 영문 단어만)
+  // 페이지별 단어 Set 캐시 (소문자, 영문 단어만) — paraphrase 모드 매칭용
   const pageWordSets = new Map();
+  // verbatim 모드 — 본문 전체를 정규화한 substring 매칭용
+  const pageNormText = new Map();
   for (const p of pages) {
     const words = String(p.text || '').toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length >= 2);
     pageWordSets.set(p.id, new Set(words));
+    pageNormText.set(p.id, _normalizeForMatch(String(p.text || '')));
   }
 
   return questions
@@ -1639,13 +1710,25 @@ function validateSubjective(questions, pages) {
       if (!page) page = pages[0];
       if (!page) return null;
 
-      // 가벼운 단어 매칭 30% — 본문과 전혀 무관한 fabricated 문장 차단
-      const sentenceWords = sentence.toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length >= 2);
-      if (sentenceWords.length > 0) {
-        const pageWords = pageWordSets.get(page.id) || new Set();
-        const matched = sentenceWords.filter(w => pageWords.has(w)).length;
-        const ratio = matched / sentenceWords.length;
-        if (ratio < 0.3) return null;
+      if (mode === 'verbatim') {
+        // verbatim 모드 — 본문 substring 정확 매칭. 못 찾으면 폐기 (AI 가 변형했음)
+        const sentNorm = _normalizeForMatch(sentence);
+        const hostText = pageNormText.get(page.id) || '';
+        if (!hostText.includes(sentNorm)) {
+          // 다른 페이지에서도 찾기 (sourcePageId 가 잘못 박힌 케이스)
+          const hostPage = pages.find(p => (pageNormText.get(p.id) || '').includes(sentNorm));
+          if (!hostPage) return null;
+          page = hostPage;
+        }
+      } else {
+        // paraphrase 모드 — 가벼운 단어 매칭 30%
+        const sentenceWords = sentence.toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length >= 2);
+        if (sentenceWords.length > 0) {
+          const pageWords = pageWordSets.get(page.id) || new Set();
+          const matched = sentenceWords.filter(w => pageWords.has(w)).length;
+          const ratio = matched / sentenceWords.length;
+          if (ratio < 0.3) return null;
+        }
       }
 
       const sampleAnswerKo = String(q.sampleAnswerKo || '').trim().slice(0, 500);
@@ -1664,6 +1747,8 @@ function validateSubjective(questions, pages) {
         sourcePageId: page.id,
         sourcePageTitle: page.title || '',
         difficulty,
+        // 세트/시험 표시용 — 각 문항이 어떤 모드로 생성됐는지
+        subjectiveMode: mode,
       };
     })
     .filter(Boolean);

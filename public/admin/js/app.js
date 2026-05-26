@@ -9741,8 +9741,9 @@ const QG_TYPE_OPTIONS = {
     phaseLabel: null,
     noteHint: '원문 문장을 제시하고 학생이 손으로 한글 해석을 쓰는 시험지를 생성합니다. (학생앱 배정 없음)',
     options: [
-      { key:'count',      label:'문제수',  type:'number', default:5, min:1, max:50 },
-      { key:'difficulty', label:'난이도',  type:'select', choices:['하','중','상'], default:'중' },
+      { key:'count',        label:'문제수',     type:'number', default:5, min:1, max:50 },
+      { key:'difficulty',   label:'난이도',     type:'select', choices:['하','중','상'], default:'중' },
+      { key:'sentenceMode', label:'문장 처리',  type:'select', choices:['문장 변형','문장 유지'], default:'문장 변형' },
     ],
   },
   'recording': {
@@ -10582,7 +10583,16 @@ async function _qgCallSubjective(opts) {
     const res = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: selectedPages, count: opts.count, type: 'subjective', difficulty: _qgMapDifficulty(opts.difficulty), customSystemPrompt: _qgGetCustomPrompt('subjective') || undefined }),
+      body: JSON.stringify({
+        pages: selectedPages,
+        count: opts.count,
+        type: 'subjective',
+        difficulty: _qgMapDifficulty(opts.difficulty),
+        // 한글 옵션 → 영어 모드 매핑 ('문장 유지' → verbatim / default 'paraphrase')
+        sentenceMode: opts.sentenceMode === '문장 유지' ? 'verbatim' : 'paraphrase',
+        // verbatim 모드는 별도 customPrompt key 사용
+        customSystemPrompt: _qgGetCustomPrompt(opts.sentenceMode === '문장 유지' ? 'subjective_verbatim' : 'subjective') || undefined,
+      }),
     });
     const data = await res.json();
     const sec = ((Date.now()-t0)/1000).toFixed(1);
@@ -11430,6 +11440,12 @@ window.qgSaveSet = async () => {
     }];
   }
 
+  // subjective 모드 메타 — validateSubjective 가 각 q.subjectiveMode 박음 (paraphrase/verbatim)
+  // 세트 단위 메타로도 박음 (목록 표시·필터링용)
+  const subjectiveMode = finalQuestions[0]?.type === 'subjective'
+    ? (finalQuestions[0]?.subjectiveMode || 'paraphrase')
+    : null;
+
   try {
     await addDoc(collection(db,'genQuestionSets'), {
       name,
@@ -11444,6 +11460,7 @@ window.qgSaveSet = async () => {
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
       updatedAt: serverTimestamp(),
+      ...(subjectiveMode ? { subjectiveMode } : {}),
     });
     showToast(`✓ "${name}" 저장됨 (${finalQuestions.length}문제)`);
     _qgGenerated = [];
@@ -12019,6 +12036,12 @@ function _qsBuildOptionsSummary(s) {
   if (sourceType === 'mcq') {
     const sub = _qsMcqSubType(s);
     parts.push(sub === 'grammar' ? '📐 문법' : '📖 본문이해');
+  }
+
+  // subjective sentenceMode (문장 변형/유지) — 세트 doc 의 subjectiveMode 또는 첫 q.subjectiveMode 폴백
+  if (sourceType === 'subjective') {
+    const mode = s.subjectiveMode || qs[0]?.subjectiveMode || 'paraphrase';
+    parts.push(mode === 'verbatim' ? '📄 문장 유지' : '✍️ 문장 변형');
   }
 
   // 난이도 — recording 제외 (학년/난이도 의미 없음)

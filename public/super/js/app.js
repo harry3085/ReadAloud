@@ -1669,11 +1669,12 @@ async function loadAcademies() {
 // AI 프롬프트 default — appConfig/aiPrompts (글로벌, super_admin 편집)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROMPT_TYPES = ['mcq', 'mcq_grammar', 'fill_blank', 'unscramble', 'subjective', 'recording', 'vocab'];
+const PROMPT_TYPES = ['mcq', 'mcq_grammar', 'fill_blank', 'unscramble', 'subjective', 'subjective_verbatim', 'recording', 'vocab'];
 const PROMPT_LABELS = {
   mcq: '📖 객관식 (본문이해)', mcq_grammar: '📐 객관식 (문법)',
   fill_blank: '✏️ 빈칸채우기', unscramble: '🔀 언스크램블',
-  subjective: '✍️ 해석(주관식)', recording: '🎤 녹음숙제', vocab: '📝 단어시험',
+  subjective: '✍️ 해석 (문장 변형)', subjective_verbatim: '📄 해석 (문장 유지)',
+  recording: '🎤 녹음숙제', vocab: '📝 단어시험',
 };
 let _promptsCache = {};       // Firestore 에서 로드한 원본
 let _promptsActiveType = 'mcq';
