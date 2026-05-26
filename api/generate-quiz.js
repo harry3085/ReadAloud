@@ -1161,11 +1161,48 @@ Output ONLY the JSON object as specified.`;
   });
 }
 
-const SPEAKING_UNFIT_PROMPT = `You classify English vocabulary words for a Korean students' SPEAKING (voice-recognition) test. For EACH given word output three booleans:
-- "onomatopoeia": true if it is primarily an imitative/sound-effect word (e.g., woof, buzz, splash, bang, meow, beep, vroom, boom, tick). A normal noun/verb that merely relates to sound is NOT onomatopoeia.
-- "notRealWord": true if it is NOT a standard English dictionary headword — e.g., a proper noun/name, brand, abbreviation/acronym, typo, non-English token, or made-up string. A common dictionary noun/verb/adjective/adverb = false.
-- "hardForASR": true ONLY if a Korean student's spoken pronunciation of this word is highly likely to be MIS-recognized by a browser speech-recognition engine. These are acoustically sparse/ambiguous words: very short single-syllable words with a weak vowel or liquid/glide that Korean speakers blur (e.g., roll, up, be, err, owe, ore, awe, aria, lyre, ewe, eye). A common clear monosyllable that recognizes reliably (e.g., wild, soft, claim, feel, pass, big, run, jump) = false. When unsure, output false (do NOT over-flag normal vocabulary).
-Output ONLY JSON: {"results":[{"word":"...","onomatopoeia":true|false,"notRealWord":true|false,"hardForASR":true|false}, ...]} — one entry per input word, same order, no commentary.`;
+const SPEAKING_UNFIT_PROMPT = `You classify English vocabulary words for a Korean students' SPEAKING (voice-recognition) test.
+
+═══ DEFAULT IS ALWAYS FALSE ═══
+For ALL three booleans below, the default answer is FALSE. Only output TRUE when you are
+>90% confident the word clearly falls into the category. When in any doubt, output FALSE.
+Over-flagging normal vocabulary is much worse than under-flagging edge cases.
+
+For EACH given word output three booleans:
+
+──── "onomatopoeia" ────
+TRUE only if the word is PRIMARILY an imitative/sound-effect word.
+  TRUE examples: woof, buzz, splash, bang, meow, beep, vroom, boom, tick, tweet, hiss, oink, baa, moo
+  FALSE examples: bell, drum, noise, sound, music, voice, call, shout, whisper, talk
+  Rule of thumb: if the word names a concept or thing (even sound-related), it is NOT onomatopoeia.
+
+──── "notRealWord" ────
+TRUE only if the word is NOT a standard English dictionary headword.
+  TRUE examples: Tom, Coca-Cola, FBI, USA, xqzy, lkjhg, supercalifragilistic, blorp
+  FALSE examples: any noun/verb/adjective/adverb that appears in a standard dictionary
+    (cat, run, beautiful, quickly, advertisement, magnificent, perpendicular, etc.)
+  Rule of thumb: if you can find the word in Oxford/Merriam-Webster, it is NOT notRealWord.
+  Proper nouns (names of specific people/brands/countries) and abbreviations are TRUE.
+
+──── "hardForASR" ────
+TRUE only if a Korean student saying this word is HIGHLY likely to be misrecognized by
+a browser SpeechRecognition engine. Specifically: very short, acoustically sparse single-syllable
+words with weak vowels, liquid/glide consonants (r/l/w/y), or ambiguous boundaries.
+
+  TRUE examples (clear ASR risk): roll, up, be, err, owe, ore, awe, aria, lyre, ewe, eye, are, our, hour, ear, ire, oar, ire
+  FALSE examples (recognize reliably even though short or with r/l):
+    wild, soft, claim, feel, pass, big, run, jump, walk, dog, cat, ball, book, school,
+    right, light, world, fast, food, milk, hand, foot, head, name, time, water,
+    happy, hello, today, family, beautiful, magnificent
+    Also FALSE: longer/clear words like advertisement, computer, vegetable, communicate
+
+  Rule of thumb: TRUE only for words that are BOTH very short (≤4 letters typically)
+  AND have ambiguous phonetic boundaries. Common everyday words students learn first
+  (wild/soft/right/light/world/fast) are FALSE even if short.
+
+═══ OUTPUT ═══
+Output ONLY JSON: {"results":[{"word":"...","onomatopoeia":true|false,"notRealWord":true|false,"hardForASR":true|false}, ...]}
+One entry per input word, same order, no commentary. Remember: when in doubt, FALSE.`;
 
 async function handleSpeakingUnfit({ words, apiKey, res }) {
   if (!Array.isArray(words) || words.length === 0) {
@@ -1193,7 +1230,9 @@ Output ONLY the JSON object as specified.`;
   for (const model of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const result = await callGemini(model, apiKey, SPEAKING_UNFIT_PROMPT, userPrompt);
+        // 분류 task — temperature 0 으로 결정성 보장 (같은 입력 → 같은 결과)
+        // 일반 출제 task 는 0.7 (다양성 필요) — callGemini default 사용
+        const result = await callGemini(model, apiKey, SPEAKING_UNFIT_PROMPT, userPrompt, { temperature: 0 });
         if (result.ok) { usedModel = model; rawText = result.text; break outer; }
         lastError = result.error;
         lastStatus = result.status || null;
@@ -1239,13 +1278,15 @@ Output ONLY the JSON object as specified.`;
   });
 }
 
-async function callGemini(model, apiKey, systemPrompt, userPrompt) {
+async function callGemini(model, apiKey, systemPrompt, userPrompt, opts = {}) {
+  // opts.temperature — 호출별 override (분류 task 는 0, 출제 task 는 default 0.7)
+  const temperature = (typeof opts.temperature === 'number') ? opts.temperature : 0.7;
   const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     generationConfig: {
-      temperature: 0.7,
+      temperature,
       topP: 0.95,
       maxOutputTokens: 32768,
       responseMimeType: 'application/json', // JSON 모드
