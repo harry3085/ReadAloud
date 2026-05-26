@@ -1588,6 +1588,11 @@ async function loadStudents(status='active'){
   // 진입 시 표 비움 + groups fetch (반 select 채움). 학생 fetch 는 반 선택 시.
   _stuStates[status] = { lastDoc: null, exhausted: false, group: null };
   allStudents = [];
+  // 학생 추가/수정/휴원/퇴원 후 진입 시 검색 캐시 무효화 (재로딩 안전)
+  if (typeof _stuInvalidateSearchCache === 'function') _stuInvalidateSearchCache();
+  // 검색 입력란 비움 (다른 탭 진입 시 검색어 잔존 방지)
+  const searchInput = document.getElementById(STU_SEARCH[status]);
+  if (searchInput) searchInput.value = '';
   el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>`;
   const wrap = document.getElementById(STU_WRAP[status]); if (wrap) wrap.innerHTML = '';
   try {
@@ -1649,10 +1654,79 @@ async function _stuFilterChange(status) {
   try { await _stuFetchPage(status, false); } catch(e) { console.error(e); }
 }
 
+// 학원 전체 학생 캐시 (검색 모드용 — status 별 분리)
+const _stuSearchCache = { active: null, pause: null, out: null };
+// debounce 타이머
+const _stuSearchTimers = { active: null, pause: null, out: null };
+
+// 학원 전체 학생 1회 fetch (검색 모드 진입 시) — 반·페이지네이션 무시.
+// academyId + role + status 만 필터. 1000명 한도 (학원당 사실상 충분).
+async function _stuLoadAllForSearch(status) {
+  if (_stuSearchCache[status]) return _stuSearchCache[status];
+  const snap = await getDocs(query(
+    collection(db,'users'),
+    where('academyId','==', window.MY_ACADEMY_ID),
+    where('role','==','student'),
+    where('status','==', status),
+    limit(1000),
+  ));
+  const all = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  _stuSearchCache[status] = all;
+  return all;
+}
+
 function _stuSearchInPage(status) {
-  const q = (document.getElementById(STU_SEARCH[status])?.value || '').toLowerCase();
-  const filtered = q ? allStudents.filter(u=>(u.name||'').toLowerCase().includes(q)||(u.username||'').toLowerCase().includes(q)) : allStudents;
-  renderStudentTable(status, filtered);
+  const q = (document.getElementById(STU_SEARCH[status])?.value || '').toLowerCase().trim();
+
+  // 검색어 비움 → 페이지네이션 모드 복귀
+  if (!q) {
+    if (_stuStates[status].group) {
+      // 반 선택 상태였으면 그 반 학생 표시 (allStudents 그대로)
+      renderStudentTable(status, allStudents);
+    } else {
+      // 반 미선택 → "반을 선택하세요" 표시
+      const el = document.getElementById(STU_TBODY[status]);
+      if (el) el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>`;
+    }
+    _stuRenderLoadMore(status);
+    return;
+  }
+
+  // debounce 300ms — 빠른 타이핑 시 매번 fetch 방지
+  if (_stuSearchTimers[status]) clearTimeout(_stuSearchTimers[status]);
+  _stuSearchTimers[status] = setTimeout(async () => {
+    // 1자 검색은 결과 너무 많음 — 캐시된 게 있으면 그 안에서, 없으면 안내
+    const el = document.getElementById(STU_TBODY[status]);
+    if (q.length < 2 && !_stuSearchCache[status]) {
+      if (el) el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#bbb;padding:20px;">2글자 이상 입력하세요</td></tr>`;
+      const wrap = document.getElementById(STU_WRAP[status]); if (wrap) wrap.innerHTML = '';
+      return;
+    }
+    try {
+      // 학원 전체 학생 fetch (한 번만, 이후 캐시) — 반·페이지네이션 무시
+      if (el && !_stuSearchCache[status]) {
+        el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#888;padding:20px;">🔍 검색 중...</td></tr>`;
+      }
+      const all = await _stuLoadAllForSearch(status);
+      const filtered = all.filter(u =>
+        (u.name||'').toLowerCase().includes(q) ||
+        (u.username||'').toLowerCase().includes(q)
+      );
+      renderStudentTable(status, filtered);
+      const wrap = document.getElementById(STU_WRAP[status]);
+      if (wrap) wrap.innerHTML = `<div style="text-align:center;color:#888;padding:10px;font-size:11px;">🔍 학원 전체 검색 · ${filtered.length}명 (반 필터 무시)</div>`;
+    } catch (e) {
+      console.error('[student search]', e);
+      if (el) el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#e05050;">검색 실패: ${esc(e.message)}</td></tr>`;
+    }
+  }, 300);
+}
+
+// 학생 추가/수정/삭제 후 검색 캐시 무효화 — 신규/변경 학생이 검색에 즉시 반영되게
+function _stuInvalidateSearchCache() {
+  _stuSearchCache.active = null;
+  _stuSearchCache.pause = null;
+  _stuSearchCache.out = null;
 }
 
 // 수강정보 가림/노출 토글 (재원생·휴원생·퇴원생 표 공통)
