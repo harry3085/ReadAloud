@@ -853,7 +853,11 @@ RULES:
    - GOOD: I eat cereal every morning. / Please turn right at the corner. / The big wind will destroy houses.
    - BAD (uses rare words): The carpet stored the cereal. / The frost destroys plants annually.
 5. Use only standard letters (a-z, A-Z), spaces, apostrophe ('), and a single trailing period or question mark. NO commas, NO quotes, NO dashes other than within the target itself.
-6. NEVER leave empty.
+6. NO abbreviations or initialisms in the sentence (TV, USA, OK, FBI, NASA, iPhone, WiFi, USB, ATM, etc.).
+   These cause translation conflicts (sentenceKo would have to either keep the English letters
+   or transliterate them, both of which break the Korean-only rule). Use the full word instead
+   (e.g., "television" not "TV", "the United States" not "USA"), or pick a different example sentence.
+7. NEVER leave empty.
 
 ═══ FIELD 4: sentenceKo (Korean translation of the sentence) ═══
 A natural Korean translation of the sentence above, with the part that corresponds to the target word wrapped in [square brackets].

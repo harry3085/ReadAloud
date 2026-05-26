@@ -68,7 +68,9 @@ RULES:
 3. Place the target word in the MIDDLE of the sentence when possible.
 4. The OTHER words must be from the most common 500–1000 English words (CEFR A1 level).
 5. Use only standard letters (a-z, A-Z), spaces, apostrophe ('), and a single trailing period or question mark. NO commas, NO quotes.
-6. NEVER leave empty.
+6. NO abbreviations or initialisms (TV, USA, OK, FBI, NASA, iPhone, WiFi, USB, ATM, etc.).
+   Use full words instead ("television" not "TV") — abbreviations break sentenceKo Korean-only rule.
+7. NEVER leave empty.
 
 ═══ FIELD 4: sentenceKo (Korean translation of the sentence) ═══
 A natural Korean translation of the sentence above, with the part that corresponds to the target word wrapped in [square brackets].
