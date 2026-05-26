@@ -15379,8 +15379,8 @@ window.qgOpenPromptModal = async () => {
 const _QG_PROMPT_ALIAS_LABELS = {
   mcq:                 { icon: '📖', label: '객관식 (본문이해)' },
   mcq_grammar:         { icon: '📐', label: '객관식 (문법)' },
-  subjective:          { icon: '✍️', label: '해석하기_주관식 (변형)' },
-  subjective_verbatim: { icon: '📄', label: '해석하기_주관식 (유지)' },
+  subjective:          { icon: '✍️', label: '해석하기 (문장변형)' },
+  subjective_verbatim: { icon: '📄', label: '해석하기 (문장유지)' },
 };
 
 function _qgRenderPromptTabs() {

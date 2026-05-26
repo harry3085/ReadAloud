@@ -1669,12 +1669,15 @@ async function loadAcademies() {
 // AI 프롬프트 default — appConfig/aiPrompts (글로벌, super_admin 편집)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROMPT_TYPES = ['mcq', 'mcq_grammar', 'fill_blank', 'unscramble', 'subjective', 'subjective_verbatim', 'recording', 'vocab'];
+// 순서 (학원장 앱과 동일, 2026-05-24):
+//   단어시험 → 빈칸채우기 → 언스크램블 → 객관식(본문이해) → 객관식(문법)
+//   → 해석하기(문장변형) → 해석하기(문장유지) → 녹음숙제
+const PROMPT_TYPES = ['vocab', 'fill_blank', 'unscramble', 'mcq', 'mcq_grammar', 'subjective', 'subjective_verbatim', 'recording'];
 const PROMPT_LABELS = {
+  vocab: '📝 단어시험', fill_blank: '✏️ 빈칸채우기', unscramble: '🔀 언스크램블',
   mcq: '📖 객관식 (본문이해)', mcq_grammar: '📐 객관식 (문법)',
-  fill_blank: '✏️ 빈칸채우기', unscramble: '🔀 언스크램블',
-  subjective: '✍️ 해석 (문장 변형)', subjective_verbatim: '📄 해석 (문장 유지)',
-  recording: '🎤 녹음숙제', vocab: '📝 단어시험',
+  subjective: '✍️ 해석하기 (문장변형)', subjective_verbatim: '📄 해석하기 (문장유지)',
+  recording: '🎤 녹음숙제',
 };
 let _promptsCache = {};       // Firestore 에서 로드한 원본
 let _promptsActiveType = 'mcq';
