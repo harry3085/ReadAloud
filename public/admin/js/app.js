@@ -11239,14 +11239,15 @@ function _qgShowResultModal(data) {
         </div>
       </div>
 
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;font-weight:600;">세트 이름</label>
+        <input type="text" id="qgSetName" value="${esc(defaultName)}" placeholder="예: Lesson 3 - 객관식 5문제"
+          style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+      </div>
+
       <div style="padding:16px 22px;flex:1;overflow-y:auto;">
         <div id="qgResultList">
           ${_qgGenerated.map((q,i) => _qgRenderQuestion(q,i)).join('')}
-        </div>
-        <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);">
-          <label style="font-size:12px;color:var(--gray);display:block;margin-bottom:6px;">세트 이름</label>
-          <input type="text" id="qgSetName" value="${esc(defaultName)}" placeholder="예: Lesson 3 - 객관식 5문제"
-            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         </div>
       </div>
 
