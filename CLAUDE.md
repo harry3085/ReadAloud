@@ -1665,3 +1665,55 @@ super 글로벌은 시드만" 구조 → AI 프롬프트와 동일 구조로 통
 - 단어 말하기 베타 결과 관찰 + 추가 튜닝 (speakingTip 품질·정답 문장 노출 UX 등)
 - 백필 안 된 시험 단어 (sent 검증 실패 ~7%) 재호출 검토
 - Phase 5 출시 준비 (도메인·약관·결제 PG)
+
+---
+
+## 2026-05-24 (이어서): 부적합 단어 일관성 + 해석하기 옵션 + UX 정비
+
+SW v588 → v593 (~6 commit).
+
+### 1) advertisement TV 케이스 fix (단어말하기 출제 차단 해소)
+출제 시 "advertisement" 가 누락 단어로 차단됨. 진단: sentence "I saw an advertisement on TV." 의 'TV' 영문 약자 때문에 sentenceKo Korean-only 검증 실패 → 빈값 유지. 매번 같은 응답이라 영영 안 채워짐.
+- HOMOPHONES_PROMPT sentence 규칙에 RULE 6 신규 — 영문 약자/이니셜리즘 금지 (TV/USA/OK/FBI/NASA/iPhone/WiFi 등). "television" 같은 full word 사용
+- backfill 스크립트 HOMOPHONES_PROMPT 도 동기
+- admin SDK 로 advertisement 4건(sets 2 + tests 2) sentence/sentenceKo 수동 박음 ("I saw an advertisement in a magazine." / "나는 잡지에서 [광고]를 보았다.")
+- 다른 영문 약자 의심 케이스 진단 — 0건 (advertisement 가 유일)
+
+### 2) 부적합 단어 판정 일관성 (handleSpeakingUnfit)
+보고: 같은 단어 세트 출제해도 매번 다른 부적합 단어 목록. 원인: callGemini 가 모든 task 에 temperature 0.7 사용 + hardForASR 기준 "highly likely" 가 AI 주관.
+- A. callGemini 에 `opts.temperature` 추가 — handleSpeakingUnfit 만 0 호출 (분류 결정성). 출제 task 는 default 0.7 유지
+- B. SPEAKING_UNFIT_PROMPT 강화 — "DEFAULT IS ALWAYS FALSE" + ">90% confident" 신뢰도 임계. hardForASR TRUE 는 ≤4글자 + 음향 모호만, wild/soft/right/light/world/fast 같은 흔한 단어 명시적 FALSE
+
+### 3) 해석하기_주관식 옵션 — 문장 변형 / 문장 유지
+학원장 요청. 옵션 2개 신설:
+- 문장 변형 (paraphrase, default) — 기존 동작
+- 문장 유지 (verbatim) — 본문 문장 그대로
+
+구현:
+- `SYSTEM_PROMPTS.subjective_verbatim` 신규 (2218자) — 본문 verbatim 강제
+- POST handler `subjectiveMode` 파라미터 처리, promptKey 분기
+- buildUserPrompt typeInstructions.subjective 모드별 분기
+- validateSubjective 모드별 검증 — verbatim 은 본문 substring 매칭 강제, paraphrase 는 30% 단어 매칭
+- 각 q.subjectiveMode 박음 + 세트 doc 메타 + 세트 목록에 라벨 (`✍️ 문장변형` / `📄 문장유지`)
+- super 앱·학원장 앱 프롬프트 편집 모달에 subjective_verbatim 탭 추가
+- push-aiprompt-to-firestore.js ALL_TYPES 에 추가 + Firestore 시드
+
+### 4) UX 정비 (학원장 요청)
+- AI 프롬프트 편집 모달 — subjective_verbatim 탭 추가 + 8개 탭 순서 재배열 (단어→빈칸→언스크램블→객관식(본문이해)→객관식(문법)→해석(변형)→해석(유지)→녹음). super 앱·학원장 앱 라벨 통일 ("해석하기 (문장변형/문장유지)")
+- AI Generator 결과 모달 — 세트 이름 입력란을 문제 목록 위로 이동 (스크롤 불필요)
+- 학생관리 검색 — 페이지네이션 로드된 학생만 검색하던 문제 → 학원 전체 학생 1회 fetch (limit 1000, academyId+role+status 만 필터, 반 무관) + 캐시 + debounce 300ms
+
+### 5) 단어 말하기 — 3차 채점 후 라이브 STT 박스 유지
+정답/오답 표시될 때 vqSpkLive 박스를 그대로 남겨 학생이 자기 발음 인식 결과 확인 가능 (1·2차는 변동 없음).
+
+### 작업 규칙 추가 (2026-05-24)
+- **분류 task vs 출제 task temperature 분리** — 모든 task 에 동일 temperature 사용하면 분류(yes/no)에서 결정성 손실. callGemini 에 opts.temperature 매개변수 두고 분류는 0, 출제는 default 0.7
+- **AI 프롬프트 영문 약자 금지 (sentence/koTranslation 짝)** — 영어 sentence 에 TV/USA/OK 같은 약자 들어가면 한글 번역 측 영문 금지 규칙과 충돌해 검증 실패 무한 반복. 프롬프트에 명시적 금지 + full word 권장
+- **모드 옵션 추가 시 응답 메타 + 세트 doc 메타 동시 박음** — subjective sentenceMode 처럼 옵션 추가 시 (1) validate 단계에서 각 q 에 메타 박고 (2) 응답에 모드 포함하고 (3) 세트 doc 에 모드 메타 박아 목록 라벨에 표시 — 3중 일관성
+
+## 파일 크기 / SW 캐시 (2026-05-24 이어서)
+- `api/generate-quiz.js`: HOMOPHONES sentence RULE 6 / SYSTEM_PROMPTS.subjective_verbatim / SPEAKING_UNFIT_PROMPT 강화 / callGemini temperature 옵션 / validateSubjective 모드 분기
+- `public/admin/js/app.js`: subjective sentenceMode 옵션 / qgSaveSet 메타 / _qsBuildOptionsSummary 라벨 / 프롬프트 탭 8개 순서 + alias / 결과 모달 세트 이름 상단 / 학생 검색 학원 전체
+- `public/super/js/app.js`: PROMPT_TYPES/LABELS 학원장과 동일 순서·라벨
+- `scripts/admin/push-aiprompt-to-firestore.js`: ALL_TYPES 에 subjective_verbatim 추가
+- SW 캐시: `kunsori-v589` → `kunsori-v593`
