@@ -10858,6 +10858,14 @@ window.qgRunWordsnap = async () => {
   );
   if (!ok) return;
 
+  // 한글·특수문자 포함 단어 검증 게이트 (학생 답안 입력 호환성)
+  const gateResult = await _qsCharsGate(questions);
+  if (!gateResult.proceed) return;
+  if (questions.length === 0) {
+    showAlert('저장 불가', '모든 단어를 삭제해 저장할 문제가 없습니다');
+    return;
+  }
+
   // 활성 Book/Chapter 있으면 sourcePages 로 기록 → 문제세트 목록의 폴더에 표시됨
   const sourcePages = (_qgActiveBook || _qgActiveChapter) ? [{
     pageId: '',
