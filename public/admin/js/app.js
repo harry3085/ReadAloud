@@ -11517,6 +11517,17 @@ window.qgSaveSet = async () => {
     }];
   }
 
+  // 단어시험 / Wordsnap — 한글·특수문자 포함 단어 검증 게이트
+  // (학생 답안 입력 단계의 한글 입력 제한·특수문자 처리 문제 회피)
+  if (finalQuestions[0]?.type === 'vocab' || finalQuestions[0]?.type === 'word') {
+    const gateResult = await _qsCharsGate(finalQuestions);
+    if (!gateResult.proceed) return;  // 사용자 취소
+    if (finalQuestions.length === 0) {
+      showAlert('저장 불가', '모든 단어를 삭제해 저장할 문제가 없습니다');
+      return;
+    }
+  }
+
   // subjective 모드 메타 — validateSubjective 가 각 q.subjectiveMode 박음 (paraphrase/verbatim)
   // 세트 단위 메타로도 박음 (목록 표시·필터링용)
   const subjectiveMode = finalQuestions[0]?.type === 'subjective'
@@ -12782,6 +12793,113 @@ function _tpSpeakingUnfitGate(questions) {
   });
 }
 
+// 2026-05-24 — 단어시험 세트 문자 검증 게이트
+// 학생 답안 입력 단계에서 한글 입력 제한·특수문자 처리 문제 야기하는 단어 검출.
+// 호출자: qgSaveSet (AI Generator·Wordsnap 세트 저장) / qsSaveEdits (세트 수정 저장)
+// vocab 타입 questions 만 대상. 학원장이 inline 수정 또는 삭제 후 진행.
+
+// 영어 단어/숙어 표준 문자: a-zA-Z 공백 ' - . (apostrophe, hyphen, period)
+// 한글/한자/일본어/그 외 특수문자(괄호·따옴표·물음표·콜론 등)는 부적합.
+// 회색: / > ~ 등 변화형 표기 — 학원장이 사용 중인 데이터 보호 위해 일단 허용.
+function _qsValidateWordChars(questions) {
+  const out = [];
+  (questions || []).forEach((q, idx) => {
+    if (!q?.word) return;
+    const w = String(q.word).trim();
+    if (!w) return;
+    const reasons = [];
+    if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(w)) reasons.push('한글 포함');
+    if (/[一-龯]/.test(w)) reasons.push('한자 포함');
+    if (/[ぁ-んァ-ヶ]/.test(w)) reasons.push('일본어 포함');
+    // 영문·공백·기본 구두점·변화형 표기(/>~) 외 특수문자
+    // 허용: a-zA-Z 공백 ' - . / > ~ , 숫자
+    const nonStandard = w.replace(/[a-zA-Z0-9\s'.\-/>~,]/g, '')
+                          .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ一-龯ぁ-んァ-ヶ]/g, '');
+    if (nonStandard.length > 0) {
+      const samples = [...new Set(nonStandard.split(''))].slice(0, 5).join(' ');
+      reasons.push(`특수문자 (${samples})`);
+    }
+    if (reasons.length) out.push({ idx, word: w, reasons });
+  });
+  return out;
+}
+
+// 부적합 단어 게이트 모달 — 학원장이 수정 또는 삭제 후 진행/취소
+// 반환: { proceed: true | false } — true 면 호출자가 그대로 진행
+function _qsCharsGate(questions) {
+  return new Promise(resolve => {
+    const unfit = _qsValidateWordChars(questions);
+    if (unfit.length === 0) return resolve({ proceed: true });
+
+    // questions 가 vocab 한 종류라 가정. 각 항목 idx 로 직접 update
+    const rowHtml = (item) => `
+      <div data-row="${item.idx}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:#fff;">
+        <div style="flex:1;min-width:0;">
+          <input type="text" value="${esc(item.word)}" oninput="_qsCharsEdit(${item.idx}, this.value)"
+            style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:ui-monospace,Consolas,monospace;">
+          <div style="font-size:11px;color:#dc2626;margin-top:3px;">${esc(item.reasons.join(' · '))}</div>
+        </div>
+        <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_qsCharsDel(${item.idx})">🗑 삭제</button>
+      </div>`;
+    const renderList = () => {
+      const u = _qsValidateWordChars(questions);
+      const el = document.getElementById('_qsCharsList');
+      if (!el) return;
+      if (u.length === 0) {
+        el.innerHTML = '<div style="color:#059669;font-size:13px;padding:14px;text-align:center;font-weight:600;">✓ 모두 정상 — [계속 진행] 버튼을 눌러주세요</div>';
+      } else {
+        el.innerHTML = u.map(rowHtml).join('');
+      }
+      const cnt = document.getElementById('_qsCharsCnt');
+      if (cnt) cnt.textContent = `남은 문제 ${questions.length}개 · 부적합 ${u.length}개`;
+    };
+
+    window._qsCharsEdit = (idx, val) => {
+      if (!questions[idx]) return;
+      questions[idx].word = String(val || '').trim();
+      // 수정 즉시 재검증은 안 함 (학원장 타이핑 중 깜빡임 방지) — 별도 [재검증] 버튼 또는 [계속 진행] 시 다시 검사
+    };
+    window._qsCharsDel = (idx) => {
+      // splice 시 인덱스 어긋남 방지 — sentinel 로 표시 후 마지막에 일괄 제거
+      if (questions[idx]) questions[idx]._toDelete = true;
+      // 즉시 진짜 제거 (UI 단순화). 이후 idx 어긋남은 _toDelete 표시로 안전.
+      // 하지만 splice 시 다음 항목 idx 가 줄어 _qsValidateWordChars 가 다시 idx 매핑 → 안전.
+      questions.splice(idx, 1);
+      renderList();
+      showToast('삭제됨');
+    };
+    window._qsCharsRecheck = () => renderList();
+    window._qsCharsClose = (proceed) => {
+      window._qsCharsEdit = null;
+      window._qsCharsDel = null;
+      window._qsCharsRecheck = null;
+      window._qsCharsClose = null;
+      closeModal();
+      resolve({ proceed: !!proceed });
+    };
+
+    showModal(`
+      <div style="width:min(620px,92vw);max-height:88vh;display:flex;flex-direction:column;">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:17px;font-weight:700;">⚠️ 단어 검증 — 한글·특수문자 포함</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.5;">
+            학생 답안 입력에 문제가 되는 단어입니다 (한글/한자/특수문자 등).<br>
+            영문으로 <b>수정</b>하거나 🗑 <b>삭제</b> 후 [재검증] → [계속 진행] 하세요.
+            <span id="_qsCharsCnt" style="color:var(--text);font-weight:600;display:block;margin-top:3px;">남은 문제 ${questions.length}개 · 부적합 ${unfit.length}개</span>
+          </div>
+        </div>
+        <div style="padding:16px 22px;overflow-y:auto;flex:1;" id="_qsCharsList">${unfit.map(rowHtml).join('')}</div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;">
+          <button class="btn btn-secondary" onclick="_qsCharsRecheck()" style="font-size:12px;">↻ 재검증</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary" onclick="_qsCharsClose(false)">취소</button>
+            <button class="btn btn-primary" onclick="_qsCharsClose(true)" style="font-weight:700;">계속 진행 ▶</button>
+          </div>
+        </div>
+      </div>`);
+  });
+}
+
 window.qsSaveEdits = async () => {
   const st = _qsEditState;
   if (!st) return;
@@ -12841,6 +12959,16 @@ window.qsSaveEdits = async () => {
     }
   } else if (chosenBookId !== originalBookId) {
     sourcePages = sourcePages.map(p => ({ ...p, bookId: chosenBookId, chapterId: '' }));
+  }
+
+  // vocab 세트 — 한글·특수문자 포함 단어 검증 게이트 (학원장이 단어 수정 시 검증)
+  if (st.sourceType === 'vocab' || st.questions.some(q => q.type === 'vocab')) {
+    const gateResult = await _qsCharsGate(st.questions);
+    if (!gateResult.proceed) return;
+    if (st.questions.length === 0) {
+      showAlert('저장 불가', '모든 단어를 삭제해 저장할 문제가 없습니다');
+      return;
+    }
   }
 
   if (!(await showConfirm('수정사항을 저장할까요?', `${st.questions.length}문제 업데이트`))) return;
