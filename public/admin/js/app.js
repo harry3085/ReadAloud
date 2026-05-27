@@ -15296,15 +15296,10 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
     }
 
     const doneCount = completed.size;
+    // 펼친 카드 상단 메타 라인 폐기 — 시험명·✏️·응시통계 모두 행에 이미 있어 중복.
+    // 학생 카드 색상으로 응시/미응시 한눈에 구분됨 (2026-05-24 학원장 요청).
     content.innerHTML = `
       <div style="padding:8px 4px;">
-        <div style="font-size:11px;color:var(--gray);margin-bottom:6px;padding:0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span>
-            <span style="color:var(--text);font-weight:700;font-size:13px;">${esc(t.name||'-')}</span>
-            <button onclick="event.stopPropagation();tpEditTestName('${esc(testId)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:4px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.5;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✏️</button>
-          </span>
-          <span>응시 ${doneCount} / 총 ${studentList.length} · 미응시 <span style="color:#e65100;font-weight:700;">${studentList.length - doneCount}</span></span>
-        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:5px;padding:0 4px;">
           ${studentList.map(s => {
             const c = completed.get(s.uid);
@@ -16345,7 +16340,7 @@ window.progRenderByDate = async function () {
       <div class="card" style="padding:14px 16px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
           <div style="min-width:0;flex:1;">
-            <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}<button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button></div>
             <div style="font-size:11px;color:var(--gray);margin-top:3px;">${esc(typeLabel)} · ${esc(targetLabel)} · ${qCount}문항 · ${esc(dateStr)}</div>
           </div>
         </div>
