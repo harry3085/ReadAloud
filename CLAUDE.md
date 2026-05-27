@@ -1717,3 +1717,59 @@ SW v588 → v593 (~6 commit).
 - `public/super/js/app.js`: PROMPT_TYPES/LABELS 학원장과 동일 순서·라벨
 - `scripts/admin/push-aiprompt-to-firestore.js`: ALL_TYPES 에 subjective_verbatim 추가
 - SW 캐시: `kunsori-v589` → `kunsori-v593`
+
+---
+
+## 2026-05-24 (이어서 2): 시험명 편집 + 단어시험 한글·특수문자 검증 게이트
+
+SW v593 → v597 (~4 commit).
+
+### 1) 시험명 편집 ✏️ (오타 fix)
+학원장 보고: 출제된 시험 제목 오타 발견 시 수정 UI 없음. 신규.
+
+핵심 함수 `tpEditTestName(testId, currentName)`:
+- 입력 모달 (`_showInputModal`) — Enter 확인 / ESC 취소
+- `genTests/{testId}.name` update
+- `scores` where(testId) 일괄 update — `testName` 필드 (`writeBatch` 450건/회)
+- `userCompleted` 일괄 update — `testName` 필드
+- 점수·정답·통과여부·questions/answers 등 모든 데이터 **보존**
+- 화면 자동 갱신 (활성 화면 따라)
+
+✏️ 노출 위치 (3곳):
+- 통합 시험목록 행 (`_tlRenderRow`, 진도체크 → 시험별 진도체크 탭)
+- 유형별 시험관리 행 (`_tpRenderTestRow`, 단어/녹음/등)
+- 일자별 반별 진도체크 카드 (`progRenderByDate`)
+
+스타일: opacity 0.4 → hover 1.0 (행 클릭 방해 최소화). `event.stopPropagation` 로 펼침 동작과 충돌 방지.
+
+펼침 카드 중복 제거 (학원장 보고):
+- 펼친 카드 상단 메타 라인 (시험명+✏️+응시통계) **통째 삭제** — 행/카드 헤더에 이미 있어 중복
+- 학생 카드 색상으로 응시/미응시 한눈 구분 가능
+
+### 2) 단어시험 세트 한글·특수문자 검증 게이트
+학원장 보고: 단어/숙어에 한글이나 특수문자 섞이면 학생 답안 입력 단계에서 한글 입력 제한으로 제출 불가.
+
+신규 검증 함수 `_qsValidateWordChars`:
+- 한글 (가-힣ㄱ-ㅎㅏ-ㅣ) / 한자 (一-龯) / 일본어 (ぁ-んァ-ヶ) 검출
+- 허용 문자: `a-zA-Z` 공백 `'` `-` `.` `/` `>` `~` `,` 숫자
+  (변화형 표기 `/` `>` `~` 는 기존 데이터 보호 위해 허용)
+- 허용 외 특수문자 → `'특수문자 (예시 5개)'`
+
+게이트 모달 `_qsCharsGate` (말하기 부적합 게이트 패턴 차용):
+- 부적합 단어 목록 + 사유 + **inline 수정 input + 🗑 삭제** 버튼
+- [↻ 재검증] → [계속 진행 ▶] / [취소]
+- 모든 단어 삭제 시 저장 불가 안내
+
+호출 위치 (모든 vocab 저장 경로):
+- `qgSaveSet` — AI Generator 단어시험 결과 모달 저장
+- `qsSaveEdits` — 기존 세트 수정 저장
+- `qgRunWordsnap` — Wordsnap 직접 입력 저장 (직전 fix 0b38b0c — qgSaveSet 우회 경로 누락 발견)
+
+### 작업 규칙 추가 (2026-05-24 이어서 2)
+- **데이터 일괄 update 시 `writeBatch` 450건/회 패턴** — Firestore batch 한도 500. 안전 마진 + 큰 시험 (학생 500명+재응시) 대비. testName update 처럼 단일 필드 일괄 변경에 적합.
+- **저장 경로 우회 가능성 — 단일 진입점 가정 금지** — `qgSaveSet` 에 게이트 박았더니 Wordsnap (`qgRunWordsnap`) 이 직접 `addDoc` 호출해 게이트 우회. 데이터 무결성 검증은 **모든 저장 경로 grep 으로 확인 + 각 경로마다 명시적 호출** 필요. 단일 진입점 가정하지 말 것.
+- **펼침 카드 ↔ 행 헤더 중복 = 행 우선 + 펼침은 본문만** — 동일 정보가 두 군데 노출되는 UX 는 사용자 혼란. 행/카드 헤더에 메타 (제목·편집·통계) 모으고 펼침은 본문(학생 카드 등) 만.
+
+## 파일 크기 / SW 캐시 (2026-05-24 이어서 2)
+- `public/admin/js/app.js`: tpEditTestName + _showInputModal / ✏️ 3곳 / 펼침 카드 메타 라인 제거 / _qsValidateWordChars + _qsCharsGate / 3경로 호출 / writeBatch import
+- SW 캐시: `kunsori-v594` → `kunsori-v597`
