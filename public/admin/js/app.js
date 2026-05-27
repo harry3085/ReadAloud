@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, startAfter, documentId, getCountFromServer, increment, arrayUnion, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, startAfter, documentId, getCountFromServer, increment, arrayUnion, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 
@@ -6766,7 +6766,9 @@ function _tlRenderRow(t, i) {
       <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${t.id}','tl')" id="tl-row-${t.id}">
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
-        <td class="td-main">${esc(t.name)||'-'}${_testNameBadges(t)}</td>
+        <td class="td-main">${esc(t.name)||'-'}${_testNameBadges(t)}
+          <button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button>
+        </td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName) || '-'}</span></td>
         <td class="td-sm">${esc(bookName)}</td>
@@ -13746,7 +13748,9 @@ function _tpRenderTestRow(t, i) {
   return `
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
       <td style="${cellBase}font-size:12px;color:var(--gray);">${(i||0)+1}</td>
-      <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameBadges(t)}</td>
+      <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameBadges(t)}
+        <button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button>
+      </td>
       <td style="${cellBase}font-size:12px;"><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</span></td>
       <td style="${cellBase}font-size:12px;color:var(--text);max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(bookName)}">${esc(bookName)}</td>
       <td style="${cellBase}text-align:center;font-size:12px;color:var(--text);">${qCount}문제</td>
@@ -13922,6 +13926,105 @@ window.tpReEvaluateRecording = async (testId, uid, studentName) => {
 };
 
 // 시험(genTests) 단건 삭제 — 하위 userCompleted 도 cascade 삭제. scores 는 보존(이력 가치).
+// 2026-05-24 — 시험 제목 편집 (genTests.name + scores.testName + userCompleted.testName 일괄 update)
+// 학원장 오타 fix 등에 사용. 점수·정답·통과여부 등은 보존하고 testName 만 덮어씀.
+// 호출: tpEditTestName(testId, currentName) — 모달 입력 후 일괄 update.
+window.tpEditTestName = async (testId, currentName) => {
+  const cur = String(currentName || '').trim();
+  const newName = await _showInputModal('시험 제목 편집', '새 시험 제목을 입력하세요', cur);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) { showAlert('입력 확인', '시험 제목은 비울 수 없습니다'); return; }
+  if (trimmed === cur) return;
+  if (!(await showConfirm(
+    `시험 제목을 변경할까요?`,
+    `"${cur}" → "${trimmed}"\n\n학생 응시 기록의 시험명도 함께 변경됩니다.\n점수·정답·통과 여부 등은 그대로 보존.`
+  ))) return;
+
+  try {
+    // 1) genTests 본체
+    await updateDoc(doc(db, 'genTests', testId), { name: trimmed });
+
+    // 2) scores 일괄 update (그 시험에 응시한 모든 학생·재응시) — writeBatch 500건/회
+    const sSnap = await getDocs(query(
+      collection(db, 'scores'),
+      where('academyId', '==', window.MY_ACADEMY_ID),
+      where('testId', '==', testId),
+    ));
+    let scoreUpdated = 0;
+    const docs = sSnap.docs;
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = writeBatch(db);
+      docs.slice(i, i + 450).forEach(d => batch.update(d.ref, { testName: trimmed }));
+      await batch.commit();
+      scoreUpdated += Math.min(450, docs.length - i);
+    }
+
+    // 3) userCompleted 일괄 update (통과 학생 스냅샷)
+    const ucSnap = await getDocs(collection(db, 'genTests', testId, 'userCompleted'));
+    let ucUpdated = 0;
+    const ucDocs = ucSnap.docs.filter(d => d.data().testName !== undefined);
+    for (let i = 0; i < ucDocs.length; i += 450) {
+      const batch = writeBatch(db);
+      ucDocs.slice(i, i + 450).forEach(d => batch.update(d.ref, { testName: trimmed }));
+      await batch.commit();
+      ucUpdated += Math.min(450, ucDocs.length - i);
+    }
+
+    showToast(`✓ 시험명 변경 — scores ${scoreUpdated}건 · userCompleted ${ucUpdated}건 동기`);
+
+    // 현재 화면 갱신 (어디서 호출돼도 안전 — 활성 화면만 영향)
+    if (typeof _renderTestAssignDetail === 'function' && _activeTestType) {
+      await _renderTestAssignDetail(_activeTestType);
+    }
+    if (typeof loadTestList === 'function' && document.getElementById('testListBody')) {
+      // 통합 시험목록 화면에 있다면 다시 로드
+      const visible = document.getElementById('progPanelTest')?.style.display !== 'none';
+      if (visible) loadTestList();
+    }
+  } catch (e) {
+    console.error('[tpEditTestName]', e);
+    showAlert('시험명 변경 실패', e.message);
+  }
+};
+
+// 입력 모달 (prompt 대안 — showModal 기반)
+function _showInputModal(title, sub, defaultVal) {
+  return new Promise(resolve => {
+    const id = 'inp-' + Math.random().toString(36).slice(2);
+    const html = `
+      <div style="width:min(480px,92vw);">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+          <div style="font-size:16px;font-weight:700;">${esc(title)}</div>
+          ${sub ? `<div style="font-size:12px;color:var(--gray);margin-top:4px;">${esc(sub)}</div>` : ''}
+        </div>
+        <div style="padding:18px 22px;">
+          <input type="text" id="${id}" value="${esc(defaultVal || '')}"
+            style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none;"
+            onkeydown="if(event.key==='Enter'){document.getElementById('${id}-ok').click();}else if(event.key==='Escape'){document.getElementById('${id}-cancel').click();}">
+        </div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+          <button id="${id}-cancel" class="btn btn-secondary">취소</button>
+          <button id="${id}-ok" class="btn btn-primary">확인</button>
+        </div>
+      </div>`;
+    showModal(html);
+    setTimeout(() => {
+      const input = document.getElementById(id);
+      if (input) { input.focus(); input.select(); }
+      document.getElementById(id + '-ok').onclick = () => {
+        const v = document.getElementById(id)?.value || '';
+        closeModal();
+        resolve(v);
+      };
+      document.getElementById(id + '-cancel').onclick = () => {
+        closeModal();
+        resolve(null);
+      };
+    }, 50);
+  });
+}
+
 window.tpDeleteGenTest = async (testId) => {
   const t = _tpGenTests.find(x => x.id === testId);
   if (!t) return;
@@ -15195,8 +15298,12 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
     const doneCount = completed.size;
     content.innerHTML = `
       <div style="padding:8px 4px;">
-        <div style="font-size:11px;color:var(--gray);margin-bottom:6px;padding:0 8px;">
-          응시 ${doneCount} / 총 ${studentList.length} · 미응시 <span style="color:#e65100;font-weight:700;">${studentList.length - doneCount}</span>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:6px;padding:0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span>
+            <span style="color:var(--text);font-weight:700;font-size:13px;">${esc(t.name||'-')}</span>
+            <button onclick="event.stopPropagation();tpEditTestName('${esc(testId)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:4px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.5;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✏️</button>
+          </span>
+          <span>응시 ${doneCount} / 총 ${studentList.length} · 미응시 <span style="color:#e65100;font-weight:700;">${studentList.length - doneCount}</span></span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:5px;padding:0 4px;">
           ${studentList.map(s => {
