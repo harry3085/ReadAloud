@@ -6776,7 +6776,7 @@ function _tlRenderRow(t, i) {
         <td onclick="event.stopPropagation()"><input type="checkbox" value="${t.id}" data-src="${t._src}"></td>
         <td>${i+1}</td>
         <td class="td-main">${esc(t.name)||'-'}${_testNameBadges(t)}
-          <button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button>
+          ${_tpEditNameBtnHtml(t)}
         </td>
         <td>${_testModeLabel(t)}</td>
         <td><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName) || '-'}</span></td>
@@ -13904,7 +13904,7 @@ function _tpRenderTestRow(t, i) {
     <tr style="cursor:pointer;" onclick="tpToggleTestProgress('${esc(t.id)}','tp')" id="tp-row-${t.id}">
       <td style="${cellBase}font-size:12px;color:var(--gray);">${(i||0)+1}</td>
       <td style="${cellBase}font-size:13px;font-weight:600;color:var(--text);">${esc(t.name||'-')}${_testNameBadges(t)}
-        <button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button>
+        ${_tpEditNameBtnHtml(t)}
       </td>
       <td style="${cellBase}font-size:12px;"><span class="badge badge-teal">${esc(_buildTargetName(t.targets) || t.targetName || '-')}</span></td>
       <td style="${cellBase}font-size:12px;color:var(--text);max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${esc(bookName)}">${esc(bookName)}</td>
@@ -14083,8 +14083,22 @@ window.tpReEvaluateRecording = async (testId, uid, studentName) => {
 // 시험(genTests) 단건 삭제 — 하위 userCompleted 도 cascade 삭제. scores 는 보존(이력 가치).
 // 2026-05-24 — 시험 제목 편집 (genTests.name + scores.testName + userCompleted.testName 일괄 update)
 // 학원장 오타 fix 등에 사용. 점수·정답·통과여부 등은 보존하고 testName 만 덮어씀.
-// 호출: tpEditTestName(testId, currentName) — 모달 입력 후 일괄 update.
-window.tpEditTestName = async (testId, currentName) => {
+// 시험명 편집 ✏️ 버튼 HTML (3경로 공용). 인라인 onclick 인자 대신 data-* 속성 —
+// 시험명에 따옴표(' ")가 있어도 onclick JS 문자열·속성이 안 깨짐 (HTML 엔티티 디코딩 함정 회피).
+function _tpEditNameBtnHtml(t){
+  return `<button data-eid="${esc(t.id)}" data-ename="${esc(t.name||'')}" onclick="event.stopPropagation();tpEditTestName(this)" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button>`;
+}
+
+// 호출: tpEditTestName(buttonEl) — data-eid/data-ename 에서 읽음 (구 시그니처 testId,name 도 폴백).
+window.tpEditTestName = async (elOrId, maybeName) => {
+  let testId, currentName;
+  if (elOrId && typeof elOrId === 'object' && elOrId.dataset) {
+    testId = elOrId.dataset.eid;
+    currentName = elOrId.dataset.ename || '';
+  } else {
+    testId = elOrId;
+    currentName = maybeName || '';
+  }
   const cur = String(currentName || '').trim();
   const newName = await _showInputModal('시험 제목 편집', '새 시험 제목을 입력하세요', cur);
   if (newName === null) return;
@@ -16495,7 +16509,7 @@ window.progRenderByDate = async function () {
       <div class="card" style="padding:14px 16px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
           <div style="min-width:0;flex:1;">
-            <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}<button onclick="event.stopPropagation();tpEditTestName('${esc(t.id)}','${esc(t.name||'').replace(/'/g,'&#39;')}')" title="시험명 편집" style="margin-left:6px;background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;opacity:0.4;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✏️</button></div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}${_tpEditNameBtnHtml(t)}</div>
             <div style="font-size:11px;color:var(--gray);margin-top:3px;">${esc(typeLabel)} · ${esc(targetLabel)} · ${qCount}문항 · ${esc(dateStr)}</div>
           </div>
         </div>
