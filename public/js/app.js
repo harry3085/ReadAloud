@@ -2849,7 +2849,8 @@ function _rv2RenderRoundCard(i, cur) {
       ? `<button onclick="rv2ResumeRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#F4936A;color:white;font-size:13px;font-weight:700;cursor:pointer;">▶ 재개</button>`
       : `<button onclick="rv2PauseRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#FFF5E5;color:#BA7517;font-size:13px;font-weight:700;cursor:pointer;">⏸ 일시정지</button>`;
     const pausedBadge = isPaused
-      ? `<div style="text-align:center;font-size:11px;color:#BA7517;font-weight:700;margin-top:6px;">일시정지됨 — [재개] 누르면 이어서 녹음됩니다</div>`
+      ? `<div style="text-align:center;font-size:11px;color:#BA7517;font-weight:700;margin-top:6px;">일시정지됨 — [재개] 누르면 이어서 녹음됩니다</div>
+         <div style="text-align:center;font-size:11px;color:#DC2626;font-weight:700;margin-top:4px;">⚠️ 이 화면을 벗어나면 저장되지 않습니다.</div>`
       : '';
     buttonsHtml = `
       <div style="display:flex;gap:8px;">
