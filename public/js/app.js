@@ -3045,20 +3045,9 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
     }
   }
 
-  // 3. 다라운드 길이 일관성 (B)
-  if (Array.isArray(savedRounds) && savedRounds.length > 0) {
-    const prev = savedRounds.map(r => r.duration).filter(d => d > 0);
-    if (prev.length > 0) {
-      const avg = prev.reduce((a, b) => a + b, 0) / prev.length;
-      const ratio = Math.abs(duration - avg) / avg;
-      if (ratio > 0.30) {
-        return {
-          ok: false,
-          reason: `이전 회차와 시간 차이가 크네요 (평균 ${Math.round(avg)}초, 이번 ${duration}초). 비슷한 호흡으로 다시 해볼까요?`,
-        };
-      }
-    }
-  }
+  // 3. (제거됨 2026-05-24) 다라운드 길이 일관성 검사 — 일시정지 시 elapsedSec 가 줄어
+  //    이전 회차 평균과 30% 초과 차이로 오판해 제출 거부되던 문제. 학원장 결정으로 검사 폐기.
+  //    (일시정지·자연스러운 호흡 차이를 막던 부작용 > 회차별 분량 강제 이득)
 
   // 4. 오디오 분석 (VAD + 음성 대역 + 자기상관)
   let vadRatio = null, voiceBandRatio = null, monotony = null;
