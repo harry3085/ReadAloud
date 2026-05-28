@@ -2618,6 +2618,8 @@ async function _raStartV2(test, question) {
             mime: rd.mimeType || 'audio/webm',
             duration: rd.duration || 0,
             voiceActivity: rd.voiceActivity,
+            voiceBandRatio: (typeof rd.voiceBandRatio === 'number') ? rd.voiceBandRatio : null,
+            monotony: (typeof rd.monotony === 'number') ? rd.monotony : null,
             audioUrl: rd.audioUrl,
             uploaded: true,
             hash: null,
@@ -2684,6 +2686,8 @@ async function _rv2UploadRound(i) {
         audioUrl: rd.audioUrl,
         duration: rd.duration || 0,
         voiceActivity: (typeof rd.voiceActivity === 'number') ? rd.voiceActivity : null,
+        voiceBandRatio: (typeof rd.voiceBandRatio === 'number') ? rd.voiceBandRatio : null,
+        monotony: (typeof rd.monotony === 'number') ? rd.monotony : null,
         mimeType: rd.mime || '',
       }));
     await setDoc(
@@ -2997,8 +3001,14 @@ async function _rv2AfterStop(mime) {
 
   const url = URL.createObjectURL(blob);
   if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
-  _rv2.currentTake = { blob, url, mime, duration, hash: check.hash, voiceActivity: check.voiceActivity };
-  _rv2.alertMessage = null;  // 통과했으니 알림 제거
+  _rv2.currentTake = {
+    blob, url, mime, duration, hash: check.hash,
+    voiceActivity: check.voiceActivity,
+    voiceBandRatio: check.voiceBandRatio,   // 학원장 상세 참고용
+    monotony: check.monotony,
+  };
+  // warning 있으면 안내 표시 (거부 아님 — [저장] 가능). 없으면 알림 제거.
+  _rv2.alertMessage = check.warning || null;
   _rv2Render();
 }
 
@@ -3136,26 +3146,17 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
     return { ok: true, hash, _bypassed: 'analysis-error' };
   }
 
-  // VAD 차단 폐기 — 학생 차단 대신 수치 노출 + 메시지로 안내
-  // (참고: minVA 는 더 이상 사용 안 함. 코멘트는 _rv2BuildRoundMessage 가 처리)
-
-  // 음성 대역 에너지 (C)
+  // VAD / 음성 대역(C) / 단조로움(D) — 거부 폐기 (2026-05-29 학원장 결정).
+  // 정상 녹음(저가 마이크·조용한 발음·또박또박 읽기)도 막던 부작용 > 부정 차단 이득.
+  // 대신 (1) 학생에게 안내 메시지(거부 아님, 저장 가능) (2) 수치는 회차에 저장해 학원장 상세 참고용.
+  let warning = null;
   if (voiceBandRatio !== null && voiceBandRatio < 0.40) {
-    return {
-      ok: false,
-      reason: `말소리 외 다른 소리가 섞여 있어요. 조용한 곳에서 또렷이 읽어볼까요?`,
-    };
+    warning = '말소리 외 다른 소리가 조금 섞인 것 같아요. 다음엔 조용한 곳에서 또렷이 읽으면 더 좋아요. (그대로 저장해도 됩니다)';
+  } else if (monotony !== null && monotony > 0.55) {
+    warning = '같은 소리가 반복되는 느낌이에요. 다음엔 본문을 차근차근 읽어보세요. (그대로 저장해도 됩니다)';
   }
 
-  // 단조로움 (D)
-  if (monotony !== null && monotony > 0.55) {
-    return {
-      ok: false,
-      reason: `같은 소리가 반복되는 것 같아요. 본문을 차근차근 읽어볼까요?`,
-    };
-  }
-
-  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony };
+  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony, warning };
 }
 
 window.rv2Retake = () => {
@@ -3358,6 +3359,8 @@ async function _rv2Submit() {
           audioUrl: r.audioUrl,
           duration: r.duration || 0,
           voiceActivity: (typeof r.voiceActivity === 'number') ? r.voiceActivity : null,
+          voiceBandRatio: (typeof r.voiceBandRatio === 'number') ? r.voiceBandRatio : null,
+          monotony: (typeof r.monotony === 'number') ? r.monotony : null,
         });
         continue;
       }
@@ -3374,6 +3377,8 @@ async function _rv2Submit() {
         audioUrl: url,
         duration: r.duration || 0,
         voiceActivity: (typeof r.voiceActivity === 'number') ? r.voiceActivity : null,
+        voiceBandRatio: (typeof r.voiceBandRatio === 'number') ? r.voiceBandRatio : null,
+        monotony: (typeof r.monotony === 'number') ? r.monotony : null,
       });
       _rv2ShowSubmitting(`🎤 녹음 업로드 중... (${i+1}/${_rv2.savedRounds.length})`, `Storage 저장`);
     }

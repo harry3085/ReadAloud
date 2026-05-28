@@ -5450,6 +5450,17 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const dur = r.duration ? r.duration + '초' : '-';
     const wpm = (r.duration > 0 && ftWords > 0) ? Math.round((ftWords / r.duration) * 60) : 0;
     const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
+    // 학원장 참고용 음향 지표 (학생 비공개). 거부 아닌 안내로 전환됨 — 낮은 명료도/높은 단조는 색으로 표시.
+    const vbrPct = (typeof r.voiceBandRatio === 'number') ? Math.round(r.voiceBandRatio * 100) : null;
+    const monoPct = (typeof r.monotony === 'number') ? Math.round(r.monotony * 100) : null;
+    const vbrColor = vbrPct == null ? '' : (vbrPct >= 40 ? '#16a34a' : '#dc2626');
+    const monoColor = monoPct == null ? '' : (monoPct <= 55 ? '#16a34a' : '#dc2626');
+    const acousticLine = (vbrPct != null || monoPct != null) ? `
+          <div style="font-size:10px;color:var(--gray);margin-top:2px;line-height:1.5;">
+            ${vbrPct != null ? `<span title="실제 사람 음성 대역(300~3400Hz) 에너지 비율 — 낮으면 웅얼거림·잡음·비음성 의심">음성 명료도 <b style="color:${vbrColor};">${vbrPct}%</b></span>` : ''}
+            ${(vbrPct != null && monoPct != null) ? ' · ' : ''}
+            ${monoPct != null ? `<span title="피치 변화가 적을수록 높음(100%=완전 단조) — 무성의·기계적 읽기 의심">단조로움 <b style="color:${monoColor};">${monoPct}%</b></span>` : ''}
+          </div>` : '';
     const catBadge = (label, color, scoreVal, comment) => {
       if (typeof scoreVal !== 'number' && !comment) return '';
       return `<div style="margin-top:3px;font-size:11px;line-height:1.5;"><span style="background:${color};color:white;padding:1px 7px;border-radius:3px;font-weight:700;margin-right:5px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
@@ -5462,6 +5473,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
           <span style="font-size:10px;color:var(--gray);">${dur} · 말소리 ${va}${wpmTxt}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
+        ${acousticLine}
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
         ${audio?`<audio src="${esc(audio)}" controls preload="none"${stop} style="width:100%;height:30px;"></audio>`:''}
         ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:6px;">${esc(r.note)}</div>`:''}
