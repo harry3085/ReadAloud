@@ -1773,3 +1773,58 @@ SW v593 → v597 (~4 commit).
 ## 파일 크기 / SW 캐시 (2026-05-24 이어서 2)
 - `public/admin/js/app.js`: tpEditTestName + _showInputModal / ✏️ 3곳 / 펼침 카드 메타 라인 제거 / _qsValidateWordChars + _qsCharsGate / 3경로 호출 / writeBatch import
 - SW 캐시: `kunsori-v594` → `kunsori-v597`
+
+---
+
+## 2026-05-29: 녹음숙제 음성대역·단조로움 거부→안내 + 학원장 상세 수치 + 일시정지 경고
+
+SW v599 → v602 (3 commit). OCR 2단 재정렬·cleanup 등은 직전 세션, 이번은 녹음숙제 정비.
+
+### 1) 음성대역(C)·단조로움(D) 거부 폐기 → 안내 + 수치 노출 (`3b0d6c7`, v600)
+
+`_rv2PreCheckRecording` 의 `voiceBandRatio < 0.40`(말소리 대역 에너지 비율) /
+`monotony > 0.55`(1=완전 단조) 거부를 **폐기** — 정상 녹음(저가 마이크·또박또박
+읽기·조용한 발음)도 막던 부작용 > 부정 차단 이득. 대신:
+- 거부 아닌 **학생 안내**(warning, [저장] 그대로 가능) — `_rv2.alertMessage = check.warning`
+- 회차별 수치를 **저장**해 학원장 상세 참고용 노출. `_rv2PreCheckRecording` 가
+  `{ok:true, voiceActivity, voiceBandRatio, monotony, warning}` 반환
+- 저장 경로 전부 carry: `_rv2AfterStop` currentTake / `_rv2Submit` recordingsDetail
+  2곳 / `_rv2UploadRound` inProgress / `_raStartV2` 복원 (세션 간 이어하기 보존)
+- 학원장 상세 `_adminRecBuildDetail` 에 `명료도 N%`(>=40 초록/미만 빨강) ·
+  `단조로움 N%`(<=55 초록/초과 빨강) + 마우스 오버 툴팁. **학생 비공개·학원장 참고용**
+
+**중요**: 수치는 genTests 설정이 아니라 **학생 제출 시점 클라가 계산** → 출제 시점
+무관. 이미 출제된 시험도 v600+ 로 **제출하면** 반영. v600 이전 제출분은 필드 없어
+미표시(소급 불가).
+
+### 2) 수치를 말소리·속도 옆 같은 줄로 통합 (`ae17708`, v601)
+
+별도 줄(`acousticLine`) 폐기 → 회차 헤더 `N초 · 말소리 N% · 속도 N WPM` 뒤에
+` · 명료도 N% · 단조로움 N%` 이어 붙임 (학원장 요청). 라벨 "음성 명료도"→"명료도".
+
+### 3) 일시정지 화면 이탈 미저장 경고 (`0dfed65`, v602)
+
+녹음 일시정지 시 `[재개] 누르면 이어서 녹음됩니다` 안내 아래 빨간색
+`⚠️ 이 화면을 벗어나면 저장되지 않습니다.` 추가 (currentTake 는 메모리라 화면
+이탈 시 유실 — 1회차 저장 후 2회차 일시정지 중 이탈 케이스 명시).
+
+### 직전 미반영분 (이번 세션 확정)
+
+- 녹음 길이 일관성 검사(±30%, 옛 규칙 3) 이미 제거됨 — 일시정지 시 elapsedSec
+  줄어 2회차 거부되던 버그. 600초 도달 = **자동 종료(녹음만 멈춤)**, 거부·자동제출
+  아님. precheck 길이 거부는 `< minDur`(짧음) / `> maxDur+5`(엣지 안전망) 만 잔존
+
+### 작업 규칙 추가 (2026-05-29)
+- **AI 추정 음향 지표는 거부 아닌 안내로** — voiceBandRatio/monotony 같은 휴리스틱은
+  정상 녹음 오탐 위험. 차단 대신 학생 안내 + 학원장 참고 수치 노출(학생 비공개,
+  [[feedback_prompt_over_hardcode]] 정신 — 정상 사용자 막는 코드 게이트 지양).
+- **제출 시점 계산 지표는 출제 무관·신규 제출분부터** — genTests 설정이 아니라 클라
+  제출 시 계산되는 값은 이미 배정된 시험도 새 앱 제출분부터 반영. 소급 불가(과거 데이터 없음).
+- **메모리성 currentTake 유실 경고는 UI 에 명시** — 일시정지 중 화면 이탈 시
+  미저장(currentTake 는 blob 메모리). inProgress 는 회차 저장 후에만 박힘 → 진행 중
+  회차는 보호 안 됨을 학생에게 안내.
+
+## 파일 크기 / SW 캐시 (2026-05-29)
+- `public/js/app.js`: precheck 거부→warning + 수치 carry(currentTake/recordingsDetail/inProgress/복원) + 일시정지 경고
+- `public/admin/js/app.js`: `_adminRecBuildDetail` 명료도·단조로움 인라인 표시(색·툴팁)
+- SW 캐시: `kunsori-v599` → `kunsori-v602`
