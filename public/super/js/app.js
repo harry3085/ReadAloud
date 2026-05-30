@@ -1309,11 +1309,11 @@ function _renderAcmUsage(a) {
   };
 
   // 5분류 (학원장 대시보드·loadQuotaUsage 와 동일 순서·라벨)
+  // 2026-05-23 단어시험 말하기 응시 시점 AI 호출 0 전환 후 — 단어시험 카테고리 UI 제거
   const items = [
     { label: 'OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth' },
     { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth' },
     { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth' },
-    { label: '단어시험',     counter: 'wordSpeakingCallsThisMonth', limitField: 'wordSpeakingPerMonth' },  // 2026-05-15
     { label: '녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth' },
     { label: '성장리포트',   counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth' },
   ];
@@ -1617,7 +1617,6 @@ async function loadAcademies() {
         ${cell(u.ocrCallsThisMonth || 0,        'ocrPerMonth',          'OCR')} ·
         ${cell(u.cleanupCallsThisMonth || 0,    'cleanupPerMonth',      '정리')} ·
         ${cell(u.generatorCallsThisMonth || 0,  'generatorPerMonth',    '생성')}<br>
-        ${cell(u.wordSpeakingCallsThisMonth || 0, 'wordSpeakingPerMonth', '단어')} ·
         ${cell(u.recordingCallsThisMonth || 0,  'recordingPerMonth',    '녹음')} ·
         ${cell(u.growthReportCallsThisMonth || 0,    'growthReportPerMonth', '리포트')}
       </div>`;
@@ -1636,7 +1635,6 @@ async function loadAcademies() {
         ocrPerMonth: 'OCR',
         cleanupPerMonth: 'Cleanup',
         generatorPerMonth: 'AI Generator',
-        wordSpeakingPerMonth: '단어시험',  // 2026-05-15
         recordingPerMonth: '녹음 평가',
         growthReportPerMonth: '성장 리포트',
         storageGB: 'Storage(GB)',
@@ -2754,22 +2752,20 @@ async function _loadAcademyTop10() {
     const ocr = u.ocrCallsThisMonth || 0;
     const cleanup = u.cleanupCallsThisMonth || 0;
     const generator = u.generatorCallsThisMonth || 0;
-    const wordSpeaking = u.wordSpeakingCallsThisMonth || 0;  // 2026-05-15
     const recording = u.recordingCallsThisMonth || 0;
     const growth = u.growthReportCallsThisMonth || 0;
     const storageBytes = u.storageBytes || 0;
-    // 5 AI 분류 합산 한도 대비 % (정렬·색상용)
-    const aiSum = ocr + cleanup + generator + wordSpeaking + growth;
+    // 4 AI 분류 합산 한도 대비 % (정렬·색상용) — 단어시험 제거 (2026-05-23 응시 시점 AI 호출 0)
+    const aiSum = ocr + cleanup + generator + growth;
     const aiSumLimit = (cl.ocrPerMonth          ?? tl.ocrPerMonth          ?? 0)
                      + (cl.cleanupPerMonth      ?? tl.cleanupPerMonth      ?? 0)
                      + (cl.generatorPerMonth    ?? tl.generatorPerMonth    ?? 0)
-                     + (cl.wordSpeakingPerMonth ?? tl.wordSpeakingPerMonth ?? 0)
                      + (cl.growthReportPerMonth ?? tl.growthReportPerMonth ?? 0);
     const aiPct = aiSumLimit > 0 ? (aiSum / aiSumLimit) * 100 : 0;
     return {
       id: a.id, name: a.name || a.id, planId: a.planId,
       students: u.activeStudentsCount || 0,
-      ocr, cleanup, generator, wordSpeaking, recording, growth, storageBytes,
+      ocr, cleanup, generator, recording, growth, storageBytes,
       total: aiSum + recording, aiLimit: aiSumLimit, aiPct,
     };
   });
@@ -2790,17 +2786,16 @@ async function _loadAcademyTop10() {
     ${top10.length === 0 ? '<div style="padding:18px;text-align:center;color:#bbb;font-size:12px;">데이터 없음</div>' : `
     <table class="table" style="margin:0;font-size:12px;table-layout:fixed;width:100%;">
       <colgroup>
-        <col style="width:16%;">
-        <col style="width:7%;">
-        <col style="width:7%;">
-        <col style="width:7%;">
+        <col style="width:18%;">
         <col style="width:8%;">
         <col style="width:8%;">
         <col style="width:8%;">
+        <col style="width:9%;">
+        <col style="width:9%;">
+        <col style="width:9%;">
+        <col style="width:9%;">
+        <col style="width:10%;">
         <col style="width:8%;">
-        <col style="width:8%;">
-        <col style="width:8%;">
-        <col style="width:7%;">
       </colgroup>
       <thead><tr>
         <th style="white-space:nowrap;">학원명</th>
@@ -2809,11 +2804,10 @@ async function _loadAcademyTop10() {
         <th class="td-center" style="white-space:nowrap;">📷 OCR</th>
         <th class="td-center" style="white-space:nowrap;">🧹 정리</th>
         <th class="td-center" style="white-space:nowrap;">✨ 생성</th>
-        <th class="td-center" style="white-space:nowrap;">🗣 단어</th>
         <th class="td-center" style="white-space:nowrap;">🎤 녹음</th>
         <th class="td-center" style="white-space:nowrap;">📈 리포트</th>
         <th class="td-center" style="white-space:nowrap;" title="Storage 사용량 (수동 점검)">💾 저장</th>
-        <th class="td-center" style="white-space:nowrap;" title="AI 한도 대비 (OCR+정리+생성+단어+리포트)">한도</th>
+        <th class="td-center" style="white-space:nowrap;" title="AI 한도 대비 (OCR+정리+생성+리포트)">한도</th>
       </tr></thead>
       <tbody>
         ${top10.map(a => `
@@ -2824,7 +2818,6 @@ async function _loadAcademyTop10() {
             <td class="td-center">${a.ocr.toLocaleString()}</td>
             <td class="td-center">${a.cleanup.toLocaleString()}</td>
             <td class="td-center">${a.generator.toLocaleString()}</td>
-            <td class="td-center">${a.wordSpeaking.toLocaleString()}</td>
             <td class="td-center">${a.recording.toLocaleString()}</td>
             <td class="td-center">${a.growth.toLocaleString()}</td>
             <td class="td-center">${_fmtBytes(a.storageBytes)}</td>
@@ -2947,7 +2940,6 @@ const PLAN_FIELDS = [
   { key: 'ocrPerMonth',           label: 'OCR' },
   { key: 'cleanupPerMonth',       label: 'Cleanup' },
   { key: 'generatorPerMonth',     label: 'Generator' },
-  { key: 'wordSpeakingPerMonth',  label: '단어시험' },  // 2026-05-15 별도 분리
   { key: 'recordingPerMonth',     label: '녹음' },
   { key: 'growthReportPerMonth',  label: '리포트' },
   { key: 'storageGB',             label: 'Storage(GB)' },
@@ -2956,6 +2948,8 @@ const PLAN_FIELDS = [
   { key: 'sentMessagesPerAcademy', label: '📤 발송' },
   { key: 'hwFilesPerAcademy',      label: '📁 자료실' },
 ];
+// 2026-05-23 단어시험 말하기 응시 시점 AI 호출 0 전환 후 — wordSpeakingPerMonth UI 제거.
+// plans/academies 의 기존 wordSpeakingPerMonth 필드는 데이터 유지 (UI 미노출만), 정리는 별도 마이그레이션.
 // 학원별 Override 한도 = PLAN_FIELDS 와 동일 (customLimits 키 통일)
 const QUOTA_FIELDS = PLAN_FIELDS;
 

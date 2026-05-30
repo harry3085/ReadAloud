@@ -950,13 +950,12 @@ async function loadApiUsage(){
     const studentCur = usage.activeStudentsCount || 0;
     const studentLim = cl.maxStudents ?? acad.studentLimit ?? 30;
 
-    // 6분류 (라벨 통일: OCR · Cleanup · Generator · 단어시험 · 녹음숙제 · 성장리포트)
-    // 2026-05-15: 단어시험 별도 한도 분리 (이전 recording 공유 → wordSpeakingCallsThisMonth)
+    // 5분류 (라벨 통일: OCR · Cleanup · Generator · 녹음숙제 · 성장리포트)
+    // 2026-05-23 단어시험 말하기 응시 시점 AI 호출 0 전환 후 — 단어시험 카테고리 UI 제거
     const items = [
       { label: 'OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
       { label: 'Cleanup',     dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
       { label: 'Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
-      { label: '단어시험',     dailyKeys: ['check-word'],      monthCounter: 'wordSpeakingCallsThisMonth',  limitField: 'wordSpeakingPerMonth' },
       { label: '녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
       { label: '성장리포트',   dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
     ];
@@ -1063,13 +1062,12 @@ async function loadQuotaUsage(){
     const customLimits = acad.customLimits || {};
     const usage = acad.usage || {};
 
-    // 6분류 (라벨 통일) — darkColor: 누적선용 진한 톤
-    // 2026-05-15: 단어시험 별도 한도 분리 (wordSpeakingCallsThisMonth)
+    // 5분류 (라벨 통일) — darkColor: 누적선용 진한 톤
+    // 2026-05-23 단어시험 말하기 응시 시점 AI 호출 0 전환 후 — 단어시험 카테고리 UI 제거
     const items = [
       { label: 'OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth',           color: '#0ea5e9', darkColor: '#0369a1', dailyKey: 'ocr' },
       { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth',       color: '#06b6d4', darkColor: '#0e7490', dailyKey: 'cleanup-ocr' },
       { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth',     color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz' },
-      { label: '단어시험',     counter: 'wordSpeakingCallsThisMonth', limitField: 'wordSpeakingPerMonth',  color: '#a855f7', darkColor: '#7e22ce', dailyKey: 'check-word' },
       { label: '녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth',     color: '#8b5cf6', darkColor: '#6d28d9', dailyKey: 'check-recording' },
       { label: '성장리포트',   counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth',  color: '#10b981', darkColor: '#047857', dailyKey: 'growth-report' },
     ];
