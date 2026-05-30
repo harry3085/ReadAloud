@@ -2016,7 +2016,30 @@ window.saveStudent = async() => {
       await showAlert('추가 실패', data.error || '알 수 없는 오류');
       return;
     }
-    closeModal(); showToast('✅ 학생이 추가됐어요!'); await loadStudents('active');
+    closeModal(); showToast('✅ 학생이 추가됐어요!');
+    // surgical 추가 — allStudents + 검색 캐시에 즉시 반영 (현재 반·검색·페이지 유지)
+    const newStu = {
+      id: data.uid,
+      username, name, group, role: 'student', status: 'active',
+      academyId: window.MY_ACADEMY_ID || 'default',
+      birth: payload.birth || '',
+      school: payload.school || '',
+      grade: payload.grade || '',
+      phone: payload.phone || '',
+      parentName: payload.parentName || '',
+      parentPhone: payload.parentPhone || '',
+      tuitionPlan: payload.tuitionPlan,
+      statusDate: _ymdKST(),
+    };
+    // active 검색 캐시 즉시 반영 (없으면 다음 검색에서 fresh)
+    if (Array.isArray(_stuSearchCache.active)) _stuSearchCache.active.unshift(newStu);
+    // 현재 active 탭 필터가 신규 학생 반·전체와 일치 시 화면에도 추가
+    const filter = _stuStates['active']?.group;
+    if (currentPage === 'student-active' && filter && (filter === '__all__' || filter === group)) {
+      allStudents = [newStu, ...(allStudents||[])];
+      renderStudentTable('active', allStudents);
+      _stuRenderLoadMore('active');
+    }
   }catch(e){
     console.error('[saveStudent] network error:', e);
     await showAlert('추가 실패', `[${e.code || 'network'}] ${e.message || String(e)}`);
@@ -4606,11 +4629,12 @@ window.sendMessage = async() => {
     const result=await res.json();
     showToast(result.success ? result.message : (result.message||result.error||'발송 실패'));
     if (result.success) {
-      // 입력·첨부 초기화
+      // 입력·첨부 초기화 — 검색·날짜 필터 유지. 전체 loadMessages (어제 reset) 대신
+      // 캐시 무효화로 다음 fetch 시 fresh. 발송 doc 은 server 생성이라 surgical insert 어려움.
       document.getElementById('msgTitle').value = '';
       document.getElementById('msgBody').value = '';
       msgClearAttach();
-      await loadMessages();
+      _msgDraftCache = null; _msgSentCache = null;
     }
   }catch(e){showToast('발송 실패: '+e.message);}
 };
@@ -4624,15 +4648,26 @@ window.saveMessage = async() => {
   // 학원당 초안 한도 검사 (2026-05-14)
   const chk = await _checkContentLimit('drafts');
   if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 저장해주세요.`); return; }
-  await addDoc(collection(db,'pushNotifications'),{
+  const todayYmd = _ymdKST();
+  const payload = {
     targets,
     targetSummary: pickerSummarize(targets),
     title, body,
-    sent:false, date:_ymdKST(),
-    createdAt:serverTimestamp(),
+    sent:false, date: todayYmd,
     academyId:window.MY_ACADEMY_ID||'default',
-  });
-  showToast('💾 저장됐어요!'); await loadMessages();
+  };
+  const ref = await addDoc(collection(db,'pushNotifications'), { ...payload, createdAt:serverTimestamp() });
+  showToast('💾 저장됐어요!');
+  // 검색·날짜 필터 유지 — 전체 loadMessages (어제 reset) 대신 surgical 삽입
+  _msgDraftCache = null;  // 다음 페이지·검색 시 fresh fetch
+  // 현재 날짜 필터가 오늘이면 즉시 상단에 추가 (사용자가 새 초안 바로 봄)
+  if (_msgDraftDate === todayYmd) {
+    const fauxSnap = { id: ref.id, data: () => payload };
+    _msgDraftState.docs.unshift(fauxSnap);
+    const dl = document.getElementById('msgDraftLimit');
+    if (dl) dl.textContent = dl.textContent.replace(/\d+/, m => parseInt(m) + 1);
+    _msgRenderDraftSection();
+  }
 };
 // 발송 이력 행 인라인 펼침 상태 (현재 펼쳐진 pushId 1개만 유지)
 let _msgExpandedSentId = null;
@@ -6556,8 +6591,20 @@ window.deleteSelectedTest = async() => {
     .filter(id => id && id !== 'on');
   if (!ids.length) { showAlert('입력 확인', '삭제할 시험을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}개 시험을 삭제할까요?`)))return;
-  for(const id of ids) await deleteDoc(doc(db, 'genTests', id));
-  showToast('삭제됐어요.'); await loadTestList();
+  const okIds = [];
+  for(const id of ids) {
+    try { await deleteDoc(doc(db, 'genTests', id)); okIds.push(id); }
+    catch(e) { console.warn('[deleteSelectedTest]', e); }
+  }
+  showToast('삭제됐어요.');
+  // 통합 시험목록 화면 상태(정렬·페이지·필터) 유지 — _pageState/_tlState 양쪽 동기
+  const set = new Set(okIds);
+  const ok = _pageMutate('testListBody', data => {
+    const next = data.filter(t => !set.has(t.id));
+    _tlState.data = next;  // 더보기·재바인딩 대비 _tlState 동기
+    return next;
+  });
+  if (!ok) await loadTestList();
 };
 
 // ── 엑셀 등록 (재원생 일괄 등록) ────────────────────
@@ -7452,7 +7499,15 @@ window.updateStudent = async(id) => {
     await _syncCurrentMonthBilling(id, data.tuitionPlan, data.name);
     closeModal();
     showToast(newPw ? '✅ 학생 정보 + 비밀번호 변경 완료' : '✅ 학생 정보가 수정됐어요!');
-    await loadStudents(currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active');
+    // surgical 갱신 — 현재 화면(반·검색·페이지) 유지. 반 변경 시 옛 반 필터면 제거.
+    const fromStatus = currentPage==='student-pause'?'pause':currentPage==='student-out'?'out':'active';
+    const filter = _stuStates[fromStatus]?.group;
+    // 반 변경 + 현재 필터가 특정 반 + 새 반과 불일치 → 제거. 그 외 → 필드 inline patch.
+    if (filter && filter !== '__all__' && filter !== data.group) {
+      _stuSurgical(fromStatus, [id], {remove: true});
+    } else {
+      _stuSurgical(fromStatus, [id], {patch: (s) => Object.assign(s, data)});
+    }
   } catch(e) {
     showAlert('저장 실패', e.message);
   }
@@ -13184,19 +13239,39 @@ window.qsSaveEdits = async () => {
   }
 
   try {
-    await updateDoc(doc(db,'genQuestionSets',st.setId), {
+    const newBookId = _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages });
+    const patch = {
       name: newName,
       questions: st.questions,
       questionCount: st.questions.length,
       sourcePages,
-      bookId: _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages }),
-      updatedAt: serverTimestamp(),
-    });
+      bookId: newBookId,
+    };
+    await updateDoc(doc(db,'genQuestionSets',st.setId), { ...patch, updatedAt: serverTimestamp() });
     showToast(`✓ "${newName}" 저장됨`);
     _qsEditState = null;
     closeModal();
-    _qsInvalidateCache();
-    await loadQuestionSets();
+    // 캐시 surgical 갱신 — 현재 화면 상태(선택 Book·정렬·스크롤) 유지 (qsDeleteSet 패턴)
+    // Book 폴더가 바뀐 경우 _qsSetsByBook 의 옛/새 폴더 양쪽 동기화
+    const setId = st.setId;
+    const apply = (arr) => arr.forEach(x => { if (x.id === setId) Object.assign(x, patch); });
+    apply(_qsList);
+    Object.keys(_qsSetsByBook).forEach(k => {
+      if (Array.isArray(_qsSetsByBook[k])) apply(_qsSetsByBook[k]);
+    });
+    // Book 폴더 변경 시 양쪽 캐시 정합 — 옛 폴더에서 제거, 새 폴더로 이동 (originalBookId: 함수 상단 13180에서 계산)
+    if (originalBookId !== newBookId) {
+      const moved = _qsList.find(x => x.id === setId);
+      const oldKey = originalBookId || _QS_UNASSIGNED;
+      const newKey = newBookId || _QS_UNASSIGNED;
+      if (Array.isArray(_qsSetsByBook[oldKey])) {
+        _qsSetsByBook[oldKey] = _qsSetsByBook[oldKey].filter(x => x.id !== setId);
+      }
+      if (moved && Array.isArray(_qsSetsByBook[newKey]) && !_qsSetsByBook[newKey].some(x => x.id === setId)) {
+        _qsSetsByBook[newKey].unshift(moved);
+      }
+    }
+    _qsRenderList();
   } catch(e) {
     showToast('저장 실패: ' + e.message);
   }
