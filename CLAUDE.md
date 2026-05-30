@@ -1925,3 +1925,104 @@ chapter 1건 + 그 하위 page 3건 불일치. **원인:** `genDoEditBook` 이
   handler surgical 재작성). 전체 ~17k 줄 유지 (대부분 inline patch)
 - `scripts/migrate/backfill-book-name-sync.js`: 신규 ~80줄
 - SW 캐시: `kunsori-v602` → `kunsori-v608`
+
+---
+
+## 2026-05-31: 메시지 자동삭제 정책 + 녹음숙제/말하기 안내·구분 + 클래스 메모 + 단어시험 quota UI 제거
+
+SW v608 → v614 (~7 commit). 사용자 보고·요청 6건 처리. 도중 검색 실수
+1건(녹음숙제 안내 위치 오해)로 한 번 wrong place 수정 후 다시 정정.
+
+### 1) 메시지 관리 — [전체] 버튼 + 자동삭제 정책 (`bfa12a3`·`f414775`, v609→v610)
+
+`<input type=date>` 의 한국어 Chrome 클리어 버튼이 "삭제"로 표시돼 학원장 혼선.
+브라우저 제어 라벨이라 직접 변경 불가 → 옆에 [전체] 명시 버튼 추가 (초안·발송
+이력 양쪽). 툴팁 "날짜 필터 해제 — 저장 한도 내 전체 표시". [전체] 클릭은
+limit(10) cursor fetch 라 가벼움 (검색 입력 시에만 학원 한도 100건 1회 fetch).
+
+자동 삭제 정책 (학원장 결정 — 메시지 페이지 진입 시 fire-and-forget cleanup):
+- pushNotifications.sent=true 60일 초과 → 한 번에 50건 batch 삭제
+- userNotifications 학원 전체 30일 초과 → 한 번에 100건 batch 삭제 (Rules:
+  admin only delete, 학원장이 학원 전체 처리)
+- 메시지 관리(drafts sent=false) — 자동 삭제 없음, 학원장 수동 관리
+
+발송 이력 헤더에 `⏳ 60일 후 자동 삭제 (학생 알림함 30일)` 표시 + 툴팁 풀버전.
+인덱스 2개 신설·배포: `(pushNotifications, academyId, sent, createdAt ASC)`,
+`(userNotifications, academyId, createdAt ASC)`.
+
+### 2) 녹음숙제 출제 화면 안내 + 말하기 상세 오답 3분리 (`54cf4c7`, v611)
+
+말하기 학원장 상세 오답 케이스 — 기존 `(음성 미감지/건너뜀)` 단일 라벨 → 3분리:
+- `들린 단어: "..."` — `_heardRaw`(spkAiHeard||spkHeard) 있을 때
+- `(음성 미감지)` — `spkSource` 있으나 _heardRaw 빈값 (3회 SR 무인식)
+- `(건너뜀)` — `spkSource` 미설정 (SKIP 버튼만 누름, vqSkip 이 _vqSpkFinalize
+  미호출). 옛 데이터는 spkSource 없으면 건너뜀, 있으면 미감지 자연 분류
+각 라벨 툴팁으로 의미 부연 ("3회 시도했으나 음성이 인식되지 않음" / "학생이
+SKIP 버튼을 눌러 시도 안 함").
+
+### 3) 녹음숙제 화면 제목 아래 설명줄 정정 (`bb4c669`, v612)
+
+직전 commit (`54cf4c7`) 에서 사용자가 준 기존 문구 "Page 단위 녹음숙제를
+학생앱에 배정합니다..." 를 cfg.hint 자리(line 13682)에 새 문구로 교체했는데,
+cfg.hint 는 `enabled:false` 잠금 화면용 dead code 라 rec-ai 화면에 안 보임.
+사용자 지적("엉뚱한데를 찾아서 넣었어?") 후 정정:
+- cfg.hint 원문 복구
+- _app.html `#page-test-rec-ai` 의 page-sub 부분에 ' · 제출된 녹음은 60일간
+  저장됩니다' 회색 보조 텍스트로 추가 (실제 시험관리 > 녹음숙제 페이지 헤더 자리)
+
+**작업 규칙 (강화)**: 사용자가 화면에서 본 기존 문구를 정확히 인용해 줄 때 —
+**그 문구로 literal grep 먼저** (`Page 단위 녹음숙제를 학생앱에 배정`). 부분
+매칭("Page 단위 녹음숙제") 으로 검색하면 _heading 류 짧은 매칭이 잡혀 잘못된
+위치로 갈 수 있음. cfg.hint 처럼 코드에 있지만 렌더 안 되는 dead code 도 있어
+**실제 렌더 경로 확인**까지 추적 필요.
+
+### 4) AI Generator 안내 갱신 + 클래스관리 메모 컬럼 (`2b2bed4`, v613)
+
+- AI Generator 페이지 page-sub: '객관식 4지선다 문제' → '문제유형에 따라
+  문제세트를 생성해' (실제로 단어/언스크램블/객관식/녹음숙제 등 여러 유형 지원)
+- 클래스관리 테이블 — 사용 빈도 낮은 '앱표기숨김'(`g.hideApp`)·'All Books'
+  (`g.allBooks`) 컬럼 제거, '메모' 컬럼 추가 (min-width:280px,
+  white-space:pre-wrap+word-break:break-word 로 여러 줄 자연 표시)
+- 생성·수정 모달에 textarea memo (rows=4), Firestore `groups.{id}.memo` 저장.
+  기존 데이터는 memo 없이 '-' 표시 — 추가 마이그레이션 불필요
+- 옛 hideApp/allBooks 필드는 Firestore 유지 (UI 미노출), 필요 시 별도 정리
+
+### 5) 단어시험 quota UI 제거 (`3d1da64`, v614)
+
+2026-05-23 단어 말하기 1·2·3차 Web Speech STT 전환으로 check-word AI 호출
+폐기. `wordSpeakingCallsThisMonth` 카운터는 더 이상 증가하지 않으므로 UI 통째
+제거 (사용자 요청).
+
+- 학원장 앱 `loadQuotaUsage`·사용량 차트: 5분류 (OCR·Cleanup·Generator·
+  녹음숙제·성장리포트) 로 통일. 6분류→5분류 주석 갱신
+- super 앱: 학원별 사이드바 cell·Top10 테이블 🗣 단어 컬럼·aiSum/aiSumLimit
+  계산·override label map·T6 한도 관리 PLAN_FIELDS 에서 모두 제거. colgroup
+  폭 재조정 (남은 컬럼 비율 확대)
+- **데이터·서버 측면 유지**: `api/check-word.js`·`api/_lib/quota.js` word-speaking
+  config·Firestore plans/academies 의 wordSpeakingPerMonth/CallsThisMonth 필드.
+  클라 호출 0이라 카운트 안 됨, 정리는 별도 마이그레이션 (현재 비우선)
+
+### 작업 규칙 추가 (2026-05-31)
+
+- **사용자 인용 기존 문구는 literal grep 먼저** — "Page 단위 녹음숙제를 학생앱에
+  배정" 같이 사용자가 화면에서 본 정확한 문구를 줬을 때, 부분 매칭으로
+  검색하지 말고 전체 문구 그대로 grep. 부분 매칭은 짧은 label/heading 류가
+  먼저 잡혀 잘못된 위치로 갈 수 있음. 정확한 매칭 후 **실제 렌더 경로**
+  (display chain) 까지 확인 — cfg.hint 처럼 코드엔 있지만 dead code 인 경우
+  존재.
+- **HTML 클리어 버튼은 브라우저 제어, 라벨 변경 불가** — `<input type=date>`
+  의 한국어 Chrome '삭제' 버튼처럼 native UI 의 텍스트는 우리 코드로 못 바꿈.
+  대안 명시 버튼 추가(예: [전체])로 의도 보조. iOS Safari 등 다른 브라우저는
+  다르게 보일 수 있어 명시 버튼이 일관성 확보.
+- **AI 카운터 폐기 시 데이터/서버 config 는 유지** — UI 만 제거하고 quota.js
+  config·Firestore 필드는 그대로 두는 게 안전(클라 호출 0이라 카운트 안 됨,
+  옛 누적값 보존). 정리(필드 삭제 마이그레이션)는 별도 작업으로 의도 분리.
+
+### 파일 크기 / SW 캐시 (2026-05-31)
+- `public/admin/_app.html`: 메시지 [전체] 버튼·녹음숙제 page-sub 보조 텍스트·
+  AI Generator 설명·클래스 thead 재구성
+- `public/admin/js/app.js`: 자동삭제 cleanup 함수 + 메시지 헤더 라벨 + 말하기
+  3분리 라벨 + 클래스 saveClass/editClass/updateClass memo 필드 + 사용량 5분류
+- `public/super/js/app.js`: 사용량 5분류·Top10 컬럼·PLAN_FIELDS 정리
+- `firestore.indexes.json`: 메시지 자동삭제용 인덱스 2건
+- SW 캐시: `kunsori-v608` → `kunsori-v614`
