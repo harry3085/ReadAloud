@@ -6717,6 +6717,9 @@ function _computeTestStats(t, scoresArr, students) {
   const avg = scoresArr.length ? Math.round(scoresArr.reduce((sum,s)=>sum+(s.score||0),0)/scoresArr.length) : null;
   const attemptedSet = new Set(scoresArr.map(s => s.uid).filter(Boolean));
   const targetSet = _resolveTestTargetUids(t.targets, students);
+  // 응시자는 무조건 대상에 포함 — 반별 타겟의 경우 응시 후 다른 반으로 이동·삭제된 학생이
+  // 현재 _resolveTestTargetUids 에서 빠져 "대상 < 응시" 가 되던 버그 차단 (응시 ≤ 대상 보장)
+  attemptedSet.forEach(uid => targetSet.add(uid));
   const tMode = (t.testMode || t.mode || '').toLowerCase();
   // Phase B: 녹음숙제는 통과/불통 폐기 → 모든 응시 = 제출 (통과 카운트 = 응시 카운트)
   if (tMode === 'recording') {
@@ -12368,8 +12371,14 @@ window.qsDeleteSet = async (setId) => {
   try {
     await deleteDoc(doc(db,'genQuestionSets',setId));
     showToast('✓ 삭제됨');
-    _qsInvalidateCache();
-    await loadQuestionSets();
+    // 캐시 surgical 삭제 — 현재 화면 상태(선택 Book·정렬·스크롤) 유지 (재fetch 없이)
+    _qsList = _qsList.filter(x => x.id !== setId);
+    Object.keys(_qsSetsByBook).forEach(k => {
+      if (Array.isArray(_qsSetsByBook[k])) {
+        _qsSetsByBook[k] = _qsSetsByBook[k].filter(x => x.id !== setId);
+      }
+    });
+    _qsRenderList();
   } catch(e) {
     showToast('삭제 실패: '+e.message);
   }
