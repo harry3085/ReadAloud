@@ -1460,6 +1460,18 @@ function refreshPagination(tableId, newData){
   renderPage(tableId);
 }
 
+// 페이지네이션 data 배열을 surgical mutate — 현재 page·pageSize·sort 유지하며 즉시 재렌더.
+// CRUD 후 전체 reload 대신 사용 (선택 Book·정렬·페이지·검색 등 학원장 화면 상태 유지).
+// fn(data) 가 새 배열 반환하면 교체, undefined 면 in-place mutation 가정.
+function _pageMutate(tableId, fn) {
+  const s = _pageState[tableId];
+  if (!s) return false;
+  const next = fn(s.data);
+  if (Array.isArray(next)) s.data = next;
+  renderPage(tableId);
+  return true;
+}
+
 // ── 테이블 컬럼 정렬 ───────────────────────────────────────
 window.sortTable = (tableId, colIdx) => {
   const s = _pageState[tableId];
@@ -1729,6 +1741,33 @@ function _stuInvalidateSearchCache() {
   _stuSearchCache.out = null;
 }
 
+// 학생 캐시 surgical 갱신 — allStudents + _stuSearchCache 동기 + 현재 화면만 재렌더.
+// 전체 loadStudents 재호출(반 선택·검색·페이지 리셋) 대신 사용.
+// opts.remove=true → ids 의 학생 제거 (status 변경·삭제 케이스).
+// opts.patch=(s)=>... → ids 의 학생 inline 필드 변경 (반배정 등).
+function _stuSurgical(status, ids, opts={}) {
+  if (!Array.isArray(ids) || !ids.length) return;
+  const set = new Set(ids);
+  const apply = (arr) => {
+    if (!Array.isArray(arr)) return arr;
+    if (opts.remove) return arr.filter(s => !set.has(s.id));
+    if (typeof opts.patch === 'function') {
+      arr.forEach(s => { if (set.has(s.id)) opts.patch(s); });
+    }
+    return arr;
+  };
+  allStudents = apply(allStudents);
+  ['active','pause','out'].forEach(k => { _stuSearchCache[k] = apply(_stuSearchCache[k]); });
+  // 현재 화면 재렌더 — 검색 모드면 검색 재실행(이미 갱신된 캐시), 아니면 반·페이지 모드
+  const q = (document.getElementById(STU_SEARCH[status])?.value || '').trim();
+  if (q) {
+    _stuSearchInPage(status);
+  } else if (_stuStates[status]?.group) {
+    renderStudentTable(status, allStudents);
+    _stuRenderLoadMore(status);
+  }
+}
+
 // 수강정보 가림/노출 토글 (재원생·휴원생·퇴원생 표 공통)
 let _tuitionVisible = false;
 function _syncTuitionToggleBtnLabel() {
@@ -1843,12 +1882,14 @@ window.bulkAction = async(action) => {
     // 휴원/퇴원 시 tuitionPlan.active 도 false 로 → 자동 청구서 생성 skip
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'pause',statusDate:_ymdKST(),'tuitionPlan.active':false});
     await _adjustActiveStudentCount(-checked.length);  // active → pause: -N
-    showToast('휴원처리 완료!'); await loadStudents('active');
+    showToast('휴원처리 완료!');
+    _stuSurgical('active', checked, {remove:true});  // 화면 상태 유지 (반·검색·페이지)
   } else if(action==='out'){
     if(!await showConfirm(`선택한 ${checked.length}명을 퇴원처리 할까요?`))return;
     for(const id of checked) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST(),'tuitionPlan.active':false});
     await _adjustActiveStudentCount(-checked.length);  // active → out: -N
-    showToast('퇴원처리 완료!'); await loadStudents('active');
+    showToast('퇴원처리 완료!');
+    _stuSurgical('active', checked, {remove:true});
   } else if(action==='assign'){
     const classSnap=await getDocs(query(collection(db,'groups'),where('academyId','==',window.MY_ACADEMY_ID)));
     const opts=classSnap.docs.map(d=>`<option value="${esc(d.data().name)}">${esc(d.data().name)}</option>`).join('');
@@ -1872,7 +1913,14 @@ window.bulkAction = async(action) => {
 window.doAssignClass = async(ids) => {
   const cls=document.getElementById('assignClass').value;
   for(const id of ids) await updateDoc(doc(db,'users',id),{group:cls});
-  closeModal(); showToast('반 배정 완료!'); await loadStudents('active');
+  closeModal(); showToast('반 배정 완료!');
+  // 현재 active 탭 필터가 새 반(cls)·전체(__all__) 면 inline 패치(반만 갱신), 아니면 시야에서 제거
+  const filter = _stuStates['active']?.group;
+  if (filter && filter !== '__all__' && filter !== cls) {
+    _stuSurgical('active', ids, {remove:true});
+  } else {
+    _stuSurgical('active', ids, {patch: (s) => { s.group = cls; }});
+  }
 };
 window.restoreStudent = async(id) => {
   if(!await showConfirm('재원처리 할까요?'))return;
@@ -1884,8 +1932,8 @@ window.restoreStudent = async(id) => {
   await updateDoc(doc(db,'users',id), update);
   await _adjustActiveStudentCount(+1);  // pause/out → active: +1
   showToast('재원처리 완료!');
-  if(currentPage==='student-pause') await loadStudents('pause');
-  else await loadStudents('out');
+  const fromStatus = currentPage==='student-pause' ? 'pause' : 'out';
+  _stuSurgical(fromStatus, [id], {remove:true});
 };
 // (구버전 window.deleteStudent 제거 — 아래 Auth+Firestore 통합 삭제 사용)
 window.openStudentModal = async() => {
@@ -2052,7 +2100,7 @@ window.saveNotice = async() => {
   try { attachments = await _noticeUploadAll(); }
   catch (e) { showAlert('첨부 업로드 실패', e.message); return; }
   const expiresAt = new Date(expYmd + 'T23:59:59+09:00');  // KST 그날 끝까지 유효
-  await addDoc(collection(db,'notices'),{
+  const docRef = await addDoc(collection(db,'notices'),{
     title, content,
     targets,
     targetSummary: pickerSummarize(targets),
@@ -2063,12 +2111,20 @@ window.saveNotice = async() => {
     attachments,
   });
   closeModal(); _noticeClearAttaches();
-  showToast('공지가 등록됐어요!'); await loadNotices();
+  showToast('공지가 등록됐어요!');
+  // 페이지네이션 캐시에 즉시 삽입 (정렬 createdAt desc → 최상단). 페이지 1 위치로 이동
+  const added = _pageMutate('noticeTableBody', data => {
+    data.unshift({ id: docRef.id, title, content, targets,
+      targetSummary: pickerSummarize(targets), date: _ymdKST(), expiresAt, attachments });
+    _pageState['noticeTableBody'].page = 1;
+  });
+  if (!added) await loadNotices();  // 처음 진입 직후 등 캐시 미초기화 안전망
 };
 window.deleteNotice = async(id) => {
   if(!await showConfirm('공지를 삭제할까요?'))return;
   await deleteDoc(doc(db,'notices',id));
-  showToast('삭제됐어요.'); await loadNotices();
+  showToast('삭제됐어요.');
+  if (!_pageMutate('noticeTableBody', data => data.filter(n => n.id !== id))) await loadNotices();
 };
 
 // ── 자료실 (구 숙제파일) ─────────────────────────────────
@@ -6351,33 +6407,37 @@ window.deleteSelectedStudent = async() => {
   const ids = getCheckedIds('studentTableBody');
   if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?\nFirebase 계정과 모든 데이터가 삭제됩니다.`)))return;
-  let ok=0;
+  const okIds = [];
   const idToken = await currentUser.getIdToken();
   for(const id of ids){
     try{
       await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id, idToken})});
-      ok++;
+      okIds.push(id);
     }catch(e){console.log('삭제실패:',e);}
   }
-  showToast(`✅ ${ok}명 삭제 완료!`); await loadStudents('active');
+  showToast(`✅ ${okIds.length}명 삭제 완료!`);
+  _stuSurgical('active', okIds, {remove:true});
 };
 window.deleteSelectedOutStudent = async() => {
   const ids = getCheckedIds('outTableBody');
   if (!ids.length) { showAlert('입력 확인', '삭제할 학생을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}명을 완전 삭제할까요?`))return;
-  let ok=0;
+  const okIds = [];
   const idToken = await currentUser.getIdToken();
   for(const id of ids){
     try{
       await fetch('/api/deleteUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:id, idToken})});
-      ok++;
+      okIds.push(id);
     }catch(e){console.log('삭제실패:',e);}
   }
-  showToast(`✅ ${ok}명 삭제 완료!`); await loadStudents('out');
+  showToast(`✅ ${okIds.length}명 삭제 완료!`);
+  _stuSurgical('out', okIds, {remove:true});
 };
 window.deleteStudent = async(id, name) => {
-  await deleteUserFull(id, name);
-  await loadStudents(currentPage==='student-out'?'out':currentPage==='student-pause'?'pause':'active');
+  const ok = await deleteUserFull(id, name);
+  if (!ok) return;
+  const fromStatus = currentPage==='student-out'?'out':currentPage==='student-pause'?'pause':'active';
+  _stuSurgical(fromStatus, [id], {remove:true});
 };
 window.toggleCheck = (tbodyId, masterCb) => {
   document.querySelectorAll(`#${tbodyId} input[type=checkbox]`).forEach(cb => cb.checked = masterCb.checked);
@@ -6420,7 +6480,8 @@ window.restoreSelectedStudent = async(status) => {
     await updateDoc(doc(db,'users',id), update);
   }
   await _adjustActiveStudentCount(+ids.length);  // pause/out → active: +N
-  showToast('재원처리 완료!'); await loadStudents(status);
+  showToast('재원처리 완료!');
+  _stuSurgical(status, ids, {remove:true});
 };
 window.outSelectedStudent = async() => {
   const ids = getCheckedIds('pauseTableBody');
@@ -6428,7 +6489,8 @@ window.outSelectedStudent = async() => {
   if(!await showConfirm(`선택한 ${ids.length}명을 퇴원처리 할까요?`))return;
   for(const id of ids) await updateDoc(doc(db,'users',id),{status:'out',statusDate:_ymdKST(),'tuitionPlan.active':false});
   // pause → out: active 카운터 변동 없음 (둘 다 비활성). tuitionPlan.active 는 false 유지
-  showToast('퇴원처리 완료!'); await loadStudents('pause');
+  showToast('퇴원처리 완료!');
+  _stuSurgical('pause', ids, {remove:true});
 };
 // (구버전 deleteSelectedOutStudent 제거 — 위쪽 line 1702 의 Auth+Firestore+lookup 통합 삭제 사용)
 
@@ -6443,7 +6505,9 @@ window.deleteSelectedNotice = async() => {
   if (!ids.length) { showAlert('입력 확인', '삭제할 공지를 선택하세요.'); return; }
   if(!(await showConfirm(`선택한 ${ids.length}개 공지를 삭제할까요?`)))return;
   for(const id of ids) await deleteDoc(doc(db,'notices',id));
-  showToast('삭제됐어요.'); await loadNotices();
+  showToast('삭제됐어요.');
+  const set = new Set(ids);
+  if (!_pageMutate('noticeTableBody', data => data.filter(n => !set.has(n.id)))) await loadNotices();
 };
 
 // ── 결제 선택 액션 ──────────────────────────────────
@@ -7512,16 +7576,22 @@ window.updateNotice = async(id) => {
   try { attachments = await _noticeUploadAll(); }
   catch (e) { showAlert('첨부 업로드 실패', e.message); return; }
   const expiresAt = new Date(expYmd + 'T23:59:59+09:00');
-  await updateDoc(doc(db,'notices',id),{
+  const patch = {
     title, content,
     targets,
     targetSummary: pickerSummarize(targets),
     expiresAt,
     attachments,
     // 옛 단일 target 필드는 그대로 둠 (학생앱 폴백 표시용 — 데이터 삭제 시 자연 사라짐)
-  });
+  };
+  await updateDoc(doc(db,'notices',id), patch);
   closeModal(); _noticeClearAttaches();
-  showToast('✅ 공지가 수정됐어요!'); await loadNotices();
+  showToast('✅ 공지가 수정됐어요!');
+  const ok = _pageMutate('noticeTableBody', data => {
+    const i = data.findIndex(n => n.id === id);
+    if (i >= 0) Object.assign(data[i], patch);
+  });
+  if (!ok) await loadNotices();
 };
 
 function printExamPDF(words, examName, academy, date, ptype, qType){
@@ -12365,8 +12435,13 @@ window.qsRenameSet = async (setId) => {
       updatedAt: serverTimestamp(),
     });
     showToast('✓ 이름 변경됨');
-    _qsInvalidateCache();
-    await loadQuestionSets();
+    // 캐시 surgical 갱신 — 현재 화면 상태(선택 Book·정렬·스크롤) 유지 (qsDeleteSet 패턴)
+    const patch = (arr) => arr.forEach(x => { if (x.id === setId) x.name = trimmed; });
+    patch(_qsList);
+    Object.keys(_qsSetsByBook).forEach(k => {
+      if (Array.isArray(_qsSetsByBook[k])) patch(_qsSetsByBook[k]);
+    });
+    _qsRenderList();
   } catch(e) {
     showToast('변경 실패: '+e.message);
   }
