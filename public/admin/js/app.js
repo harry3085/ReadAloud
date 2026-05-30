@@ -5498,7 +5498,17 @@ function _adminVqBuildDetail(questions, answers){
                 // 힌트 사용 (신 흐름 — 점수 영향 없음, 학원장 참고용)
                 const _hint = a.spkHintUsed;
                 const _hintHtml = (typeof _hint === 'number' && _hint > 0) ? ` · <span style="color:#7C3AED;">힌트 ${_hint}자</span>` : '';
-                return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardRaw ? `들린 단어: "${esc(_heardRaw)}"` : '(음성 미감지/건너뜀)'}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>${_stageHtml}${_accHtml}${_attHtml}${_hintHtml}`;
+                // 오답 케이스 구분 — spkSource 있으면 시도함, _heardRaw 있으면 들린 단어 / 없으면 음성 미감지
+                //                    spkSource 없으면 SKIP 버튼 누름 (vqSkip → _vqSpkFinalize 미호출)
+                let _heardLabel;
+                if (_heardRaw) {
+                  _heardLabel = `들린 단어: "${esc(_heardRaw)}"`;
+                } else if (a.spkSource) {
+                  _heardLabel = '<span title="3회 시도했으나 음성이 인식되지 않음 (조용함·소음 등)">(음성 미감지)</span>';
+                } else {
+                  _heardLabel = '<span title="학생이 SKIP 버튼을 눌러 시도 안 함">(건너뜀)</span>';
+                }
+                return `<span style="color:${isCorrect?'#059669':'#dc2626'};">${_heardLabel}</span>${matchedHomophone ? ` <span style="color:#7C3AED;font-weight:600;">🔊 동음이의어 매칭</span>` : ''} · <span style="color:#059669;">정답: ${esc(target)}</span>${_stageHtml}${_accHtml}${_attHtml}${_hintHtml}`;
               })()
             : `<span style="color:${isCorrect?'#059669':'#dc2626'};">내답: ${esc(user||'(미입력)')}</span>${!isCorrect?` · <span style="color:#059669;">정답: ${esc(target)}</span>`:''}`}
         </div>
@@ -13669,7 +13679,7 @@ const _TEST_TYPE_CONFIG = {
     phaseLabel: null,
     actions: ['assign'],
     gradingMode: 'ai',
-    hint: 'Page 단위 녹음숙제를 학생앱에 배정합니다. 회차·통과점수·시간은 배정 시 설정. AI 가 정확도를 평가합니다.',
+    hint: '본문 문장을 AI 가 추출해 녹음숙제로 배정합니다. 회차·통과점수·시간은 배정 시 설정. 제출된 녹음은 60일간 저장됩니다.',
   },
 };
 
