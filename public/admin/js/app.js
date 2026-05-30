@@ -4911,10 +4911,54 @@ async function _msgRunSentSearch(){
   _msgRenderSentSection();
 }
 
+// 메시지 자동 정리 정책 (2026-05-30):
+//  - 발송 메시지(pushNotifications.sent=true) 60일 후 자동 삭제
+//  - 학생 알림함(userNotifications) 30일 후 자동 삭제 — 학원장이 학원 전체 처리 (Rules: admin only delete)
+//  - 메시지 관리(초안 pushNotifications.sent=false) 자동 삭제 없음
+// 학원장이 메시지 페이지 열 때 fire-and-forget 으로 정리. 인덱스: (academyId, sent, createdAt ASC), (academyId, createdAt ASC).
+async function _msgCleanupOldData() {
+  if (!window.MY_ACADEMY_ID) return;
+  try {
+    // 1) 60일 초과 발송 메시지 삭제 (한 번에 최대 50건)
+    const cutoff60 = new Date(Date.now() - 60 * 86400 * 1000);
+    const sentSnap = await getDocs(query(
+      collection(db, 'pushNotifications'),
+      where('academyId', '==', window.MY_ACADEMY_ID),
+      where('sent', '==', true),
+      where('createdAt', '<', cutoff60),
+      limit(50)
+    ));
+    if (!sentSnap.empty) {
+      const b = writeBatch(db);
+      sentSnap.docs.forEach(d => b.delete(d.ref));
+      await b.commit();
+      console.log(`[_msgCleanupOldData] 발송 메시지 ${sentSnap.size}건 자동 삭제 (60일 초과)`);
+    }
+    // 2) 30일 초과 학생 알림 삭제 (학원 전체, 한 번에 최대 100건)
+    const cutoff30 = new Date(Date.now() - 30 * 86400 * 1000);
+    const notifSnap = await getDocs(query(
+      collection(db, 'userNotifications'),
+      where('academyId', '==', window.MY_ACADEMY_ID),
+      where('createdAt', '<', cutoff30),
+      limit(100)
+    ));
+    if (!notifSnap.empty) {
+      const b = writeBatch(db);
+      notifSnap.docs.forEach(d => b.delete(d.ref));
+      await b.commit();
+      console.log(`[_msgCleanupOldData] 학생 알림 ${notifSnap.size}건 자동 삭제 (30일 초과)`);
+    }
+  } catch (e) {
+    console.warn('[_msgCleanupOldData] 정리 실패:', e.message);
+  }
+}
+
 async function loadMessages(){
   const draftEl = document.getElementById('savedMsgDrafts');
   const sentEl  = document.getElementById('savedMsgSent');
   if (!draftEl || !sentEl) return;
+  // 만료 데이터 자동 정리 — fire-and-forget (UI 로딩 차단 X)
+  _msgCleanupOldData();
   _msgInitResizer();
   try { await _msgInitPicker([]); } catch (e) { console.warn('[picker init]', e); }
   // 날짜 필터 기본값 = 어제
