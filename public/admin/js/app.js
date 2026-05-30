@@ -13679,7 +13679,7 @@ const _TEST_TYPE_CONFIG = {
     phaseLabel: null,
     actions: ['assign'],
     gradingMode: 'ai',
-    hint: '본문 문장을 AI 가 추출해 녹음숙제로 배정합니다. 회차·통과점수·시간은 배정 시 설정. 제출된 녹음은 60일간 저장됩니다.',
+    hint: 'Page 단위 녹음숙제를 학생앱에 배정합니다. 회차·통과점수·시간은 배정 시 설정. AI 가 정확도를 평가합니다.',
   },
 };
 
