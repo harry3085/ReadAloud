@@ -8851,9 +8851,17 @@ window.genDoEditBook = async (bid) => {
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genBooks',bid),{name, updatedAt:serverTimestamp()});
+    // chapter/page 동기 — 메모리 캐시(_genChapters/_genPages) 대신 Firestore 직접 쿼리.
+    // AI OCR 은 lazy fetch 라 Book 안 펼친 상태면 그 Book 의 chapter/page 가 캐시에 없어
+    // 동기에서 누락됐던 버그(2026-05-30 송미정 ch1 케이스).
+    const aca = window.MY_ACADEMY_ID || 'default';
+    const [chSnap, pgSnap] = await Promise.all([
+      getDocs(query(collection(db,'genChapters'), where('academyId','==',aca), where('bookId','==',bid))),
+      getDocs(query(collection(db,'genPages'),    where('academyId','==',aca), where('bookId','==',bid))),
+    ]);
     await Promise.all([
-      ..._genChapters.filter(c=>c.bookId===bid).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookName:name})),
-      ..._genPages.filter(p=>p.bookId===bid).map(p=>updateDoc(doc(db,'genPages',p.id),{bookName:name})),
+      ...chSnap.docs.map(d=>updateDoc(d.ref,{bookName:name})),
+      ...pgSnap.docs.map(d=>updateDoc(d.ref,{bookName:name})),
     ]);
     closeModal(); await loadGenerator({keepActive:true});
   } catch(e){ showToast('저장 실패: '+e.message); }
