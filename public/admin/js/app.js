@@ -1571,13 +1571,18 @@ window.saveClass = async() => {
   const name=document.getElementById('className').value.trim();
   const teacher=document.getElementById('classTeacher').value.trim();
   if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
-  await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
-  closeModal(); showToast('반이 생성됐어요!'); await loadClasses();
+  const ref = await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  closeModal(); showToast('반이 생성됐어요!');
+  const added = _pageMutate('classTableBody', data => {
+    data.push({ id: ref.id, name, teacher });  // loadClasses 정렬: createdAt asc → 끝에 추가
+  });
+  if (!added) await loadClasses();
 };
 window.deleteClass = async(id,name) => {
   if(!await showConfirm(`"${name}" 반을 삭제할까요?`))return;
   await deleteDoc(doc(db,'groups',id));
-  showToast('삭제됐어요.'); await loadClasses();
+  showToast('삭제됐어요.');
+  if (!_pageMutate('classTableBody', data => data.filter(g => g.id !== id))) await loadClasses();
 };
 
 // ── 학생 관리 ──────────────────────────────────────
@@ -2231,16 +2236,20 @@ window.saveHwFileEdit = async(id) => {
     else if (t.type === 'student') { targetUid = t.id; group = t.id; }
   }
 
-  await updateDoc(doc(db,'hwFiles',id),{
+  const patch = {
     name,
     targets,
     targetSummary: pickerSummarize(targets),
     group, targetUid: targetUid||null,   // 옛 호환 (학생앱 폴백)
-    updatedAt: serverTimestamp(),
-  });
+  };
+  await updateDoc(doc(db,'hwFiles',id), { ...patch, updatedAt: serverTimestamp() });
   closeModal();
   showToast('✅ 수정됐어요!');
-  await loadHwFileAdmin();
+  const ok = _pageMutate('hwfileTableBody', data => {
+    const i = data.findIndex(f => f.id === id);
+    if (i >= 0) Object.assign(data[i], patch);
+  });
+  if (!ok) await loadHwFileAdmin();
 };
 
 window.openHwFileModal = async() => {
@@ -2377,7 +2386,7 @@ window.uploadHwFileAdmin = async() => {
     const url = await getDownloadURL(storageRef);
     const today = _ymdKST();
 
-    await addDoc(collection(db,'hwFiles'),{
+    const data = {
       name, url,
       targets,
       targetSummary: pickerSummarize(targets),
@@ -2385,13 +2394,17 @@ window.uploadHwFileAdmin = async() => {
       type: ext,
       date: today,
       storagePath: path,
-      createdAt: serverTimestamp(),
       academyId: window.MY_ACADEMY_ID || 'default',
-    });
+    };
+    const docRef = await addDoc(collection(db,'hwFiles'), { ...data, createdAt: serverTimestamp() });
 
     closeModal();
     showToast('✅ 파일이 등록됐어요!');
-    await loadHwFileAdmin();
+    const added = _pageMutate('hwfileTableBody', d => {
+      d.unshift({ id: docRef.id, ...data });
+      _pageState['hwfileTableBody'].page = 1;
+    });
+    if (!added) await loadHwFileAdmin();
   }catch(e){
     showToast('업로드 실패: '+e.message);
     if(btn){ btn.disabled=false; btn.textContent='📤 업로드'; }
@@ -2402,6 +2415,7 @@ window.deleteSelectedHwFile = async() => {
   const ids = getCheckedIds('hwfileTableBody');
   if (!ids.length) { showAlert('입력 확인', '삭제할 파일을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 파일 ${ids.length}개를 삭제할까요?`)) return;
+  const okIds = [];
   for(const id of ids){
     try{
       const d = await getDoc(doc(db,'hwFiles',id));
@@ -2409,9 +2423,12 @@ window.deleteSelectedHwFile = async() => {
         try{ await deleteObject(ref(storage, d.data().storagePath)); }catch(e){console.warn(e);}
       }
       await deleteDoc(doc(db,'hwFiles',id));
+      okIds.push(id);
     }catch(e){console.warn(e);}
   }
-  showToast('삭제됐어요.'); await loadHwFileAdmin();
+  showToast('삭제됐어요.');
+  const set = new Set(okIds);
+  if (!_pageMutate('hwfileTableBody', data => data.filter(f => !set.has(f.id)))) await loadHwFileAdmin();
 };
 
 // ── 결제 관리 v2 (2026-05-02) — billings 컬렉션 기반 ───────
@@ -6456,8 +6473,14 @@ window.deleteSelectedClass = async() => {
   const ids = getCheckedIds('classTableBody');
   if (!ids.length) { showAlert('입력 확인', '삭제할 반을 선택하세요.'); return; }
   if(!await showConfirm(`선택한 ${ids.length}개 반을 삭제할까요?`))return;
-  for(const id of ids) await deleteDoc(doc(db,'groups',id));
-  showToast('삭제됐어요.'); await loadClasses();
+  const okIds = [];
+  for(const id of ids){
+    try { await deleteDoc(doc(db,'groups',id)); okIds.push(id); }
+    catch(e){ console.warn(e); }
+  }
+  showToast('삭제됐어요.');
+  const set = new Set(okIds);
+  if (!_pageMutate('classTableBody', data => data.filter(g => !set.has(g.id)))) await loadClasses();
 };
 
 // ── 학생 선택 액션 ──────────────────────────────────
@@ -7182,7 +7205,12 @@ window.updateClass = async(id) => {
   const teacher = document.getElementById('editClassTeacher').value.trim();
   if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
   await updateDoc(doc(db,'groups',id),{name,teacher});
-  closeModal(); showToast('✅ 반 정보가 수정됐어요!'); await loadClasses();
+  closeModal(); showToast('✅ 반 정보가 수정됐어요!');
+  const ok = _pageMutate('classTableBody', data => {
+    const i = data.findIndex(g => g.id === id);
+    if (i >= 0) Object.assign(data[i], { name, teacher });
+  });
+  if (!ok) await loadClasses();
 };
 
 // ── 학생 수정 ────────────────────────────────────────────
@@ -8272,21 +8300,23 @@ window.runGenOcr = async () => {
       const data = await res.json();
       if (!res.ok||data.error){ showToast(`[${i+1}] OCR 실패: ${data.error||res.status}`); continue; }
       nextSerial++;
-      await addDoc(collection(db,'genPages'),{
+      const pgData = {
         title:`Page ${nextSerial}`, serialNumber:nextSerial,
         chapterId:null, chapterName:'', bookId:null, bookName:'',
         text:data.text||'', ocrConfidence:(data.confidence||0)/100,
         ocrProvider:data.provider||'google-vision', imageUrl:'', edited:false,
-        createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+        createdBy:auth.currentUser?.uid||'',
         academyId: window.MY_ACADEMY_ID || 'default',
-      });
+      };
+      const ref = await addDoc(collection(db,'genPages'), { ...pgData, createdAt:serverTimestamp() });
+      _genPages.push({ id: ref.id, ...pgData });
       saved++;
     } catch(e){ showToast(`[${i+1}] 오류: ${e.message}`); }
   }
   if (status) { status.textContent=`완료! ${saved}개 Page 저장됨`; setTimeout(()=>{ status.textContent=''; },3000); }
   btn.disabled=false;
   _genImages=[]; _genRenderThumbnails();
-  await loadGenerator({keepActive:true});
+  _genRenderAll();
 };
 
 // ── Page CRUD ──
@@ -8318,14 +8348,16 @@ window.genDoCreatePage = async () => {
   const text=document.getElementById('gnPX')?.value.trim();
   const maxSerial=_genPages.reduce((m,p)=>Math.max(m,p.serialNumber||0),0)+1;
   try {
-    await addDoc(collection(db,'genPages'),{
+    const data = {
       title:title||`Page ${maxSerial}`, serialNumber:maxSerial,
       chapterId:null, chapterName:'', bookId:null, bookName:'',
       text:text||'', ocrConfidence:0, ocrProvider:'', imageUrl:'', edited:true,
-      createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
+      createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
-    });
-    closeModal(); await loadGenerator({keepActive:true});
+    };
+    const ref = await addDoc(collection(db,'genPages'), { ...data, createdAt:serverTimestamp() });
+    _genPages.push({ id: ref.id, ...data });
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8362,7 +8394,9 @@ window.genDoEditPage = async (pid) => {
   if (!title) { showAlert('입력 확인', '제목을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
-    closeModal(); await loadGenerator({keepActive:true});
+    const p = _genPages.find(x => x.id === pid);
+    if (p) { p.title = title; p.text = text||''; p.edited = true; }
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8519,7 +8553,7 @@ window.genDoMergePages = async () => {
   const nextSerial = _genPages.filter(p => !p.chapterId).length + 1;
 
   try {
-    await addDoc(collection(db, 'genPages'), {
+    const data = {
       title: newTitle,
       text: mergedText,
       serialNumber: ch ? (pages[0].serialNumber || nextSerial) : nextSerial,
@@ -8531,19 +8565,22 @@ window.genDoMergePages = async () => {
       ocrProvider: 'merged',
       imageUrl: '',
       edited: true,
-      createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
       academyId: window.MY_ACADEMY_ID || 'default',
-    });
+    };
+    const ref = await addDoc(collection(db, 'genPages'), { ...data, createdAt: serverTimestamp() });
+    _genPages.push({ id: ref.id, ...data });
 
     if (deleteOriginals) {
       await Promise.all(ids.map(id => deleteDoc(doc(db, 'genPages', id))));
+      const set = new Set(ids);
+      _genPages = _genPages.filter(p => !set.has(p.id));
     }
 
     _genCheckedPages.clear();
     _genMergePages = [];
     closeModal();
-    await loadGenerator({keepActive:true});
+    _genRenderAll();
     showToast(deleteOriginals
       ? `✂ ${pages.length}개 페이지 병합 완료 — 원본 삭제됨`
       : `✂ ${pages.length}개 페이지 병합 완료 — 원본 보존`);
@@ -8571,16 +8608,24 @@ window.genDeletePages = async () => {
   const ok=await showConfirm(`Page ${_genCheckedPages.size}개를 삭제하시겠습니까?`,'삭제된 데이터는 복구할 수 없습니다.');
   if (!ok) return;
   try {
-    await Promise.all([..._genCheckedPages].map(id=>deleteDoc(doc(db,'genPages',id))));
-    _genCheckedPages.clear(); await loadGenerator({keepActive:true});
+    const ids = [..._genCheckedPages];
+    await Promise.all(ids.map(id=>deleteDoc(doc(db,'genPages',id))));
+    const set = new Set(ids);
+    _genPages = _genPages.filter(p => !set.has(p.id));
+    if (set.has(_genActivePage)) _genActivePage = null;
+    _genCheckedPages.clear(); _genRenderAll();
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
 window.genExcludePages = async () => {
   if (!_genCheckedPages.size) return;
   try {
-    await Promise.all([..._genCheckedPages].map(id=>updateDoc(doc(db,'genPages',id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
-    showToast('미지정 상태로 변경됨'); await loadGenerator({keepActive:true});
+    const ids = [..._genCheckedPages];
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'genPages',id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
+    const set = new Set(ids);
+    _genPages.forEach(p => { if (set.has(p.id)) { p.chapterId = null; p.chapterName = ''; p.bookId = null; p.bookName = ''; } });
+    _genCheckedPages.clear();
+    showToast('미지정 상태로 변경됨'); _genRenderAll();
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -8679,7 +8724,7 @@ window.genMoveCreateBook = async () => {
       createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    _genBooks.push({ id: ref.id, name, chapterCount: 0, pageCount: 0 });  // 메모리 반영 (최종 이동 시 loadGenerator 로 전체 갱신)
+    _genBooks.push({ id: ref.id, name, chapterCount: 0, pageCount: 0 });
     _genMoveBook = { id: ref.id, name };  // 생성한 Book 선택 상태로 → ② Chapter 단계
     _genMoveRefresh();
   } catch(e){ showToast('Book 생성 실패: '+e.message); }
@@ -8697,12 +8742,14 @@ window.genMoveCreateAndMove = async () => {
   const name = document.getElementById('genMoveNewName')?.value.trim();
   if (!name) { showAlert('입력 확인', 'Chapter 이름을 입력하세요.'); return; }
   try {
+    const order = _genChapters.filter(c=>c.bookId===_genMoveBook.id).length + 1;
     const ref = await addDoc(collection(db,'genChapters'), {
       name, bookId: _genMoveBook.id, bookName: _genMoveBook.name,
-      order: _genChapters.filter(c=>c.bookId===_genMoveBook.id).length + 1, pageCount: 0,
+      order, pageCount: 0,
       createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
+    _genChapters.push({ id: ref.id, name, bookId: _genMoveBook.id, bookName: _genMoveBook.name, order, pageCount: 0 });
     await _genDoMove(ref.id, _genMoveBook.id, _genMoveBook.name, name);
   } catch(e){ showToast('Chapter 생성 실패: '+e.message); }
 };
@@ -8710,9 +8757,11 @@ async function _genDoMove(chapterId, bookId, bookName, chapterName) {
   try {
     const ids=[..._genCheckedPages];
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genPages',id),{chapterId,chapterName,bookId:bookId||null,bookName:bookName||''})));
+    const set = new Set(ids);
+    _genPages.forEach(p => { if (set.has(p.id)) { p.chapterId = chapterId; p.chapterName = chapterName; p.bookId = bookId||null; p.bookName = bookName||''; } });
     closeModal(); _genCheckedPages.clear(); _genMoveBook = null;
     showToast(`"${chapterName}"으로 ${ids.length}개 Page 이동 완료`);
-    await loadGenerator({keepActive:true});
+    _genRenderAll();
   } catch(e){ showToast('이동 실패: '+e.message); }
 }
 
@@ -8740,12 +8789,14 @@ window.genDoCreateChapter = async () => {
   const name=document.getElementById('gnCN')?.value.trim();
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
-    await addDoc(collection(db,'genChapters'),{
-      name, bookId:null, bookName:'', order:_genChapters.length+1, pageCount:0,
+    const order = _genChapters.length+1;
+    const ref = await addDoc(collection(db,'genChapters'),{
+      name, bookId:null, bookName:'', order, pageCount:0,
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    closeModal(); await loadGenerator({keepActive:true});
+    _genChapters.push({ id: ref.id, name, bookId:null, bookName:'', order, pageCount:0 });
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8777,8 +8828,14 @@ window.genDoEditChapter = async (cid) => {
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
     await updateDoc(doc(db,'genChapters',cid),{name, updatedAt:serverTimestamp()});
-    await Promise.all(_genPages.filter(p=>p.chapterId===cid).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterName:name})));
-    closeModal(); await loadGenerator({keepActive:true});
+    // Page chapterName 동기 — 메모리 캐시 대신 Firestore 직접 쿼리 (lazy 미로드 page 누락 방지)
+    const aca = window.MY_ACADEMY_ID || 'default';
+    const pgSnap = await getDocs(query(collection(db,'genPages'), where('academyId','==',aca), where('chapterId','==',cid)));
+    await Promise.all(pgSnap.docs.map(d=>updateDoc(d.ref,{chapterName:name})));
+    // 메모리 캐시 surgical
+    const ch = _genChapters.find(c => c.id === cid); if (ch) ch.name = name;
+    _genPages.forEach(p => { if (p.chapterId === cid) p.chapterName = name; });
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8790,7 +8847,11 @@ window.genDeleteChapters = async () => {
     const ids=[..._genCheckedChapters];
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{chapterId:null,chapterName:'',bookId:null,bookName:''})));
     await Promise.all(ids.map(id=>deleteDoc(doc(db,'genChapters',id))));
-    _genCheckedChapters.clear(); await loadGenerator({keepActive:true});
+    const set = new Set(ids);
+    _genChapters = _genChapters.filter(c => !set.has(c.id));
+    _genPages.forEach(p => { if (set.has(p.chapterId)) { p.chapterId = null; p.chapterName = ''; p.bookId = null; p.bookName = ''; } });
+    if (set.has(_genActiveChapter)) { _genActiveChapter = null; _genActivePage = null; }
+    _genCheckedChapters.clear(); _genRenderAll();
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
@@ -8800,7 +8861,11 @@ window.genExcludeChapters = async () => {
   try {
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId:null,bookName:'',updatedAt:serverTimestamp()})));
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})));
-    showToast('Book에서 제외됨'); await loadGenerator({keepActive:true});
+    const set = new Set(ids);
+    _genChapters.forEach(c => { if (set.has(c.id)) { c.bookId = null; c.bookName = ''; } });
+    _genPages.forEach(p => { if (set.has(p.chapterId)) { p.bookId = null; p.bookName = ''; } });
+    _genCheckedChapters.clear();
+    showToast('Book에서 제외됨'); _genRenderAll();
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -8846,6 +8911,7 @@ window.genMoveChCreateBook = async () => {
       createdAt: serverTimestamp(), createdBy: auth.currentUser?.uid || '',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
+    _genBooks.push({ id: ref.id, name, chapterCount: 0, pageCount: 0 });  // 메모리 반영
     await genDoMoveChapters(ref.id, name);  // 생성한 Book 으로 즉시 Chapter 이동
   } catch(e){ showToast('Book 생성 실패: '+e.message); }
 };
@@ -8854,9 +8920,12 @@ window.genDoMoveChapters = async (bookId,bookName) => {
   try {
     await Promise.all(ids.map(id=>updateDoc(doc(db,'genChapters',id),{bookId,bookName,updatedAt:serverTimestamp()})));
     await Promise.all(_genPages.filter(p=>ids.includes(p.chapterId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId,bookName})));
+    const set = new Set(ids);
+    _genChapters.forEach(c => { if (set.has(c.id)) { c.bookId = bookId; c.bookName = bookName; } });
+    _genPages.forEach(p => { if (set.has(p.chapterId)) { p.bookId = bookId; p.bookName = bookName; } });
     closeModal(); _genCheckedChapters.clear();
     showToast(`"${bookName}"으로 이동 완료`);
-    await loadGenerator({keepActive:true});
+    _genRenderAll();
   } catch(e){ showToast('실패: '+e.message); }
 };
 
@@ -8884,12 +8953,13 @@ window.genDoCreateBook = async () => {
   const name=document.getElementById('gnBN')?.value.trim();
   if (!name) { showAlert('입력 확인', '이름을 입력하세요.'); return; }
   try {
-    await addDoc(collection(db,'genBooks'),{
+    const ref = await addDoc(collection(db,'genBooks'),{
       name, chapterCount:0, pageCount:0,
       createdAt:serverTimestamp(), createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     });
-    closeModal(); await loadGenerator({keepActive:true});
+    _genBooks.push({ id: ref.id, name, chapterCount:0, pageCount:0 });
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8933,7 +9003,11 @@ window.genDoEditBook = async (bid) => {
       ...chSnap.docs.map(d=>updateDoc(d.ref,{bookName:name})),
       ...pgSnap.docs.map(d=>updateDoc(d.ref,{bookName:name})),
     ]);
-    closeModal(); await loadGenerator({keepActive:true});
+    // 메모리 캐시 surgical 갱신 (Book + 그 Book 의 chapter/page bookName)
+    const bk = _genBooks.find(b => b.id === bid); if (bk) bk.name = name;
+    _genChapters.forEach(c => { if (c.bookId === bid) c.bookName = name; });
+    _genPages.forEach(p => { if (p.bookId === bid) p.bookName = name; });
+    closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
 
@@ -8943,12 +9017,21 @@ window.genDeleteBooks = async () => {
   if (!ok) return;
   try {
     const ids=[..._genCheckedBooks];
+    // chapter/page bookId 해제는 메모리 캐시(_genChapters/_genPages) 기반으로 Firestore update.
+    // Book 안 펼친 상태면 캐시 미로드 chapter/page 는 여기서 빠지지만, Book doc 삭제 후엔
+    // _activeBook=null 로 리셋되어 그 자식들도 화면에서 사라짐 (다음 펼침 시 fresh fetch).
     await Promise.all([
       ..._genChapters.filter(c=>ids.includes(c.bookId)).map(c=>updateDoc(doc(db,'genChapters',c.id),{bookId:null,bookName:''})),
       ..._genPages.filter(p=>ids.includes(p.bookId)).map(p=>updateDoc(doc(db,'genPages',p.id),{bookId:null,bookName:''})),
       ...ids.map(id=>deleteDoc(doc(db,'genBooks',id))),
     ]);
-    _genCheckedBooks.clear(); await loadGenerator({keepActive:true});
+    // 메모리 캐시 surgical 갱신
+    const set = new Set(ids);
+    _genBooks = _genBooks.filter(b => !set.has(b.id));
+    _genChapters.forEach(c => { if (set.has(c.bookId)) { c.bookId = null; c.bookName = ''; } });
+    _genPages.forEach(p => { if (set.has(p.bookId)) { p.bookId = null; p.bookName = ''; } });
+    if (set.has(_genActiveBook)) { _genActiveBook = null; _genActiveChapter = null; _genActivePage = null; }
+    _genCheckedBooks.clear(); _genRenderAll();
   } catch(e){ showToast('삭제 실패: '+e.message); }
 };
 
