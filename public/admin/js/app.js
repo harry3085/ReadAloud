@@ -1539,11 +1539,10 @@ async function loadClasses(){
       <td>${i+1}</td>
       <td class="td-link" onclick="editClass('${g.id}')">${esc(g.name)||'-'}</td>
       <td>${esc(g.teacher)||'-'}</td>
-      <td class="td-center">${g.hideApp?'<span class="badge badge-amber">숨김</span>':'-'}</td>
-      <td class="td-center">${g.allBooks?'<span class="badge badge-blue">허용</span>':'-'}</td>
       <td class="td-sub">${g.createdAt?.toDate?g.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
-    </tr>`, 'classPagination', 7);
-  }catch(e){document.getElementById('classTableBody').innerHTML='<tr><td colspan="7" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
+      <td class="td-sm" style="white-space:pre-wrap;word-break:break-word;color:var(--text);min-width:280px;">${esc(g.memo)||'<span style="color:#bbb;">-</span>'}</td>
+    </tr>`, 'classPagination', 6);
+  }catch(e){document.getElementById('classTableBody').innerHTML='<tr><td colspan="6" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
 
 window.openClassModal = () => {
@@ -1558,6 +1557,8 @@ window.openClassModal = () => {
             <input id="className" type="text" placeholder="예: 1반, 초급반" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:6px;">담당 선생님</div>
             <input id="classTeacher" type="text" placeholder="선택사항" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:6px;">메모</div>
+            <textarea id="classMemo" rows="4" placeholder="반 운영 메모 (선택사항)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea></div>
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -1570,11 +1571,12 @@ window.openClassModal = () => {
 window.saveClass = async() => {
   const name=document.getElementById('className').value.trim();
   const teacher=document.getElementById('classTeacher').value.trim();
+  const memo=(document.getElementById('classMemo')?.value || '').trim();
   if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
-  const ref = await addDoc(collection(db,'groups'),{name,teacher,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
+  const ref = await addDoc(collection(db,'groups'),{name,teacher,memo,createdAt:serverTimestamp(),academyId:window.MY_ACADEMY_ID||'default'});
   closeModal(); showToast('반이 생성됐어요!');
   const added = _pageMutate('classTableBody', data => {
-    data.push({ id: ref.id, name, teacher });  // loadClasses 정렬: createdAt asc → 끝에 추가
+    data.push({ id: ref.id, name, teacher, memo });  // loadClasses 정렬: createdAt asc → 끝에 추가
   });
   if (!added) await loadClasses();
 };
@@ -7292,6 +7294,8 @@ window.editClass = async(id) => {
             <input id="editClassName" type="text" value="${esc(g.name||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:6px;">담당 선생님</div>
             <input id="editClassTeacher" type="text" value="${esc(g.teacher||'')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:6px;">메모</div>
+            <textarea id="editClassMemo" rows="4" placeholder="반 운영 메모 (선택사항)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">${esc(g.memo||'')}</textarea></div>
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -7304,12 +7308,13 @@ window.editClass = async(id) => {
 window.updateClass = async(id) => {
   const name = document.getElementById('editClassName').value.trim();
   const teacher = document.getElementById('editClassTeacher').value.trim();
+  const memo = (document.getElementById('editClassMemo')?.value || '').trim();
   if (!name) { showAlert('입력 확인', '반 이름을 입력하세요.'); return; }
-  await updateDoc(doc(db,'groups',id),{name,teacher});
+  await updateDoc(doc(db,'groups',id),{name,teacher,memo});
   closeModal(); showToast('✅ 반 정보가 수정됐어요!');
   const ok = _pageMutate('classTableBody', data => {
     const i = data.findIndex(g => g.id === id);
-    if (i >= 0) Object.assign(data[i], { name, teacher });
+    if (i >= 0) Object.assign(data[i], { name, teacher, memo });
   });
   if (!ok) await loadClasses();
 };
