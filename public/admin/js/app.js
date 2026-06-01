@@ -6282,6 +6282,27 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
 
   const modeBars = Object.entries(_GR_MODE_LABELS).map(([k, lbl]) => {
     const m = r.modeBreakdown?.[k] || { avg:0, count:0, lastScore:null };
+    // 녹음숙제는 점수 비공개 (학생 보호 정책) — 출제/제출 카운트만 표시
+    if (k === 'recording') {
+      const rq = r.recordingQuality || {};
+      const assigned = rq.assigned || 0;
+      const submitted = rq.submitted || m.count || 0;
+      const ratio = assigned > 0 ? Math.round((submitted / assigned) * 100) : (submitted > 0 ? 100 : 0);
+      const color = ratio >= 80 ? '#10b981' : ratio >= 50 ? '#f59e0b' : (submitted > 0 ? '#dc2626' : '#cbd5e1');
+      const txt = assigned > 0
+        ? `${assigned}회 출제 중 ${submitted}회 제출 (${ratio}%)`
+        : (submitted > 0 ? `${submitted}회 제출` : '응시 없음');
+      return `
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+            <span>${lbl} <span style="font-size:10px;color:var(--gray);">(정성 평가)</span></span>
+            <span style="color:var(--gray);">${txt}</span>
+          </div>
+          <div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+            <div style="width:${ratio}%;height:100%;background:${color};transition:width 0.3s;"></div>
+          </div>
+        </div>`;
+    }
     const pct = Math.min(100, m.avg);
     const color = m.avg >= 80 ? '#10b981' : m.avg >= 60 ? '#f59e0b' : (m.count > 0 ? '#dc2626' : '#cbd5e1');
     const lastTxt = m.count > 0 ? `최근 ${m.lastScore}점` : '응시 없음';
@@ -6318,22 +6339,21 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
         </div>
       </div>
       <div id="grReportBody" style="padding:18px 22px;overflow-y:auto;flex:1;">
-        <!-- 통계 카드 (녹음숙제는 점수 평가 방식이 달라 제외, 아래 정성 코멘트 별도 참조) -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px;">
+        <!-- 통계 카드 (녹음숙제는 정성 평가로 별도 분리, 점수 카드는 그 외 모드만 집계) -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
           <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
             <div style="font-size:22px;font-weight:800;color:var(--teal);">${r.totalAttempts}</div>
-            <div style="font-size:11px;color:var(--gray);">총 응시 <span style="font-size:9px;">(녹음 제외)</span></div>
+            <div style="font-size:11px;color:var(--gray);">총 응시</div>
           </div>
           <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
             <div style="font-size:22px;font-weight:800;color:var(--teal);">${r.avgScore}점</div>
-            <div style="font-size:11px;color:var(--gray);">평균 <span style="font-size:9px;">(녹음 제외)</span></div>
+            <div style="font-size:11px;color:var(--gray);">평균</div>
           </div>
           <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center;">
             <div style="font-size:22px;font-weight:800;color:#10b981;">${r.passedCount}</div>
-            <div style="font-size:11px;color:var(--gray);">80점 이상 <span style="font-size:9px;">(녹음 제외)</span></div>
+            <div style="font-size:11px;color:var(--gray);">80점 이상</div>
           </div>
         </div>
-        <div style="font-size:10px;color:#888;margin-bottom:12px;text-align:right;">* 녹음숙제는 정성 평가로 아래 별도 코멘트 참조</div>
 
         <!-- 총평 -->
         <div style="margin-bottom:18px;">
@@ -6368,20 +6388,10 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
           <b>추세:</b> ${esc(r.improvementNote||'')}
         </div>
 
-        <!-- 🎤 녹음숙제 정성 평가 -->
+        <!-- 🎤 녹음숙제 정성 평가 (점수 비공개 — 학생 보호 정책상 정성 코멘트만) -->
         <div style="padding:12px 14px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;font-size:13px;line-height:1.7;color:#78350f;">
           <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🎤 녹음숙제 정성 평가 <span style="font-size:10px;color:#92400e;font-weight:400;">(발음·읽기 상태)</span></div>
           ${esc(r.recordingComment || '녹음숙제 응시 데이터가 없습니다.')}
-          ${r.recordingQuality && r.recordingQuality.count > 0 && r.recordingQuality.avgCat ? (() => {
-            const c = r.recordingQuality.avgCat;
-            const parts = [
-              c.pronunciation != null ? `발음 ${c.pronunciation}점` : null,
-              c.intonation != null ? `억양 ${c.intonation}점` : null,
-              c.pace != null ? `속도 ${c.pace}점` : null,
-              c.accuracy != null ? `정확도 ${c.accuracy}점` : null,
-            ].filter(Boolean);
-            return parts.length ? `<div style="margin-top:8px;font-size:11px;color:#92400e;">최근 ${r.recordingQuality.count}개 시험 카테고리 평균: ${parts.join(' · ')}</div>` : '';
-          })() : ''}
         </div>
 
         <div style="font-size:10px;color:#bbb;margin-top:12px;text-align:right;">${reportId ? 'reportId: ' + esc(reportId) : ''}</div>

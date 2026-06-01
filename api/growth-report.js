@@ -32,9 +32,14 @@ const SYSTEM_PROMPT = `당신은 한국 영어 학원의 학생 성장 분석가
 3. 평균 점수·응시 횟수·추세를 활용해 객관성 확보.
 4. 한국 학부모 관점에서 이해 가능한 표현 사용. 영어 모드명은 단어시험/객관식/빈칸채우기/언스크램블/녹음숙제 등 한국어로.
 5. **녹음숙제는 점수 평가 방식이 달라 전체 평균/강점/약점/추천 분석에서 제외**합니다. 대신 별도 'recordingComment' 필드에 발음·읽기 상태에 대한 정성 코멘트만 작성하세요.
-6. recordingComment 작성 가이드:
-   - 카테고리 평균 점수(발음·억양·속도·정확도) 와 자주 약한 발음 단어를 활용해 구체적 조언.
-   - 예시: "발음 평균 78점·억양 82점으로 양호. R 발음(right·world)이 자주 약하므로 해당 단어 반복 연습 권장. 속도는 적정 유지 중."
+6. recordingComment 작성 가이드 (**매우 중요**):
+   - 내부적으로 받은 카테고리 점수(발음·억양·속도·정확도) 와 자주 약한 발음 단어를 정성 판단의 근거로 활용.
+   - **출력에는 절대 수치(점수·퍼센트)를 쓰지 마세요.** AI 평가 점수는 객관성/신뢰도 문제로 학생·학부모 노출이 제한됩니다.
+   - 정성 표현만 사용 — "양호", "안정적", "꾸준히 향상 중", "더 다듬을 필요", "흔들리는 부분", "자연스럽게 잡혀가고 있음" 등.
+   - 추세 표현 권장 — "전반적으로 안정", "발음 향상 중", "최근 정확도 더 좋아짐", "속도 안정 유지" 등.
+   - 구체적 단어 예시는 OK — 'right', 'world' 등 자주 약한 단어 직접 언급해 추가 연습 권장.
+   - 좋은 예시: "발음이 전반적으로 안정적이고 억양도 자연스럽게 잡혀가고 있어요. R 발음(right·world)이 가끔 흔들리는 편이라 해당 단어 위주로 추가 연습하면 좋습니다."
+   - 나쁜 예시 (수치 노출 금지): "발음 78점, 억양 82점으로 양호" / "정확도 평균 75%" — **절대 출력 금지**.
    - 녹음숙제 응시 0건이면: "최근 30일 녹음숙제 응시 없음 — 응시 시작 시 발음·읽기 상태 분석을 제공할 수 있습니다."
 7. JSON 출력은 정확히 스키마대로. 추가 설명 텍스트 X.`;
 
@@ -140,6 +145,7 @@ module.exports = async function handler(req, res) {
     const passedCount = scores.filter(s => s.mode !== 'recording' && (s.score || 0) >= 80).length;
 
     // 4-b) 녹음숙제 정성 데이터 — 최근 10개 testId 의 userCompleted 에서 categoryScores + feedback 추출
+    // (categoryScores 는 AI 가 정성 판단할 때 내부 참고용으로만 사용 — 점수 자체는 학생에게 노출 X)
     const recordingTestIds = [...new Set(
       scores
         .filter(s => s.mode === 'recording' && s.testId)
@@ -157,7 +163,6 @@ module.exports = async function handler(req, res) {
         if (!final) continue;
         recordingDetails.push({
           date: uc.date || '',
-          score: final.score || 0,
           categoryScores: final.categoryScores || {},
           weakPronunciation: Array.isArray(final.feedback?.weakPronunciation)
             ? final.feedback.weakPronunciation.slice(0, 5).map(w => ({ word: String(w.word || ''), issue: String(w.issue || '') }))
@@ -166,10 +171,46 @@ module.exports = async function handler(req, res) {
         });
       } catch (e) { console.warn('[growth-report] uc fetch', testId, e.message); }
     }
-    const recordingQuality = _aggregateRecordingQuality(recordingDetails);
+    const recordingQualityRaw = _aggregateRecordingQuality(recordingDetails);
 
-    // 5) Gemini 프롬프트 — 학생 정보 + 통계 + 녹음 정성 데이터
-    const userPrompt = _buildUserPrompt(student, modeBreakdown, totalAttempts, avgScore, passedCount, fromDate, toDate, recordingQuality);
+    // 4-c) 녹음숙제 출제 수 — 최근 30일 학생에게 배정된 recording 시험 수 (제출 N회 / 출제 M회 표시용)
+    let recordingAssigned = 0;
+    try {
+      const sinceTs = new Date(now - 30 * 24 * 3600 * 1000);
+      const grp = student.group || '';
+      const recSnap = await db.collection('genTests')
+        .where('academyId', '==', q.academyId)
+        .where('testMode', '==', 'recording')
+        .where('createdAt', '>=', sinceTs)
+        .get();
+      for (const d of recSnap.docs) {
+        const data = d.data();
+        if (Array.isArray(data.excludedUids) && data.excludedUids.includes(studentUid)) continue;
+        const matchTarget =
+          data.targetAll === true ||
+          (Array.isArray(data.targetUids) && data.targetUids.includes(studentUid)) ||
+          (grp && Array.isArray(data.targetGroups) && data.targetGroups.includes(grp));
+        if (matchTarget) recordingAssigned++;
+      }
+    } catch (e) { console.warn('[growth-report] recording assigned count', e.message); }
+    const recordingSubmittedTestIds = new Set(
+      scores.filter(s => s.mode === 'recording' && s.testId).map(s => s.testId)
+    );
+    const recordingSubmitted = recordingSubmittedTestIds.size;
+    // 클라이언트로 보낼 정성 데이터 — 수치(avgCat) 는 학생 보호 정책상 제외, 학원장 참고용 약한 단어/팁만
+    const recordingQuality = {
+      assigned: recordingAssigned,
+      submitted: recordingSubmitted,
+      topWeakWords: recordingQualityRaw.topWeakWords || [],
+      topTips: recordingQualityRaw.topTips || [],
+    };
+
+    // 5) Gemini 프롬프트 — 학생 정보 + 통계 + 녹음 정성 데이터 (AI 내부 추론용 카테고리 점수 포함)
+    const userPrompt = _buildUserPrompt(student, modeBreakdown, totalAttempts, avgScore, passedCount, fromDate, toDate, {
+      ...recordingQualityRaw,
+      assigned: recordingAssigned,
+      submitted: recordingSubmitted,
+    });
 
     // 6) Gemini 호출 (폴백 체인)
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -260,22 +301,23 @@ function _buildUserPrompt(student, modeBreakdown, totalAttempts, avgScore, passe
     return `- ${MODE_LABELS[k]}: ${m.count}회 응시, 평균 ${m.avg}점, 최근 ${m.lastScore}점 (${m.lastDate})`;
   }).join('\n');
 
-  // 녹음숙제 정성 섹션
+  // 녹음숙제 정성 섹션 (AI 내부 추론용 — 카테고리 점수 포함하나 출력 시 수치 노출 금지 지시)
   let recordingSection = '';
   if (recordingQuality && recordingQuality.count > 0) {
     const c = recordingQuality.avgCat || {};
     const catLine = [
-      c.pronunciation != null ? `발음 ${c.pronunciation}점` : null,
-      c.intonation != null ? `억양 ${c.intonation}점` : null,
-      c.pace != null ? `속도 ${c.pace}점` : null,
-      c.accuracy != null ? `정확도 ${c.accuracy}점` : null,
+      c.pronunciation != null ? `발음 ${c.pronunciation}` : null,
+      c.intonation != null ? `억양 ${c.intonation}` : null,
+      c.pace != null ? `속도 ${c.pace}` : null,
+      c.accuracy != null ? `정확도 ${c.accuracy}` : null,
     ].filter(Boolean).join(', ') || '데이터 없음';
     const weakWords = (recordingQuality.topWeakWords || []).join(', ') || '없음';
     const tips = (recordingQuality.topTips || []).join(' / ') || '없음';
     recordingSection = `
 
-녹음숙제 정성 데이터 (최근 ${recordingQuality.count}개 시험, 전체 평균/점수에서는 제외):
-- 카테고리 평균: ${catLine}
+녹음숙제 정성 데이터 (AI 내부 참고용 — 출력에 수치 노출 금지):
+- 출제 ${recordingQuality.assigned || 0}회 중 제출 ${recordingQuality.submitted || 0}회
+- 카테고리 평균(100점 만점, 정성 판단 근거로만 사용): ${catLine}
 - 자주 약한 발음 단어: ${weakWords}
 - AI 피드백 팁: ${tips}`;
   } else {
