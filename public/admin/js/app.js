@@ -6937,7 +6937,7 @@ function _computeTestStats(t, scoresArr, students) {
 }
 
 // 페이지네이션 상태 — 시험 목록 (2026-05-13)
-let _tlState = { lastDoc: null, exhausted: false, data: [], startDate: null };
+let _tlState = { lastDoc: null, exhausted: false, data: [] };
 const TL_PAGE_SIZE = 20;
 
 // testId 들의 scores 만 in 쿼리 fetch (학원 전체 X)
@@ -7010,15 +7010,11 @@ window.loadTestList = async() => {
     _tlState.exhausted = false;
     _tlState.data = [];
 
-    // 월초 default — KST 자정 기준 Date 객체
-    const monthStartStr = _ymdMonthStartKST();
-    const monthStartDate = new Date(monthStartStr + 'T00:00:00+09:00');
-    _tlState.startDate = monthStartDate;
-
+    // 최근 N개 단순 — testMode/날짜 무관, createdAt desc + limit (2026-06-01).
+    // 옛 '월초~당일' 컷오프 폐기 (월초마다 빈 목록 → 학원장 혼선).
     const gSnap = await getDocs(query(
       collection(db,'genTests'),
       where('academyId','==', window.MY_ACADEMY_ID),
-      where('createdAt','>=', monthStartDate),
       orderBy('createdAt','desc'),
       limit(TL_PAGE_SIZE)
     )).catch(e => { console.warn('genTests page 1:', e.message); return {docs:[], size:0}; });
@@ -7028,7 +7024,7 @@ window.loadTestList = async() => {
     const genTests = gSnap.docs.map(d=>({id:d.id,_src:'genTests',...d.data()}));
 
     if(genTests.length===0){
-      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">기간 내 출제된 시험이 없습니다</td></tr>';
+      el.innerHTML='<tr><td colspan="10" style="text-align:center;color:#bbb;padding:20px;">출제된 시험이 없습니다</td></tr>';
       _tlRenderLoadMore();
       return;
     }
@@ -7074,7 +7070,6 @@ window.loadMoreTestList = async() => {
     const gSnap = await getDocs(query(
       collection(db,'genTests'),
       where('academyId','==', window.MY_ACADEMY_ID),
-      where('createdAt','>=', _tlState.startDate),
       orderBy('createdAt','desc'),
       startAfter(_tlState.lastDoc),
       limit(TL_PAGE_SIZE)
