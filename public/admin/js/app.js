@@ -4629,12 +4629,22 @@ window.sendMessage = async() => {
     const result=await res.json();
     showToast(result.success ? result.message : (result.message||result.error||'발송 실패'));
     if (result.success) {
-      // 입력·첨부 초기화 — 검색·날짜 필터 유지. 전체 loadMessages (어제 reset) 대신
-      // 캐시 무효화로 다음 fetch 시 fresh. 발송 doc 은 server 생성이라 surgical insert 어려움.
+      // 입력·첨부 초기화 — 검색·날짜 필터 유지
       document.getElementById('msgTitle').value = '';
       document.getElementById('msgBody').value = '';
       msgClearAttach();
-      _msgDraftCache = null; _msgSentCache = null;
+      // 발송 이력 즉시 갱신 — server 가 sent doc 생성하므로 surgical insert 대신 재fetch (현 필터 유지)
+      _msgSentCache = null;
+      _msgSentState = { lastDoc: null, exhausted: false, docs: [] };
+      try {
+        _msgSentState.docs = await _msgFetchSent(false);
+        _msgRenderSentSection();
+      } catch (e) { console.warn('[sendMessage] sent refresh:', e); }
+      // 발송 이력 한도 +1 (한도 라벨 즉시 반영)
+      const sl = document.getElementById('msgSentLimit');
+      if (sl) sl.textContent = sl.textContent.replace(/\d+/, m => parseInt(m) + 1);
+      // 초안 캐시 무효 — reuseMsg 로 끌어온 초안이 발송 후에도 남는지는 server 정책, 안전망
+      _msgDraftCache = null;
     }
   }catch(e){showToast('발송 실패: '+e.message);}
 };
@@ -4961,11 +4971,11 @@ async function loadMessages(){
   _msgCleanupOldData();
   _msgInitResizer();
   try { await _msgInitPicker([]); } catch (e) { console.warn('[picker init]', e); }
-  // 날짜 필터 기본값 = 어제
-  const _msgYest = _ymdKST(new Date(Date.now() - 86400000));
-  _msgDraftDate = _msgYest; _msgSentDate = _msgYest;
-  const _dd = document.getElementById('msgDraftDate'); if (_dd) _dd.value = _msgYest;
-  const _sd = document.getElementById('msgSentDate'); if (_sd) _sd.value = _msgYest;
+  // 날짜 필터 기본값 = 빈 (전체) — 최근 10개 + cursor 더보기 (2026-06-01)
+  // 옛 default '어제' 폐기 (학원장이 어제 작성·발송 없으면 빈 목록 → 혼선)
+  _msgDraftDate = ''; _msgSentDate = '';
+  const _dd = document.getElementById('msgDraftDate'); if (_dd) _dd.value = '';
+  const _sd = document.getElementById('msgSentDate'); if (_sd) _sd.value = '';
   // 검색 캐시·입력 리셋 (loadMessages 는 발송·삭제 후에도 호출 → 캐시 자동 무효화)
   _msgDraftSearch = ''; _msgSentSearch = '';
   _msgDraftCache = null; _msgSentCache = null;
