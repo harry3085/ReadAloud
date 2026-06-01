@@ -13003,15 +13003,17 @@ async function _fillMissingHomophones(questions) {
   return { filled: 0, total: missing.length };
 }
 
-// 말하기 부적합 휴리스틱 — 3글자 이하 + 자리표시 기호·비정상 형식 (객관적 극단). 클라 즉시 판정.
+// 말하기 부적합 휴리스틱 — 3글자 이하 + 자리표시/변화형 구분자/특수문자/비정상 형식 (객관적 극단). 클라 즉시 판정.
 // '1음절' 은 wild·soft·feel 같은 정상 단어를 과다 표시해 제거 — ASR 위험은 AI 가 판단.
-// 2026-06-01: '~', '...', '…' 자리표시 + 'there 's' 같은 비정상 띄어쓰기 검출 추가
-// (AI 호출 전 차단 — koPron/sentence 생성 실패로 출제 막히던 케이스).
+// 2026-06-01: '~'·'...'·'…' 자리표시 + '/'·'>'·',' 변화형 구분자(저장 허용·말하기 불가)
+// + 기타 특수문자(괄호·통화기호 등 옛 데이터) + 비정상 띄어쓰기 검출. AI 호출 전 차단.
 function _tpSpeakingUnfitReasons(word) {
   const raw = String(word || '');
   const r = [];
-  // 자리표시 기호 — 학생이 발음 불가 + AI 예문 생성 실패 원인
+  // 자리표시 기호 — 학생이 발음 불가 + AI 예문 생성 실패 원인 ('rice ~ up', 'look ...')
   if (/[~…]|\.{2,}/.test(raw)) r.push('자리표시 기호 포함');
+  // 변화형 구분자(/ , >) + 기타 특수문자 — 단일 단어 발음 불가 ('rice/fall', 'abandon, leave', 'name > called')
+  if (/[\/>,\[\]\(\)\{\}\|\*\$\€\&\@\#\%\^\+\=\<\;]/.test(raw)) r.push('특수문자/구분자 포함');
   // 비정상 띄어쓰기 — apostrophe 양옆 공백 ("there 's") / 연속 공백
   if (/\s'|'\s|\s{2,}/.test(raw)) r.push('비정상 띄어쓰기');
   // 3글자 이하 영문 — up·be·go 등 객관적 극단
