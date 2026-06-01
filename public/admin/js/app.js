@@ -13737,7 +13737,7 @@ let _activeTestFolderKey = null;    // null = 미선택 (Book 클릭해야 sets 
 let _tpSetsByFolder = {};           // lazy 캐시 — { 'sourceType::bookId': [...sets] }
 let _tpLoadingFolder = null;        // 중복 클릭 방지
 // 페이지네이션 — 시험관리 최근시험 표 (월초~당일 + 20 + 더보기, 2026-05-13)
-let _tpTestsState = { lastDoc: null, exhausted: false, monthStartDate: null };
+let _tpTestsState = { lastDoc: null, exhausted: false };
 const TP_PAGE_SIZE = 20;
 
 async function _renderTestAssignDetail(type) {
@@ -13767,15 +13767,14 @@ async function _renderTestAssignDetail(type) {
       if (!cfg.actions?.includes('assign')) {
         _tpGenTests = [];
       } else {
-        // 월초~당일 + testMode server-side + limit(20) + cursor 더보기 (2026-05-13)
-        _tpTestsState.monthStartDate = new Date(_ymdMonthStartKST() + 'T00:00:00+09:00');
+        // 최근 N개 단순 — testMode server-side + orderBy desc + limit(20) + cursor 더보기.
+        // 2026-06-01 옛 '월초~당일' 컷오프 폐기 (월초마다 빈 목록 → 학원장 혼선).
         _tpTestsState.lastDoc = null;
         _tpTestsState.exhausted = false;
         const testSnap = await getDocs(query(
           collection(db,'genTests'),
           where('academyId','==', window.MY_ACADEMY_ID),
           where('testMode','==', cfg.testMode),
-          where('createdAt','>=', _tpTestsState.monthStartDate),
           orderBy('createdAt','desc'),
           limit(TP_PAGE_SIZE)
         ));
@@ -14189,7 +14188,6 @@ window.loadMoreTpTests = async() => {
       collection(db,'genTests'),
       where('academyId','==', window.MY_ACADEMY_ID),
       where('testMode','==', cfg.testMode),
-      where('createdAt','>=', _tpTestsState.monthStartDate),
       orderBy('createdAt','desc'),
       startAfter(_tpTestsState.lastDoc),
       limit(TP_PAGE_SIZE)
