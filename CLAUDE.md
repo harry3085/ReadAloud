@@ -2114,3 +2114,77 @@ prevTestsScroll 캡처·복원 (기존 sets 패턴 동일). 이제 새 시험 ap
   스크롤 보존
 - `api/generate-quiz.js`: SPEAKING_UNFIT_PROMPT notRealWord 4 카테고리 분리
 - SW 캐시: `kunsori-v614` → `kunsori-v620`
+
+---
+
+## 2026-06-01 (이어서): 메시지 진입 UX + 성장리포트 녹음숙제 정성 분리
+
+SW v620 → v623 (~3 commit). 학원장 보고 흐름.
+
+### 1) 메시지 진입 시 최근 10개 + 발송 후 즉시 이력 표시 (`32509bb`, v621)
+
+학원장 보고: 메시지관리 페이지 열면 초안·발송 둘 다 빈 칸 (default 날짜 필터
+'어제' 라 어제 작성·발송 없으면 0건). + 메시지 발송 후 발송 이력에 즉시
+안 보임 (loadMessages 재호출은 '어제' reset 부작용).
+
+수정:
+- `loadMessages` 날짜 필터 default `_msgYest` → `''` (빈 값 = 전체). `_msgFetchDrafts/Sent`
+  가 날짜 필터 없을 때 academy+sent+orderBy createdAt desc + limit(MSG_PAGE_SIZE=10)
+  자연 동작. 10개 초과 시 cursor 더보기.
+- `sendMessage` 성공 후 캐시 무효만 하던 케이스를 `_msgSentState` 리셋 + `_msgFetchSent(false)`
+  + `_msgRenderSentSection()` 로 변경. 현재 검색·날짜 필터 유지하며 최근 10개 재fetch.
+  server 가 sent doc 생성 (정확 id/필드 불명) 이라 surgical insert 대신 재fetch.
+  발송 한도 라벨 +1 도 즉시 반영. 옛 메모(server 생성 doc 은 invalidate 만) 케이스
+  를 "현재 필터 유지 + limit 10 재fetch" 로 진화.
+
+### 2) 성장리포트 녹음숙제 점수 분리 + 정성 코멘트 (`bbce155`·`d5874b4`, v622·v623)
+
+학원장 요청: 성장리포트의 녹음숙제 점수는 객관성/신뢰도 문제로 학생 비공개
+정책 (학생앱과 동일). 학원장 참고용으로만 수치 노출, 학부모 공유 PDF 에는
+정성 표현만.
+
+서버 (`api/growth-report.js`):
+- 점수 집계에서 녹음숙제 제외 — `totalSum`/`totalAttempts`/`avgScore`/`passedCount`
+  모두 `mode !== 'recording'` 만 합산. `modeBreakdown` 은 모드별 별도 표시용 유지.
+- 녹음숙제 정성 데이터 수집 — 최근 10개 testId 의 `genTests/{testId}/userCompleted/{uid}`
+  fetch → 최종 녹음의 `categoryScores`(발음·억양·속도·정확도) + `feedback.weakPronunciation`
+  + `feedback.tips` 추출. `_aggregateRecordingQuality` 로 빈도순 약한 단어 Top 5 + 팁 Top 3.
+- 출제/제출 카운트 — 최근 30일 학생 배정 recording 시험 수 (`recordingAssigned`)
+  vs 제출 수 (`recordingSubmitted`=`scores.testId distinct`). target 필터 + excludedUids 제외.
+- 응답 `recordingQuality` 에서 `avgCat` 제거 — `assigned`/`submitted`/`topWeakWords`/`topTips`
+  만 클라에 전달 (학생 보호 정책).
+- SYSTEM_PROMPT `recordingComment` 가이드 강화 — **출력에 절대 수치(점수·%) 금지**.
+  AI 가 카테고리 점수 내부 추론용으로만 사용, 정성 표현("안정적·꾸준히 향상 중·
+  더 다듬을 필요·흔들리는 부분") 만 출력. 약한 단어 예시(right·world)는 OK.
+  좋은/나쁜 예시 명시. 응시 0건 시 안내 문구.
+- `RESPONSE_SCHEMA` 에 `recordingComment` 필드 추가 (required).
+
+클라이언트 (`public/admin/js/app.js`):
+- 통계 카드(총 응시/평균/80점 이상)에서 "(녹음 제외)" 라벨 제거 — 점수 카드는
+  비-녹음 모드만 집계되는 사실은 동일하나 표시 단순화 (혼선 방지).
+- `modeBars` 녹음숙제 행 — 점수·평균 대신 `N회 출제 중 M회 제출 (X%)` 표시 +
+  `(정성 평가)` 부연. 진행률 바 색상은 제출률 기준 (80%↑ 초록 / 50%↑ 호박 /
+  그 외 빨강 / 0회 회색).
+- 🎤 녹음숙제 정성 평가 카드 신규 (추세 아래 amber 톤) — `recordingComment` 만 표시.
+  카테고리 평균 점수 부연 줄 제거.
+- PDF/인쇄(`printGrowthReport`)는 모달 본문 `innerHTML` 그대로 사용 → 자동 반영.
+
+### 작업 규칙 추가 (2026-06-01 이어서)
+
+- **점수 비공개 정책은 PDF·정성 코멘트까지 일관 적용** — 녹음숙제처럼 점수
+  객관성/신뢰도 문제로 학생 노출 제한이 있는 경우, 학원장 화면에서만 수치 노출.
+  학부모 공유 PDF·AI 정성 코멘트에서도 수치 노출 금지. AI 가 내부 추론용으로는
+  점수 사용 OK, 출력은 정성 표현만 하도록 프롬프트 강제.
+- **default 날짜 필터 = 빈 값(전체) 이 직관적** — "어제" 같은 기본값은 그 날짜에
+  데이터 없으면 빈 목록으로 학원장 혼선. 페이지네이션 + cursor 더보기가 있는 한
+  default 는 전체로 두는 게 직관적.
+- **server 생성 doc 의 즉시 표시 = 현재 필터 유지하며 limit N 재fetch** —
+  surgical insert 가 어려운 server-created doc 케이스에서 loadX 전체 reload
+  (필터 reset) 대신 cache 무효 + 부분 재fetch + 부분 재렌더 패턴.
+
+### 파일 크기 / SW 캐시 (2026-06-01 이어서)
+- `public/admin/js/app.js`: 메시지 default 날짜 + sendMessage 재fetch + 리포트
+  카드 정성 카드·modeBars 녹음 분기
+- `api/growth-report.js`: SYSTEM_PROMPT 수치 금지 강화 + recordingAssigned/Submitted
+  + `_aggregateRecordingQuality` 헬퍼 + RESPONSE_SCHEMA recordingComment
+- SW 캐시: `kunsori-v620` → `kunsori-v623`
