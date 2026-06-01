@@ -6996,7 +6996,7 @@ function _tlRenderLoadMore() {
   const wrap = document.getElementById('tlLoadMoreWrap');
   if (!wrap) return;
   if (_tlState.exhausted) {
-    wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨</div>';
+    wrap.innerHTML = '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">모두 표시됨</div>';
   } else {
     wrap.innerHTML = '<button id="tlLoadMoreBtn" class="btn btn-secondary" style="margin:10px auto;display:block;" onclick="loadMoreTestList()">+ 더 보기</button>';
   }
@@ -14157,7 +14157,7 @@ function _tpRenderNoSets(cfg) {
 function _tpRenderTestsTable() {
   // 시험 목록 페이지(testListBody)와 컬럼 통일 — 유형·체크박스만 제외, 작업(행별 🗑 삭제) 추가
   const loadMoreHtml = _tpTestsState.exhausted
-    ? '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">기간 내 모두 표시됨</div>'
+    ? '<div style="text-align:center;color:#888;padding:10px;font-size:12px;">모두 표시됨</div>'
     : '<button class="btn btn-secondary" style="margin:10px auto;display:block;" onclick="loadMoreTpTests()">+ 더 보기</button>';
   return `
     <table style="width:100%;border-collapse:collapse;">
