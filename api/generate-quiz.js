@@ -1236,12 +1236,23 @@ TRUE only if the word is PRIMARILY an imitative/sound-effect word.
   Rule of thumb: if the word names a concept or thing (even sound-related), it is NOT onomatopoeia.
 
 ──── "notRealWord" ────
-TRUE only if the word is NOT a standard English dictionary headword.
-  TRUE examples: Tom, Coca-Cola, FBI, USA, xqzy, lkjhg, supercalifragilistic, blorp
-  FALSE examples: any noun/verb/adjective/adverb that appears in a standard dictionary
-    (cat, run, beautiful, quickly, advertisement, magnificent, perpendicular, etc.)
-  Rule of thumb: if you can find the word in Oxford/Merriam-Webster, it is NOT notRealWord.
-  Proper nouns (names of specific people/brands/countries) and abbreviations are TRUE.
+TRUE only if the word is NOT suitable as a SPEAKING-test vocabulary item.
+  TRUE examples:
+    - Arbitrary personal names: Tom, John, Jenny, Mike
+    - Brand/product names: Coca-Cola, iPhone, Samsung, Nike
+    - Abbreviations / acronyms: FBI, USA, NASA, IBM
+    - Made-up / nonsense strings: xqzy, lkjhg, blorp, supercalifragilistic
+  FALSE examples (treat as normal vocab):
+    - Common dictionary words: cat, run, beautiful, quickly, advertisement, magnificent
+    - Geographic proper nouns (countries / cities / states / rivers / mountains):
+      Mississippi, Indianapolis, Tokyo, Korea, Paris, London, Seoul, Amazon, Everest
+    - Famous historical/literary figures listed in standard dictionaries: Einstein, Shakespeare
+  Rule of thumb:
+    1) If the word appears in Oxford/Merriam-Webster (including geographic entries), it is FALSE.
+    2) Geographic place names are standard English vocabulary and FALSE — they have clear
+       pronunciation and Korean students commonly learn them.
+    3) Only mark TRUE when the word is an arbitrary personal name, brand, abbreviation, or
+       nonsense string with no meaningful vocab value.
 
 ──── "hardForASR" ────
 TRUE only if a Korean student saying this word is HIGHLY likely to be misrecognized by
