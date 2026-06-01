@@ -2026,3 +2026,91 @@ cfg.hint 는 `enabled:false` 잠금 화면용 dead code 라 rec-ai 화면에 안
 - `public/super/js/app.js`: 사용량 5분류·Top10 컬럼·PLAN_FIELDS 정리
 - `firestore.indexes.json`: 메시지 자동삭제용 인덱스 2건
 - SW 캐시: `kunsori-v608` → `kunsori-v614`
+
+---
+
+## 2026-06-01: 시험목록 월초 컷오프 폐기 + 말하기 부적합 게이트 강화 + 최근시험 스크롤 보존
+
+SW v614 → v620 (~7 commit). 학원장 6/1 보고("최근시험 안 보임") 출발 → 월초 컷오프
+2곳 패치 → 그 흐름으로 말하기 부적합 게이트 휴리스틱 3가지 확장 + 스크롤 UX 정리.
+
+### 1) 시험목록 월초 컷오프 폐기 (`2168def`·`96f758b`·`232aa72`, v615→v618)
+
+매월 1일 학원장이 보던 "최근시험 0건" 증상 — 두 곳에서 동일 원인.
+
+- `_renderTestAssignDetail`/`loadMoreTpTests` (시험관리 > 각 시험 출제 화면 최근시험)
+- `loadTestList`/`loadMoreTestList` (진도체크 > 시험별 진도체크)
+
+기존 쿼리: `where(academyId)+where(testMode)+where(createdAt >= 월초)+orderBy(desc)+limit(20)`
+→ 매월 1일 그 달 출제분 0건이면 빈 목록, 5월 시험 안 보임.
+
+신: 날짜 필터 제거 → `where(academyId)+orderBy(createdAt desc)+limit(20)` + cursor 더보기.
+`_tpTestsState.monthStartDate` / `_tlState.startDate` 필드 폐기. 라벨 '기간 내 모두
+표시됨' → '모두 표시됨' (misleading 정리).
+
+**전수 조사 결과**: 월초 컷오프 사용처는 이 두 곳이 전부 (`_ymdMonthStartKST()` 함수
+호출 grep 0건). 결제/메시지/성적 리포트 등은 사용자 직접 날짜 선택(의도) 또는 rolling
+N일 윈도우(의도)로 정상.
+
+### 2) 말하기 부적합 게이트 휴리스틱 3가지 확장 (`81250d5`·`c5ea274`, v616·v619)
+
+학원장 보고 "배정 불가 — 말하기 데이터 누락" (Hallelujah, keep ~ open, there 's)
+계기. 자리표시·비정상 형식이 AI 채움 단계까지 가서야 차단되던 케이스를 게이트에서
+선제 검출. `_tpSpeakingUnfitReasons`:
+
+| 사유 라벨 | 검출 패턴 | 매칭 예 |
+|----------|----------|---------|
+| 자리표시 기호 포함 (신규) | `~`, `…`, `..` 이상 | `look ~ up`, `name ~ after`, `try...` |
+| 비정상 띄어쓰기 (신규) | 공백+`'`/`'`+공백/연속 공백 | `there 's`, `it 's` |
+| 특수문자/구분자 포함 (신규) | `/`, `>`, `,`, 괄호류, 통화기호 등 | `rice/fall`, `abandon, leave`, `name > called` |
+| 3글자 이하 (기존) | 영문 추출 후 ≤3자 | `up`, `be`, `go` |
+
+저장 게이트(`_qsValidateWordChars`)는 변화형 구분자(`/>~,`)를 단어장 표기 관행상
+허용했는데, 말하기에선 발음 불가 — 게이트 두 개가 다른 정책 적용(저장 허용 ↔ 말하기
+차단)으로 적절히 분리.
+
+### 3) SPEAKING_UNFIT_PROMPT notRealWord 규칙 세분화 (`b13c507`)
+
+학원장 질문 "Indianapolis, Mississippi 같은것도 사전에 없는 단어인가?" 계기. 이전
+프롬프트 "Proper nouns (people/brands/countries) and abbreviations are TRUE" 가
+지명·사전 등재 인물명까지 한 묶음으로 차단.
+
+세분화 — Oxford/Merriam-Webster 사전 등재 여부 단일 기준:
+- TRUE — 임의 인명(Tom·John) / 브랜드(Coca-Cola·iPhone) / 약자(FBI·USA·NASA) / 무의미(xqzy)
+- FALSE — 일반 dict + **지명·국가·도시·강·산**(Mississippi·Tokyo·Korea·Paris) +
+  사전 등재 역사/문학 인물(Einstein·Shakespeare)
+
+HOMOPHONES_PROMPT 는 별도 수정 불필요 — RULE 2 "proper noun 대문자 유지" + RULE 4
+"unusual 단어 best phonetic Korean approximation" 으로 이미 사전 등재 지명·인물의
+koPron/sentence/sentenceKo 정상 생성. 통과 후 자동 채움 자연 동작.
+
+### 4) 시험관리 최근시험 [+ 더 보기] 스크롤 위치 보존 (`ec96d19`, v620)
+
+[+ 더 보기] 클릭 시 `_tpRender()` 재호출 → `innerHTML` 교체 → tests pane 스크롤이
+처음(1번 시험)으로 리셋 → 학원장이 매번 다시 스크롤 내려야 하던 UX 불편.
+
+`_tpRender` 가 sets pane(`tpSetsScroll`)만 prevScroll 캡처·복원했는데 tests pane
+(하단 최근시험)은 누락. tests 스크롤 컨테이너에 `id="tpTestsScroll"` 부여 +
+prevTestsScroll 캡처·복원 (기존 sets 패턴 동일). 이제 새 시험 append 만 되고 사용자
+위치 그대로 유지.
+
+### 작업 규칙 추가 (2026-06-01)
+
+- **월초 컷오프 패턴은 학원장 혼선 일으킴 — 단순 최근 N개로** — 매월 1일 그 달 출제분
+  0건이면 빈 목록 + 지난달 안 보임. 단순 cursor 페이지네이션이 직관적. 예외: 결제처럼
+  월 단위가 본질인 영역만 유지.
+- **저장 게이트 ↔ 말하기 게이트 정책 분리 OK** — 같은 데이터에 다른 정책 적용 가능.
+  변화형 구분자(`/>~,`)는 일반 vocab 단어장에선 표기 관행상 허용, 말하기에선 발음 불가.
+  게이트별 자기 기준으로 판단, 통일 강요하지 않음.
+- **AI 프롬프트 boolean 분류는 단일 판정 기준 명시** — '모든 proper noun = TRUE' 같은
+  광범위한 규칙은 합리적 케이스(지명·역사인물)까지 한 묶음으로 잘못 분류. 단일 객관적
+  기준(예: 사전 등재 여부) 제시 + 카테고리별 examples 로 세분화 → AI 일관성·정확도 ↑.
+- **재렌더 시 scrollTop 복원 패턴 — 사용자 위치 유지** — innerHTML 교체로 스크롤
+  리셋되는 컨테이너는 prevScroll 캡처·복원 필수. 같은 페이지에 여러 스크롤 컨테이너가
+  있으면 각각 따로 캡처(`tpSetsScroll` + `tpTestsScroll`).
+
+### 파일 크기 / SW 캐시 (2026-06-01)
+- `public/admin/js/app.js`: 월초 필터 제거 2곳 + 휴리스틱 3카테고리 확장 + tpTestsScroll
+  스크롤 보존
+- `api/generate-quiz.js`: SPEAKING_UNFIT_PROMPT notRealWord 4 카테고리 분리
+- SW 캐시: `kunsori-v614` → `kunsori-v620`
