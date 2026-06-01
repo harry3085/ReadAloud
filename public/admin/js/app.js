@@ -13849,8 +13849,9 @@ function _tpRender() {
   const root = document.getElementById(cfg.rootId);
   if (!root) return;
 
-  // 재렌더 시 스크롤 위치 보존 (체크박스 토글 등)
+  // 재렌더 시 스크롤 위치 보존 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치 유지)
   const prevScroll = document.getElementById('tpSetsScroll')?.scrollTop || 0;
+  const prevTestsScroll = document.getElementById('tpTestsScroll')?.scrollTop || 0;
 
   const folders = _tpBuildFolders();
   // 활성 폴더 캐시에서 _tpSets 채우기 (lazy — 폴더 클릭 시 fetch)
@@ -13944,7 +13945,7 @@ function _tpRender() {
           </div>
           ${cfg.actions?.includes('assign') ? `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="tpAssignRefresh()">↻ 새로고침</button>` : ''}
         </div>
-        <div style="flex:1;overflow-y:auto;">
+        <div id="tpTestsScroll" style="flex:1;overflow-y:auto;">
           ${!cfg.enabled
             ? `<div style="padding:30px;text-align:center;color:var(--gray);font-size:12px;">${esc(cfg.phaseLabel)} 에서 활성화되면 이곳에 출제된 시험이 표시됩니다</div>`
             : (!cfg.actions?.includes('assign')
@@ -13964,10 +13965,14 @@ function _tpRender() {
   _tpAttachResizer(root);
   _tpAttachVResizer(root);
 
-  // 스크롤 위치 복원 — 체크박스 토글 시 깜빡임 방지
+  // 스크롤 위치 복원 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치)
   if (prevScroll > 0) {
     const newEl = document.getElementById('tpSetsScroll');
     if (newEl) newEl.scrollTop = prevScroll;
+  }
+  if (prevTestsScroll > 0) {
+    const newEl = document.getElementById('tpTestsScroll');
+    if (newEl) newEl.scrollTop = prevTestsScroll;
   }
 }
 
