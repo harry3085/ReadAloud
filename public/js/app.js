@@ -5485,7 +5485,6 @@ function _vqHideFeedbackBanner(){
 }
 
 async function _vqAutoNext() {
-  _vqCancelAutoSubmit();  // 새 문제 진입 시 이전 타이머 정리
   const s = _vqState;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
