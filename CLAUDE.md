@@ -2188,3 +2188,143 @@ SW v620 → v623 (~3 commit). 학원장 보고 흐름.
 - `api/growth-report.js`: SYSTEM_PROMPT 수치 금지 강화 + recordingAssigned/Submitted
   + `_aggregateRecordingQuality` 헬퍼 + RESPONSE_SCHEMA recordingComment
 - SW 캐시: `kunsori-v620` → `kunsori-v623`
+
+---
+
+## 2026-06-02: 학생 등록 진단 + 스펠 자동 제출 제거(회귀 1회) + 비번 입력 검증·토글
+
+SW v623 → v627 (~5 commit + 진단 3 스크립트). 학원장 "엑셀 등록 학생 비번이
+잘못 박힌다" / "스펠 오타 수정 못한다" / "비번 변경했다는데 안 된다" 보고
+연쇄. 끝에 학원장 자가검증을 위한 비번 입력 UI 강화.
+
+### 1) 학생 등록 진단 — 코드는 100% 정상, 학생 입력 측 원인
+
+학원장 보고: 6/1~6/2 엑셀 등록 학생 5명 모두 비번 잘못 박혔다고 학생들이
+보고. 학원장이 5명 전원 '123456' 으로 재설정.
+
+**코드 점검 결과** ([app.js:6808](public/admin/js/app.js#L6808)):
+- `importStudentExcel` 이 password `'123456'` literal 박음 — 분기·조건·변수
+  없음. 엑셀의 어떤 컬럼도 password 자리에 들어갈 코드 경로 0
+- `saveStudent` (단건) 은 학원장 모달 입력 그대로 전송, default 박는 코드 없음
+- `api/createStudent.js:195` 는 클라가 보낸 password 그대로 `auth.createUser`
+  에 전달, 강제 변환 없음
+
+**진단 스크립트 3개 신규** (`scripts/diag/`):
+- `check-students-2026-06-02.js` — 6/1~6/2 등록 학생 전수 진단 (Firestore +
+  Auth + usernameLookup 일치 + 글로벌 username 충돌 + lastSignInTime)
+- `check-password-resets-today.js` — 오늘(KST) `tokensValidAfterTime` 갱신된
+  Auth user (비번 재설정 추정) 전수 검출
+- `check-student-by-name.js <name>` — 이름으로 단건 진단 (재호출 가능 헬퍼)
+
+**진단 결과** (6/1~6/2 5명 + 6/2 추가 등록 2명 + 5/12 등록 최하진):
+- 5명 모두 Firestore + Auth + usernameLookup + customClaims 정상, providerData=password 박힘
+- **3명 (최하진·목선우·홍주영) 재설정 전에 정상 로그인 성공 기록** → 등록 시점
+  비번 '123456' 이 정상 박혔던 **확정 증거**. 김가윤·안유나는 재설정 후 로그인
+  이라 직접 검증 불가지만 같은 createStudent 경로 + 다른 3명 정상 박힘 → 동일
+  하게 박혔다고 강하게 추정
+- 추가 김기헐 케이스: 등록 40초 만에 lastSignInTime 박힘 → 엑셀 등록 로직
+  정상 작동 한 번 더 확인
+
+**결론**: 엑셀 등록 코드 100% 정상. "비번 안 됨" 보고의 실제 원인은
+학생 입력 오류(한글 자판 / 1↔l / O↔0 / 한 번 입력 후 잊음) 또는 학생이 본인
+"내 정보" 에서 비번 변경 후 잘못 기억. Firebase Auth 는 비번 plain 값 어디
+에도 저장 안 함(해시만) → admin SDK 도 검증 불가, **변경 이력 조회도 불가**
+(`tokensValidAfterTime` 은 최신 한 번만 박힘).
+
+**createStudent.js 의 createdBy 미기록 발견** (`api/createStudent.js:227`):
+`callerUid` 를 idToken 검증 단계에서 알고 있는데 `users` doc 에 안 박음.
+영향 — 등록 경로(엑셀 vs 단건) 추적 불가, 다중 학원장 시 책임 추적 0,
+super 운영 분석 부재. 옛 데이터는 백필 불가(서버 로그 휘발). 즉시 수정
+대신 멀티학원장(부원장) 도입 시점에 묶어서 진행하기로 보류.
+
+### 2) 단어시험 스펠링 자동 제출 제거 + v624 회귀 fix
+
+학원장 보고 "마지막 알파벳 입력하면 자동으로 다음 문제 — 오타 수정 시도조차
+못 함". 옛 동작: input 이벤트 핸들러가 `_vqScheduleAutoSubmit` 400ms
+debounce 로 자동 `vqNext()` 호출.
+
+**v624** (`4a5a880`): input 핸들러의 자동 진행 트리거 제거 + 함수 정의
+(`_vqScheduleAutoSubmit`/`_vqCancelAutoSubmit`/`_vqAutoSubmitTimer`) 삭제.
+제출 버튼/Enter/타이머 만료 경로만 유지.
+
+**v625 회귀 fix** (`5032de0`): `_vqAutoNext()` 안에 `_vqCancelAutoSubmit()`
+호출 한 줄이 남아있어 ReferenceError → 모든 vocab 시험 유형(스펠/말하기/MCQ)
+에서 제출 → 피드백 표시 → 버튼 disabled → throw → **다음 문제로 진행 안 됨**.
+호출 잔존 1줄 제거. v624 운영 시간 ~30분~1시간 동안 응시 중이던 학생은 시험
+도중 멈췄을 가능성.
+
+회귀 표본 — Phase 6D 회귀(고아 `};`, 2026-04-21) 와 같은 부류. 함수 제거 시
+호출처 grep 누락이 ReferenceError 회귀를 부름. 작업 규칙으로 정립.
+
+### 3) 비밀번호 입력 검증·토글 강화 (v626 / v627)
+
+학원장 "최하진이 본인이 '123456' 으로 바꿨다는데 안 됨" 추가 보고. 학생앱
+"내 정보" 에 비번 변경 input 1개(`#myNewPw`, `type=password`)만 있어 학생도
+자기 입력값 자가검증 불가. 학원장 [학생 추가/수정] 모달의 `#sPw`/`#euPw` 도
+같은 상태라 학원장도 본인 입력 확인 불가.
+
+**v626** (`da35412`): 비번 보기 토글 + 일치 검증
+- 학생앱 [내 정보]: `#myNewPw` 👁 토글 + **비번 확인 input** (`#myNewPwConfirm`)
+  + 일치 검증 (불일치 시 "비밀번호 확인이 일치하지 않습니다" 토스트). 비번 입력
+  시 확인 칸 자동 노출, 비우면 다시 숨김
+- 학원장 [학생 추가] `#sPw`: 👁 토글
+- 학원장 [학생 정보 수정] `#euPw`: 👁 토글
+- `togglePwVis(id, btnEl)` 함수 학생앱·학원장 앱에 각각 분리 등록 (별개 파일)
+- 모바일 자동완성 차단: `autocomplete="new-password"` + `autocorrect=off`
+  + `autocapitalize=off` + `spellcheck=false` (Phase 6C 학습 적용)
+
+**v627** (`ea46529`): 학원장 피드백 — 위치 fix + 도식 SVG 교체
+- 학생앱 토글 위치 — `form-row` 절대좌표(`top:38px`) → input wrapper
+  `position:relative` + `top:50%/transform` → **input 정중앙** 정렬
+- 👁 이모지 → **stroke SVG** (Heroicons/Lucide 풍 eye / eye-off, `color:#999`)
+- 토글마다 eye ↔ eye-off 상태 전환 (현재 보기/숨김 상태 직관 표시)
+- 학생앱 진입 시 `_SVG_EYE` 로 토글 아이콘도 리셋 (이전 진입 잔존 방지)
+
+### 작업 규칙 추가 (2026-06-02)
+
+신규:
+- **함수 제거 시 호출처 전수 grep 필수** — 정의만 지우고 호출 잔존하면
+  ReferenceError 회귀. 옛 함수명 grep → 0건 확인 후 commit. `node --check`
+  만으로는 못 잡음(syntax 통과). Phase 6D 고아 `};` (2026-04-21) 와 같은
+  부류의 함수 경계 회귀, 작업 후 grep 검증 routinize 필수.
+- **Firebase Auth 비번 plain 조회 불가 — admin SDK 도 해시만** — `passwordHash`
+  필드가 listUsers 에서 보이지만 해시고 plain 복원 불가. 비번 변경 이력도
+  `tokensValidAfterTime` 한 번(최신 변경만) 만 박혀 옛 이력 추적 불가.
+  학원장이 비번 알고 싶으면 **본인 재설정 + 직접 입력값 학생 안내** 외 방법
+  없음. Cloud Audit Log 활성화 시 가능하나 기본 비활성.
+- **`providerData=password` 박힘 = 비번 등록됨 (값 무관)** — admin SDK 진단
+  `getUser.passwordHash` 는 일반적으로 미반환(listUsers 만 반환). 진단 시
+  `providerData` 가 password 가지면 Auth 계정에 비번 박혀 있는 것 확정.
+  passwordHash 부재로 "비번 안 박혔다" 오판 금지.
+- **CRITICAL UI input 은 자가검증 가능해야** — `type=password`(●●●) 만으로는
+  사용자(학생·학원장 모두) 입력 오류 자가검증 불가. 비번 같은 critical input
+  은 👁 토글로 보기 옵션 + (새 비번 설정 경로면) 비번 확인 input 으로
+  이중 입력 검증. 모바일 자동완성 차단 속성 동봉 필수.
+- **inline onclick 의 `this` 전달로 button 상태 토글** — `togglePwVis(id, this)`
+  처럼 button 자체를 전달하면 함수에서 `btnEl.innerHTML` 교체로 아이콘 상태
+  토글 가능. data-* 패턴 안 써도 안전(`this` 는 엔티티 디코딩 영향 0).
+  사용자 데이터 박는 경우만 data-* 필요.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-02)
+
+- 학생 등록 진단: ~100% (코드 정상 확인 + 진단 스크립트 3개 정착)
+- 단어시험 스펠 UX: ~100% (자동 제출 제거 + 회귀 fix)
+- 비번 입력 검증·토글: ~100% (학생앱·학원장 앱 3곳 적용, 위치·아이콘 정비)
+- createStudent.js createdBy 미기록: **미해결** (멀티학원장 도입 묶음 대기)
+- 멀티테넌시·결제·말하기·성장리포트·AI Generator: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `public/_app.html`: 학생앱 비번 변경 영역 input wrapper + 확인 칸 + SVG 토글
+- `public/js/app.js`: 자동 제출 트리거·함수 제거(v624) + `_vqAutoNext` 호출
+  잔존 제거(v625) + `togglePwVis` + 비번 검증·확인 칸 show/hide + SVG 상수
+- `public/admin/js/app.js`: `togglePwVis` + sPw/euPw input wrapper + SVG 토글
+- `scripts/diag/check-students-2026-06-02.js` / `check-password-resets-today.js`
+  / `check-student-by-name.js`: 신규 진단 (untracked, .gitignore)
+- SW 캐시: `kunsori-v623` → `kunsori-v627`
+
+**다음 세션 후보** (변동):
+1. `createStudent.js createdBy/createdMethod` 박기 — 멀티학원장 도입 묶음
+2. 학생앱 비번 변경 후 재확인 안내 강화 (변경 직후 토스트에 마지막 시도값 안내 등)
+3. Phase 5 출시 준비 (도메인·약관·결제 PG)
+4. v1.0 Polish 사이클 / super reads P2 (변동 없음)
