@@ -4335,22 +4335,55 @@ window.goMyInfo=()=>{
   document.getElementById('myParentName').value=userProfile?.parentName||'';
   document.getElementById('myParentPhone').value=userProfile?.parentPhone||'';
   document.getElementById('myNewPw').value='';
+  const confirmEl=document.getElementById('myNewPwConfirm');
+  if(confirmEl) confirmEl.value='';
+  const confirmRow=document.getElementById('myNewPwConfirmRow');
+  if(confirmRow) confirmRow.style.display='none';
+  // 새 비번 칸 비번 type 으로 리셋 (이전 진입에서 토글한 상태 잔존 방지)
+  const pwEl=document.getElementById('myNewPw');
+  if(pwEl) pwEl.type='password';
+  if(confirmEl) confirmEl.type='password';
   show('myInfo');
 };
+
+// 비번 보기/숨기기 토글 — 학생앱 (학원장 앱과 별개)
+window.togglePwVis = (id) => {
+  const inp = document.getElementById(id);
+  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+};
+
+// 새 비번 입력 시 확인 칸 노출 (비우면 다시 숨김)
+document.addEventListener('DOMContentLoaded', () => {
+  const pw = document.getElementById('myNewPw');
+  const row = document.getElementById('myNewPwConfirmRow');
+  if (pw && row) {
+    pw.addEventListener('input', () => {
+      row.style.display = pw.value ? '' : 'none';
+      if (!pw.value) {
+        const c = document.getElementById('myNewPwConfirm');
+        if (c) c.value = '';
+      }
+    });
+  }
+});
 
 window.saveMyInfo=async()=>{
   const name=document.getElementById('myName').value.trim();
   const parentName=document.getElementById('myParentName').value.trim();
   const parentPhone=document.getElementById('myParentPhone').value.trim();
   const newPw=document.getElementById('myNewPw').value.trim();
+  const newPwConfirm=(document.getElementById('myNewPwConfirm')?.value||'').trim();
   if(!name){showToast('이름을 입력하세요.');return;}
+  if(newPw){
+    if(newPw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
+    if(newPw!==newPwConfirm){showToast('비밀번호 확인이 일치하지 않습니다.');return;}
+  }
   try{
     await updateDoc(doc(db,'users',currentUser.uid),{name,parentName,parentPhone});
     userProfile.name=name; userProfile.parentName=parentName; userProfile.parentPhone=parentPhone;
     const greetEl=document.getElementById('greetName');
     if(greetEl) greetEl.textContent=name+' 님';
     if(newPw){
-      if(newPw.length<6){showToast('비밀번호는 6자 이상이어야 합니다.');return;}
       await updatePassword(currentUser,newPw);
       showToast('✅ 정보와 비밀번호가 변경됐어요!');
     } else {

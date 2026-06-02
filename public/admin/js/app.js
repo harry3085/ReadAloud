@@ -16,6 +16,13 @@ function showToast(msg){
   _toastTimer=setTimeout(()=>t.classList.remove('show'),2500);
 }
 window.showToast=showToast;
+
+// 비번 보기/숨기기 토글 — 학생 추가·수정 모달의 비밀번호 input 에서 사용 (2026-06-02)
+window.togglePwVis = (id) => {
+  const inp = document.getElementById(id);
+  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+};
+
 function showConfirm(title,sub=''){
   return new Promise(resolve=>{
     document.getElementById('confirmTitle').textContent=title;
@@ -1953,7 +1960,7 @@ window.openStudentModal = async() => {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
           <div><div style="color:var(--gray);margin-bottom:5px;">아이디 *</div><input id="sId" type="text" placeholder="영문/숫자" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">이름 *</div><input id="sName" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
-          <div><div style="color:var(--gray);margin-bottom:5px;">비밀번호 *</div><input id="sPw" type="password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+          <div><div style="color:var(--gray);margin-bottom:5px;">비밀번호 *</div><div style="position:relative;"><input id="sPw" type="password" autocomplete="new-password" placeholder="6자 이상" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 38px 8px 10px;font-size:13px;outline:none;"><button type="button" onclick="togglePwVis('sPw')" aria-label="비밀번호 보기" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1;">👁</button></div></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">반</div><select id="sGroup" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">${opts}</select></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">생일</div><input id="sBirth" type="date" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">학교</div><input id="sSchool" type="text" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
@@ -7377,7 +7384,7 @@ window.editStudent = async(id) => {
           <div><div style="color:var(--gray);margin-bottom:5px;">연락처</div>
             <input id="euPhone" type="tel" value="${u.phone||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">새 비밀번호</div>
-            <input id="euPw" type="password" placeholder="변경 시만 입력" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
+            <div style="position:relative;"><input id="euPw" type="password" autocomplete="new-password" placeholder="변경 시만 입력" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 38px 8px 10px;font-size:13px;outline:none;"><button type="button" onclick="togglePwVis('euPw')" aria-label="비밀번호 보기" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;line-height:1;">👁</button></div></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">부모님 성함</div>
             <input id="euParentName" type="text" value="${u.parentName||''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;"></div>
           <div><div style="color:var(--gray);margin-bottom:5px;">부모님 연락처</div>
