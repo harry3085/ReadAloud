@@ -6228,18 +6228,8 @@ window.updateTestBadge = updateVocabBadge;
 window.updateUnscBadge = updateUnscBadge2;
 
 // 스펠 input 이벤트 바인딩 (DOM 복원 시마다 재호출 필요)
-// 스펠링 답 완성 → debounce 자동 제출 (vqNext)
-let _vqAutoSubmitTimer = null;
-function _vqScheduleAutoSubmit() {
-  _vqCancelAutoSubmit();
-  _vqAutoSubmitTimer = setTimeout(() => {
-    _vqAutoSubmitTimer = null;
-    if (typeof window.vqNext === 'function') window.vqNext();
-  }, 400);
-}
-function _vqCancelAutoSubmit() {
-  if (_vqAutoSubmitTimer) { clearTimeout(_vqAutoSubmitTimer); _vqAutoSubmitTimer = null; }
-}
+// 자동 제출 제거 (2026-06-02) — 마지막 글자 입력 시 자동 진행하면 오타 수정 불가.
+// 학생이 [제출 ▶] 또는 Enter 로 명시적 진행.
 
 function _vqBindSpellInput(){
   const inp = document.getElementById('vqSpellInput');
@@ -6265,12 +6255,6 @@ function _vqBindSpellInput(){
     ans.input = v;
     _vqRenderSpellBoxes(ans);
     _vqUpdateSubmitBtn();
-    // 답 완성 시 자동 진행 트리거 (debounce 400ms — 학생 정정 여유)
-    if (v.length === target.length && target.length > 0) {
-      _vqScheduleAutoSubmit();
-    } else {
-      _vqCancelAutoSubmit();
-    }
   });
   inp.addEventListener('keydown', function(e){
     if (e.key === 'Enter') {
