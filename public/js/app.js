@@ -4339,17 +4339,22 @@ window.goMyInfo=()=>{
   if(confirmEl) confirmEl.value='';
   const confirmRow=document.getElementById('myNewPwConfirmRow');
   if(confirmRow) confirmRow.style.display='none';
-  // 새 비번 칸 비번 type 으로 리셋 (이전 진입에서 토글한 상태 잔존 방지)
+  // 새 비번 칸 비번 type + 토글 아이콘 리셋 (이전 진입에서 토글한 상태 잔존 방지)
   const pwEl=document.getElementById('myNewPw');
   if(pwEl) pwEl.type='password';
   if(confirmEl) confirmEl.type='password';
+  document.querySelectorAll('#myInfo button[onclick^="togglePwVis"]').forEach(b=>{ b.innerHTML=_SVG_EYE; });
   show('myInfo');
 };
 
 // 비번 보기/숨기기 토글 — 학생앱 (학원장 앱과 별개)
-window.togglePwVis = (id) => {
+const _SVG_EYE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const _SVG_EYE_OFF = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`;
+window.togglePwVis = (id, btnEl) => {
   const inp = document.getElementById(id);
-  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  if (btnEl) btnEl.innerHTML = inp.type === 'password' ? _SVG_EYE : _SVG_EYE_OFF;
 };
 
 // 새 비번 입력 시 확인 칸 노출 (비우면 다시 숨김)
