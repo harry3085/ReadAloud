@@ -27,6 +27,18 @@ window.togglePwVis = (id, btnEl) => {
   if (btnEl) btnEl.innerHTML = inp.type === 'password' ? _SVG_EYE : _SVG_EYE_OFF;
 };
 
+// 이모지 → SVG 아이콘 헬퍼 (2026-06-03 Phase 1 — Lucide 풍 stroke-only)
+// 사용: ${icon('edit')} ${icon('trash', 18)}
+const ICONS = {
+  edit:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+};
+function icon(name, size=16) {
+  const svg = ICONS[name] || '';
+  return `<span style="display:inline-flex;width:${size}px;height:${size}px;color:currentColor;vertical-align:-3px;">${svg}</span>`;
+}
+window.icon = icon;
+
 function showConfirm(title,sub=''){
   return new Promise(resolve=>{
     document.getElementById('confirmTitle').textContent=title;
@@ -2193,7 +2205,7 @@ async function loadHwFileAdmin(){
       <td>${icons[f.type]||'📄'} ${(f.type||'').toUpperCase()}</td>
       <td class="td-sub">${f.date||''}</td>
       <td><a href="${f.url||'#'}" target="_blank" class="btn btn-secondary btn-sm">다운로드</a></td>
-      <td><button class="btn btn-secondary btn-sm" onclick="editHwFile('${f.id}')">✏️ 수정</button></td>
+      <td><button class="btn btn-secondary btn-sm" onclick="editHwFile('${f.id}')">${icon('edit')} 수정</button></td>
     </tr>`, 'hwfilePagination', 7);
   }catch(e){ el.innerHTML='<tr><td colspan="8" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>'; }
 }
@@ -2220,7 +2232,7 @@ window.editHwFile = async(id) => {
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">✏️ 자료 수정</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">${icon('edit')} 자료 수정</div>
       </div>
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
@@ -2748,7 +2760,7 @@ function _billingRenderRow(b, matEnabled) {
         <button class="action-btn" onclick="event.stopPropagation();_billingOpenMessage('${b.id}')" title="학원장 안내 메시지" style="padding:4px 8px;font-size:11px;">📨</button>
       </td>
       <td style="padding:8px 12px;text-align:center;">
-        <button onclick="event.stopPropagation();_billingDeleteRow('${b.id}','${esc(b.studentName||'').replace(/'/g,"&#39;")}','${esc(b.studentUid||'')}')" title="이 청구서 삭제 + 자동 청구 영구 OFF" style="padding:5px 10px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:16px;line-height:1;">🗑</span>삭제</button>
+        <button onclick="event.stopPropagation();_billingDeleteRow('${b.id}','${esc(b.studentName||'').replace(/'/g,"&#39;")}','${esc(b.studentUid||'')}')" title="이 청구서 삭제 + 자동 청구 영구 OFF" style="padding:5px 10px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:16px;line-height:1;">${icon('trash')}</span>삭제</button>
       </td>
     </tr>`;
 }
@@ -3158,7 +3170,7 @@ function _billingRenderItemPanel() {
               onchange="_billingUpdateItem('${it.itemId}','paid',this.checked)" style="width:14px;height:14px;">
             입금
           </label>
-          <button class="action-btn danger" onclick="_billingDeleteItem('${it.itemId}')" style="padding:3px 7px;font-size:16px;line-height:1;">🗑</button>
+          <button class="action-btn danger" onclick="_billingDeleteItem('${it.itemId}')" style="padding:3px 7px;font-size:16px;line-height:1;">${icon('trash')}</button>
         </div>
         <input type="text" value="${esc(it.memo || '')}" placeholder="메모 (선택)"
           onblur="_billingUpdateItem('${it.itemId}','memo',this.value)"
@@ -3470,7 +3482,7 @@ function _billingRenderMessageModal() {
   };
 
   const customNotice = hasCustom
-    ? `<div style="padding:6px 10px;background:#ecfeff;border-radius:5px;font-size:11px;color:#0e7490;margin-bottom:8px;">✏️ 학원에서 편집한 템플릿이 적용됨 — 모든 학생에 동일.</div>`
+    ? `<div style="padding:6px 10px;background:#ecfeff;border-radius:5px;font-size:11px;color:#0e7490;margin-bottom:8px;">${icon('edit')} 학원에서 편집한 템플릿이 적용됨 — 모든 학생에 동일.</div>`
     : '';
 
   const footerHtml = isBulk
@@ -3687,7 +3699,7 @@ function _billingRenderTemplateEditor() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-              <span style="font-size:12px;font-weight:600;">✏️ 내가 쓸 메시지 ${isCust ? '<span style="color:#0d9488;font-weight:400;">(편집됨)</span>' : '<span style="color:#bbb;font-weight:400;">(기본값)</span>'}</span>
+              <span style="font-size:12px;font-weight:600;">${icon('edit')} 내가 쓸 메시지 ${isCust ? '<span style="color:#0d9488;font-weight:400;">(편집됨)</span>' : '<span style="color:#bbb;font-weight:400;">(기본값)</span>'}</span>
               ${isCust ? `<button onclick="_billingTplResetCurrent()" style="padding:3px 8px;background:white;color:#dc2626;border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:pointer;">↺ 기본값으로</button>` : ''}
             </div>
             <div id="billingTplDraft" contenteditable="true"
@@ -5761,7 +5773,7 @@ window.showScoreDetail = async(scoreId, testId) => {
       const _deleted = !!(s.testId && String(s.testId).trim());
       detailHtml = _deleted
         ? `<div style="text-align:center;padding:24px 12px;color:var(--gray);font-size:12px;line-height:1.6;">
-            <div style="font-size:24px;margin-bottom:6px;">🗑</div>
+            <div style="font-size:24px;margin-bottom:6px;">${icon('trash')}</div>
             <div style="font-weight:600;color:#888;">삭제된 시험 - 상세 답안을 볼 수 없습니다</div>
             <div style="font-size:11px;color:#bbb;margin-top:4px;">점수는 보존되나, 상세 답안은 시험 삭제 시 함께 제거됩니다</div>
           </div>`
@@ -6111,7 +6123,7 @@ window.loadPersonalScore = async(uid) => {
           <td style="padding:8px 10px;font-size:12px;color:#475569;${ellipsis}" title="${esc(summary)}">${esc(summary)}</td>
           <td style="padding:8px 6px;text-align:center;font-size:16px;line-height:1;">👁</td>
           <td style="padding:8px 6px;text-align:center;font-size:16px;line-height:1;" onclick="event.stopPropagation();grDeleteReport('${esc(h.id)}','${esc(uid)}')" title="삭제"
-              onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color=''">🗑</td>
+              onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color=''">${icon('trash')}</td>
         </tr>`;
       }, 'grHistoryPag', 6, { pageSize: 5 });
     }
@@ -6408,7 +6420,7 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
         <div style="font-size:10px;color:#bbb;margin-top:12px;text-align:right;">${reportId ? 'reportId: ' + esc(reportId) : ''}</div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <button class="btn btn-secondary" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;" onclick="grDeleteReport('${esc(currentId||'')}','${esc(uid||'')}',true)">🗑 이 리포트 삭제</button>
+        <button class="btn btn-secondary" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;" onclick="grDeleteReport('${esc(currentId||'')}','${esc(uid||'')}',true)">${icon('trash')} 이 리포트 삭제</button>
         <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
       </div>
     </div>`;
@@ -9817,14 +9829,14 @@ async function _cleanupRenderPresetManager() {
           ? ` <span style="font-size:10px;color:var(--gray);">(기본)</span>${isDirty?' <span style="color:#c47;font-weight:700;" title="기본값과 다름">●</span>':''}`
           : '';
         const actions = [
-          `<button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">✏️ 편집</button>`,
+          `<button class="action-btn" onclick="cleanupEditPreset('${esc(p.id)}')">${icon('edit')} 편집</button>`,
           isDefaultNamed
             ? `<button class="action-btn" onclick="cleanupResetPreset('${esc(p.id)}')" ${isDirty?'':'disabled style="opacity:.4;"'}>↺ 기본값</button>`
             : '',
           `<button class="action-btn" onclick="cleanupDuplicatePreset('${esc(p.id)}')">⎘ 복제</button>`,
           isDefaultNamed
             ? '' // 기본 프리셋은 삭제 불가 (이름 매칭 기준)
-            : `<button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">🗑 삭제</button>`,
+            : `<button class="action-btn danger" onclick="cleanupDeletePreset('${esc(p.id)}')">${icon('trash')} 삭제</button>`,
         ].filter(Boolean).join(' ');
         return `
           <tr style="border-bottom:1px solid var(--border);">
@@ -9880,7 +9892,7 @@ window.cleanupEditPreset = (id) => {
   const html = `
   <div style="width:min(760px,95vw);max-height:88vh;display:flex;flex-direction:column;">
     <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-      <div style="font-size:17px;font-weight:700;line-height:1.3;">${isNew?'+ 새 프리셋':'✏️ 프리셋 편집'}</div>
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">${isNew?'+ 새 프리셋':`${icon('edit')} 프리셋 편집`}</div>
     </div>
     <div style="flex:1;overflow:auto;padding:16px 22px;display:flex;flex-direction:column;gap:14px;">
       <div>
@@ -12317,7 +12329,7 @@ function _qsRenderRow(s, where) {
     <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_qsDateStr(s))}</td>
     <td class="td-center">
       <button class="action-btn" onclick="qsAssignSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9;">시험출제</button>
-      <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">🗑 삭제</button>
+      <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">${icon('trash')} 삭제</button>
     </td>
   </tr>`;
 }
@@ -12575,7 +12587,7 @@ window.qsViewDetail = async (setId) => {
         ${(s.questions||[]).map((q, i) => _qsRenderViewCard(q, i)).join('')}
       </div>
       <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:white;flex-shrink:0;">
-        <button class="btn btn-secondary" onclick="closeModal();qsEditSet('${esc(s.id)}')">✏️ 수정하기</button>
+        <button class="btn btn-secondary" onclick="closeModal();qsEditSet('${esc(s.id)}')">${icon('edit')} 수정하기</button>
         <button class="btn btn-primary" onclick="closeModal()">닫기</button>
       </div>
     </div>
@@ -12777,7 +12789,7 @@ function _qsRenderEditModal() {
   const html = `
     <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
-        <div style="font-size:17px;font-weight:700;">✏️ 문제 세트 수정</div>
+        <div style="font-size:17px;font-weight:700;">${icon('edit')} 문제 세트 수정</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
       </div>
 
@@ -13150,7 +13162,7 @@ function _tpSpeakingUnfitGate(questions) {
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
           <div style="min-width:0;"><span style="font-weight:700;">${esc(dispOf(lw))}</span>
             <span style="font-size:11px;color:var(--gray);"> · ${[...set].map(esc).join(' · ')}</span></div>
-          <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_tpUnfitDel('${esc(lw)}')">🗑 삭제</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_tpUnfitDel('${esc(lw)}')">${icon('trash')} 삭제</button>
         </div>`).join('');
     };
     window._tpUnfitDel = (lw) => {
@@ -13234,7 +13246,7 @@ function _qsCharsGate(questions) {
             style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:ui-monospace,Consolas,monospace;">
           <div style="font-size:11px;color:#dc2626;margin-top:3px;">${esc(item.reasons.join(' · '))}</div>
         </div>
-        <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_qsCharsDel(${item.idx})">🗑 삭제</button>
+        <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;color:#dc2626;border-color:#fecaca;flex-shrink:0;" onclick="_qsCharsDel(${item.idx})">${icon('trash')} 삭제</button>
       </div>`;
     const renderList = () => {
       const u = _qsValidateWordChars(questions);
@@ -14304,7 +14316,7 @@ function _tpRenderTestRow(t, i) {
       <td style="${cellBase}text-align:center;font-size:11px;white-space:nowrap;" id="tp-attempt-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="${cellBase}text-align:center;" id="tp-avg-${t.id}"><span style="color:#ccc;">…</span></td>
       <td style="${cellBase}text-align:center;">
-        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:16px;line-height:1;">🗑</span>삭제</button>
+        <button onclick="event.stopPropagation();tpDeleteGenTest('${esc(t.id)}')" style="padding:6px 12px;font-size:12px;background:white;color:#dc2626;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;" title="시험 삭제"><span style="font-size:16px;line-height:1;">${icon('trash')}</span>삭제</button>
       </td>
     </tr>
     <tr id="tp-progress-${t.id}" style="display:none;background:#f0faff;">

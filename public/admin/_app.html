@@ -396,8 +396,8 @@
         <div class="tbl-toolbar">
           <div class="tbl-actions">
             <button class="action-btn primary" onclick="openClassModal()">+ 반 생성</button>
-            <button class="action-btn" onclick="editSelectedClass()">✏️ 수정</button>
-            <button class="action-btn danger" onclick="deleteSelectedClass()">🗑 삭제</button>
+            <button class="action-btn" onclick="editSelectedClass()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedClass()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
           </div>
           <div class="tbl-page" id="classPagination"></div>
         </div>
@@ -419,8 +419,8 @@
         </select>
         <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <button class="action-btn primary" onclick="openStudentModal()">+ 학생추가</button>
-          <button class="action-btn" onclick="editSelectedStudent()">✏️ 수정</button>
-          <button class="action-btn danger" onclick="deleteSelectedStudent()">🗑 삭제</button>
+          <button class="action-btn" onclick="editSelectedStudent()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
+          <button class="action-btn danger" onclick="deleteSelectedStudent()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
           <span style="color:var(--border);margin:0 2px;">|</span>
           <button class="action-btn" onclick="bulkAction('assign')">📋 반배정</button>
           <button class="action-btn" onclick="bulkAction('pause')">⏸ 휴원</button>
@@ -482,7 +482,7 @@
         </select>
         <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <button class="action-btn primary" onclick="restoreSelectedStudent('out')">✅ 재원처리</button>
-          <button class="action-btn danger" onclick="deleteSelectedOutStudent()">🗑 삭제</button>
+          <button class="action-btn danger" onclick="deleteSelectedOutStudent()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
           <button class="btn btn-secondary" id="tuitionToggleBtn" onclick="toggleTuitionVisible()" style="font-size:12px;padding:6px 12px;">💰 수강정보 보기</button>
         </div>
       </div>
@@ -628,7 +628,7 @@
           </table>
           <div class="tbl-toolbar">
             <div class="tbl-actions">
-              <button class="action-btn danger" onclick="deleteSelectedTest()">🗑 삭제</button>
+              <button class="action-btn danger" onclick="deleteSelectedTest()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
             </div>
             <div class="tbl-page" id="testPagination" style="display:none;"></div>
           </div>
@@ -798,8 +798,8 @@
         <div class="tbl-toolbar">
           <div class="tbl-actions">
             <button class="action-btn primary" onclick="openNoticeModal()">+ 공지 작성</button>
-            <button class="action-btn" onclick="editSelectedNotice()">✏️ 수정</button>
-            <button class="action-btn danger" onclick="deleteSelectedNotice()">🗑 삭제</button>
+            <button class="action-btn" onclick="editSelectedNotice()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedNotice()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
           </div>
           <div class="tbl-page" id="noticePagination"></div>
         </div>
@@ -831,8 +831,8 @@
         <div class="tbl-toolbar">
           <div class="tbl-actions">
             <button class="action-btn primary" onclick="openHwFileModal()">+ 파일 등록</button>
-            <button class="action-btn" onclick="editSelectedHwFile()">✏️ 수정</button>
-            <button class="action-btn danger" onclick="deleteSelectedHwFile()">🗑 삭제</button>
+            <button class="action-btn" onclick="editSelectedHwFile()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
+            <button class="action-btn danger" onclick="deleteSelectedHwFile()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
           </div>
           <div class="tbl-page" id="hwfilePagination"></div>
         </div>
@@ -916,7 +916,7 @@
       <!-- 편집창 -->
       <div class="card" id="genEditorPanel" style="width:500px;min-width:250px;flex-shrink:0;padding:0;overflow:hidden;display:flex;flex-direction:column;margin-right:0;">
         <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;flex-shrink:0;">
-          ✏️ Page 편집
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Page 편집
         </div>
         <div style="flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;overflow:hidden;">
           <input type="hidden" id="genEditPageId">
@@ -962,11 +962,11 @@
             <div id="genPagePagination" style="display:flex;gap:3px;justify-content:center;margin-bottom:5px;flex-wrap:wrap;"></div>
             <div style="display:flex;gap:4px;flex-wrap:wrap;">
               <button class="action-btn primary" onclick="genCreatePage()">+ 생성</button>
-              <button class="action-btn" id="genPageEditBtn" onclick="genEditPage()" disabled>✏️ 수정</button>
+              <button class="action-btn" id="genPageEditBtn" onclick="genEditPage()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
               <button class="action-btn" id="genPageCleanupBtn" onclick="genCleanupBatch()" disabled>✨ AI정리</button>
               <button class="action-btn" id="genPageMoveBtn" onclick="genMovePages()" disabled>→ Ch</button>
               <button class="action-btn" id="genPageExcludeBtn" onclick="genExcludePages()" disabled>제외</button>
-              <button class="action-btn danger" id="genPageDeleteBtn" onclick="genDeletePages()" disabled>🗑 삭제</button>
+              <button class="action-btn danger" id="genPageDeleteBtn" onclick="genDeletePages()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
             </div>
           </div>
         </div>
@@ -986,10 +986,10 @@
           <div style="padding:10px 8px;border-top:1px solid var(--border);background:#fafafa;flex-shrink:0;">
             <div style="display:flex;gap:4px;flex-wrap:wrap;">
               <button class="action-btn primary" onclick="genCreateChapter()">+ 생성</button>
-              <button class="action-btn" id="genChapterEditBtn" onclick="genEditChapter()" disabled>✏️ 수정</button>
+              <button class="action-btn" id="genChapterEditBtn" onclick="genEditChapter()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
               <button class="action-btn" id="genChapterMoveBtn" onclick="genMoveChapters()" disabled>→ Book</button>
               <button class="action-btn" id="genChapterExcludeBtn" onclick="genExcludeChapters()" disabled>제외</button>
-              <button class="action-btn danger" id="genChapterDeleteBtn" onclick="genDeleteChapters()" disabled>🗑 삭제</button>
+              <button class="action-btn danger" id="genChapterDeleteBtn" onclick="genDeleteChapters()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
             </div>
           </div>
         </div>
@@ -1009,8 +1009,8 @@
           <div style="padding:10px 8px;border-top:1px solid var(--border);background:#fafafa;flex-shrink:0;">
             <div style="display:flex;gap:4px;flex-wrap:wrap;">
               <button class="action-btn primary" onclick="genCreateBook()">+ 생성</button>
-              <button class="action-btn" id="genBookEditBtn" onclick="genEditBook()" disabled>✏️ 수정</button>
-              <button class="action-btn danger" id="genBookDeleteBtn" onclick="genDeleteBooks()" disabled>🗑 삭제</button>
+              <button class="action-btn" id="genBookEditBtn" onclick="genEditBook()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>수정</button>
+              <button class="action-btn danger" id="genBookDeleteBtn" onclick="genDeleteBooks()" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>삭제</button>
             </div>
           </div>
         </div>
@@ -1064,7 +1064,7 @@
   <!-- 빈칸채우기 (Phase 3) -->
   <div class="page" id="page-test-blank">
     <div class="page-header">
-      <div><div class="page-title">✏️ 빈칸채우기</div><div class="page-sub">AI가 생성한 빈칸 문제를 학생에게 배정합니다</div></div>
+      <div><div class="page-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>빈칸채우기</div><div class="page-sub">AI가 생성한 빈칸 문제를 학생에게 배정합니다</div></div>
     </div>
     <div id="blankAssignRoot"></div>
   </div>
