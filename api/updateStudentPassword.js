@@ -3,7 +3,7 @@
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 function getApp() {
   if (getApps().length) return getApps()[0];
@@ -65,6 +65,28 @@ module.exports = async function (req, res) {
 
     // 3. Auth 비번 변경
     await auth.updateUser(targetUid, { password: String(password) });
+
+    // 4. 비번 변경 이력 박기 (2026-06-03) — 누가/언제 재설정했는지 추적
+    try {
+      let callerName = '';
+      try {
+        const cs = await db.doc('users/' + caller.uid).get();
+        callerName = cs.exists ? (cs.data().name || '') : '';
+      } catch (_) {}
+      const entry = {
+        ts: new Date(),
+        actor: caller.role === 'super_admin' ? 'super_reset' : 'admin_reset',
+        actorUid: caller.uid,
+        actorName: callerName,
+        method: 'reset',
+      };
+      await db.doc('users/' + targetUid).update({
+        passwordHistory: FieldValue.arrayUnion(entry),
+      });
+    } catch (e) {
+      // 이력 박기 실패는 치명적 아님 — 비번 변경 자체는 성공
+      console.warn('[updateStudentPassword] passwordHistory 기록 실패:', e.message);
+    }
 
     return res.status(200).json({ success: true });
   } catch (e) {

@@ -2002,7 +2002,7 @@ window.saveStudent = async() => {
     const tuitionAmount = parseInt(document.getElementById('sTuitionAmount')?.value) || 0;
     const dueDayRaw = parseInt(document.getElementById('sDueDay')?.value);  // 0=학원 기본값, -1=말일, 1~31
     const payload = {
-      idToken, username, password: pw, name, group,
+      idToken, username, password: pw, name, group, method: 'single',
       birth: document.getElementById('sBirth').value,
       school: document.getElementById('sSchool').value.trim(),
       grade: document.getElementById('sGrade').value.trim(),
@@ -6816,7 +6816,7 @@ window.importStudentExcel = async() => {
         }
       }
       const payload = {
-        idToken, username, password:'123456', name,
+        idToken, username, password:'123456', name, method: 'excel',
         group:(row[2]||'').toString().trim(),
         birth:(row[3]||'').toString().trim(),
         school:(row[4]||'').toString().trim(),
@@ -7360,6 +7360,31 @@ window.updateClass = async(id) => {
   if (!ok) await loadClasses();
 };
 
+// 비밀번호 변경 이력 렌더 헬퍼 (학생 정보 수정 모달용 — 2026-06-03)
+const _PW_ACTOR_LABELS = {
+  admin_excel:  { label: '엑셀 일괄 등록', color: '#0891b2' },
+  admin_single: { label: '학원장 등록',    color: '#0891b2' },
+  admin_reset:  { label: '학원장 재설정',  color: '#d97706' },
+  student_self: { label: '학생 본인 변경', color: '#7c3aed' },
+  super_reset:  { label: 'super 재설정',   color: '#dc2626' },
+};
+function _pwHistoryHtml(history) {
+  if (!Array.isArray(history) || !history.length) {
+    return `<div style="font-size:12px;color:var(--gray);padding:6px 0;">변경 이력 없음 (옛 학생은 2026-06-03 이전 등록분이라 데이터 없음)</div>`;
+  }
+  const items = history.slice(-10).reverse();  // 최근 10건, 최신 우선
+  return `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px;">${items.map(h => {
+    const ts = h.ts?.toDate ? h.ts.toDate() : (h.ts ? new Date(h.ts.seconds ? h.ts.seconds*1000 : h.ts) : null);
+    const tsStr = ts ? new Date(ts.getTime() + 9*3600*1000).toISOString().replace('T',' ').slice(0,16) : '-';
+    const meta = _PW_ACTOR_LABELS[h.actor] || { label: h.actor || '?', color: '#666' };
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fafafa;border-radius:6px;">
+      <span style="font-family:monospace;color:#666;">${tsStr}</span>
+      <span style="background:${meta.color};color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${esc(meta.label)}</span>
+      ${h.actorName ? `<span style="color:#999;">${esc(h.actorName)}</span>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
 // ── 학생 수정 ────────────────────────────────────────────
 window.editStudent = async(id) => {
   const snap = await getDoc(doc(db,'users',id));
@@ -7410,6 +7435,10 @@ window.editStudent = async(id) => {
             <input id="euTuitionActive" type="checkbox" ${(u.tuitionPlan?.active ?? true) ? 'checked' : ''}>
             매월 자동 청구서 생성 (해지 시 체크 해제 — 휴원/퇴원 처리 시 자동으로 해제됨)
           </label>
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">🔑 비밀번호 변경 이력 (최근 10건)</div>
+          ${_pwHistoryHtml(u.passwordHistory)}
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
           <button class="btn btn-secondary" onclick="_billingOpenStuHistory('${id}','${esc(u.name||'').replace(/'/g,"\\'")}')" style="width:100%;font-size:13px;">💳 최근 12개월 결제 이력 보기</button>

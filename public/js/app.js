@@ -4390,6 +4390,18 @@ window.saveMyInfo=async()=>{
     if(greetEl) greetEl.textContent=name+' 님';
     if(newPw){
       await updatePassword(currentUser,newPw);
+      // 비번 변경 이력 박기 (2026-06-03) — 학원장 추적용
+      try {
+        await updateDoc(doc(db,'users',currentUser.uid),{
+          passwordHistory: arrayUnion({
+            ts: new Date(),
+            actor: 'student_self',
+            actorUid: currentUser.uid,
+            actorName: userProfile?.name || '',
+            method: 'self_change',
+          }),
+        });
+      } catch(e) { console.warn('passwordHistory 기록 실패:', e.message); }
       showToast('✅ 정보와 비밀번호가 변경됐어요!');
     } else {
       showToast('✅ 정보가 저장됐어요!');

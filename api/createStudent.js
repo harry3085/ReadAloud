@@ -78,6 +78,7 @@ module.exports = async (req, res) => {
     const password = String(body.password || '');
     const name = String(body.name || '').trim();
     const group = String(body.group || '').trim();
+    const createMethod = (body.method === 'excel') ? 'excel' : 'single';  // 등록 경로 (감사)
 
     // 1. 관리자 ID 토큰 검증
     if (!idToken) return res.status(401).json({ success: false, error: '인증 토큰이 필요합니다.' });
@@ -223,6 +224,23 @@ module.exports = async (req, res) => {
 
     // 6. Firestore 쓰기 (users + usernameLookup 를 batch 로 묶음)
     try {
+      // 등록 actor 정보 — caller 의 name 은 users doc 에서 (없으면 빈 문자열)
+      let callerName = '';
+      try {
+        if (!callerDocCache) {
+          const cs = await db.doc('users/' + caller.uid).get();
+          callerDocCache = cs.exists ? cs.data() : null;
+        }
+        callerName = (callerDocCache && callerDocCache.name) || '';
+      } catch (_) {}
+      const passwordEntry = {
+        ts: new Date(),  // arrayUnion 안에서는 serverTimestamp sentinel 불가 → new Date()
+        actor: createMethod === 'excel' ? 'admin_excel' : 'admin_single',
+        actorUid: caller.uid,
+        actorName: callerName,
+        method: 'create',
+      };
+
       const batch = db.batch();
       batch.set(db.doc('users/' + uid), {
         academyId: callerAcademyId,
@@ -245,6 +263,11 @@ module.exports = async (req, res) => {
           startMonth: String(body.tuitionPlan.startMonth || ''),
           active: !!body.tuitionPlan.active,
         } : null,
+        // 등록 감사 정보 (2026-06-03) — 누가/어떤 경로로 등록했는지 추적
+        createdBy: caller.uid,
+        createdByName: callerName,
+        createdMethod: createMethod,  // 'excel' | 'single'
+        passwordHistory: [passwordEntry],
         createdAt: FieldValue.serverTimestamp(),
       });
       batch.set(db.doc('usernameLookup/' + lookupKey), {
