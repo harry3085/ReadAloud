@@ -2642,3 +2642,159 @@ Phase 3 제외 (의도):
    - 📤 📄 🔀 📚 4종 (~60곳, button 중심 안전)
 3. type icon map 안 단일 이모지 / placeholder 안 이모지 (미해결)
 4. 학생앱 비번 변경 후 재확인 안내 / 옛 학생 history 시드 (변동 없음)
+
+---
+
+## 2026-06-03 (이어서 3): AI Generator 운영 fix — 녹음 page 정렬·sn nextSerial·선택 카운트·신규 page 즉시 표시
+
+SW v634 → v640 (6 commit). 학원장 6/1·6/2 Danny CH1·CH2 녹음숙제 보고
+출발 → 정렬·serialNumber·UI 강조·캐시 갱신 4가지 영역 종합 정비.
+
+### 1) 녹음 page 정렬 — chapterOrder/order → serialNumber → title 숫자 (v635→v636)
+
+학원장 보고: Danny CH2 녹음 fullText 가 Page 3 시작 → Page 2 끝. 학원장
+의도와 다른 page 순서로 결합. pageCount > 1 인 다른 의심 세트 9개 추가
+발견 (DR Suess Mr Brown 3건 등).
+
+#### v635 (`7906483`): 1차 수정 — chapterOrder/order → serialNumber
+
+원인 발견: `_qgBuildRecordingSet` 의 정렬 키 (`chapterOrder × 10000 +
+order`) 가 page 스키마와 어긋남. AI OCR 등록 코드 (line 8510) 가
+`serialNumber` 만 박고 `order`/`chapterOrder` 안 박음 → 모든 page
+정렬 키 0 → Firestore fetch 순서 (random).
+
+수정: sort 키를 `serialNumber` 로 통일 (학원장 OCR 화면·다른 사용처와 일치).
+
+#### v636 (`1c40acf`): 2차 수정 — serialNumber 도 부적합 → title 숫자
+
+사용자 보고: v635 배포 후에도 Danny CH2 의 Page 3 가 먼저. 진단 결과
+**chapter 내 sn 중복** — Page 1·2 sn=1·2, Page 3·4 sn=1·2 (다른
+chapter 인데 sn 같음).
+
+원인: OCR 의 `nextSerial = _genPages.filter(p => !p.chapterId).length`
+가 "미배정 page 수" 기반. chapter 배정 후 미배정 0 → 다음 OCR 또 1
+부터 시작. 같은 chapter 안에 sn 1, 2, 1, 2 중복.
+
+최종 수정: `title` 안 마지막 숫자 추출 정렬 (학원장이 직접 입력·보는
+라벨 기반).
+- "Page 1" → 1
+- "Page 14" → 14
+- "CH1 본문 2" → 2
+- "예봉 중 3 본문 CH1" → 1
+
+학원장 OCR 한 순서·serialNumber·chapter 배정 순서 무관, 학원장이
+화면에서 보는 라벨 그대로 정렬. 옛 잘못 결합된 11개 세트는 학원장이
+[수정] → 재생성하면 즉시 복구.
+
+### 2) nextSerial 학원 전체 max + 1 통일 (v637 `0636bdb`)
+
+위 §1 의 nextSerial 결함 자체를 fix (B안). 박는 위치 3곳 통일:
+- OCR (`runGenOcr`): `_genPages.filter(p => !p.chapterId).length` →
+  Firestore 학원 전체 page max sn fetch
+- 수동 추가 (`genDoCreatePage`): `_genPages.reduce(max)` (lazy 라 부정확) →
+  Firestore fetch
+- 병합 (line 8760): 위와 동일
+
+신규 헬퍼 `_genFetchMaxSerialNumber()` — 학원 전체 page fetch + max 계산.
+default 학원 156 page 라 1 read 부담 0. 1000+ 누적 시 인덱스
+(`academyId+serialNumber DESC`) 추가 검토.
+
+옛 156 page sn 재배치 안 함 (운영 위험). 새 page 부터 학원 전체 sequence
+(157, 158, ...). 학원장 OCR 화면 표시 정렬은 옛 page 그대로 + 새 page
+뒤로 추가.
+
+### 3) AI Generator page 선택 카운트 배지 (v638 `a56e002`)
+
+학원장 보고: chapter 바뀌고 다른 page 선택 시 이전 chapter 선택 누적된
+채로 문제 세트 생성. 카운트 표시가 작아 인지 어려움.
+
+수정:
+- 선택 0개: 평범 (font 12px, weight 700, teal 텍스트)
+- **선택 1개+: teal 배경 + 흰 글자 + bold 배지** (font 14px, weight 800,
+  padding 2px 9px, border-radius 11px)
+
+신규 헬퍼 `_qgSelCountStyle(n)` — `_qgRender()` 정적 HTML 과
+`_qgUpdateSelCount()` 동적 update 양쪽에서 동일 적용.
+
+chapter 클릭 시 자동 선택 해제 안 함 (학원장이 여러 chapter page 묶고
+싶은 케이스 있음). 배지로 인지 강화만.
+
+### 4) AI Generator page 작업 후 즉시 표시 (v640 `6aab665`)
+
+학원장 보고: AI OCR 에서 active chapter/book 안 page 를 수정·병합·신규
+OCR 후 결과가 화면에 즉시 안 보임. 새로고침 또는 화면 이탈 복귀 시에만
+보임.
+
+**중간 잘못된 fix 시도** (사용자 거부): chapter active 시 신규 page 를
+그 chapter 에 자동 배정. 사용자 정정 — **미배정/active 분리는 의도된
+분리**. 진짜 문제는 active 영역 안 page 작업 후 미갱신.
+
+원인 (재진단): `addDoc` 시 `serverTimestamp()` 는 Firestore 서버 측에만
+박힘. 클라 `_genPages.push` 시 createdAt 없는 객체 push → `_genRecentSort`
+의 `t()` 가 `x?.createdAt?.toMillis?.()` 호출 → undefined → 0 fallback
+→ 최근순 정렬 (default) 에서 가장 뒤로 밀려 페이지네이션 1쪽에 안
+나옴. 새로고침 시 Firestore 의 실제 serverTimestamp 다시 fetch → 정상.
+
+수정:
+- `_genRecentSort` 의 `t()` 가 Firestore Timestamp / Date / number 모두 처리
+- runGenOcr / genDoCreatePage / 병합: push 시 `createdAt: new Date()` 박음
+- genSavePage (수정): `updatedAt: serverTimestamp()` + 클라 mutate 시
+  `updatedAt: new Date()` 박음 → 수정한 page 가 최근순 맨 위로
+
+`new Date()` 는 Firestore 가 다음 fetch 시 실제 serverTimestamp 로 자동
+교체 (클라 캐시는 placeholder, doc 자체는 정확).
+
+### 작업 규칙 추가 (2026-06-03 이어서 3)
+
+신규:
+- **`serverTimestamp()` 는 클라 캐시에 안 들어옴 — push 시 `new Date()`
+  placeholder 필요** — addDoc 시 `serverTimestamp()` 는 Firestore 서버
+  측에만 박힘. 클라가 그 직후 메모리 캐시에 push 하는 객체에는
+  createdAt/updatedAt 이 sentinel 객체로만 남거나 아예 없음. 최근순
+  정렬 함수가 millis 변환 못 해서 0 fallback → 가장 뒤로 밀림 → 화면에
+  안 보임. push 시 `new Date()` 박아 Firestore 의 실제 serverTimestamp
+  와 분리 (다음 fetch 시 자동 교체).
+- **정렬 함수 `t()` 는 Firestore Timestamp + Date + number 모두 처리** —
+  `_genRecentSort` 같은 정렬 헬퍼가 `x?.createdAt?.toMillis?.()` 만
+  체크하면 클라 측 Date 객체 못 처리. `if (v instanceof Date) return
+  v.getTime()` 분기 추가 필요. 다양한 데이터 소스 (Firestore fetch / 클라
+  optimistic push) 모두 정상 처리.
+- **`nextSerial` 학원 전체 max 기반** — `_genPages.filter(p =>
+  !p.chapterId).length` 같은 미배정 수 기반은 chapter 배정 후 0 으로
+  reset → 다음 OCR 같은 sn 시작 → chapter 내 중복. Firestore 학원 전체
+  fetch + max + 1 이 정답 (read 1번이지만 _genPages lazy 라 정확). 옛
+  중복 데이터는 둠 (학원 운영 영향 없음, 새 page 부터 정상 sequence).
+- **정렬 키는 학원장 의도 라벨이 가장 안전** — `serialNumber` 도
+  nextSerial 결함으로 chapter 내 중복 가능. 학원장이 직접 입력·보는
+  `title` 안 마지막 숫자 (`/\d+/g` 매칭) 가 학원장 의도와 가장 일치.
+  Page 등록 순서·chapter 배정 순서 무관, 라벨 그대로 정렬.
+- **미배정/active 영역 분리는 의도된 분리 — 자동 배정 X** — 학원장이
+  active chapter/book 에서 보지 않은 신규 page 를 그 영역에 자동 배정
+  하면 학원장 흐름 깨짐. 미배정은 별도 영역으로 명확히 분리 (학원장이
+  이동 작업으로 배정). 신규 page 가 화면에 안 보이는 진짜 원인은 sort
+  결함 (위 항목).
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-03 이어서 3)
+
+- **AI Generator 운영 정비: ~100%** (녹음 정렬·sn·UI·캐시 갱신)
+- 옛 11개 잘못 결합 세트: 학원장 [수정] → 재생성으로 복구 (운영 측 작업)
+- 이모지 → SVG Phase 1+2+3: 변동 없음 (12종 136곳)
+- 학생 등록·비번 actor 추적: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `public/admin/js/app.js`: 녹음 sort 키 (title 숫자) + nextSerial fetch
+  헬퍼 + 선택 카운트 배지 헬퍼 + _genRecentSort Date 처리 + push 시
+  createdAt/updatedAt: new Date() 4곳
+- SW 캐시: `kunsori-v634` → `kunsori-v640`
+- 신규 진단 스크립트:
+  · `scripts/diag/check-danny-recording.js`
+  · `scripts/diag/check-recent-recording-tests.js`
+  · `scripts/diag/check-recent-recording-sets.js`
+  · `scripts/diag/check-recording-set-order.js`
+
+**다음 세션 후보** (변동):
+1. 옛 11개 잘못 결합 세트 학원장 재생성 안내 (운영)
+2. Book/Chapter 도 같은 createdAt 캐시 패턴일 가능성 — 학원장 보고 받으면 동일 fix
+3. 이모지 → SVG Phase 4 (학원장 v634 실사용 피드백 후)
+4. Phase 5 출시 준비 / v1.0 Polish 사이클 (변동 없음)
