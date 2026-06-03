@@ -952,7 +952,7 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   // 단어시험 + vocabOptions.format='speaking' 이면 🎤 말하기 배지 표시
   const isSpeaking = type === 'vocab' && t.vocabOptions?.format === 'speaking';
   const speakingBadge = isSpeaking
-    ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">🎤 말하기</span>`
+    ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">${icon('mic')} 말하기</span>`
     : '';
   // mcq + 첫 question.subType='grammar' 이면 📐 문법 배지 표시
   const isGrammar = type === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar';
@@ -3921,7 +3921,7 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
 
           ${(feedback?.missedWords?.length || missedWords?.length) ? `
             <div style="margin-bottom:12px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">📝 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">${icon('pen')} 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>
               <div style="font-size:12px;">
                 ${(feedback?.missedWords?.length ? feedback.missedWords : missedWords).map(w => `<span onclick="_playEnglishWord('${esc(w).replace(/'/g,"&#39;")}')" style="cursor:pointer;background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;font-weight:600;" title="발음 듣기">🔊 ${esc(w)}</span>`).join('')}
               </div>
@@ -4346,6 +4346,23 @@ window.goMyInfo=()=>{
   document.querySelectorAll('#myInfo button[onclick^="togglePwVis"]').forEach(b=>{ b.innerHTML=_SVG_EYE; });
   show('myInfo');
 };
+
+// 이모지 → SVG 아이콘 헬퍼 (Lucide 풍 stroke) — 2026-06-03 Phase 2
+const ICONS = {
+  edit:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  trash:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  pen:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>`,
+  search:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  save:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+  settings:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/></svg>`,
+  mic:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+  clipboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
+};
+function icon(name, size=16) {
+  const svg = ICONS[name] || '';
+  return `<span style="display:inline-flex;width:${size}px;height:${size}px;color:currentColor;vertical-align:-3px;">${svg}</span>`;
+}
+window.icon = icon;
 
 // 비번 보기/숨기기 토글 — 학생앱 (학원장 앱과 별개)
 const _SVG_EYE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;

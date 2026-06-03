@@ -30,8 +30,14 @@ window.togglePwVis = (id, btnEl) => {
 // 이모지 → SVG 아이콘 헬퍼 (2026-06-03 Phase 1 — Lucide 풍 stroke-only)
 // 사용: ${icon('edit')} ${icon('trash', 18)}
 const ICONS = {
-  edit:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+  edit:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  trash:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+  pen:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>`,
+  search:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  save:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+  settings:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  mic:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+  clipboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
 };
 function icon(name, size=16) {
   const svg = ICONS[name] || '';
@@ -675,7 +681,7 @@ function _bigcalRenderSide(){
   if (ev.tests.length){
     const rows = ev.tests.map(t => {
       const badge = _unifiedTypeBadge(t.mode);
-      const speak = t.speaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : '';
+      const speak = t.speaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${icon('mic')}</span>' : '';
       return `<div class="bigcal-side-row" onclick="goPage('test-list')">
         <div>
           <div class="bigcal-side-name">${esc(t.name)}${speak}</div>
@@ -684,7 +690,7 @@ function _bigcalRenderSide(){
       </div>`;
     }).join('');
     html += `<div>
-      <div class="bigcal-side-section-title">📝 시험 ${ev.tests.length}건</div>
+      <div class="bigcal-side-section-title">${icon('pen')} 시험 ${ev.tests.length}건</div>
       <div class="bigcal-side-list">${rows}</div>
     </div>`;
   }
@@ -771,7 +777,7 @@ window._bigcalShowBillingDetail = async (billingId) => {
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         ${summaryHtml}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text);">📋 항목 (${items.length})</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${icon('clipboard')} 항목 (${items.length})</div>
           ${bulkBtn}
         </div>
         ${itemsHtml}
@@ -1036,7 +1042,7 @@ async function loadApiUsage(){
       return `
         <div>
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-            <span>💾 Storage <span style="color:#bbb;font-size:9px;">(${reconciledStr})</span></span>
+            <span>${icon('save')} Storage <span style="color:#bbb;font-size:9px;">(${reconciledStr})</span></span>
             <span style="color:var(--gray);font-size:10px;">사용 <b style="color:var(--text);">${_fmtBytes(bytes)}</b>/${limGB ? `${limGB} GB` : '∞'}</span>
           </div>
           ${limGB ? fracBar(gb, limGB) : ''}
@@ -1270,7 +1276,7 @@ async function loadQuotaUsage(){
       return `
         <div style="margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
-            <span style="font-weight:600;">💾 Storage (파일 저장)${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
+            <span style="font-weight:600;">${icon('save')} Storage (파일 저장)${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
             <span style="color:${labelColor};"><b>${_fmtBytes(bytes)}</b> / ${limGB} GB <span style="color:var(--gray);font-size:11px;">(${percent.toFixed(1)}%)</span></span>
           </div>
           <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
@@ -1745,7 +1751,7 @@ function _stuSearchInPage(status) {
     try {
       // 학원 전체 학생 fetch (한 번만, 이후 캐시) — 반·페이지네이션 무시
       if (el && !_stuSearchCache[status]) {
-        el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#888;padding:20px;">🔍 검색 중...</td></tr>`;
+        el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#888;padding:20px;">${icon('search')} 검색 중...</td></tr>`;
       }
       const all = await _stuLoadAllForSearch(status);
       const filtered = all.filter(u =>
@@ -1754,7 +1760,7 @@ function _stuSearchInPage(status) {
       );
       renderStudentTable(status, filtered);
       const wrap = document.getElementById(STU_WRAP[status]);
-      if (wrap) wrap.innerHTML = `<div style="text-align:center;color:#888;padding:10px;font-size:11px;">🔍 학원 전체 검색 · ${filtered.length}명 (반 필터 무시)</div>`;
+      if (wrap) wrap.innerHTML = `<div style="text-align:center;color:#888;padding:10px;font-size:11px;">${icon('search')} 학원 전체 검색 · ${filtered.length}명 (반 필터 무시)</div>`;
     } catch (e) {
       console.error('[student search]', e);
       if (el) el.innerHTML = `<tr><td colspan="${STU_COLSPAN[status]}" style="text-align:center;color:#e05050;">검색 실패: ${esc(e.message)}</td></tr>`;
@@ -2254,7 +2260,7 @@ window.editHwFile = async(id) => {
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-        <button class="btn btn-primary" onclick="saveHwFileEdit('${id}')">💾 저장</button>
+        <button class="btn btn-primary" onclick="saveHwFileEdit('${id}')">${icon('save')} 저장</button>
       </div>
     </div>`);
   await pickerInit({
@@ -2320,7 +2326,7 @@ window.openHwFileModal = async() => {
             <input type="file" id="hwfFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.heic,.heif,.txt,.csv"
               style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
             <div style="margin-top:6px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#475569;line-height:1.6;">
-              <div style="font-weight:600;color:#0f172a;margin-bottom:2px;">📋 허용 형식 (단일 파일 최대 20 MB)</div>
+              <div style="font-weight:600;color:#0f172a;margin-bottom:2px;">${icon('clipboard')} 허용 형식 (단일 파일 최대 20 MB)</div>
               ✅ PDF · Word · Excel · PowerPoint · 한글(hwp) · 이미지 · 텍스트<br>
               ❌ 영상 · 압축파일(zip) · 실행파일 · 음성 등 (학원 Storage 악용 방지)
             </div>
@@ -3487,10 +3493,10 @@ function _billingRenderMessageModal() {
 
   const footerHtml = isBulk
     ? `<button class="btn btn-secondary" onclick="_billingBulkSkip()" style="font-size:12px;">⏭ 건너뛰기</button>
-       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사 후 다음 →</button>`
+       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">${icon('clipboard')} 복사 후 다음 →</button>`
     : `<button class="btn btn-secondary" onclick="_billingOpenTemplateEditor('${s.template}')" style="font-size:12px;" title="모든 학생에게 적용되는 템플릿 편집">⚙️ 템플릿 편집</button>
        <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">닫기</button>
-       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">📋 복사하기</button>`;
+       <button class="btn btn-primary" onclick="_billingCopyMessage()" style="font-size:13px;font-weight:700;">${icon('clipboard')} 복사하기</button>`;
 
   showModal(`
     <div style="width:min(560px,92vw);max-height:90vh;display:flex;flex-direction:column;">
@@ -3719,7 +3725,7 @@ function _billingRenderTemplateEditor() {
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
-        <button class="btn btn-primary" onclick="_billingTplSaveAll()" style="font-size:13px;font-weight:700;">💾 모든 학생에 적용</button>
+        <button class="btn btn-primary" onclick="_billingTplSaveAll()" style="font-size:13px;font-weight:700;">${icon('save')} 모든 학생에 적용</button>
       </div>
     </div>
   `);
@@ -5309,7 +5315,7 @@ function renderScoreReportRows(){
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
       <td>${_unifiedTypeBadge(s.mode)}</td>
       <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
-      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">🎤</span>' : ''}${s._isGrammar ? ' <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">📐</span>' : ''}</td>
+      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${icon('mic')}</span>' : ''}${s._isGrammar ? ' <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">📐</span>' : ''}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
       <td class="td-sub">${s._dateTime||s.date||''}</td>
@@ -5680,7 +5686,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
                 ${catBadge('🎯 정확도', '#a855f7', cs?.accuracy, cc?.accuracy)}
               </div>` : ''}
               ${positives.length ? `<div style="margin-top:4px;"><strong>👍 잘한 점:</strong> ${positives.map(esc).join(' · ')}</div>` : ''}
-              ${Array.isArray(fb?.missedWords) && fb.missedWords.length ? `<div style="margin-top:4px;"><strong>📝 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
+              ${Array.isArray(fb?.missedWords) && fb.missedWords.length ? `<div style="margin-top:4px;"><strong>${icon('pen')} 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
               ${Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length ? `<div style="margin-top:4px;"><strong>🔊 발음 개선:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word||'')}</strong> — ${esc(p.issue||'')}</div>`).join('')}</div>` : ''}
               ${Array.isArray(fb?.tips) && fb.tips.length ? `<div style="margin-top:4px;"><strong>💡 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
             </div>
@@ -5829,7 +5835,7 @@ window.showScoreDetail = async(scoreId, testId) => {
 
         <div style="padding:16px 22px;overflow-y:auto;flex:1;">
           <div style="margin-bottom:16px;">
-            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📋 시험 결과</div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${icon('clipboard')} 시험 결과</div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
               <div style="background:#f0fafa;border-radius:8px;padding:12px 6px;text-align:center;">
                 <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
@@ -5858,7 +5864,7 @@ window.showScoreDetail = async(scoreId, testId) => {
 
           <div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <div style="font-weight:700;font-size:13px;">📝 문제별 상세</div>
+              <div style="font-weight:700;font-size:13px;">${icon('pen')} 문제별 상세</div>
               ${dateStr?`<div style="font-size:11px;color:#bbb;">${esc(dateStr)}</div>`:''}
             </div>
             <div style="word-break:break-word;">
@@ -6380,7 +6386,7 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
 
         <!-- 총평 -->
         <div style="margin-bottom:18px;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📝 총평</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;">${icon('pen')} 총평</div>
           <div style="font-size:13px;line-height:1.7;color:#333;background:#fefce8;border-left:3px solid #eab308;padding:10px 14px;border-radius:4px;">${esc(r.summary||'')}</div>
         </div>
 
@@ -6413,7 +6419,7 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
 
         <!-- 🎤 녹음숙제 정성 평가 (점수 비공개 — 학생 보호 정책상 정성 코멘트만) -->
         <div style="padding:12px 14px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;font-size:13px;line-height:1.7;color:#78350f;">
-          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">🎤 녹음숙제 정성 평가 <span style="font-size:10px;color:#92400e;font-weight:400;">(발음·읽기 상태)</span></div>
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;">${icon('mic')} 녹음숙제 정성 평가 <span style="font-size:10px;color:#92400e;font-weight:400;">(발음·읽기 상태)</span></div>
           ${esc(r.recordingComment || '녹음숙제 응시 데이터가 없습니다.')}
         </div>
 
@@ -6902,7 +6908,7 @@ function _testModeLabel(t){
 // 단어시험 중 vocabOptions.format='speaking' 이면 시험명 옆에 붙일 작은 배지
 function _testNameSpeakingBadge(t) {
   if ((t.testMode || 'vocab') === 'vocab' && t.vocabOptions?.format === 'speaking') {
-    return ` <span class="badge" style="background:#fef3c7;color:#78350f;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;vertical-align:middle;">🎤 말하기</span>`;
+    return ` <span class="badge" style="background:#fef3c7;color:#78350f;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;vertical-align:middle;">${icon('mic')} 말하기</span>`;
   }
   return '';
 }
@@ -9855,7 +9861,7 @@ async function _cleanupRenderPresetManager() {
   <div style="width:min(860px,95vw);max-height:88vh;display:flex;flex-direction:column;">
     <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
       <div style="min-width:0;flex:1;">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">⚙ AI 정리 프리셋 관리</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">${icon('settings')} AI 정리 프리셋 관리</div>
         <div style="font-size:12px;color:var(--gray);margin-top:5px;">${_cleanupPresets.length}개 프리셋 · 기본 ${Object.keys(globals).length}종</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
@@ -11126,7 +11132,7 @@ function _qgBuildWordsnapSection() {
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
-        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 Wordsnap · 클립보드 입력</div>
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">${icon('clipboard')} Wordsnap · 클립보드 입력</div>
         <button class="btn btn-secondary" onclick="qgWordsnapPaste()"
           style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
       </div>
@@ -11322,7 +11328,7 @@ function _qgBuildUnscrambleSnapSection() {
   return `
     <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
-        <div style="font-size:11px;font-weight:700;color:var(--teal);">📋 문장 직접 입력 · 언스크램블</div>
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">${icon('clipboard')} 문장 직접 입력 · 언스크램블</div>
         <button class="btn btn-secondary" onclick="qgUnscrambleSnapPaste()"
           style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
       </div>
@@ -11716,7 +11722,7 @@ function _qgShowResultModal(data) {
 
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="qgDiscardModal()">버리기</button>
-        <button class="btn btn-primary" onclick="qgSaveSet()">💾 문제 세트로 저장</button>
+        <button class="btn btn-primary" onclick="qgSaveSet()">${icon('save')} 문제 세트로 저장</button>
       </div>
     </div>
   `;
@@ -11757,7 +11763,7 @@ function _qgRenderQuestion(q, idx) {
   } else if (q.type === 'recording' && q.schemaV === 2) {
     const preview = (q.fullText || '').slice(0, 240) + ((q.fullText||'').length > 240 ? '…' : '');
     body = `
-      <div style="font-size:11px;color:#CA8A04;font-weight:700;margin-bottom:5px;">🎤 Page 단위 녹음숙제</div>
+      <div style="font-size:11px;color:#CA8A04;font-weight:700;margin-bottom:5px;">${icon('mic')} Page 단위 녹음숙제</div>
       <div style="font-size:12px;color:var(--text);padding:8px 12px;background:#fefce8;border-left:3px solid #CA8A04;margin-bottom:8px;">${esc(q.instructionKo || '')}</div>
       <div style="font-size:13px;line-height:1.6;padding:10px 14px;background:#f5f5f5;border-radius:6px;color:#444;margin-bottom:6px;">${esc(preview)}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;">
@@ -11767,13 +11773,13 @@ function _qgRenderQuestion(q, idx) {
     `;
   } else if (q.type === 'recording') {
     body = `
-      <div style="font-size:11px;color:#7C3AED;font-weight:700;margin-bottom:5px;">🎤 녹음 대상 문장</div>
+      <div style="font-size:11px;color:#7C3AED;font-weight:700;margin-bottom:5px;">${icon('mic')} 녹음 대상 문장</div>
       <div style="font-size:14px;line-height:1.7;padding:10px 14px;background:#F5F3FF;border-left:3px solid #8B5CF6;margin-bottom:6px;">${esc(q.sentence)}</div>
       <div style="font-size:12px;color:var(--gray);">${esc(q.questionKo||'')}</div>
     `;
   } else if (q.type === 'vocab') {
     body = `
-      <div style="font-size:11px;color:#0ea5e9;font-weight:700;margin-bottom:5px;">📝 단어</div>
+      <div style="font-size:11px;color:#0ea5e9;font-weight:700;margin-bottom:5px;">${icon('pen')} 단어</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
         <div style="padding:8px 12px;background:#f0f9ff;border-radius:6px;">
           <div style="font-size:10px;color:#64748b;margin-bottom:2px;">영단어</div>
@@ -11812,7 +11818,7 @@ function _qgRenderQuestion(q, idx) {
         <div style="display:flex;gap:4px;flex-wrap:wrap;">
           ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
         </div>
-        <div style="font-size:10px;color:var(--gray);margin-top:4px;">📝 완성: ${esc(chunks.join(' '))}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:4px;">${icon('pen')} 완성: ${esc(chunks.join(' '))}</div>
       </div>
     `;
   } else {
@@ -12264,7 +12270,7 @@ function _qsRenderSetPane() {
   if (_qsActiveBookId == null) {
     return `
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-        <span>📋 Book 폴더 선택</span>
+        <span>${icon('clipboard')} Book 폴더 선택</span>
       </div>
       <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:13px;">
         ← 좌측에서 Book 폴더를 클릭하세요
@@ -12306,7 +12312,7 @@ function _qsRenderSetPane() {
 
   return `
     <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span>📋 ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">${cntLabel}</span></span>
+      <span>${icon('clipboard')} ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">${cntLabel}</span></span>
     </div>
     <div style="flex:1;overflow:auto;">${body}</div>
   `;
@@ -12818,7 +12824,7 @@ function _qsRenderEditModal() {
           ${st.sourceType==='fill_blank' ? '※ 문장 내 ___ 개수 = 정답 개수여야 저장됩니다' : (st.sourceType==='mcq' ? '※ 각 문제에 정답(라디오)이 정확히 1개여야 합니다' : '※ 필수 항목을 모두 입력하세요')}
         </div>
         <button class="btn btn-secondary" onclick="qsCloseEdit()">취소</button>
-        <button class="btn btn-primary" onclick="qsSaveEdits()" style="font-weight:700;">💾 저장하기</button>
+        <button class="btn btn-primary" onclick="qsSaveEdits()" style="font-weight:700;">${icon('save')} 저장하기</button>
       </div>
     </div>
   `;
@@ -13184,7 +13190,7 @@ function _tpSpeakingUnfitGate(questions) {
     showModal(`
       <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
         <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-          <div style="font-size:17px;font-weight:700;">🎤 말하기 부적합 단어 검토</div>
+          <div style="font-size:17px;font-weight:700;">${icon('mic')} 말하기 부적합 단어 검토</div>
           <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.5;">
             음성 인식이 잘 안 되는 단어입니다 (짧음·1음절·의성어·사전에 없는 단어).<br>
             🗑 삭제하면 <b>이 말하기 시험에서만</b> 빠집니다 (객관식·스펠링 형식엔 영향 없음).
@@ -13492,7 +13498,7 @@ function _mcqRender() {
       <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
         <div style="padding:12px 16px;background:#f8f9fa;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-weight:700;font-size:14px;">📋 문제 세트 선택</div>
+            <div style="font-weight:700;font-size:14px;">${icon('clipboard')} 문제 세트 선택</div>
             <div style="font-size:11px;color:var(--gray);">체크한 세트들의 문제가 하나의 시험으로 합쳐집니다 · ${_mcqSets.length}개 세트</div>
           </div>
           <div style="display:flex;gap:6px;">
@@ -13530,7 +13536,7 @@ function _mcqRender() {
         </div>
 
         <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:10px;">📝 시험 정보</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:10px;">${icon('pen')} 시험 정보</div>
 
           <label style="font-size:12px;font-weight:600;color:var(--text);">시험명 *</label>
           <input type="text" id="mcqName" placeholder="예: Lesson 3 독해"
@@ -14667,7 +14673,7 @@ window.tpOpenPublishModal = async () => {
   const html = `
     <div style="width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;">📝 시험출제</div>
+        <div style="font-size:17px;font-weight:700;">${icon('pen')} 시험출제</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">
           ${esc(cfg.kindLabel)} · ${selectedSets.length}개 세트 · 총 ${questions.length}문제
         </div>
@@ -14675,7 +14681,7 @@ window.tpOpenPublishModal = async () => {
 
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="margin-bottom:16px;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📋 시험 정보</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${icon('clipboard')} 시험 정보</div>
           <div style="display:grid;grid-template-columns:1fr 100px 110px 140px;gap:8px;">
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명 *</label>
@@ -14704,7 +14710,7 @@ window.tpOpenPublishModal = async () => {
           ? (() => {
               const q0 = selectedSets[0]?.questions?.[0] || {};
               return `<div style="margin-bottom:14px;padding:10px 12px;background:#fff8e1;border-radius:6px;border:1px solid #ffc107;">
-              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">🎤 녹음숙제 옵션 (시험별 조정)</div>
+              <div style="font-size:11px;font-weight:700;color:#8a6d1c;margin-bottom:8px;">${icon('mic')} 녹음숙제 옵션 (시험별 조정)</div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
                 <div>
                   <label style="font-size:11px;font-weight:600;color:var(--gray);">녹음 횟수</label>
@@ -14742,7 +14748,7 @@ window.tpOpenPublishModal = async () => {
 
         ${cfg.testMode === 'vocab'
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe;">
-              <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">📝 단어시험 풀이 옵션 (학생앱 적용)</div>
+              <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:8px;">${icon('pen')} 단어시험 풀이 옵션 (학생앱 적용)</div>
               <div style="display:flex;gap:14px;flex-wrap:nowrap;align-items:center;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;">
                   형식:
@@ -14782,7 +14788,7 @@ window.tpOpenPublishModal = async () => {
 
               <!-- 🎤 말하기 모드 전용 옵션 -->
               <div id="tpSpeakingOpts" style="display:none;margin-top:10px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;">
-                <div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:6px;">🎤 말하기 채점 옵션</div>
+                <div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:6px;">${icon('mic')} 말하기 채점 옵션</div>
                 <div style="display:grid;grid-template-columns:1fr;gap:6px;">
                   <div>
                     <label style="font-size:11px;font-weight:600;color:#78350f;">엄격도</label>
@@ -16016,7 +16022,7 @@ window._qgPreviewUnscrambleChunks = (idx, value) => {
     <div style="display:flex;gap:4px;flex-wrap:wrap;">
       ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #e9d5ff;border-radius:4px;font-size:12px;color:#6b21a8;">${esc(c)}</span>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--gray);margin-top:4px;">📝 완성: ${esc(chunks.join(' '))}</div>
+    <div style="font-size:10px;color:var(--gray);margin-top:4px;">${icon('pen')} 완성: ${esc(chunks.join(' '))}</div>
   `;
 };
 const _qgAiPromptDefaults = {};  // API GET 으로 로드 후 캐시
@@ -16092,7 +16098,7 @@ window.qgOpenPromptModal = async () => {
   const html = `
     <div style="width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-        <div style="font-size:17px;font-weight:700;line-height:1.3;">📋 AI 프롬프트 편집</div>
+        <div style="font-size:17px;font-weight:700;line-height:1.3;">${icon('clipboard')} AI 프롬프트 편집</div>
         <div style="font-size:11px;color:var(--gray);margin-top:5px;">
           유형별 시스템 프롬프트를 확인·수정합니다. 저장 시 이 브라우저에만 적용 (localStorage).
         </div>
@@ -16113,7 +16119,7 @@ window.qgOpenPromptModal = async () => {
         <button class="btn btn-secondary" onclick="qgResetPrompt()">↺ 기본값으로 복원</button>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
-          <button class="btn btn-primary" onclick="qgSavePrompt()">💾 저장</button>
+          <button class="btn btn-primary" onclick="qgSavePrompt()">${icon('save')} 저장</button>
         </div>
       </div>
     </div>
@@ -16349,7 +16355,7 @@ function _renderBrandingPage() {
         <!-- 저장 -->
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" ${locked ? 'disabled' : ''} onclick="_brandingResetDefaults()" style="font-size:13px;">↺ 기본값 복원</button>
-          <button class="btn btn-primary" ${locked ? 'disabled' : ''} onclick="_brandingSave()" style="font-size:13px;font-weight:700;">💾 색상·문구 저장</button>
+          <button class="btn btn-primary" ${locked ? 'disabled' : ''} onclick="_brandingSave()" style="font-size:13px;font-weight:700;">${icon('save')} 색상·문구 저장</button>
         </div>
         <div style="font-size:11px;color:#999;text-align:right;">로고 업로드는 즉시 저장됩니다. 색상·문구는 [💾 저장] 클릭 후 반영.</div>
       </div>
