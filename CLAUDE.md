@@ -2328,3 +2328,114 @@ debounce 로 자동 `vqNext()` 호출.
 2. 학생앱 비번 변경 후 재확인 안내 강화 (변경 직후 토스트에 마지막 시도값 안내 등)
 3. Phase 5 출시 준비 (도메인·약관·결제 PG)
 4. v1.0 Polish 사이클 / super reads P2 (변동 없음)
+
+---
+
+## 2026-06-03: 학생 등록·비번 변경 actor 추적 (users.passwordHistory + createdBy)
+
+SW v627 → v628 (1 commit `366518c`). 6/2 작업 직후 학원장 재보고 — "6명
+비번 재설정 후에도 또 안 된다는 보고가 반복돼 누가 어떻게 바꿨는지 모르겠음.
+확인 수단이 부족함." → actor 추적 시스템 도입. 2026-06-02 미해결로 남겼던
+`createdBy` 미기록 동시 해결.
+
+### 1) 데이터 모델 결정 — A안(inline) vs C안(별도 컬렉션)
+
+학원장이 알고 싶은 정보: 학생 단건 단위로 "누가 마지막으로 비번 바꿨나".
+
+| 모델 | 저장 위치 | 학생 단건 진단 | 학원 전체 통계 | 무한 누적 | Rules |
+|------|---------|-------------|-------------|---------|-------|
+| **A** | `users/{uid}.passwordHistory` 배열 | 빠름 (1 read) | 학생 N명 fetch | 1MB doc 한계 | 변경 0 |
+| C | `passwordChangeLog/{logId}` 컬렉션 | 1 쿼리 | 1 쿼리 + 인덱스 | 무제한 | 신규 |
+
+C안 진짜 가치 영역(super 운영 분석·이상 패턴 탐지)이 현재 운영 규모(학원
+4·학생 100·super 분석 비활성)에 비해 과한 인프라 → **A안 채택**. C안은
+Phase 5 출시 후 멀티학원장 도입 시 검토.
+
+### 2) 박는 위치 3곳 + actor 5종
+
+`users/{uid}.passwordHistory: [{ ts, actor, actorUid, actorName, method }]`
+
+| actor 라벨 | 배지 색 | 박는 위치 | 트리거 |
+|-----------|--------|----------|--------|
+| `admin_excel` 엑셀 일괄 등록 | 청록 | createStudent.js | body.method='excel' |
+| `admin_single` 학원장 등록 | 청록 | createStudent.js | body.method='single' |
+| `admin_reset` 학원장 재설정 | 호박색 | updateStudentPassword.js | 학원장 role |
+| `super_reset` super 재설정 | 빨강 | updateStudentPassword.js | super_admin role |
+| `student_self` 학생 본인 변경 | 보라 | 학생앱 saveMyInfo | client updatePassword 성공 후 |
+
+`createdBy` (이전 미해결): createStudent.js 가 `caller.uid` 를 idToken 검증
+단계에서 알고 있으나 users doc 에 안 박던 문제 — 동시 해결. 추가 박힘:
+`createdBy: caller.uid` / `createdByName` / `createdMethod: 'excel'|'single'`.
+
+학원장 앱 클라 측 method 필드 전달:
+- `importStudentExcel` payload 에 `method: 'excel'`
+- `saveStudent` payload 에 `method: 'single'`
+
+### 3) 학원장 UI — [학생 정보 수정] 모달 이력 섹션
+
+결제 이력 버튼 위에 "🔑 비밀번호 변경 이력 (최근 10건)" 섹션 신설.
+
+- `_pwHistoryHtml(history)` 헬퍼 — 시각(YYYY-MM-DD HH:MM KST) + actor 라벨
+  배지 + actor 이름. 최근 10건만(`slice(-10).reverse()`), 최신 우선
+- `_PW_ACTOR_LABELS` 상수 — actor 5종 라벨·배지 색 매핑
+- ts 정규화 — Firestore Timestamp(`toDate()`) 또는 `{seconds}` 또는 raw Date
+  모두 처리
+- 옛 데이터(2026-06-03 이전 등록분)는 history 없음 → "변경 이력 없음 (옛
+  학생은 2026-06-03 이전 등록분이라 데이터 없음)" 안내
+
+### 4) 기술 디테일
+
+- **arrayUnion 안에서 serverTimestamp sentinel 불가** — `FieldValue.serverTimestamp()`
+  는 top-level 만 가능, 배열 element 안에서는 throw. 대안: `new Date()`.
+  서버시간 정확도는 100ms 이내 (Vercel function ↔ Firestore 같은 리전)라 운영 OK
+- **Rules 변경 0** — `users/{uid}` update rule 이 이미 `isOwner(userId)` 허용
+  → 학생 본인 own doc 의 passwordHistory 필드 update 가능. admin 도 같은 학원이면 OK
+- **이력 기록 실패는 비치명적** — `try/catch` 로 감싸고 console.warn. 비번 변경
+  자체는 이미 성공한 상태라 throw 하면 학원장이 "비번 변경 실패" 로 오해할 수 있음
+
+### 5) 데이터 보존 한계 (정직 표시)
+
+- **2026-06-03 이전 등록 학생**: history 비어 있음 — Firebase Auth 자체 로그도
+  admin SDK 로 못 봐서 백필 불가
+- **Firebase Console Cloud Audit Log** 활성화 시 옛 변경 이력 일부 추적 가능
+  하나 기본 비활성이고 별도 GCP 설정 필요 — 현재는 보류
+- 옛 학생 이력 필요해지면 별도 작업 (학원장이 학생당 한 번씩 [재설정] 누르게
+  안내하면 그 시점부터 박힘)
+
+### 작업 규칙 추가 (2026-06-03)
+
+신규:
+- **actor 추적이 필요한 사용자 액션은 시작부터 박기** — 안 박으면 옛 데이터
+  백필 불가 (서버 로그 휘발). createStudent 의 createdBy 미기록을 두 달
+  방치하다 학원장 보고 받고 도입한 사례. Phase 1 부터 박았으면 더 일찍 가능
+- **inline 배열 vs 별도 컬렉션 결정 기준** — 사용 빈도(1명 단건 vs 전체 통계)
+  + 운영 규모 + 운영 단계. 학생 단건 진단이 주 사용 패턴이면 inline 배열
+  충분. 전체 통계·이상 탐지가 필요해지는 시점(super 분석 활성·멀티학원장
+  도입)이 별도 컬렉션 트리거
+- **arrayUnion 안 serverTimestamp 불가** — `FieldValue.serverTimestamp()` 는
+  top-level field 만 가능. 배열 element 안에서는 throw. 운영용 actor 추적
+  같은 ms 단위 정확도 불필요한 케이스는 `new Date()` 충분
+- **`users/{uid}.isOwner` Rule 활용 — 학생 본인이 자기 doc 의 일부 필드 write
+  필수 케이스** — 학생 본인 비번 변경 이력처럼 클라가 직접 박아야 하는 데이터는
+  Rules 변경 없이 isOwner 허용 활용. 학생 본인이 own doc 임의 update 가능한
+  설계라 신규 필드 추가만으로 작동
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-03)
+
+- **학생 등록·비번 변경 actor 추적: ~100%** (3 박는 위치 + 학원장 UI + 5종 actor)
+- **createStudent createdBy 미기록 해결** (2026-06-02 미해결 항목 해결)
+- 멀티테넌시·결제·말하기·성장리포트·AI Generator: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `api/createStudent.js`: createMethod / createdBy / createdByName / passwordHistory 첫 항목
+- `api/updateStudentPassword.js`: passwordHistory arrayUnion (actor=admin_reset/super_reset)
+- `public/admin/js/app.js`: saveStudent/importStudentExcel payload method + editStudent 모달 이력 섹션 + `_pwHistoryHtml`/`_PW_ACTOR_LABELS`
+- `public/js/app.js`: saveMyInfo updatePassword 후 passwordHistory arrayUnion (actor=student_self)
+- SW 캐시: `kunsori-v627` → `kunsori-v628`
+
+**다음 세션 후보** (변동):
+1. 학생앱 비번 변경 후 재확인 안내 (직후 토스트에 마지막 시도값 안내 등)
+2. 옛 학생(2026-06-03 이전 등록분) 비번 한번씩 재설정 안내 — history 시드
+3. C안(별도 컬렉션) 도입 — Phase 5 후 멀티학원장 도입 시 검토
+4. Phase 5 출시 준비 / v1.0 Polish 사이클 / super reads P2 (변동 없음)
