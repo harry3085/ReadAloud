@@ -952,7 +952,7 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   // 단어시험 + vocabOptions.format='speaking' 이면 🎤 말하기 배지 표시
   const isSpeaking = type === 'vocab' && t.vocabOptions?.format === 'speaking';
   const speakingBadge = isSpeaking
-    ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">${icon('mic')} 말하기</span>`
+    ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">${iconSvg('mic')} 말하기</span>`
     : '';
   // mcq + 첫 question.subType='grammar' 이면 📐 문법 배지 표시
   const isGrammar = type === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar';
@@ -3921,7 +3921,7 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
 
           ${(feedback?.missedWords?.length || missedWords?.length) ? `
             <div style="margin-bottom:12px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">${icon('pen')} 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">${iconSvg('pen')} 생략된 단어 <span style="font-weight:400;color:#94a3b8;">(클릭하면 발음을 들을 수 있어요)</span></div>
               <div style="font-size:12px;">
                 ${(feedback?.missedWords?.length ? feedback.missedWords : missedWords).map(w => `<span onclick="_playEnglishWord('${esc(w).replace(/'/g,"&#39;")}')" style="cursor:pointer;background:#fee2e2;color:#DC2626;padding:2px 8px;border-radius:4px;margin-right:4px;display:inline-block;margin-bottom:3px;font-weight:600;" title="발음 듣기">🔊 ${esc(w)}</span>`).join('')}
               </div>
@@ -4358,11 +4358,11 @@ const ICONS = {
   mic:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
   clipboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
 };
-function icon(name, size=16) {
+function iconSvg(name, size=16) {
   const svg = ICONS[name] || '';
   return `<span style="display:inline-flex;width:${size}px;height:${size}px;color:currentColor;vertical-align:-3px;">${svg}</span>`;
 }
-window.icon = icon;
+window.iconSvg = iconSvg;
 
 // 비번 보기/숨기기 토글 — 학생앱 (학원장 앱과 별개)
 const _SVG_EYE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;
