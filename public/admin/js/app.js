@@ -8044,7 +8044,16 @@ function _genFilteredPages() {
 }
 
 function _genRecentSort(arr) {
-  const t = x => (x?.updatedAt?.toMillis?.() || x?.createdAt?.toMillis?.() || 0);
+  // Firestore Timestamp (toMillis) + 클라 측 Date/number 모두 처리
+  // (신규 push 직후 클라 캐시엔 Date — Firestore 의 serverTimestamp 가 안 들어감)
+  const t = x => {
+    const v = x?.updatedAt || x?.createdAt;
+    if (!v) return 0;
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'number') return v;
+    return 0;
+  };
   return [...arr].sort((a,b) => t(b) - t(a));
 }
 
@@ -8525,16 +8534,24 @@ window.runGenOcr = async () => {
       const data = await res.json();
       if (!res.ok||data.error){ showToast(`[${i+1}] OCR 실패: ${data.error||res.status}`); continue; }
       nextSerial++;
+      // 현재 active chapter/book 에 자동 배정 (학원장이 보고 있는 영역에 즉시 표시)
+      const activeCh = _genActiveChapter ? (_genChapters||[]).find(c => c.id === _genActiveChapter) : null;
+      const cId = _genActiveChapter || null;
+      const cName = activeCh?.name || '';
+      const bId = _genActiveBook || activeCh?.bookId || null;
+      const bName = bId ? ((_genBooks||[]).find(b => b.id === bId)?.name || '') : '';
       const pgData = {
         title:`Page ${nextSerial}`, serialNumber:nextSerial,
-        chapterId:null, chapterName:'', bookId:null, bookName:'',
+        chapterId:cId, chapterName:cName, bookId:bId, bookName:bName,
         text:data.text||'', ocrConfidence:(data.confidence||0)/100,
         ocrProvider:data.provider||'google-vision', imageUrl:'', edited:false,
         createdBy:auth.currentUser?.uid||'',
         academyId: window.MY_ACADEMY_ID || 'default',
       };
       const ref = await addDoc(collection(db,'genPages'), { ...pgData, createdAt:serverTimestamp() });
-      _genPages.push({ id: ref.id, ...pgData });
+      // 클라 캐시엔 Date 박음 (Firestore 의 serverTimestamp 가 클라 객체에 안 들어가므로
+      // 최근순 정렬에서 가장 뒤로 밀려 신규 page 화면 안 보임 → 새 Date() placeholder)
+      _genPages.push({ id: ref.id, ...pgData, createdAt: new Date() });
       saved++;
     } catch(e){ showToast(`[${i+1}] 오류: ${e.message}`); }
   }
@@ -8572,16 +8589,22 @@ window.genDoCreatePage = async () => {
   const title=document.getElementById('gnPT')?.value.trim();
   const text=document.getElementById('gnPX')?.value.trim();
   const maxSerial=(await _genFetchMaxSerialNumber())+1;
+  // 현재 active chapter/book 에 자동 배정 (학원장이 보고 있는 영역에 즉시 표시)
+  const activeCh = _genActiveChapter ? (_genChapters||[]).find(c => c.id === _genActiveChapter) : null;
+  const cId = _genActiveChapter || null;
+  const cName = activeCh?.name || '';
+  const bId = _genActiveBook || activeCh?.bookId || null;
+  const bName = bId ? ((_genBooks||[]).find(b => b.id === bId)?.name || '') : '';
   try {
     const data = {
       title:title||`Page ${maxSerial}`, serialNumber:maxSerial,
-      chapterId:null, chapterName:'', bookId:null, bookName:'',
+      chapterId:cId, chapterName:cName, bookId:bId, bookName:bName,
       text:text||'', ocrConfidence:0, ocrProvider:'', imageUrl:'', edited:true,
       createdBy:auth.currentUser?.uid||'',
       academyId: window.MY_ACADEMY_ID || 'default',
     };
     const ref = await addDoc(collection(db,'genPages'), { ...data, createdAt:serverTimestamp() });
-    _genPages.push({ id: ref.id, ...data });
+    _genPages.push({ id: ref.id, ...data, createdAt: new Date() });
     closeModal(); _genRenderAll();
   } catch(e){ showToast('저장 실패: '+e.message); }
 };
@@ -8794,7 +8817,7 @@ window.genDoMergePages = async () => {
       academyId: window.MY_ACADEMY_ID || 'default',
     };
     const ref = await addDoc(collection(db, 'genPages'), { ...data, createdAt: serverTimestamp() });
-    _genPages.push({ id: ref.id, ...data });
+    _genPages.push({ id: ref.id, ...data, createdAt: new Date() });
 
     if (deleteOriginals) {
       await Promise.all(ids.map(id => deleteDoc(doc(db, 'genPages', id))));
@@ -8820,9 +8843,9 @@ window.genSavePage = async () => {
   const text=document.getElementById('genEditText')?.value;
   if (!pid||!title) { showAlert('입력 확인', '제목을 입력하세요.'); return; }
   try {
-    await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true});
+    await updateDoc(doc(db,'genPages',pid),{title,text:text||'',edited:true,updatedAt:serverTimestamp()});
     const page = _genPages.find(p=>p.id===pid);
-    if (page) { page.title = title; page.text = text||''; page.edited = true; }
+    if (page) { page.title = title; page.text = text||''; page.edited = true; page.updatedAt = new Date(); }
     showToast('저장 완료');
     _genRenderPages();
   } catch(e){ showToast('저장 실패: '+e.message); }
