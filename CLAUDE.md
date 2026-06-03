@@ -2439,3 +2439,141 @@ Phase 5 출시 후 멀티학원장 도입 시 검토.
 2. 옛 학생(2026-06-03 이전 등록분) 비번 한번씩 재설정 안내 — history 시드
 3. C안(별도 컬렉션) 도입 — Phase 5 후 멀티학원장 도입 시 검토
 4. Phase 5 출시 준비 / v1.0 Polish 사이클 / super reads P2 (변동 없음)
+
+---
+
+## 2026-06-03 (이어서): 이모지 → SVG 점진 교체 Phase 1+2 (회귀 2회 + 회복)
+
+SW v628 → v633 (~7 commit). 학원장 "이모지를 SVG 로 바꾸고 싶다" 요청
+→ 빈도순 점진 교체 (B안). 87종 864회 중 상위 8종 95곳 변환. 도중
+회귀 2회 (헬퍼명 충돌 / string literal 안 변환) 거치고 안정.
+
+### 1) 사전 검토 — A/B/C 옵션 비교
+
+- A: 일괄 전체 교체 (12~20h, 회귀 위험 큼)
+- **B: 빈도순 점진 교체** (Phase 별 2~3h) ← 채택
+- C: 구조 UI 만 + 토스트는 유지 (3~4h)
+
+빈도순 점진 — Phase 별 시각 검수 가능 + 회귀 시 작은 범위 진단.
+showToast 메시지·안내문·주석 안 이모지는 정책상 보류 (시각 임팩트 유지).
+
+### 2) Phase 1 — ✏ 🗑 36곳 (`10a7b4f`, v629)
+
+- 학원장 app.js: ICONS 객체 + icon() 헬퍼 추가 (기존 _SVG_EYE 옆 통합)
+- ICONS 2종: edit / trash (Lucide stroke-only)
+- 자동 변환 스크립트 — `>X ` / `>X<` 패턴 매칭 → `${icon('xxx')}` / SVG
+- 학원장 app.js 17곳 + 학원장 _app.html 18곳 + 모달 헤더 1곳 = 36곳
+
+### 3) Phase 2 — 🔍 💾 ⚙ 🎤 📋 📝 58곳 (`50707ac`, v630)
+
+- ICONS 6종 추가: search / save / settings / mic / clipboard / pen
+- 학생앱 app.js 에도 동일 ICONS + icon() 헬퍼 박음 (Phase 2 첫 도입)
+- 학원장 app.js 42곳 + 학원장 _app.html 11곳 + 학생앱 app.js 2곳 +
+  학생앱 _app.html 3곳 = 58곳
+
+### 4) v630 회귀 1차 — 헬퍼명 `icon` ↔ 지역 변수 `icon` 충돌 (`cdbea3a` revert)
+
+학원장 로그인 후 home 화면 안 뜸 (로딩 무한).
+
+원인: 학원장 app.js 안 이미 `const icon = ...` **지역 변수 6곳** —
+결제 상태별·시험 종류별·진행 상태별·문제 타입별·페이지 별칭 아이콘
+분기. 그 함수 안에 Phase 2 변환으로 `${icon('save')}` 가 들어가면서
+지역 변수 `icon`(문자열) 이 전역 헬퍼 `icon()` 함수를 가림 → 문자열을
+함수 호출 → TypeError → home 렌더 throw.
+
+Phase 1 만에서는 우연히 이 함수들 안에 ✏🗑 변환이 안 들어가 발현 X.
+Phase 2 의 🎤📝📋 변환에서 발현.
+
+대응: 학원장 app.js + _app.html 만 pre-Phase 1 상태 (5219930) 로 복귀,
+학생앱은 정상이라 유지.
+
+### 5) v632 재시도 — 헬퍼명 icon → iconSvg (`a93c06e`)
+
+해결: 헬퍼 이름 `icon` → **`iconSvg`** 로 변경. 지역 변수 `icon` 6곳과
+네이밍 스페이스 분리.
+
+- 학생앱: `function icon` → `iconSvg` + 사용 2곳 + `window.iconSvg`
+- 학원장 app.js: ICONS + iconSvg 헬퍼 재추가
+- 학원장 Phase 1+2 변환 재실행 — `${iconSvg(...)}` 형태로 90곳
+  (app.js 62 + html 28)
+
+### 6) v632 회귀 2차 — string literal 안 `${iconSvg('mic')}` (`dcba5a3`, v633)
+
+F12 콘솔 `SyntaxError: Unexpected identifier 'mic'`. 모듈 로드 자체 실패.
+
+원인: 자동 변환 스크립트가 `>X<` 패턴을 컨텍스트 무관하게 변환했는데,
+일부 위치가 **일반 string literal (`'...'`) 안**이었음. `'...>${iconSvg('mic')}</span>'`
+형태에서 `'` 가 `iconSvg(` 의 `'` 와 만나 string 닫힘 → `mic` 가 식별자.
+
+`node --check` 가 못 잡은 이유: script 모드 default 라 ES module 의
+`import` 가 있어도 통과시킴. **`node --input-type=module --check` 필수**.
+
+수정 4곳 모두 `condition ? '...emoji...' : ''` ternary 패턴:
+- line 685: 캘린더 사이드 시험 list speaking 배지
+- line 3476: 결제 템플릿 탭 편집 배지
+- line 3690: 결제 템플릿 탭 변경 onclick 내 편집 배지
+- line 5319: 시험 list 테이블 row speaking 배지
+
+`'...'` → `` `...` `` 백틱 변경.
+
+### 7) Phase 1+2 최종 완료 — 95곳
+
+| 영역 | 변환 |
+|------|------|
+| 학원장 app.js | ✏ 10 + 🗑 10 + 🔍 2 + 💾 8 + ⚙ 1 + 🎤 9 + 📋 12 + 📝 10 = 62 |
+| 학원장 _app.html | ✏ 8 + 🗑 9 + 🔍 1 + 💾 2 + ⚙ 1 + 🎤 1 + 📋 3 + 📝 3 = 28 |
+| 학생앱 app.js | 🎤 1 + 📝 1 = 2 |
+| 학생앱 _app.html | 🎤 2 + 📋 1 = 3 |
+| **합계** | **95** |
+
+### 작업 규칙 추가 (2026-06-03 이어서)
+
+신규:
+- **자동 변환 + import 파일 = `node --input-type=module --check` 필수** —
+  기본 `node --check` 는 script 모드 default 라 ES module 전용 syntax
+  (import 등 있어도) 우회. Phase 6D 회귀 (고아 `};`, 2026-04-21) 와
+  같은 부류의 module-aware 검증 필요. sed/자동 변환 후 즉시 실행
+  필수. 함수 경계 회귀와 함께 routinize 할 검증 단계.
+- **자동 변환 패턴은 단일 string 컨텍스트 가정 X** — `>X ` / `>X<`
+  같은 단순 패턴이 **백틱 안에 있을 거라 가정**하면 일반 string
+  literal (`'...'`) 안 케이스에서 string 닫힘으로 syntax 깨짐. 변환
+  전 pre-check 로 single quote / double quote 안 case grep 필요. 또는
+  변환 결과를 백틱으로 강제 변환 (string → template literal).
+- **헬퍼 함수명은 도메인 변수와 충돌 안 하는 식별자 선택** — `icon`,
+  `data`, `item`, `result` 같은 일반 단어는 도메인 코드 곳곳에 지역
+  변수로 박힐 가능성 높음. 헬퍼는 접두사(`_`, `app`, `svg`) 또는
+  명사+동사 조합(`iconSvg`, `dataLoad`) 으로. 충돌 시 가까운 scope 의
+  지역 변수가 우선 → 전역 헬퍼 호출 시 TypeError. node --check 통과
+  도 안 잡힘 (runtime 만 발현). v630 회귀 표본.
+- **점진 교체에서 헬퍼 헬퍼 추가 ↔ 변환은 같은 commit** — 헬퍼만 먼저
+  박고 변환은 후속 commit 으로 미루면, 헬퍼 추가 commit 만 배포된
+  상태에서 다음 commit 누락 시 변환된 곳이 헬퍼 호출 못 함. 또는
+  reverse — 헬퍼 추가 안 한 상태에서 변환만 박혀도 헬퍼 없음 throw.
+  같은 commit 으로 묶기. (이번 작업은 Phase 1 commit 에서 헬퍼+변환
+  같이 박아 OK 했음, 다음 점진 교체 시도 유지)
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-03 이어서)
+
+- **이모지 → SVG Phase 1+2: ~100%** (8종 95곳, 회귀 2회 거쳐 안정)
+- Phase 3+ 후보: ✓ ✅ ⚠ ❌ ✕ 💡 📊 🤖 📤 📄 🔀 📚 🔊 🔒
+- 학생 등록·비번 변경 actor 추적: ~100% (변동 없음)
+- 멀티테넌시·결제·말하기·성장리포트·AI Generator: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `public/admin/js/app.js`: ICONS + iconSvg 헬퍼 + 변환 62곳 + ternary
+  4곳 백틱 fix
+- `public/admin/_app.html`: 인라인 SVG 28곳
+- `public/js/app.js`: ICONS + iconSvg 헬퍼 + 변환 2곳
+- `public/_app.html`: 인라인 SVG 3곳
+- SW 캐시: `kunsori-v628` → `kunsori-v633`
+
+**다음 세션 후보** (변동):
+1. **Phase 3 — 빈도순 다음 8종** (✓ ✅ ⚠ ❌ ✕ 💡 📊 🤖) — string literal 안
+   변환 회피 + 헬퍼명 충돌 검증 routinize
+2. ✏️ 🗑 등 type icon map 안 단일 이모지 (vocab/fill_blank/recording)
+   — 표시 위치에서 별도 SVG 처리
+3. placeholder 안 이모지 — JS 로 별도 처리 (`<input placeholder>` 안
+   SVG 박기 불가)
+4. 학생앱 비번 변경 후 재확인 안내 / 옛 학생 history 시드 / Phase 5 출시
+   준비 (변동 없음)
