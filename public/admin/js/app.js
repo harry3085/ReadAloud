@@ -682,7 +682,7 @@ function _bigcalRenderSide(){
   if (ev.tests.length){
     const rows = ev.tests.map(t => {
       const badge = _unifiedTypeBadge(t.mode);
-      const speak = t.speaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${iconSvg('mic')}</span>' : '';
+      const speak = t.speaking ? ` <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${iconSvg('mic')}</span>` : '';
       return `<div class="bigcal-side-row" onclick="goPage('test-list')">
         <div>
           <div class="bigcal-side-name">${esc(t.name)}${speak}</div>
@@ -3473,7 +3473,7 @@ function _billingRenderMessageModal() {
     const tplHasCustom = !!_billingSettings?.messageSettings?.customTemplates?.[key];
     return `
       <button onclick="_billingMsgChangeTpl('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">
-        ${icon} ${label}${tplHasCustom ? ' <span style="font-size:9px;opacity:0.85;">${iconSvg('edit')}</span>' : ''}
+        ${icon} ${label}${tplHasCustom ? ` <span style="font-size:9px;opacity:0.85;">${iconSvg('edit')}</span>` : ''}
       </button>`;
   };
 
@@ -3687,7 +3687,7 @@ function _billingRenderTemplateEditor() {
     const isActive = s.template === key;
     const tplCust = !!_billingSettings?.messageSettings?.customTemplates?.[key];
     const draftDirty = s.drafts[key] != null && s.drafts[key] !== _BILLING_DEFAULT_TEMPLATES[key];
-    return `<button onclick="_billingTplChangeTab('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">${icon} ${label}${(tplCust || draftDirty) ? ' <span style="font-size:9px;opacity:0.85;">${iconSvg('edit')}</span>' : ''}</button>`;
+    return `<button onclick="_billingTplChangeTab('${key}')" style="padding:6px 12px;border:1px solid var(--border);background:${isActive ? 'var(--teal)' : 'white'};color:${isActive ? 'white' : 'var(--text)'};border-radius:6px;font-size:12px;font-weight:${isActive ? '700' : '500'};cursor:pointer;">${icon} ${label}${(tplCust || draftDirty) ? ` <span style="font-size:9px;opacity:0.85;">${iconSvg('edit')}</span>` : ''}</button>`;
   };
 
   showModal(`
@@ -5316,7 +5316,7 @@ function renderScoreReportRows(){
       <td style="font-weight:600;">${esc(s.userName)||'-'}</td>
       <td>${_unifiedTypeBadge(s.mode)}</td>
       <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.bookName||''}">${esc(s.bookName)||'-'}</td>
-      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ' <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${iconSvg('mic')}</span>' : ''}${s._isGrammar ? ' <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">📐</span>' : ''}</td>
+      <td style="font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="${s.testName||''}">${s.testName||'-'}${s._isSpeaking ? ` <span class="badge" style="background:#fef3c7;color:#78350f;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">${iconSvg('mic')}</span>` : ''}${s._isGrammar ? ' <span class="badge" style="background:#ede9fe;color:#5b21b6;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;">📐</span>' : ''}</td>
       <td class="td-center">${s.correct||0}/${s.total||0}</td>
       <td><span class="badge ${sbadge(s.score||0)}">${s.score||0}점</span></td>
       <td class="td-sub">${s._dateTime||s.date||''}</td>
