@@ -321,7 +321,7 @@
   <!-- 본문이해·문법 풀이 화면 -->
   <div id="readingMcq" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
-      <button class="quit-btn" onclick="quitReadingMcq()">✕</button>
+      <button class="quit-btn" onclick="quitReadingMcq()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="mcqProgressBar" style="width:5%;"></div></div>
       <div class="progress-pill" id="mcqProgressText">1/10</div>
     </div>
@@ -372,7 +372,7 @@
   <!-- 빈칸채우기 풀이 화면 (Phase 3 신규) -->
   <div id="fillBlank" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
-      <button class="quit-btn" onclick="quitFillBlank()">✕</button>
+      <button class="quit-btn" onclick="quitFillBlank()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="fbProgressBar" style="width:5%;"></div></div>
       <div class="progress-pill" id="fbProgressText">1/10</div>
     </div>
@@ -389,7 +389,7 @@
         </div>
       </div>
       <div id="fbTranslation" style="display:none;margin-top:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 14px;">
-        <div style="font-size:10px;color:#C2410C;font-weight:700;margin-bottom:4px;">💡 해석</div>
+        <div style="font-size:10px;color:#C2410C;font-weight:700;margin-bottom:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>해석</div>
         <div id="fbTranslationText" style="font-size:14px;color:#7C2D12;line-height:1.5;">로딩 중...</div>
       </div>
       <div id="fbHintBox" style="font-size:11px;color:var(--gray);text-align:center;margin-top:8px;">
@@ -411,7 +411,7 @@
       <button id="fbHintBtn" onclick="fbUseHint()"
         onmousedown="event.preventDefault()"
         style="background:#3B82F6;color:white;border:none;border-radius:22px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:60px;">
-        <span>💡 힌트</span>
+        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>힌트</span>
         <span id="fbHintStage" style="font-size:10px;opacity:.9;">(1/2)</span>
       </button>
       <button class="submit-btn" id="fbNextBtn" onclick="fbNext()">다음 ▶</button>
@@ -440,7 +440,7 @@
 
   <div id="vocabQuiz" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
-      <button class="quit-btn" onclick="quitVocab()">✕</button>
+      <button class="quit-btn" onclick="quitVocab()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="vqProgressBar" style="width:10%;"></div></div>
       <div class="progress-pill" id="vqProgressText">1/10</div>
     </div>
@@ -516,7 +516,7 @@
   <!-- ══ Phase 6C: 언스크램블 v2 (unscramble genTests) ══ -->
   <div id="unscrambleQuiz" class="screen" style="background:#FFF8F5;">
     <div class="quiz-header">
-      <button class="quit-btn" onclick="quitUnscramble2()">✕</button>
+      <button class="quit-btn" onclick="quitUnscramble2()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="uqProgressBar" style="width:10%;"></div></div>
       <div class="progress-pill" id="uqProgressText">1/10</div>
     </div>
@@ -576,7 +576,7 @@
   <!-- AI 녹음숙제 풀이 (Phase 5 — 유일한 녹음숙제 경로) -->
   <div id="recAiQuiz" class="screen">
     <div class="quiz-header">
-      <button class="quit-btn" onclick="quitRecAi()">✕</button>
+      <button class="quit-btn" onclick="quitRecAi()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="raProgressBar" style="width:5%;background:#8B5CF6;"></div></div>
       <div id="raProgressText" style="font-size:12px;color:var(--gray);margin-left:8px;white-space:nowrap;">1 / 1</div>
     </div>
@@ -780,7 +780,7 @@
     <div style="position:absolute;top:0;right:0;bottom:0;width:300px;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.12);display:flex;flex-direction:column;">
       <div style="padding:16px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
         <div style="font-size:16px;font-weight:700;">🔔 알림함</div>
-        <button onclick="closeNotifPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;">✕</button>
+        <button onclick="closeNotifPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div id="notifPanelList" style="overflow-y:auto;flex:1;padding:8px 0;">
         <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>

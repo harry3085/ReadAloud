@@ -39,6 +39,10 @@ const ICONS = {
   settings:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/></svg>`,
   mic:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
   clipboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
+  x:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  chart:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
+  bot:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
+  lightbulb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
 };
 function iconSvg(name, size=16) {
   const svg = ICONS[name] || '';
@@ -1055,7 +1059,7 @@ async function loadApiUsage(){
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
         <span class="badge badge-teal" style="font-size:11px;">${esc((plan.displayName || planId).toUpperCase())}</span>
         <span style="font-size:11px;color:var(--gray);">${esc(acad.name || '')}</span>
-        <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">📊 상세 →</a></span>
+        <span style="margin-left:auto;font-size:11px;"><a onclick="goPage('quotaUsage')" style="color:var(--teal);cursor:pointer;text-decoration:none;">${iconSvg('chart')} 상세 →</a></span>
       </div>
 
       <!-- 6줄: 5분류 AI + Storage (학생 수는 AI 사용량 X + 민감정보이라 제거, 2026-05-14) -->
@@ -4567,7 +4571,7 @@ function _noticeRenderAttaches() {
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f8f9fa;border:1px solid var(--border);border-radius:6px;font-size:12px;">
       <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)} <span style="color:var(--gray);">(${a.sizeKB} KB) · ${label}</span></span>
-      <button type="button" onclick="noticeRemoveAttach(${i})" title="제외" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:0;width:20px;height:20px;line-height:1;">✕</button>
+      <button type="button" onclick="noticeRemoveAttach(${i})" title="제외" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:0;width:20px;height:20px;line-height:1;">${iconSvg('x')}</button>
     </div>`;
   }).join('');
 }
@@ -4778,7 +4782,7 @@ function _msgRenderDraft(d) {
         </div>
         ${_msgBodyPreview(n.body)}
       </div>
-      <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">✕</button>
+      <button onclick="event.stopPropagation();delDraftMsg('${d.id}')" title="초안 삭제" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;flex-shrink:0;">${iconSvg('x')}</button>
     </div>
   </div>`;
 }
@@ -4801,7 +4805,7 @@ function _msgRenderSent(d) {
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0;">
           <button onclick="event.stopPropagation();reuseMsg('${d.id}')" title="재활용 — 제목·내용을 입력창에 채움" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;padding:2px 6px;">♻</button>
-          <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">✕</button>
+          <button onclick="event.stopPropagation();delMsg('${d.id}')" title="삭제 (학생 알림함도 함께 사라짐)" style="background:none;border:none;color:#e05050;cursor:pointer;font-size:15px;padding:0 4px;">${iconSvg('x')}</button>
         </div>
       </div>
     </div>
@@ -5124,7 +5128,7 @@ async function _msgRenderSentDetail(pushId, title) {
             return `
               <div id="msgRecip-${n.id}" style="background:${bg};border:1px solid ${border};border-radius:6px;padding:5px 20px 5px 7px;font-size:11px;position:relative;color:${fg};line-height:1.3;">
                 <button onclick="msgExcludeRecipient('${n.id}','${esc(u.name).replace(/'/g,"\\'")}')" title="이 학생 알림함에서 회수"
-                  style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:rgba(255,255,255,0.7);border:1px solid rgba(0,0,0,.1);border-radius:50%;cursor:pointer;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;color:#666;padding:0;">✕</button>
+                  style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:rgba(255,255,255,0.7);border:1px solid rgba(0,0,0,.1);border-radius:50%;cursor:pointer;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;color:#666;padding:0;">${iconSvg('x')}</button>
                 <div style="font-weight:700;font-size:11px;">
                   <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${border};color:white;font-size:8px;line-height:11px;text-align:center;font-weight:700;margin-right:3px;vertical-align:1px;">${dot}</span>${esc(u.name)}
                 </div>
@@ -5678,9 +5682,9 @@ function _adminRecBuildDetail(recordings, fullText, opts){
         ${r.note?`<div style="font-size:11px;color:var(--gray);margin-top:6px;">${esc(r.note)}</div>`:''}
         ${(hasCat || positives.length || (Array.isArray(fb?.missedWords) && fb.missedWords.length) || (Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length) || (Array.isArray(fb?.tips) && fb.tips.length)) ? `
           <details open${stop} style="margin-top:8px;">
-            <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">🤖 AI 피드백 (마지막 회차)</summary>
+            <summary style="font-size:11px;color:#7C3AED;cursor:pointer;font-weight:700;">${iconSvg('bot')} AI 피드백 (마지막 회차)</summary>
             <div style="margin-top:6px;padding:8px 10px;background:#faf5ff;border-radius:6px;font-size:11px;line-height:1.6;">
-              ${hasCat ? `<div style="margin-bottom:6px;"><strong>📊 항목별 점수·코멘트</strong>
+              ${hasCat ? `<div style="margin-bottom:6px;"><strong>${iconSvg('chart')} 항목별 점수·코멘트</strong>
                 ${catBadge('🔊 발음', '#3b82f6', cs?.pronunciation, cc?.pronunciation)}
                 ${catBadge('🎵 억양', '#22c55e', cs?.intonation, cc?.intonation)}
                 ${catBadge('🏃 속도', '#eab308', cs?.pace, cc?.pace)}
@@ -5689,7 +5693,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
               ${positives.length ? `<div style="margin-top:4px;"><strong>👍 잘한 점:</strong> ${positives.map(esc).join(' · ')}</div>` : ''}
               ${Array.isArray(fb?.missedWords) && fb.missedWords.length ? `<div style="margin-top:4px;"><strong>${iconSvg('pen')} 생략:</strong> ${fb.missedWords.map(esc).join(', ')}</div>` : ''}
               ${Array.isArray(fb?.weakPronunciation) && fb.weakPronunciation.length ? `<div style="margin-top:4px;"><strong>🔊 발음 개선:</strong> ${fb.weakPronunciation.map(p=>`<div style="margin-top:2px;">• <strong>${esc(p.word||'')}</strong> — ${esc(p.issue||'')}</div>`).join('')}</div>` : ''}
-              ${Array.isArray(fb?.tips) && fb.tips.length ? `<div style="margin-top:4px;"><strong>💡 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
+              ${Array.isArray(fb?.tips) && fb.tips.length ? `<div style="margin-top:4px;"><strong>${iconSvg('lightbulb')} 팁:</strong> ${fb.tips.map(esc).join(' · ')}</div>` : ''}
             </div>
           </details>` : ''}
       </div>`;
@@ -6393,7 +6397,7 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
 
         <!-- 모드별 점수 -->
         <div style="margin-bottom:18px;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📊 모드별 점수</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${iconSvg('chart')} 모드별 점수</div>
           ${modeBars}
         </div>
 
@@ -6408,7 +6412,7 @@ function _grRenderModal(r, reportId, uid, history, currentId) {
             ${list(r.weaknesses, '#fffbeb')}
           </div>
           <div>
-            <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#0ea5e9;">💡 추천</div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#0ea5e9;">${iconSvg('lightbulb')} 추천</div>
             ${list(r.recommendations, '#eff6ff')}
           </div>
         </div>
@@ -6877,7 +6881,7 @@ window.importStudentExcel = async() => {
   const resultColor = fail===0?'#d1fae5':'#fef3c7';
   document.getElementById('excelPreview').innerHTML += `
     <div style="margin-top:12px;padding:14px;border-radius:8px;background:${resultColor};font-size:13px;">
-      <div style="font-weight:600;margin-bottom:6px;">📊 등록 결과</div>
+      <div style="font-weight:600;margin-bottom:6px;">${iconSvg('chart')} 등록 결과</div>
       <div>✅ 성공: <b>${success}명</b></div>
       ${fail>0?`<div style="margin-top:6px;">❌ 실패: <b>${fail}명</b></div>
         <div style="margin-top:6px;max-height:140px;overflow:auto;font-size:12px;color:#555;background:white;padding:8px;border-radius:4px;border:1px solid #e5e5e5;">
@@ -9603,7 +9607,7 @@ function _cleanupSaveCurrentTabEdit() {
 function _cleanupShowBatchProgress(total, done) {
   const html = `
   <div style="width:min(420px,90vw);padding:30px 20px;text-align:center;">
-    <div style="font-size:32px;margin-bottom:10px;">🤖</div>
+    <div style="font-size:32px;margin-bottom:10px;">${iconSvg('bot')}</div>
     <div style="font-size:15px;font-weight:700;margin-bottom:8px;">AI 정리 진행 중...</div>
     <div style="font-size:13px;color:var(--gray);margin-bottom:15px;">${done} / ${total} 완료</div>
     <div style="height:8px;background:#eee;border-radius:4px;overflow:hidden;">
@@ -11268,7 +11272,7 @@ window.qgRunWordsnap = async () => {
   // 실패해도 저장은 진행 — 동음이의어 빈 배열로 fallback. 사용자 흐름 안 끊음.
   let homophonesFilled = 0;
   try {
-    if (status) status.innerHTML = '<span style="color:var(--gray);">🤖 동음이의어 분석 중...</span>';
+    if (status) status.innerHTML = `<span style="color:var(--gray);">${iconSvg('bot')} 동음이의어 분석 중...</span>`;
     const resp = await _geminiFetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -11417,7 +11421,7 @@ window.qgRunUnscrambleSnap = async () => {
   const btn = document.getElementById('qgUnscrambleSnapBtn');
   if (btn) btn.disabled = true;
   const status = document.getElementById('qgUnscrambleSnapStatus');
-  if (status) status.innerHTML = '<span style="color:var(--gray);">🤖 AI 청크 분할 + 한글뜻 생성 중... (5~15초)</span>';
+  if (status) status.innerHTML = `<span style="color:var(--gray);">${iconSvg('bot')} AI 청크 분할 + 한글뜻 생성 중... (5~15초)</span>`;
 
   try {
     const t0 = Date.now();
@@ -11705,7 +11709,7 @@ function _qgShowResultModal(data) {
               제외할 문제는 체크박스 해제 · 모델: <code>${esc(data.model||'')}</code> · 선택 <span id="qgIncludeCount">${_qgGenerated.length}</span> / ${_qgGenerated.length}
             </div>
           </div>
-          <button onclick="qgDiscardModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);flex-shrink:0;">✕</button>
+          <button onclick="qgDiscardModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);flex-shrink:0;">${iconSvg('x')}</button>
         </div>
       </div>
 
@@ -11846,7 +11850,7 @@ function _qgRenderQuestion(q, idx) {
           <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${diffBg};color:${diffColor};font-weight:600;margin-left:8px;flex-shrink:0;">${esc(diffLabel)}</span>
         </div>
         ${body}
-        ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>`:''}
+        ${q.explanation?`<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">${iconSvg('lightbulb')} ${esc(q.explanation)}</div>`:''}
         <div style="font-size:10px;color:#aaa;margin-top:6px;font-family:monospace;">출처: ${esc(q.sourcePageTitle||q.sourcePageId)}</div>
       </div>
     </div>
@@ -12612,7 +12616,7 @@ function _qsRenderViewCard(q, i) {
   const subTypeBadge = (q.type === 'mcq' && q.subType === 'grammar')
     ? ` · <span style="color:#7c3aed;">📐 문법</span>` : '';
   const header = `<div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${icon} ${i+1}번${diffBadge}${subTypeBadge}${q.sourcePageTitle?` · 출처: ${esc(q.sourcePageTitle)}`:''}</div>`;
-  const explanation = q.explanation ? `<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">💡 ${esc(q.explanation)}</div>` : '';
+  const explanation = q.explanation ? `<div style="font-size:11px;color:#666;margin-top:6px;background:#fff8e1;padding:6px 8px;border-left:2px solid #ffc107;">${iconSvg('lightbulb')} ${esc(q.explanation)}</div>` : '';
 
   if (q.type === 'fill_blank') {
     const parts = (q.sentence||'').split('___');
@@ -15886,7 +15890,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
               // 시험관리 페이지면 _activeTestType, 시험 목록이면 시험 doc 자체의 testMode/mode
               const tMode = (t.testMode || t.mode || '').toLowerCase();
               const recs = c.recordings || [];
-              const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+              const xBtnRec = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">${iconSvg('x')}</button>`;
               // ── 녹음숙제 분기 — 회차별 audio + 마지막 AI 피드백 ──
               // Phase B: 통과/불통 폐기. 응시 흔적 있으면 모두 "📤 제출됨" 단일 카드
               // (옛 데이터 호환: completedAt 또는 latestFailedAt 있으면 응시)
@@ -15949,7 +15953,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
               const dateStr = c.date
                 || (c.latestAt?.toDate?.() ? _ymdKST(c.latestAt.toDate()) : '');
               const passScore = c.passScore || t.passScore || 80;
-              const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+              const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외 (응시 기록 삭제)" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">${iconSvg('x')}</button>`;
               if (passed) {
                 return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                   ${xBtn}
@@ -15963,7 +15967,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                 <div style="color:#92400e;">⚠ ${score}점 (통과 ${passScore})</div>
               </div>`;
             }
-            const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">✕</button>`;
+            const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">${iconSvg('x')}</button>`;
             return `<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
               ${xBtn}
               <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>

@@ -2755,7 +2755,7 @@ function _rv2Render() {
     <div style="background:var(--brand-header-gradient);padding:48px 20px 28px;flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <button class="back-btn" style="color:rgba(255,255,255,0.85);font-size:22px;" onclick="rv2Quit()">‹</button>
-        <span style="font-size:16px;font-weight:800;color:white;flex:1;">🤖 AI 녹음숙제</span>
+        <span style="font-size:16px;font-weight:800;color:white;flex:1;">${iconSvg('bot')} AI 녹음숙제</span>
         <button onclick="showRecordingTermsModal()" title="용어 안내" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.35);color:white;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">ⓘ</button>
       </div>
       <div style="background:rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;">
@@ -3291,7 +3291,7 @@ function _rv2ShowSubmitting(title, subtitle) {
   if (!screen) return;
   screen.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;">
-      <div style="font-size:52px;margin-bottom:16px;">🤖</div>
+      <div style="font-size:52px;margin-bottom:16px;">${iconSvg('bot')}</div>
       <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(title)}</div>
       <div style="font-size:12px;color:var(--gray);margin-bottom:18px;">${esc(subtitle)}</div>
       <div style="width:200px;height:4px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
@@ -3785,7 +3785,7 @@ window.showRecordingTermsModal = () => {
       <div style="font-size:18px;font-weight:800;margin-bottom:14px;color:var(--text);">📖 용어 안내</div>
 
       <div style="margin-bottom:18px;">
-        <div style="font-size:14px;font-weight:700;color:#0369a1;margin-bottom:6px;">📊 말소리 비율</div>
+        <div style="font-size:14px;font-weight:700;color:#0369a1;margin-bottom:6px;">${iconSvg('chart')} 말소리 비율</div>
         <div style="font-size:12px;color:var(--text);line-height:1.7;">
           녹음 시간 중 실제 말소리가 들린 비율입니다.<br>
           <span style="color:#059669;font-weight:600;">70% 이상</span> : 잘 읽음<br>
@@ -3900,11 +3900,11 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
 
       ${(hasCategoryComments || fbPositives.length || missedWords?.length || feedback?.missedWords?.length || feedback?.weakPronunciation?.length || feedback?.tips?.length) ? `
         <div style="background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">🤖 AI 피드백</div>
+          <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:10px;">${iconSvg('bot')} AI 피드백</div>
 
           ${hasCategoryComments ? `
             <div style="margin-bottom:12px;">
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">📊 항목별 코멘트</div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:6px;">${iconSvg('chart')} 항목별 코멘트</div>
               <div style="display:grid;grid-template-columns:1fr;gap:4px;">
                 ${cc.pronunciation ? `<div style="font-size:11px;padding:6px 10px;background:#eff6ff;border-left:2px solid #3b82f6;border-radius:3px;line-height:1.5;"><strong style="color:#1d4ed8;">🔊 발음</strong> · ${_renderInlineWithTTS(cc.pronunciation)}</div>` : ''}
                 ${cc.intonation ? `<div style="font-size:11px;padding:6px 10px;background:#f0fdf4;border-left:2px solid #22c55e;border-radius:3px;line-height:1.5;"><strong style="color:#15803d;">🎵 억양</strong> · ${_renderInlineWithTTS(cc.intonation)}</div>` : ''}
@@ -3939,7 +3939,7 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
             </div>` : ''}
           ${feedback?.tips?.length ? `
             <div>
-              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">💡 개선 팁</div>
+              <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:5px;">${iconSvg('lightbulb')} 개선 팁</div>
               ${feedback.tips.map(t => `<div style="font-size:12px;color:var(--text);padding:5px 0;line-height:1.5;">• ${_renderInlineWithTTS(t)}</div>`).join('')}
             </div>` : ''}
         </div>
@@ -4357,6 +4357,10 @@ const ICONS = {
   settings:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/></svg>`,
   mic:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
   clipboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
+  x:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  chart:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
+  bot:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>`,
+  lightbulb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
 };
 function iconSvg(name, size=16) {
   const svg = ICONS[name] || '';
@@ -5331,9 +5335,9 @@ function _vqSpkFinalize(correct, heard, meta) {
     if (correct) {
       if (src === 'webspeech-2' && tip) {
         // 2차 통과 + 단어별 코칭 — 발음 팁만 (한국식 인식 멘트 제거)
-        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
+        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">${iconSvg('lightbulb')} ${esc(tip)}</div>`;
       } else if (src === 'webspeech-3' && tip) {
-        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
+        heardEl.innerHTML = `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">${iconSvg('lightbulb')} ${esc(tip)}</div>`;
       } else {
         // 1차 정답 또는 tip 없음 — 부가 표시 X (깔끔하게)
         heardEl.innerHTML = '';
@@ -5347,7 +5351,7 @@ function _vqSpkFinalize(correct, heard, meta) {
         html += `<div style="font-size:12px;color:#9ca3af;">음성이 명확하지 않았어요</div>`;
       }
       // 오답 시 코칭도 노출 (학습 효과)
-      if (tip) html += `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">💡 ${esc(tip)}</div>`;
+      if (tip) html += `<div style="font-size:13px;color:#7c3aed;margin-top:6px;font-weight:600;">${iconSvg('lightbulb')} ${esc(tip)}</div>`;
       heardEl.innerHTML = html;
     }
   }
