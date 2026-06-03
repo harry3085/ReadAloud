@@ -11580,12 +11580,18 @@ function _qgBuildRecordingSet(opts) {
   const status = document.getElementById('qgStatus');
   if (status) status.innerHTML = '📝 문제 세트 구성 중...';
 
-  // 정렬: serialNumber 기준 (AI OCR 등록 시 박히는 학원 전체 sequence)
-  // 옛 코드는 chapterOrder/order 로 정렬했으나 page 등록 코드가 이 두 필드를
-  // 박지 않아 무력화됨 → 학원장 OCR 화면(serialNumber 정렬) 과 일치하도록 통일.
+  // 정렬: page title 안 마지막 숫자 추출 (학원장이 직접 보는 라벨 기반).
+  // 옛 코드는 chapterOrder/order(미박힘) → v635 serialNumber → 둘 다 부적합.
+  // serialNumber 는 nextSerial 계산 결함으로 chapter 내 중복(1,2,1,2) 발생 →
+  // 정렬 안정성 0. title 추출은 학원장 의도와 가장 일치 ("Page 1" → 1,
+  // "CH1 본문 2" → 2, "예봉 중 3 본문 CH1" → 1).
+  const _titleNum = (p) => {
+    const m = String(p.title || '').match(/\d+/g);
+    return m ? parseInt(m[m.length - 1]) : 0;
+  };
   const pages = (_genPages || [])
     .filter(p => _qgSelectedPageIds.has(p.id))
-    .sort((a, b) => (a.serialNumber ?? 0) - (b.serialNumber ?? 0));
+    .sort((a, b) => _titleNum(a) - _titleNum(b));
 
   if (pages.length === 0) {
     if (status) status.innerHTML = '<span style="color:#c33;">❌ Page 로드 실패</span>';
