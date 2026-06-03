@@ -10389,7 +10389,7 @@ function _qgRender() {
       <!-- 3. Page 컬럼 (체크박스 다중 선택) -->
       <div id="qgPagePane" class="qg-pane" style="flex:25 1 0;min-width:150px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;">
-          <span style="cursor:pointer;user-select:none;" onclick="qgToggleSort('pages')">📄 Page <span id="qgPageHeaderCount" style="font-size:11px;color:var(--gray);font-weight:400;">${pages.length === allPages.length ? pages.length : `${pages.length}/${allPages.length}`}개</span> <span style="font-size:11px;color:var(--gray);font-weight:400;">· 선택 <span id="qgSelCount" style="color:var(--teal);">${_qgSelectedPageIds.size}</span>개 · <span id="qgTokenEst"></span></span> <span id="qgPageSortMark" style="font-size:10px;color:var(--gray);font-weight:400;">${_qgSortLabel('pages')}</span></span>
+          <span style="cursor:pointer;user-select:none;" onclick="qgToggleSort('pages')">📄 Page <span id="qgPageHeaderCount" style="font-size:11px;color:var(--gray);font-weight:400;">${pages.length === allPages.length ? pages.length : `${pages.length}/${allPages.length}`}개</span> <span style="font-size:11px;color:var(--gray);font-weight:400;">· 선택 <span id="qgSelCount" style="${_qgSelCountStyle(_qgSelectedPageIds.size)}">${_qgSelectedPageIds.size}</span>개 · <span id="qgTokenEst"></span></span> <span id="qgPageSortMark" style="font-size:10px;color:var(--gray);font-weight:400;">${_qgSortLabel('pages')}</span></span>
           <div style="display:flex;gap:4px;flex-shrink:0;">
             <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectAll()">전체</button>
             <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="qgSelectNone()">해제</button>
@@ -10722,9 +10722,20 @@ window.qgSelectNone = () => {
   _qgRender();
 };
 
+// 선택 카운트 강조 스타일 — 0개면 평범, 1개+ 일 때 teal 배지 (chapter 누적 인지)
+function _qgSelCountStyle(n) {
+  if (n > 0) {
+    return 'display:inline-block;min-width:22px;padding:2px 9px;background:var(--teal);color:white;font-size:14px;font-weight:800;border-radius:11px;text-align:center;';
+  }
+  return 'color:var(--teal);font-size:12px;font-weight:700;';
+}
 function _qgUpdateSelCount() {
   const el = document.getElementById('qgSelCount');
-  if (el) el.textContent = _qgSelectedPageIds.size;
+  if (el) {
+    const n = _qgSelectedPageIds.size;
+    el.textContent = n;
+    el.setAttribute('style', _qgSelCountStyle(n));
+  }
   _qgUpdateTokenEstimate();
   // 선택 수가 상한 이하로 내려가면 이전 경고 문구 제거
   if (_qgSelectedPageIds.size <= 20) {
