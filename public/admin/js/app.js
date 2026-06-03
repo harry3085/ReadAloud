@@ -8476,14 +8476,32 @@ function _genRenderThumbnails() {
 }
 window.genRemoveImage = (i) => { _genImages.splice(i,1); _genRenderThumbnails(); };
 
+// 학원 전체 page 중 max serialNumber 조회 (2026-06-03 B안 — chapter 내 중복 방지)
+// 한 batch 안에서는 호출처가 ++ 로 처리. 학원 전체 page 156개 정도라 부담 0.
+// 향후 1000+ 누적 시 인덱스 추가 (academyId + serialNumber DESC) 검토.
+async function _genFetchMaxSerialNumber() {
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'genPages'),
+      where('academyId', '==', window.MY_ACADEMY_ID)
+    ));
+    let max = 0;
+    snap.forEach(d => { const sn = d.data().serialNumber || 0; if (sn > max) max = sn; });
+    return max;
+  } catch (e) {
+    console.warn('[_genFetchMaxSerialNumber] 실패, _genPages 로 fallback:', e.message);
+    return _genPages.reduce((m, p) => Math.max(m, p.serialNumber || 0), 0);
+  }
+}
+
 // ── OCR 실행 ──
 window.runGenOcr = async () => {
   if (!_genImages.length) { showAlert('입력 확인', '이미지를 먼저 업로드하세요.'); return; }
   const btn = document.getElementById('genOcrBtn');
   const status = document.getElementById('genOcrStatus');
   btn.disabled = true;
-  // 미배정(chapterId 없음) Page 수 + 1 부터 넘버링 시작
-  let nextSerial = _genPages.filter(p => !p.chapterId).length;
+  // 학원 전체 max serialNumber 부터 +1 (batch 안에서 ++ 누적)
+  let nextSerial = await _genFetchMaxSerialNumber();
   let saved = 0;
   for (let i=0; i<_genImages.length; i++) {
     if (status) status.textContent = `처리 중... (${i+1}/${_genImages.length})`;
@@ -8553,7 +8571,7 @@ window.genCreatePage = () => {
 window.genDoCreatePage = async () => {
   const title=document.getElementById('gnPT')?.value.trim();
   const text=document.getElementById('gnPX')?.value.trim();
-  const maxSerial=_genPages.reduce((m,p)=>Math.max(m,p.serialNumber||0),0)+1;
+  const maxSerial=(await _genFetchMaxSerialNumber())+1;
   try {
     const data = {
       title:title||`Page ${maxSerial}`, serialNumber:maxSerial,
@@ -8756,8 +8774,8 @@ window.genDoMergePages = async () => {
   const sameChapter = chapterIds.length === 1 && chapterIds[0];
   const ch = sameChapter ? pages[0] : null;
 
-  // serialNumber: 미배정 페이지 수 + 1 (OCR 패턴 동일)
-  const nextSerial = _genPages.filter(p => !p.chapterId).length + 1;
+  // serialNumber: 학원 전체 max + 1 (2026-06-03 B안 — chapter 내 중복 방지)
+  const nextSerial = (await _genFetchMaxSerialNumber()) + 1;
 
   try {
     const data = {
