@@ -11580,13 +11580,12 @@ function _qgBuildRecordingSet(opts) {
   const status = document.getElementById('qgStatus');
   if (status) status.innerHTML = '📝 문제 세트 구성 중...';
 
+  // 정렬: serialNumber 기준 (AI OCR 등록 시 박히는 학원 전체 sequence)
+  // 옛 코드는 chapterOrder/order 로 정렬했으나 page 등록 코드가 이 두 필드를
+  // 박지 않아 무력화됨 → 학원장 OCR 화면(serialNumber 정렬) 과 일치하도록 통일.
   const pages = (_genPages || [])
     .filter(p => _qgSelectedPageIds.has(p.id))
-    .sort((a, b) => {
-      const ao = (a.chapterOrder ?? 0) * 10000 + (a.order ?? 0);
-      const bo = (b.chapterOrder ?? 0) * 10000 + (b.order ?? 0);
-      return ao - bo;
-    });
+    .sort((a, b) => (a.serialNumber ?? 0) - (b.serialNumber ?? 0));
 
   if (pages.length === 0) {
     if (status) status.innerHTML = '<span style="color:#c33;">❌ Page 로드 실패</span>';
