@@ -293,6 +293,7 @@ recSubmissions: hwId(ASC) + uid(ASC)
    - → 관리자 상세 모달은 `s.score === comp.score && s.date === comp.date` 일 때만 상세 표시
 8. **Gemini 모델 폴백 체인** (2026-04-27 유료 티어 전환): 모든 API 가 `2.5-flash-lite → 2.5-flash → 3.1-flash-lite-preview` 순으로 폴백. 같은 모델로 503/429 transient 시 1회 재시도(800ms) 후 다음 모델. 4xx 비-transient 는 즉시 502 반환 (다른 모델도 동일 결과 예상). 변경 시 3개 API 전부 동일 순서 유지: `api/generate-quiz.js` / `api/check-recording.js` / `api/cleanup-ocr.js`. 이전 단일 모델 정책(2026-04-23)은 무료 티어 RPD 한계 + preview 결과 편차 우려였는데 유료 티어로 둘 다 해소됨.
 9. **Gemini API 호출 로깅**: 새 Gemini 호출 추가 시 반드시 `_logApiCall(endpoint)` 또는 `_geminiFetch()` 래퍼 경유 — `apiUsage/{YYYY-MM-DD}` 에 자동 카운트
+10. **이모지 X, SVG 사용 (2026-06-03 강화)**: 새 UI 작성 시 이모지 직접 박지 말기. 학원장 app.js + 학생앱 app.js 의 `ICONS` 객체에 정의된 SVG 를 `${iconSvg('name')}` 헬퍼로 호출. HTML (`_app.html`) 정적 파일은 인라인 SVG 직접 박음 (헬퍼 못 씀). 새 아이콘은 Lucide 풍 stroke-only (`viewBox="0 0 24 24"`, `stroke-width="2"`, `currentColor` 상속), 학원장+학생앱 양쪽 ICONS 에 동일 추가. **예외**: showToast/showAlert 메시지 안 이모지 (짧은 시각 임팩트), 사용자 명시 요청. 옛 코드 광범위 일괄 변경 X (회귀 위험). 자동 변환 후 `node --input-type=module --check` 필수.
 
 ## 옛 세션 이력 (~2026-05-15)
 
