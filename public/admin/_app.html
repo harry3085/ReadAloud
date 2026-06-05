@@ -730,7 +730,10 @@
         <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
           <div>
             <div style="color:var(--gray);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
-              <span>📤 대상</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span>📤 대상</span>
+                <button type="button" onclick="msgResetTargets()" title="선택된 대상 모두 해제" style="font-size:11px;padding:2px 8px;background:#fff;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--gray);">↻ 리셋</button>
+              </div>
               <span style="font-size:11px;">반·학생 다중 선택</span>
             </div>
             <div id="msgPickerSummary" style="padding:6px 10px;background:#f8f9fa;border-radius:6px;font-size:12px;margin-bottom:6px;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">

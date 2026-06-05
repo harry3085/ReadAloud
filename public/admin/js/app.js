@@ -4277,6 +4277,14 @@ function pickerGetTargets() {
   return [..._picker.targets];
 }
 
+// 모든 선택 대상 해제 + 화면 갱신 (메시지 작성 카드의 [↻ 리셋] 버튼)
+window.msgResetTargets = () => {
+  _picker.targets = [];
+  _pickerRenderBox();
+  _pickerRenderSummary();
+  if (_picker.cfg?.onChange) try { _picker.cfg.onChange(); } catch(_) {}
+};
+
 function _pickerRenderBox() {
   const c = _picker.cfg; if (!c) return;
   const box = document.getElementById(c.boxEl); if (!box) return;
