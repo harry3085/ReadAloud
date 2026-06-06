@@ -163,7 +163,6 @@
       <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
         <label class="save-id"><input type="checkbox" id="saveIdCheck" checked> 아이디 저장</label>
       </div>
-      <div class="version"></div>
       <div class="powered-by" style="text-align:center;font-size:11px;color:#999;padding:14px 0 4px;letter-spacing:0.3px;">
         Powered by <strong style="color:#666;">LexiAI</strong>
       </div>
@@ -804,5 +803,7 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+<!-- 앱 버전 표시 — 모든 화면 우측 하단 고정. SW 캐시값 기반 자동 갱신 (.version 클래스 핸들러 head 인라인 script) -->
+<div class="version" style="position:fixed;bottom:4px;right:6px;font-size:9px;color:#999;background:rgba(255,255,255,0.7);padding:1px 5px;border-radius:3px;pointer-events:none;z-index:9999;"></div>
 </body>
 </html>

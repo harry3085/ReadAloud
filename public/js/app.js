@@ -4166,6 +4166,28 @@ const _originalShow=window.show;
 const NO_STACK_SCREENS=new Set(['loading','login']);
 let _exitToast=null; // 종료 안내 토스트 타이머
 
+// SW 자동 reload (2026-06-05) — 시험 중이면 대기, 다른 화면 전환 시 자동 적용
+// 새 sw.js activate 시 SW_UPDATED postMessage 받음 (sw.js 의 activate handler)
+const _EXAM_SCREENS = new Set(['vocabQuiz','unscrambleQuiz','recAiQuiz','readingMcq','fillBlank','result']);
+function _isInExam(id) { return _EXAM_SCREENS.has(id); }
+let _pendingReload = false;
+function _trySwReload() {
+  if (sessionStorage.getItem('_swReloadDone')) return;
+  const id = document.querySelector('.screen.active')?.id;
+  if (_isInExam(id)) { _pendingReload = true; return; }
+  sessionStorage.setItem('_swReloadDone', '1');
+  setTimeout(() => location.reload(), 300);
+}
+if ('serviceWorker' in navigator) {
+  let _swInitialMsg = true;
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'SW_UPDATED') {
+      if (_swInitialMsg) { _swInitialMsg = false; return; }
+      _trySwReload();
+    }
+  });
+}
+
 window.show=id=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
@@ -4182,6 +4204,8 @@ window.show=id=>{
     history.pushState({screen:id},'',location.pathname);
   }
   _originalShow(id);
+  // 시험 화면 벗어났는데 SW reload 대기 중이면 적용
+  if (_pendingReload && !_isInExam(id)) _trySwReload();
 };
 
 window.addEventListener('popstate',e=>{
@@ -4471,19 +4495,10 @@ onAuthStateChanged(auth, async (user)=>{
   }
 
   if(user){
-    // 1일 경과 체크
-    const lastLogin = parseInt(localStorage.getItem('lastLoginAt')||'0');
-    const elapsed = Date.now() - lastLogin;
-    if(lastLogin > 0 && elapsed > ONE_DAY_MS){
-      // 1일 초과 → 자동 로그아웃
-      await signOut(auth);
-      localStorage.removeItem('savedPw');
-      localStorage.removeItem('lastLoginAt');
-      showToast('보안을 위해 자동 로그아웃됐어요. 다시 로그인해주세요.');
-      setTimeout(()=>_originalShow('login'), 1200);
-      return;
-    }
-    // 1일 이내 → 자동 로그인
+    // 1일 자동 로그아웃 정책 폐기 (2026-06-05) — 사용 중 강제 로그아웃 부작용
+    // Firebase Auth 의 자동 토큰 갱신 + persistence local 에 맡김.
+    // 학생 분실/실수는 학원장 비번 재설정 (tokensValidAfterTime 갱신)으로 강제 invalidate 가능.
+    // 자동 로그인 진입
     try{
       const snap = await getDoc(doc(db,'users',user.uid));
       if(snap.exists()){
