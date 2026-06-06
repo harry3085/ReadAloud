@@ -2798,3 +2798,152 @@ OCR 후 결과가 화면에 즉시 안 보임. 새로고침 또는 화면 이탈
 2. Book/Chapter 도 같은 createdAt 캐시 패턴일 가능성 — 학원장 보고 받으면 동일 fix
 3. 이모지 → SVG Phase 4 (학원장 v634 실사용 피드백 후)
 4. Phase 5 출시 준비 / v1.0 Polish 사이클 (변동 없음)
+
+---
+
+## 2026-06-04~05: 메시지 리셋·진단·SW 자동 reload·1일 로그아웃 폐기
+
+SW v640 → v642 (~3 commit + 진단 다수). 학원장 운영 보고 연쇄.
+
+### 1) 메시지 [↻ 리셋] 버튼 (v641 `295a8d3`)
+
+학원장 보고: [♻ 재활용] 으로 초안/발송 메시지 로드 시 발송 대상도
+같이 박혀 다른 학급에 보낼 때 일일이 해제 번거로움.
+
+새 메시지 작성 카드의 "📤 대상" 라벨 옆에 `[↻ 리셋]` 버튼 추가:
+- `msgResetTargets()` — `_picker.targets = []` + box/summary 재렌더 + onChange 콜백
+
+### 2) Gemini 결제 진단 + 6월 녹음 미평가 1건 재평가 (v640 그대로)
+
+Vercel 로그 `[check-recording] prepayment depleted` 알림 → 학원장 충전.
+
+진단 — 6월 녹음 73건 중 영향 단 1건 (나유안 6/5 07:59):
+- 신규 진단 스크립트 `find-orphan-recordings-jun.js`,
+  `check-recording-errors-jun.js` 두 종 추가
+- 첫 진단(`inProgress.recordings` 만 확인)이 case C 분류 1건 놓침 —
+  실제 필드는 `inProgress.rounds` 였음
+- 재진단(`latestErrorMessage` 기준) — 결제 실패 케이스 1건만 명확 식별
+- 영향 학생 1건은 학원장 앱 기존 [🔁 재평가] 버튼으로 처리 (코드 작업 불필요)
+- 오은지(1/2 회차만 녹음 후 종료, 결제 무관) — 학생 재응시 안내
+
+### 3) 진도체크 "Missing or insufficient permissions" — 삭제된 doc 의 Rules
+
+학원장 보고: 진도체크 시험별 패널에서 일부 시험 학생카드 안 나오고
+"로드 실패: Missing or insufficient permissions" 에러.
+
+학원장 통찰("이름 바꾸거나 삭제했을지도") 으로 진단 — 옛 두 시험 doc
+실제 Firestore 에서 사라짐 (학원장이 옛 시험 삭제 + 같은 이름에 "뜻시험"
+추가하여 재출제). 시험 목록 메모리 캐시에 옛 testId 남아있어 클릭 시
+`getDoc(genTests/{삭제된testId})` → Rules 거부.
+
+**Firestore Rules 함정**: `allow read: if ... resource.data.academyId
+== myAcademyId()` 의 컬렉션 doc 이 삭제되면 `resource.data` 는 `null`.
+`null.academyId == 'default'` 평가 시 Firestore 는 **`not-found` 가
+아니라 `permission-denied` 반환**. 학원장 화면에는 헷갈리는 권한 에러
+표시. 해결책 후보 (안 함, 사용자 무시 결정):
+- `tpToggleTestProgress` catch 에서 "Missing or insufficient permissions"
+  메시지 감지 시 "시험이 삭제됨" 안내로 분기 (5분 작업)
+- 시험 삭제 시 메모리 캐시 surgical 갱신 보강
+
+### 4) SW 자동 reload + 1일 로그아웃 폐기 + footer 버전 (v642 `6191a1a`)
+
+학원장 보고: 학생들이 시험 도중 강제 로그아웃되어 처음부터 다시.
+
+원인: `onAuthStateChanged` 의 **24시간 자동 로그아웃 정책**
+(`elapsed > ONE_DAY_MS`). 학생이 어제 ~20시 로그인 → 학생앱 PWA
+백그라운드 유지 → 오늘 시험 시작 시 페이지 reload 발생하면 24시간
+경계 도달 → 강제 로그아웃.
+
+이민서 진단으로 패턴 확정 — Auth lastSignInTime 20:01:33 (재로그인),
+첫 응시 20:09:57 (재로그인 8분 후). "튕김 → 재로그인" 흐름.
+
+**옛 정책의 진짜 의도**: 베타 운영 중 SW 업데이트 강제. 1일 후
+재로그인 흐름이 페이지 reload 발생시켜 결과적으로 SW 업데이트 적용.
+**우회 메커니즘이 본질 (사용 중 로그아웃) 부작용 만든 케이스**.
+
+해결 — 표준 PWA 패턴으로 전환:
+
+**A. SW 자동 reload (시험 중 보호)**
+- `sw.js` 의 activate 가 SW_UPDATED postMessage 보냄 (기존)
+- 학생앱 listener 추가 — 시험 화면(vocabQuiz/unscrambleQuiz/recAiQuiz/
+  readingMcq/fillBlank/result) 이면 `_pendingReload` 박고 대기
+- `show()` wrapper hook — 시험 끝나 다른 화면 전환 시 자동 reload
+- 첫 메시지 무시(`_swInitialMsg`) + sessionStorage 가드(`_swReloadDone`)
+  무한 reload 방지
+
+**B. 1일 자동 로그아웃 정책 폐기**
+- `onAuthStateChanged` 의 `elapsed > ONE_DAY_MS` 블록 제거
+- Firebase Auth 의 자동 토큰 갱신 + persistence 'local' 에 맡김
+- 보안: 학원장 비번 재설정 → `tokensValidAfterTime` 갱신으로 강제
+  invalidate 가능 (충분)
+
+**C. Footer 버전 표시**
+- 학원장 앱은 헤더 Version 이미 있음. 학생앱은 없었음
+- `<body>` 끝에 fixed bottom-right `.version` div 박음 — 모든 화면
+  우측 하단 자그마한 반투명 배지
+- head 인라인 script 의 SW 캐시값 표시 로직 그대로 활용 (`document
+  .querySelectorAll('.version')` 핸들러)
+- 학원장이 학생 폰 잠깐 보면 최신 버전 여부 즉시 판단
+
+### 5) 디바이스 정보 추적 부재 (별도 작업 보류)
+
+학원장 보고: Galaxy Quantum 4 일부 학생 녹음 안 됨 (다른 폰으로 해결).
+김재율 학생 디바이스 정보 요청 — 우리 코드가 user-agent/OS/브라우저
+박지 않아 직접 진단 불가. Vercel 로그 30분 보존이라 사후 추적 어려움.
+
+별도 작업 후보 (사용자 보류) — 학생앱 시험 진입 화면에 디버그 정보
+(브라우저·OS·MediaRecorder 지원 형식·마이크 권한) 자그마하게 표시.
+다음 보고 시 학원장이 학생 폰 잠깐 보고 핀포인트 진단 가능.
+
+### 작업 규칙 추가 (2026-06-04~05)
+
+신규:
+- **사용 중 강제 로그아웃은 정책 자체가 부적절** — 1일 자동 로그아웃
+  같은 시간 기반 정책은 학생/학원장 활동 도중 끊김 부작용. PWA 표준
+  은 토큰 자동 갱신 + 명시적 로그아웃 + 비번 재설정으로 invalidate.
+  "비활성 N일" 같은 표현이 "마지막 로그인 후 N일" 보다 합당.
+- **우회 메커니즘이 본질 부작용 만들면 표준 패턴으로 전환** — 1일
+  로그아웃이 SW 업데이트 강제용 우회였던 케이스. 본질 해결책 (SW
+  controllerchange/message 활용 자동 reload) 로 전환하면 부작용 0 +
+  업데이트 자동 적용. 우회는 보통 임시 해결책 — 본질 fix 시점 미루지
+  말기.
+- **삭제된 doc 의 Rules 평가 = permission-denied (not-found 아님)** —
+  `resource.data.academyId == myAcademyId()` 같은 Rules 가 doc 삭제
+  후엔 `null.academyId` 평가하다 권한 거부 반환. 학원장 화면에
+  헷갈리는 에러 메시지 노출. catch 에서 메시지 감지·분기로 친화 안내
+  가능 (선택 작업).
+- **카카오 인앱 브라우저 강제 외부 브라우저 변경 불가** — 카카오톡 측
+  정책이라 보내는 측에서 못 바꿈. 대신 학생앱의 인앱 감지 배너
+  (이미 구현) + [📋 주소 복사] 버튼으로 학생이 정식 브라우저로 옮기게
+  유도. PWA 설치 후엔 인앱 문제 영구 해결.
+- **Vercel 로그는 진단용 휴발 자원** — 30분 보존이라 사후 진단 어려움.
+  중요 정보(에러·실패 케이스)는 Firestore (userCompleted.latestError-
+  Message 등) 박아 영구 보존. 학원장 보고 즉시 진단 가능.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-04~05)
+
+- 학생앱 정책 정비: ~100% (1일 로그아웃 폐기 + SW 자동 reload + footer 버전)
+- 메시지 관리 UX: ~100% (리셋 버튼)
+- 6월 녹음 결제실패 진단·복구: ~100% (1건만 영향, 재평가 완료)
+- 진도체크 삭제 시험 권한 에러: 사용자 무시 결정
+- 이모지 → SVG Phase 1+2+3: 변동 없음 (12종 136곳)
+- AI Generator 운영 정비: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `public/_app.html`: footer fixed `.version` div + 로그인 화면의 .version 제거
+- `public/admin/_app.html`: 메시지 작성 카드 [↻ 리셋] 버튼
+- `public/admin/js/app.js`: `msgResetTargets` 함수 (picker reset)
+- `public/js/app.js`: SW message listener + `_pendingReload` + `_trySwReload` +
+  show() hook + 1일 로그아웃 블록 제거
+- SW 캐시: `kunsori-v640` → `kunsori-v642`
+- 신규 진단:
+  · `scripts/diag/find-orphan-recordings-jun.js`
+  · `scripts/diag/check-recording-errors-jun.js`
+
+**다음 세션 후보** (변동):
+1. 디바이스 정보 표시 (학생앱 디버그) — Quantum 4 같은 보고 즉시 진단용
+2. 진도체크 삭제 시험 친화 메시지 (catch 분기) — 학원장 보고 누적 시
+3. 학원장 앱 SW 자동 reload + 모달 보호 — 학원장도 같은 표준 패턴
+4. Book/Chapter `createdAt` 클라 캐시 (Generator) — 학원장 보고 받으면
+5. Phase 5 출시 준비 / v1.0 Polish 사이클 (변동 없음)
