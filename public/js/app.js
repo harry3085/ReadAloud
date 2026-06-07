@@ -4368,7 +4368,51 @@ window.goMyInfo=()=>{
   if(pwEl) pwEl.type='password';
   if(confirmEl) confirmEl.type='password';
   document.querySelectorAll('#myInfo button[onclick^="togglePwVis"]').forEach(b=>{ b.innerHTML=_SVG_EYE; });
+  _renderNotifPermBadge();  // 알림 권한 상태 표시
   show('myInfo');
+};
+
+// 알림 권한 상태 배지 — 학원장이 학생 폰 잠깐 봐서 즉시 진단 (2026-06-07)
+function _renderNotifPermBadge() {
+  const el = document.getElementById('notifPermBadge');
+  if (!el) return;
+  if (!('Notification' in window)) {
+    el.style.background = '#f3f4f6';
+    el.style.color = '#6b7280';
+    el.innerHTML = '<span style="font-weight:600;">알림 — 브라우저 미지원</span><span style="font-size:11px;">옛 브라우저</span>';
+    return;
+  }
+  const perm = Notification.permission;
+  if (perm === 'granted') {
+    el.style.background = '#dcfce7';
+    el.style.color = '#166534';
+    el.innerHTML = '<span style="font-weight:700;">알림 ON</span><span style="font-size:11px;">학원 메시지 받음</span>';
+  } else if (perm === 'denied') {
+    el.style.background = '#fee2e2';
+    el.style.color = '#991b1b';
+    el.innerHTML = '<span style="font-weight:700;">알림 거부됨</span><span style="font-size:11px;">폰 설정에서 켜기</span>';
+  } else {
+    el.style.background = '#fef3c7';
+    el.style.color = '#92400e';
+    el.innerHTML = '<span style="font-weight:700;">알림 미설정</span><button type="button" onclick="requestNotifPerm()" style="font-size:12px;padding:5px 12px;background:#f59e0b;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:700;">알림 받기</button>';
+  }
+}
+
+window.requestNotifPerm = async () => {
+  if (!('Notification' in window)) return;
+  try {
+    const perm = await Notification.requestPermission();
+    _renderNotifPermBadge();
+    if (perm === 'granted') {
+      // FCM 토큰 발급 시도 — 기존 등록 함수 활용
+      if (typeof doRegisterToken === 'function') {
+        try { await doRegisterToken(); } catch(_) {}
+      }
+      showToast('알림 허용됨 — 학원 메시지를 받을 수 있어요');
+    } else if (perm === 'denied') {
+      showToast('거부됨 — 폰 설정에서 알림 허용 후 다시 켤 수 있어요');
+    }
+  } catch(e) { console.warn('notif permission:', e); }
 };
 
 // 이모지 → SVG 아이콘 헬퍼 (Lucide 풍 stroke) — 2026-06-03 Phase 2
