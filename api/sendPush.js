@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
 
     // 신 schema: targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]
     // 옛 schema: target 단일 ('all' | groupName | 'uid:UID') — 안전망 유지
-    const { title, body, target, targets, idToken, attachment } = req.body;
+    const { title, body, target, targets, idToken, attachment, urgent } = req.body;
     const hasTargets = Array.isArray(targets) && targets.length > 0;
     if (!title || !body || (!target && !hasTargets)) {
       return res.status(400).json({ error: '제목, 내용, 대상은 필수입니다.' });
@@ -156,6 +156,7 @@ module.exports = async (req, res) => {
       date: new Date(Date.now() + 9*3600*1000).toISOString().slice(0,10),
       createdAt: FieldValue.serverTimestamp(),
       academyId: callerAcademyId,
+      urgent: !!urgent,  // 발송 이력 표시·통계용
     };
     if (attachmentMeta) pushDoc.attachment = attachmentMeta;
     if (hasTargets) {
@@ -204,15 +205,27 @@ module.exports = async (req, res) => {
     let sent = 0, failed = 0;
 
     if (tokens.length > 0) {
+      // 긴급 발송 — Android/iOS/Web 모두 즉시 wake (절전 모드 우회)
+      // 평소(urgent=false): FCM default normal 우선순위 — doze 모드 시 보류 가능
+      const isUrgent = !!urgent;
       const message = {
         notification: { title, body },
+        android: isUrgent ? {
+          priority: 'high',
+          notification: { sound: 'default' },
+        } : undefined,
+        apns: isUrgent ? {
+          headers: { 'apns-priority': '10' },
+          payload: { aps: { sound: 'default' } },
+        } : undefined,
         webpush: {
+          headers: isUrgent ? { Urgency: 'high' } : { Urgency: 'normal' },
           notification: {
             title, body,
             icon: '/icons/icon-192.png',
             badge: '/icons/icon-192.png',
             vibrate: [200, 100, 200],
-            requireInteraction: true, // 확인 전까지 알림 유지
+            requireInteraction: true,
           },
           fcmOptions: { link: '/' },
         },

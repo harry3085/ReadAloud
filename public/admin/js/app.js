@@ -4664,9 +4664,10 @@ window.sendMessage = async() => {
       attachment = await _msgUploadAttachIfAny();
     }
     const idToken = await currentUser.getIdToken();
+    const urgent = !!document.getElementById('msgUrgent')?.checked;
     const res = await fetch('/api/sendPush',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, body, targets, idToken, attachment }),
+      body: JSON.stringify({ title, body, targets, idToken, attachment, urgent }),
     });
     const result=await res.json();
     showToast(result.success ? result.message : (result.message||result.error||'발송 실패'));
@@ -4674,6 +4675,8 @@ window.sendMessage = async() => {
       // 입력·첨부 초기화 — 검색·날짜 필터 유지
       document.getElementById('msgTitle').value = '';
       document.getElementById('msgBody').value = '';
+      const urgentEl = document.getElementById('msgUrgent');
+      if (urgentEl) urgentEl.checked = false;
       msgClearAttach();
       // 발송 이력 즉시 갱신 — server 가 sent doc 생성하므로 surgical insert 대신 재fetch (현 필터 유지)
       _msgSentCache = null;
