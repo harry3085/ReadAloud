@@ -208,6 +208,14 @@ module.exports = async (req, res) => {
       // 긴급 발송 — Android/iOS/Web 모두 즉시 wake (절전 모드 우회)
       // 평소(urgent=false): FCM default normal 우선순위 — doze 모드 시 보류 가능
       const isUrgent = !!urgent;
+
+      // 학원 로고 — branding.logo192Url 있으면 사용, 없으면 default LexiAI
+      let iconUrl = 'https://raloud.vercel.app/icons/icon-192.png';
+      try {
+        const acadDoc = await db.doc('academies/' + callerAcademyId).get();
+        const acadLogo = acadDoc.exists ? (acadDoc.data()?.branding?.logo192Url || null) : null;
+        if (acadLogo) iconUrl = acadLogo;
+      } catch (_) { /* fetch 실패 시 default 유지 */ }
       const message = {
         notification: { title, body },
         android: isUrgent ? {
@@ -222,8 +230,8 @@ module.exports = async (req, res) => {
           headers: isUrgent ? { Urgency: 'high' } : { Urgency: 'normal' },
           notification: {
             title, body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-192.png',
+            icon: iconUrl,
+            badge: iconUrl,
             vibrate: [200, 100, 200],
             requireInteraction: true,
           },
