@@ -4212,26 +4212,31 @@ window.show=id=>{
   if (_pendingReload && !_isInExam(id)) _trySwReload();
 };
 
-let _examExitAllowed = false;  // popstate 보호 분기 우회 (학생 확인 후 history.back() 시)
+// 시험 유형별 quit 함수 — 상단 X 버튼과 동일 흐름 (중단 확인 + 저장 여부 확인 + goHome)
+const _EXAM_QUIT_FNS = {
+  vocabQuiz: 'quitVocab',
+  recAiQuiz: 'quitRecAi',
+  unscrambleQuiz: 'quitUnscramble2',
+  readingMcq: 'quitReadingMcq',
+  fillBlank: 'quitFillBlank',
+};
 
 window.addEventListener('popstate', async e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
 
-  // 시험 화면에서 뒤로가기 → 종료 확인 모달 (사고 방지)
+  // 시험 화면에서 뒤로가기 → 시험 유형별 quit 함수 호출 (X 버튼과 동일 흐름)
   // 결과 보기 중 (screen.dataset.stage === 'result') 은 제외 — 자연스러운 뒤로가기
   const isResultView = cur?.dataset?.stage === 'result';
-  if (_isInExam(curId) && !isResultView && !_examExitAllowed) {
-    // 즉시 현재 state 복원 — 학생 확인 모달 동안 화면 유지
+  const quitFnName = _EXAM_QUIT_FNS[curId];
+  if (quitFnName && !isResultView && typeof window[quitFnName] === 'function') {
+    // 즉시 현재 state 복원 — quit 함수의 모달 동안 화면 유지
     history.pushState({screen: curId}, '', location.pathname);
-    const ok = await showConfirm('시험을 종료할까요?', '지금까지의 답안은 저장되지 않습니다.');
-    if (ok) {
-      _examExitAllowed = true;  // 다음 popstate 1회 우회
-      history.back();  // 진짜 뒤로 — 다시 popstate 발화 → 우회 분기 → 정상 화면 전환
-    }
+    // quit 함수가 자체 흐름 처리: 중단 확인 → 저장 여부 → goHome()
+    // 학생이 첫 모달 [취소] 시 quit 함수가 즉시 종료 → 화면 유지
+    window[quitFnName]();
     return;
   }
-  _examExitAllowed = false;  // 1회용 flag 리셋
 
   // 관리자 화면: 뒤로가기 → 종료 안내
   if(curId==='admin'){
