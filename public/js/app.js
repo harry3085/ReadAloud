@@ -3826,6 +3826,7 @@ function _rv2RenderResult({ missedWords, note, feedback, audioUrl, recordings, f
   _releaseWakeLock();
   const screen = document.getElementById('recAiQuiz');
   if (!screen) return;
+  screen.dataset.stage = 'result';  // popstate 뒤로가기 보호 분기 — 결과 보기 중엔 모달 X
   const ft = fullText || _rv2?.question?.fullText || '';
   const hasMultiple = Array.isArray(recordings) && recordings.length > 1;
   // Phase C: feedback 의 새 필드들
@@ -4203,24 +4204,34 @@ window.show=id=>{
     screenStack.push(curId);
     history.pushState({screen:id},'',location.pathname);
   }
+  // 시험 화면 진입 시 dataset.stage 리셋 (이전 결과 보기 마커 제거)
+  const newScreen = document.getElementById(id);
+  if (newScreen && _isInExam(id)) newScreen.dataset.stage = '';
   _originalShow(id);
   // 시험 화면 벗어났는데 SW reload 대기 중이면 적용
   if (_pendingReload && !_isInExam(id)) _trySwReload();
 };
+
+let _examExitAllowed = false;  // popstate 보호 분기 우회 (학생 확인 후 history.back() 시)
 
 window.addEventListener('popstate', async e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
 
   // 시험 화면에서 뒤로가기 → 종료 확인 모달 (사고 방지)
-  // result 화면은 시험 끝난 결과 표시 → 뒤로가기 자연스러움 (제외)
-  if (_isInExam(curId) && curId !== 'result') {
+  // 결과 보기 중 (screen.dataset.stage === 'result') 은 제외 — 자연스러운 뒤로가기
+  const isResultView = cur?.dataset?.stage === 'result';
+  if (_isInExam(curId) && !isResultView && !_examExitAllowed) {
     // 즉시 현재 state 복원 — 학생 확인 모달 동안 화면 유지
     history.pushState({screen: curId}, '', location.pathname);
     const ok = await showConfirm('시험을 종료할까요?', '지금까지의 답안은 저장되지 않습니다.');
-    if (ok) history.back();  // 학생 확인 → 진짜 뒤로
+    if (ok) {
+      _examExitAllowed = true;  // 다음 popstate 1회 우회
+      history.back();  // 진짜 뒤로 — 다시 popstate 발화 → 우회 분기 → 정상 화면 전환
+    }
     return;
   }
+  _examExitAllowed = false;  // 1회용 flag 리셋
 
   // 관리자 화면: 뒤로가기 → 종료 안내
   if(curId==='admin'){
@@ -5736,6 +5747,7 @@ function _vqRenderResult({ correct, wrong, total, score, passed, passScore, ques
     correct, wrong, total, score, passed, passScore,
     detailHtml: _vqBuildDetail(questions, answers),
   });
+  screen.dataset.stage = 'result';  // popstate 뒤로가기 보호 분기 — 결과 보기 중엔 모달 X
   updateVocabBadge();
 }
 
