@@ -4208,9 +4208,19 @@ window.show=id=>{
   if (_pendingReload && !_isInExam(id)) _trySwReload();
 };
 
-window.addEventListener('popstate',e=>{
+window.addEventListener('popstate', async e=>{
   const cur=document.querySelector('.screen.active');
   const curId=cur?.id;
+
+  // 시험 화면에서 뒤로가기 → 종료 확인 모달 (사고 방지)
+  // result 화면은 시험 끝난 결과 표시 → 뒤로가기 자연스러움 (제외)
+  if (_isInExam(curId) && curId !== 'result') {
+    // 즉시 현재 state 복원 — 학생 확인 모달 동안 화면 유지
+    history.pushState({screen: curId}, '', location.pathname);
+    const ok = await showConfirm('시험을 종료할까요?', '지금까지의 답안은 저장되지 않습니다.');
+    if (ok) history.back();  // 학생 확인 → 진짜 뒤로
+    return;
+  }
 
   // 관리자 화면: 뒤로가기 → 종료 안내
   if(curId==='admin'){
