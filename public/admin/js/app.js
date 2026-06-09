@@ -11690,7 +11690,8 @@ function _qgBuildRecordingSet(opts) {
   const question = {
     type: 'recording',
     schemaV: 2,
-    roundsRequired: 3,
+    // roundsRequired 폐기 (2026-06-08) — 학생앱이 안 봄. recordingCount 만 사용
+    // recordingCount 는 시험 배정 시 학원장 모달에서 박힘 (line 14983)
     pageCount: pages.length,
     startPageTitle: firstPage.title || '',
     startSentence,
