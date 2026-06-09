@@ -16662,14 +16662,15 @@ async function _progLoadStudentTestsForUid(uid, group, daysTarget) {
       queries.push(query(collection(db, 'genTests'), ...baseConstraints, where('targetGroups', 'array-contains', group)));
     }
     const snaps = await Promise.all(queries.map(q => getDocs(q)));
-    // dedup merge into cache
+    // dedup merge into cache — 학원장이 [✕ 제외] 한 학생은 제외 (학생앱·시험별 진도체크와 동일 정책)
     const seen = new Set(cache.tests.map(t => t.id));
     snaps.forEach(snap => {
       snap.docs.forEach(d => {
-        if (!seen.has(d.id)) {
-          cache.tests.push({ id: d.id, ...d.data() });
-          seen.add(d.id);
-        }
+        if (seen.has(d.id)) return;
+        const td = d.data();
+        if (Array.isArray(td.excludedUids) && td.excludedUids.includes(uid)) return;
+        cache.tests.push({ id: d.id, ...td });
+        seen.add(d.id);
       });
     });
     cache.days = daysTarget;
