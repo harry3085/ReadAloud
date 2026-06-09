@@ -3056,3 +3056,120 @@ F12 없음. 학원장 정확 지적.
 2. FCM 토큰 만료 진단 — 학원장 앱에서 학생별 토큰 상태 확인 (없음/만료)
 3. 발송 이력에 긴급 발송 배지 표시 (지금은 doc 에 박기만 함)
 4. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-08: 시험 도중 뒤로가기 보호 (3단계 진화) + 학생별 진도체크 fix
+
+SW v646 → v650 (~5 commit). 학원장 보고: "학생이 시험 도중 휴대폰 하단
+뒤로가기 누르면 처음부터 다시 풀어야 함" → 시험 종료 흐름 통일.
+김유진 학생의 진도체크 표시 불일치 → 학원장 앱 결함 발견.
+
+### 1) 뒤로가기 보호 1차 (v647 `4d5388d`) — 단순 confirm
+
+popstate 핸들러에 `_isInExam(curId) && curId !== 'result'` 분기. 모달
+"시험을 종료할까요?" → 확인 시 `history.back()`.
+
+문제: 학생이 [확인] 누르면 history.back() 호출 → 다시 popstate 발화
+→ 또 보호 분기 진입 → 또 모달. **무한 모달**. + result 화면 별도 id
+아니라 시험 화면(vocabQuiz/recAiQuiz) innerHTML 만 결과로 교체하는
+구조라 `curId === 'result'` 조건이 절대 true 안 됨.
+
+### 2) 뒤로가기 보호 2차 (v648 `044ad3c`) — flag + dataset 마커
+
+- `_examExitAllowed` flag — 학생 확인 시 true 박고 history.back()
+  호출. 다음 popstate 시 1회 우회 후 false 리셋. 무한 루프 차단
+- `screen.dataset.stage = 'result'` 마커 — `_vqRenderResult` /
+  `_rv2RenderResult` 가 결과 렌더 시 박음. popstate 가 그 마커로
+  결과 보기 중 판정. show() wrapper 에서 시험 시작 시 자동 리셋
+
+문제: 모달 자체는 단순 confirm 1개. 그러나 학원장이 사용 중인 X 버튼
+(quitVocab 등) 은 2단계 모달 — (1) 중단 확인 + (2) **저장 여부 확인**.
+학생이 [중단]/[저장] 선택해서 진행 내용을 다음 진입에 이어풀 수
+있어야 하는데 뒤로가기는 그게 빠짐.
+
+### 3) 뒤로가기 보호 3차 (v649 `442bfb8`) — quit 함수 호출 (정답)
+
+popstate 가 자체 모달 만들지 말고 **시험 유형별 quit 함수 호출**로
+완전 위임:
+
+```js
+const _EXAM_QUIT_FNS = {
+  vocabQuiz: 'quitVocab',
+  recAiQuiz: 'quitRecAi',
+  unscrambleQuiz: 'quitUnscramble2',
+  readingMcq: 'quitReadingMcq',
+  fillBlank: 'quitFillBlank',
+};
+```
+
+quit 함수가 (1) 중단 확인 → (2) 저장 여부 확인 → `_vqSaveProgress()`
+같은 진행 저장 + `goHome()` 까지 일괄 처리. `_examExitAllowed` flag
+도 제거 (불필요 — quit 의 `goHome` 이 `show()` 호출이라 popstate
+우회 분기 안 거침).
+
+→ 뒤로가기와 X 버튼이 **완전 동일 흐름**. 학생이 어느 경로로 종료해도
+같은 모달·같은 저장 옵션.
+
+### 4) 학생별 진도체크 `excludedUids` fix (v650 `335ee50`)
+
+학원장 후속 보고: "김유진 학생이 어스본반 시험에서 [✕ 제외] 했는데도
+학생별 진도체크 화면에 그 시험이 표시됨. 학생앱에도 보이고 학원장
+조회해도 보임 — 캐시가 아닌 다른 원인 같음."
+
+진단:
+- 시험 `excludedUids` 에 김유진 uid 정상 박힘
+- 김유진 userCompleted/scores 없음 (진입 흔적 0)
+- 학생앱 코드 (line 2152) 의 `excludedUids` 필터 정상
+- 학원장 시험별 진도체크 `_progTestAssignedTo` (line 16871) 정상
+- **학원장 학생별 진도체크 `_progFetchStudentTests` (line 16670)**
+  의 dedup merge 단계에서 **`excludedUids` 필터 누락** ← 진짜 원인
+
+학생앱 측은 fresh fetch 시 정상 (시뮬레이션 확인). 김유진 화면에서
+보이는 건 옛 메모리 캐시 — 페이지 재진입 시 자동 해결.
+
+수정: forEach 안에서 td.excludedUids 가 uid 포함하면 push skip. 세
+화면 (학생앱·시험별·학생별 진도) excludedUids 정책 일관 적용.
+
+### 작업 규칙 추가 (2026-06-08)
+
+신규:
+- **화면 id 만으로 화면 상태 구분 불가 시 명시 마커** — innerHTML 교체
+  패턴 (`_vqRenderResult` 가 vocabQuiz 화면 안 결과 UI 박음) 에선
+  curId 가 '시험 중' 과 '결과 보기 중' 모두 같음. `dataset.stage =
+  'result'` 같은 명시 마커로 구분. 화면 진입 시 wrapper 에서 reset
+  필수 (다음 시험 시작 시 마커 잔존 방지).
+- **시험 종료 흐름은 quit 함수가 유일 진실** — quitVocab 등이 중단
+  확인 + 저장 여부 모달 + 진행 저장 + goHome() 일괄 처리. 다른 종료
+  경로 (뒤로가기·자동 종료) 도 그 함수 호출로 위임. popstate 가
+  자체 confirm 만들면 X 버튼과 다른 흐름 → 학생 혼란 + 저장 흐름 누락.
+- **excludedUids 체크는 3곳 동일 정책 필수** — 학생앱 시험 목록 /
+  학원장 시험별 진도 / 학원장 학생별 진도 — 어느 한 곳 빠지면 화면별
+  표시 불일치 (학생앱에선 안 보이는데 학원장 진도엔 보임 등). 신규
+  진도/시험 표시 화면 추가 시 excludedUids 필터 routinize.
+- **사용자 보고 → 점진 정확화 패턴** — 첫 fix (v647) 이 회귀로 추가
+  fix 트리거 (v648, v649). 사용자가 "확인 누르면 화면 유지" / "저장
+  여부 모달 안 뜸" 등 정확한 증상 알려주면 그것만 보고 추정 → 진단
+  비용 최소. 1차 답변에서 "X 버튼이 quitVocab 호출하는데 뒤로가기는
+  안 함" 같은 코드 측 비교가 빨리 정답으로 가는 길.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-08)
+
+- 학생앱 시험 보호: ~100% (3단계 진화 후 안정)
+- 학원장 학생별 진도체크 excludedUids 정합성: ~100%
+- 메시지 시스템 (긴급/로고/리셋/알림 배지): 변동 없음
+- 멀티테넌시·결제·말하기·녹음숙제·AI Generator: 변동 없음
+
+파일:
+- `public/js/app.js`: popstate 핸들러 + `_EXAM_QUIT_FNS` 매핑 + `_isInExam`
+  + dataset.stage 마커 (_vqRenderResult / _rv2RenderResult)
+- `public/admin/js/app.js`: `_progFetchStudentTests` dedup merge 에
+  excludedUids 필터 추가
+- SW 캐시: `kunsori-v646` → `kunsori-v650`
+
+**다음 세션 후보** (변동):
+1. 학생앱 디바이스 정보 진단 표시 (Quantum 4 같은 보고 즉시 진단)
+2. FCM 토큰 만료 진단 — 학원장 앱에서 학생별 토큰 상태
+3. 발송 이력에 긴급 발송 배지 표시
+4. 학원장 앱 SW 자동 reload + 모달 보호 (학원장도 표준 패턴)
+5. Phase 5 출시 준비 (변동 없음)
