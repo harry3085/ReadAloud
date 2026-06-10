@@ -317,9 +317,33 @@ window.doLogin = async () => {
     }
   } catch(e){
     console.error(e);
-    err.textContent = e.code==='auth/invalid-credential'?'비밀번호가 틀렸습니다.':'오류: '+(e.code||e.message);
+    err.textContent = _friendlyAuthError(e);
   }
 };
+
+// Firebase Auth 에러 → 사용자 친화 한국어 메시지
+function _friendlyAuthError(e) {
+  const code = e?.code || '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+      return '비밀번호가 틀렸습니다.';
+    case 'auth/user-not-found':
+      return '존재하지 않는 아이디입니다.';
+    case 'auth/too-many-requests':
+      return '비밀번호를 여러 번 잘못 입력해서 일시 차단됐어요. 30분 후 다시 시도하거나, Wi-Fi ↔ LTE 를 바꿔서 시도해보세요.';
+    case 'auth/network-request-failed':
+      return '네트워크 연결을 확인해주세요.';
+    case 'auth/user-disabled':
+      return '계정이 비활성화됐어요. 학원에 문의해주세요.';
+    case 'auth/invalid-email':
+      return '이메일 형식이 올바르지 않습니다.';
+    case 'auth/internal-error':
+      return '일시적인 오류예요. 잠시 후 다시 시도해주세요.';
+    default:
+      return '로그인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요. (' + (code || e?.message || 'unknown') + ')';
+  }
+}
 
 // ── 로그아웃 ──────────────────────────────────────────────
 window.confirmLogout = ()=>{document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');document.getElementById('logoutModal').classList.remove('hidden');};

@@ -157,7 +157,10 @@
     </div>
     <div class="login-card">
       <input class="login-input" type="text" placeholder="아이디" id="usernameInput" autocomplete="username" style="margin-bottom:12px;">
-      <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password" style="margin-bottom:6px;">
+      <div style="position:relative;margin-bottom:6px;">
+        <input class="login-input" type="password" placeholder="비밀번호" id="passwordInput" autocomplete="current-password" style="margin-bottom:0;padding-right:42px;">
+        <button type="button" onclick="togglePwVis('passwordInput', this)" aria-label="비밀번호 보기" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:6px;line-height:0;color:#999;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
       <div class="login-error" id="loginError" style="min-height:18px;font-size:13px;margin-bottom:4px;"></div>
       <button class="login-btn" onclick="doLogin()">로그인</button>
       <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;">
