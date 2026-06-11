@@ -14756,11 +14756,17 @@ window.tpOpenPublishModal = async () => {
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="margin-bottom:16px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${iconSvg('clipboard')} 시험 정보</div>
-          <div style="display:grid;grid-template-columns:1fr 100px 110px 140px;gap:8px;">
+          <div style="display:grid;grid-template-columns:1fr ${cfg.testMode === 'vocab' ? '90px ' : ''}85px 95px 140px;gap:8px;">
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명 *</label>
               <input type="text" id="tpName" value="${esc(defaultName)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
             </div>
+            ${cfg.testMode === 'vocab' ? `
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--gray);">제한시간(초)</label>
+              <input type="number" id="tpTimeLimit" value="30" min="5" max="120" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;" title="문제당 풀이 시간 (5~120초)">
+              <div style="font-size:10px;color:var(--gray);margin-top:2px;">문제당</div>
+            </div>` : ''}
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">통과점수</label>
               ${cfg.testMode === 'recording'
@@ -15001,10 +15007,12 @@ window.tpPublish = async () => {
     const fmt = document.getElementById('tpVocabFormat')?.value || 'mixed';
     const _mcqR = parseInt(document.getElementById('tpVocabMcqRatio')?.value);
     const _e2kR = parseInt(document.getElementById('tpVocabEn2koRatio')?.value);
+    const _tl = parseInt(document.getElementById('tpTimeLimit')?.value);
     vocabOptions = {
       format: fmt,                                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
       mcqRatio: isFinite(_mcqR) ? Math.max(0, Math.min(100, _mcqR)) : 50,
       en2koRatio: isFinite(_e2kR) ? Math.max(0, Math.min(100, _e2kR)) : 50,
+      timeLimitSec: isFinite(_tl) ? Math.max(5, Math.min(120, _tl)) : 30,  // 문제당 제한시간(초)
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
       shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
     };

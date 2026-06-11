@@ -4968,12 +4968,16 @@ window._vqFocusSpellInput = () => {
   }
 };
 
-// 타이머 (구버전 스타일: MCQ 10초 / 스펠 30초)
+// 타이머 — 학원장 설정 vocabOptions.timeLimitSec 우선 (모든 형식 통일)
+// 없으면 옛 룰 (MCQ 10초 / 스펠·말하기 30초) 폴백 — 이전 출제분 하위호환
 function _vqStartTimer(){
   _vqStopTimer();
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
-  const total = ans.format === 'mcq' ? 10 : 30;
+  const v = parseInt(s.opts?.timeLimitSec);
+  const total = (isFinite(v) && v >= 5 && v <= 120)
+    ? v
+    : (ans.format === 'mcq' ? 10 : 30);
   _vqTimeLeft = total;
   _vqUpdateTimerUI(total);
   _vqTimer = setInterval(() => {
