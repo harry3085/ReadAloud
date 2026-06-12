@@ -4752,6 +4752,7 @@ window.startVocab = async (testId, testName) => {
       format: _fmt,                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
       mcqRatio: Math.max(0, Math.min(100, _mcqRatio)),
       en2koRatio: Math.max(0, Math.min(100, _en2koRatio)),
+      timeLimitSec: _raw.timeLimitSec,                    // 학원장 출제 시 설정 — 미박힘 시 _vqStartTimer 가 형식별 폴백
       shuffleQ: _raw.shuffleQ !== false,
       shuffleChoices: _raw.shuffleChoices !== false,
       speakingStrictness: _raw.speakingStrictness || 'normal',
