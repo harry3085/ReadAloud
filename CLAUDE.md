@@ -3173,3 +3173,147 @@ quit 함수가 (1) 중단 확인 → (2) 저장 여부 확인 → `_vqSaveProgre
 3. 발송 이력에 긴급 발송 배지 표시
 4. 학원장 앱 SW 자동 reload + 모달 보호 (학원장도 표준 패턴)
 5. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-12: 로그인 비번 토글·친화 에러 + 시험 제한시간 학원장 설정
+
+SW v650 → v655 (~5 commit). 학원장 보고 — minmini 학생 `auth/too-many-requests`
+에러 + 단어시험 제한시간 학원장 조절 불가 → 일련 작업.
+
+### 1) 학생 로그인 비번 토글 + 친화적 에러 메시지 (`a4b41ae`, v652)
+
+minmini(이성민) 학생 `auth/too-many-requests` 에러 보고. 진단 결과 학생이 비번
+잘못 입력 누적으로 Firebase 가 일시 차단. 학원장이 6/9 + 6/10 두 번 재설정 했는데
+계속 보고 → 학생 비번 자가검증 수단 부재가 본질.
+
+- 학생앱 `[로그인]` 화면 비번 input 에 👁 SVG 토글 추가 (myInfo 패턴 동일)
+  · `togglePwVis('passwordInput', this)` 재사용
+  · `autocomplete=current-password` 유지, padding-right:42px 로 토글 공간 확보
+- `_friendlyAuthError(e)` 신규 — Firebase Auth 8개 code 한국어 매핑
+  · `auth/too-many-requests` → "비밀번호를 여러 번 잘못 입력해서 일시 차단됐어요.
+    30분 후 다시 시도하거나, Wi-Fi ↔ LTE 를 바꿔서 시도해보세요."
+  · `auth/invalid-credential` / `wrong-password` → "비밀번호가 틀렸습니다."
+  · `auth/user-not-found` / `network-request-failed` / `user-disabled` /
+    `invalid-email` / `internal-error` 별도
+  · default: "로그인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요. (코드)"
+- 옛 catch 분기 `e.code==='auth/invalid-credential'?'...':'오류: '+e.code` 폐기
+
+### 2) minmini 학생 비번 진단 — 코드 변경 없음
+
+학원장 후속 질문 3가지 진단:
+- "이전 비번 알 수 있나" — 불가. Firebase Auth 는 SHA-256 + salt 해시만 저장,
+  admin SDK 도 plain 복원 불가. `passwordHistory` 는 시각·actor 만 기록.
+- "비번 잘못 입력 아닌 다른 요인?" — 가장 의심 1순위: **폰 비번 관리자 자동완성이
+  옛 비번 박음**. 학원장 옆에서 1회 로그인 성공 (6/9 14:57:11) 후 학생이 본인 폰에서
+  들어가려 할 때 자동완성이 옛 값 덮어쓰기 → 학생은 본인 입력으로 인지. **새 👁
+  토글로 즉시 자가검증** 가능. FCM 토큰 0건 (학생 평소 [내 정보] 안 들어감) 확인.
+- "다른 네트워크 시도하면 풀리는 이유" — Firebase 차단 기준 = IP + 계정 조합.
+  Wi-Fi ↔ LTE 는 외부 IP 달라 차단 카운트 초기화. Credential Stuffing 방어용.
+- "지금 차단 풀렸나" — 직접 조회 불가 (Firebase 가 rate limit 상태 노출 API 없음).
+  비번 재설정은 보통 rate limit 도 해제 → 6/10 19:50 재설정으로 풀렸을 가능성 큼.
+
+### 3) 단어시험 제한시간 출제 옵션 (회귀 1회 후 확정, `75f07e1` v653)
+
+학원장 요청 — 출제 모달 시험명 뒤·통과점수 앞에 제한시간 input. 사용자 결정
+과정 (3 iteration):
+- 1차 추측: 단일 입력 default 10초, 범위 3~120
+- 2차 정정: "기본값을 mcq 10초 스펠 30초로 수정, 범위는 5~120" → 형식별 2 입력
+  으로 확장 (timeLimitMcqSec / timeLimitSpellSec)
+- 3차 단순화: "mcq, 스펠 구분하지말고 동일하게 기본 30초로 하나로 통일" →
+  단일 입력 default 30 으로 최종
+
+확정 spec:
+- 출제 모달 grid `1fr 90 85 95 140` (단어시험 5칸) — 통과점수·출제문제수 폭 축소
+- `tpTimeLimit` input (number, default 30, min 5, max 120, title 툴팁)
+- `vocabOptions.timeLimitSec` 저장 (이때 시점에는 vocabOptions 안에 박았음)
+- 학생앱 `_vqStartTimer` — opts.timeLimitSec 우선, 미박힘 시 옛 룰 (MCQ 10/스펠 30)
+  폴백. 형식 무관 단일 값.
+
+### 4) startVocab opts carry 누락 버그 (`7b01e0e`, v654)
+
+학원장 보고 — 60초 설정 출제한 시험이 학생앱(김기헌 본인 계정 Harry 테스트)에서
+30초로 보임. 진단:
+- Firestore 데이터 정상 (`vocabOptions.timeLimitSec: 60` 확인)
+- 학생앱 `_vqStartTimer` 정상 (opts.timeLimitSec 읽음)
+- **버그 위치**: `startVocab` 의 opts 객체 구성 (line 4751-4758) 이 명시적 픽킹
+  패턴 (`format/mcqRatio/en2koRatio/shuffleQ/shuffleChoices/speakingStrictness`)
+  인데 신규 `timeLimitSec` 추가 안 함 → `_vqState.opts.timeLimitSec = undefined`
+  → 옛 룰 폴백 → 30초로 보임
+
+원인: 이전 v653 작업이 `_vqStartTimer` 만 수정하고 그 위 단계 opts 구성 누락.
+명시적 픽킹 패턴은 신규 필드 추가 시 반드시 위치 같이 갱신 필요.
+
+수정: `opts` 객체에 `timeLimitSec: _raw.timeLimitSec` 추가.
+
+### 5) 빈칸채우기·언스크램블 학원장 설정으로 확장 (옵션 A, `494773e`, v655)
+
+학원장 "다른 시험은 어떻게 설정?" 질문 → 현황 정리 후 옵션 A 채택. 통합 작업:
+
+- 출제 모달 — `cfg.testMode === 'vocab'` 단일 분기 → `['vocab','fill_blank',
+  'unscramble'].includes(cfg.testMode)` 로 일반화. UI 패턴 동일
+- **데이터 모델 통일 — doc 최상위 `timeLimitSec`** 으로 박음
+  · 단어시험: vocabOptions 에서 빼고 최상위로 (학생앱은 vocabOptions.timeLimitSec
+    폴백 유지 — 어제 출제분 호환)
+  · 빈칸/언스크램블: 최상위 신규
+- 학생앱 3개 타이머 동일 패턴:
+  · `_vqStartTimer`: `test.timeLimitSec ?? opts.timeLimitSec` 우선
+  · `_uqStartTimer`: `_uqState.test.timeLimitSec` 우선, default 30
+  · `_fbStartTimer`: `_fbState.test.timeLimitSec` 우선, default FB_TIME_PER_Q(30)
+- UI arc 비율 계산도 동적 total 받도록 — `_uqUpdateTimerUI(total)` / `_fbUpdateTimerUI(total)`
+
+### 시험 유형별 제한시간 현황 (2026-06-12 종료 기준)
+
+| 유형 | 제한시간 | 위치 |
+|------|---------|------|
+| 단어시험 (vocab) | 학원장 설정 (default 30) | test.timeLimitSec |
+| 빈칸채우기 (fill_blank) | 학원장 설정 (default 30) | test.timeLimitSec |
+| 언스크램블 (unscramble) | 학원장 설정 (default 30) | test.timeLimitSec |
+| 객관식 본문이해 (mcq) | 없음 (무제한) | — |
+| 객관식 문법 | 없음 (무제한) | — |
+| 해석하기 (subjective) | 없음 (무제한) | — |
+| 녹음숙제 (recording) | 학원장 설정 (min/maxDurationSec) | 별도 모델 |
+
+### 작업 규칙 추가 (2026-06-12)
+
+신규:
+- **Firebase Auth `too-many-requests` = IP + 계정 + 디바이스 조합 차단** —
+  Credential Stuffing 방어용. 다른 네트워크(Wi-Fi ↔ LTE 외부 IP 변경) 로 시도
+  하면 우회. admin SDK 로 rate limit 상태 직접 조회 불가. 비번 재설정이 보통
+  해제 트리거. 학원장 안내: 30분 대기 / 네트워크 변경 / 학생 폰 비번 관리자
+  자동완성 옛 값 의심.
+- **`type=password` input 은 자가검증 어려움 — 토글 필수** — 비번 입력은 사용자
+  (학생/학원장 모두) 본인 입력값 자가검증 불가가 본질 문제. 폰 비번 관리자
+  자동완성이 옛 값 덮어쓰기도 알 수 없음. 👁 토글 + (새 비번 설정 경로면) 확인
+  input 으로 이중 입력. critical input 표준.
+- **명시적 픽킹 패턴 opts/options 객체에 신규 필드 추가 시 반드시 위치 같이
+  갱신** — `startVocab` 의 opts 구성 (`{format, mcqRatio, en2koRatio,
+  shuffleQ, ...}`) 처럼 명시적 필드만 picking 하는 객체는 신규 필드 추가 시
+  Firestore 데이터에 박혀도 carry 안 됨 → 학생앱이 신규 값 못 봄 → 출제 설정
+  무용. 신규 필드 박는 위치 grep 후 모든 picking 경로 같이 갱신.
+- **시험 옵션 데이터 모델 — doc 최상위 통일 우선** — vocab 만 `vocabOptions`
+  서브객체 안에 박는 패턴은 다른 시험 유형 확장 시 비대칭. 시험 유형 무관 공통
+  옵션 (`timeLimitSec` 등) 은 doc 최상위. 유형별 고유 옵션 (vocab format,
+  recording recordingCount 등) 만 서브객체 유지. 학생앱은 폴백 분기로 옛 시험 호환.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-12)
+
+- 로그인 UX (비번 토글·친화 에러): ~100%
+- 시험 제한시간 학원장 설정 (vocab·fill_blank·unscramble): ~100%
+- minmini 진단: 코드 변경 없음 (학생 폰 자동완성 의심, 학원장 안내로 해결)
+- 멀티테넌시·결제·말하기·녹음숙제·AI Generator·메시지: 변동 없음
+
+파일:
+- `public/_app.html`: 로그인 화면 비번 input wrapper + 👁 SVG 토글
+- `public/js/app.js`: `_friendlyAuthError` + startVocab opts carry +
+  `_vqStartTimer` / `_uqStartTimer` / `_fbStartTimer` 학원장 설정 우선
+- `public/admin/js/app.js`: 출제 모달 grid 일반화 + `tpTimeLimit` input +
+  tpPublish 최상위 timeLimitSec 박음
+- SW 캐시: `kunsori-v650` → `kunsori-v655`
+
+**다음 세션 후보** (변동):
+1. minmini 학생 후속 관찰 (자동완성 정리 안내 효과 확인)
+2. 학생앱 디바이스 정보 진단 표시 (Quantum 4 같은 보고 즉시 진단)
+3. FCM 토큰 만료 진단
+4. 객관식·해석에도 시간 제한 옵션 추가 (옵션 B — 학원장 요청 시)
+5. Phase 5 출시 준비 (변동 없음)
