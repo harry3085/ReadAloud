@@ -14756,12 +14756,12 @@ window.tpOpenPublishModal = async () => {
       <div style="padding:16px 22px;overflow-y:auto;flex:1;">
         <div style="margin-bottom:16px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${iconSvg('clipboard')} 시험 정보</div>
-          <div style="display:grid;grid-template-columns:1fr ${cfg.testMode === 'vocab' ? '90px ' : ''}85px 95px 140px;gap:8px;">
+          <div style="display:grid;grid-template-columns:1fr ${['vocab','fill_blank','unscramble'].includes(cfg.testMode) ? '90px ' : ''}85px 95px 140px;gap:8px;">
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">시험명 *</label>
               <input type="text" id="tpName" value="${esc(defaultName)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;">
             </div>
-            ${cfg.testMode === 'vocab' ? `
+            ${['vocab','fill_blank','unscramble'].includes(cfg.testMode) ? `
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--gray);">제한시간(초)</label>
               <input type="number" id="tpTimeLimit" value="30" min="5" max="120" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:3px;" title="문제당 풀이 시간 (5~120초)">
@@ -15007,12 +15007,10 @@ window.tpPublish = async () => {
     const fmt = document.getElementById('tpVocabFormat')?.value || 'mixed';
     const _mcqR = parseInt(document.getElementById('tpVocabMcqRatio')?.value);
     const _e2kR = parseInt(document.getElementById('tpVocabEn2koRatio')?.value);
-    const _tl = parseInt(document.getElementById('tpTimeLimit')?.value);
     vocabOptions = {
       format: fmt,                                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
       mcqRatio: isFinite(_mcqR) ? Math.max(0, Math.min(100, _mcqR)) : 50,
       en2koRatio: isFinite(_e2kR) ? Math.max(0, Math.min(100, _e2kR)) : 50,
-      timeLimitSec: isFinite(_tl) ? Math.max(5, Math.min(120, _tl)) : 30,  // 문제당 제한시간(초)
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
       shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
     };
@@ -15088,6 +15086,12 @@ window.tpPublish = async () => {
       ...(cfg.testMode === 'recording' ? {} : { passScore }),
       bookName,
       ...(vocabOptions ? { vocabOptions } : {}),
+      ...((() => {
+        // 시험 유형 무관 — 문제당 제한시간(초). vocab/fill_blank/unscramble 만 모달에 노출
+        if (!['vocab','fill_blank','unscramble'].includes(cfg.testMode)) return {};
+        const _tl = parseInt(document.getElementById('tpTimeLimit')?.value);
+        return { timeLimitSec: isFinite(_tl) ? Math.max(5, Math.min(120, _tl)) : 30 };
+      })()),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
     });

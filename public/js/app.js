@@ -1661,13 +1661,16 @@ window.fbFocusBlank = (blankIdx) => {
 };
 
 // ─── 타이머 ───
+// 학원장 설정 test.timeLimitSec 우선, 없으면 default FB_TIME_PER_Q(30)
 function _fbStartTimer(){
   _fbStopTimer();
-  _fbTimeLeft = FB_TIME_PER_Q;
-  _fbUpdateTimerUI();
+  const v = parseInt(_fbState?.test?.timeLimitSec);
+  const total = (isFinite(v) && v >= 5 && v <= 120) ? v : FB_TIME_PER_Q;
+  _fbTimeLeft = total;
+  _fbUpdateTimerUI(total);
   _fbTimer = setInterval(() => {
     _fbTimeLeft--;
-    _fbUpdateTimerUI();
+    _fbUpdateTimerUI(total);
     if(_fbTimeLeft <= 0){
       _fbStopTimer();
       // 시간 만료 → 현재 입력값 그대로 다음 문제로 (또는 제출)
@@ -1680,11 +1683,11 @@ function _fbStopTimer(){
   if(_fbTimer){ clearInterval(_fbTimer); _fbTimer = null; }
 }
 
-function _fbUpdateTimerUI(){
+function _fbUpdateTimerUI(total){
   const txt = document.getElementById('fbTimerText');
   const arc = document.getElementById('fbTimerArc');
   if(txt) txt.textContent = _fbTimeLeft;
-  if(arc) arc.style.strokeDashoffset = 113 * (1 - _fbTimeLeft / FB_TIME_PER_Q);
+  if(arc && total) arc.style.strokeDashoffset = 113 * (1 - _fbTimeLeft / total);
 }
 
 window.fbSkip = async () => {
@@ -4752,7 +4755,6 @@ window.startVocab = async (testId, testName) => {
       format: _fmt,                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
       mcqRatio: Math.max(0, Math.min(100, _mcqRatio)),
       en2koRatio: Math.max(0, Math.min(100, _en2koRatio)),
-      timeLimitSec: _raw.timeLimitSec,                    // 학원장 출제 시 설정 — 미박힘 시 _vqStartTimer 가 형식별 폴백
       shuffleQ: _raw.shuffleQ !== false,
       shuffleChoices: _raw.shuffleChoices !== false,
       speakingStrictness: _raw.speakingStrictness || 'normal',
@@ -4969,13 +4971,13 @@ window._vqFocusSpellInput = () => {
   }
 };
 
-// 타이머 — 학원장 설정 vocabOptions.timeLimitSec 우선 (모든 형식 통일)
-// 없으면 옛 룰 (MCQ 10초 / 스펠·말하기 30초) 폴백 — 이전 출제분 하위호환
+// 타이머 — 학원장 설정 우선 (모든 형식 통일)
+// 우선순위: test.timeLimitSec (신규) > vocabOptions.timeLimitSec (옛 단어시험 호환) > 형식별 default
 function _vqStartTimer(){
   _vqStopTimer();
   const s = _vqState;
   const ans = s.answers[s.currentIdx];
-  const v = parseInt(s.opts?.timeLimitSec);
+  const v = parseInt(s.test?.timeLimitSec ?? s.opts?.timeLimitSec);
   const total = (isFinite(v) && v >= 5 && v <= 120)
     ? v
     : (ans.format === 'mcq' ? 10 : 30);
@@ -6108,11 +6110,14 @@ let _uqTimer = null;
 let _uqTimeLeft = 30;
 function _uqStartTimer(){
   _uqStopTimer();
-  _uqTimeLeft = 30;
-  _uqUpdateTimerUI();
+  // 학원장 설정 test.timeLimitSec 우선, 없으면 default 30
+  const v = parseInt(_uqState?.test?.timeLimitSec);
+  const total = (isFinite(v) && v >= 5 && v <= 120) ? v : 30;
+  _uqTimeLeft = total;
+  _uqUpdateTimerUI(total);
   _uqTimer = setInterval(() => {
     _uqTimeLeft--;
-    _uqUpdateTimerUI();
+    _uqUpdateTimerUI(total);
     if (_uqTimeLeft <= 0) {
       _uqStopTimer();
       uqNext({ allowPartial: true });
@@ -6120,11 +6125,11 @@ function _uqStartTimer(){
   }, 1000);
 }
 function _uqStopTimer(){ if(_uqTimer){ clearInterval(_uqTimer); _uqTimer=null; } }
-function _uqUpdateTimerUI(){
+function _uqUpdateTimerUI(total){
   const t = document.getElementById('uqTimerText');
   const arc = document.getElementById('uqTimerArc');
   if (t) t.textContent = _uqTimeLeft;
-  if (arc) arc.style.strokeDashoffset = 113 * (1 - _uqTimeLeft / 30);
+  if (arc && total) arc.style.strokeDashoffset = 113 * (1 - _uqTimeLeft / total);
 }
 
 window.uqSkip = () => {
