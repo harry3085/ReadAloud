@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
 
     // 신 schema: targets[] = [{type:'all'|'class'|'student', id, name, groupName?}]
     // 옛 schema: target 단일 ('all' | groupName | 'uid:UID') — 안전망 유지
-    const { title, body, target, targets, idToken, attachment, urgent } = req.body;
+    const { title, body, target, targets, idToken, attachment, attachments, urgent } = req.body;
     const hasTargets = Array.isArray(targets) && targets.length > 0;
     if (!title || !body || (!target && !hasTargets)) {
       return res.status(400).json({ error: '제목, 내용, 대상은 필수입니다.' });
@@ -138,17 +138,29 @@ module.exports = async (req, res) => {
 
     const pushRef = db.collection('pushNotifications').doc();
     // 첨부 파일 메타 검증 — 클라가 이미 Storage 에 업로드한 결과만 받음 (url·name·sizeKB)
-    let attachmentMeta = null;
-    if (attachment && typeof attachment === 'object' && attachment.url && attachment.name) {
-      const expiresMs = Date.now() + 10 * 24 * 60 * 60 * 1000;  // 10일 후 (GCS Lifecycle 과 일치)
-      attachmentMeta = {
-        url: String(attachment.url).slice(0, 1024),
-        name: String(attachment.name).slice(0, 256),
-        sizeKB: Number(attachment.sizeKB) || 0,
-        uploadedAt: new Date().toISOString(),
-        expiresAt: new Date(expiresMs).toISOString(),
+    // 2026-06-13: 다중 첨부 (attachments[]) 지원. 옛 단수 attachment 도 받아 배열에 흡수.
+    const expiresMs = Date.now() + 10 * 24 * 60 * 60 * 1000;  // 10일 후 (GCS Lifecycle 과 일치)
+    const uploadedAt = new Date().toISOString();
+    const expiresAt = new Date(expiresMs).toISOString();
+    const _normalizeAtt = (a) => {
+      if (!a || typeof a !== 'object' || !a.url || !a.name) return null;
+      return {
+        url: String(a.url).slice(0, 1024),
+        name: String(a.name).slice(0, 256),
+        sizeKB: Number(a.sizeKB) || 0,
+        uploadedAt,
+        expiresAt,
       };
+    };
+    let attachmentsMeta = [];
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      attachmentsMeta = attachments.map(_normalizeAtt).filter(Boolean).slice(0, 10);  // 안전망: 최대 10개
+    } else if (attachment) {
+      const one = _normalizeAtt(attachment);
+      if (one) attachmentsMeta = [one];
     }
+    // 옛 코드/UI 호환을 위해 단수 attachment 도 같이 박음 (첫 번째 사용)
+    const attachmentMeta = attachmentsMeta[0] || null;
 
     const pushDoc = {
       title, body,
@@ -158,7 +170,8 @@ module.exports = async (req, res) => {
       academyId: callerAcademyId,
       urgent: !!urgent,  // 발송 이력 표시·통계용
     };
-    if (attachmentMeta) pushDoc.attachment = attachmentMeta;
+    if (attachmentsMeta.length > 0) pushDoc.attachments = attachmentsMeta;
+    if (attachmentMeta) pushDoc.attachment = attachmentMeta;  // 옛 코드 호환 (첫 번째)
     if (hasTargets) {
       pushDoc.targets = targets;
       pushDoc.targetSummary = _summarize(targets);
@@ -186,7 +199,8 @@ module.exports = async (req, res) => {
         createdAt: now,
         academyId: callerAcademyId,
       };
-      if (attachmentMeta) doc.attachment = attachmentMeta;
+      if (attachmentsMeta.length > 0) doc.attachments = attachmentsMeta;
+      if (attachmentMeta) doc.attachment = attachmentMeta;  // 옛 코드 호환 (첫 번째)
       batch.set(ref, doc);
     });
     await batch.commit();

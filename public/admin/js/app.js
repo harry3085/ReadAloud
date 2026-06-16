@@ -4417,9 +4417,9 @@ async function _msgInitPicker(initialTargets = []) {
   });
 }
 
-// ── 메시지 첨부 파일 — 학원장 메시지 작성 시 선택 ──
-// 자료실(hwFiles) 과 동일 정책: 20MB + 화이트리스트
-let _msgPendingAttach = null;  // { file, status:'pending'|'uploading'|'done', url?, sizeKB? }
+// ── 메시지 첨부 파일 (다중) — 학원장 메시지 작성 시 선택 ──
+// 자료실/공지와 동일 정책: 20MB/파일 + 화이트리스트. 다중 첨부 (2026-06-13 단일→다중)
+let _msgPendingAttaches = [];  // [{ file:File, name, sizeKB, status:'pending'|'uploading'|'done', url? }]
 
 const _MSG_ATTACH_ALLOWED_MIME = new Set([
   'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint',
@@ -4433,106 +4433,95 @@ function _msgAttachAllowed(type) {
   return _MSG_ATTACH_ALLOWED_PREFIX.some(p => t.startsWith(p));
 }
 
-function _msgRenderAttachStatus(text, color) {
-  const el = document.getElementById('msgAttachStatus');
+function _msgRenderAttaches() {
+  const el = document.getElementById('msgAttachList');
   if (!el) return;
-  el.textContent = text;
-  el.style.color = color || 'var(--gray)';
+  if (_msgPendingAttaches.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = _msgPendingAttaches.map((a, i) => {
+    const dot = a.status === 'done' ? '#16a34a' : (a.status === 'uploading' ? '#f59e0b' : '#94a3b8');
+    const label = a.status === 'done' ? '업로드됨' : (a.status === 'uploading' ? '업로드 중…' : '발송 시 업로드');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f8f9fa;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)} <span style="color:var(--gray);">(${a.sizeKB} KB) · ${label}</span></span>
+      <button type="button" onclick="msgRemoveAttach(${i})" title="제외" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:0;width:20px;height:20px;line-height:1;">${iconSvg('x')}</button>
+    </div>`;
+  }).join('');
 }
 
-// 파일 검증 + state 박음 + 상태 표시 (input change·drag drop 공용)
 function _msgAcceptFile(f) {
-  if (!f) {
-    _msgPendingAttach = null;
-    _msgRenderAttachStatus('파일을 끌어다 놓거나 클릭하여 선택');
-    return false;
-  }
-  if (f.size > 20 * 1024 * 1024) {
-    showAlert('파일 크기 초과', '20 MB 이하 파일만 첨부 가능해요.');
-    return false;
-  }
-  if (!_msgAttachAllowed(f.type || '')) {
-    showAlert('허용되지 않는 형식', '영상·압축파일·실행파일 등은 첨부 불가.\nPDF·Office·한글·이미지·텍스트만 허용됩니다.');
-    return false;
-  }
-  _msgPendingAttach = { file: f, status: 'pending' };
-  _msgRenderAttachStatus(`${f.name} (${Math.round(f.size/1024)} KB) — 발송 시 업로드`, 'var(--text)');
+  if (!f) return false;
+  if (f.size > 20 * 1024 * 1024) { showAlert('파일 크기 초과', `"${f.name}" — 20MB 이하만 첨부 가능.`); return false; }
+  if (!_msgAttachAllowed(f.type || '')) { showAlert('허용되지 않는 형식', `"${f.name}" — PDF·Office·한글·이미지·텍스트만 허용. 영상·압축·실행파일은 불가.`); return false; }
+  _msgPendingAttaches.push({ file: f, name: f.name, sizeKB: Math.round(f.size / 1024), status: 'pending' });
+  _msgRenderAttaches();
   return true;
 }
 
 window.msgPickAttach = (e) => {
-  const f = e.target.files?.[0];
-  const ok = _msgAcceptFile(f);
-  if (!ok && e.target) e.target.value = '';
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+  for (const f of files) _msgAcceptFile(f);
+  if (e.target) e.target.value = '';
 };
 
-window.msgClearAttach = () => {
-  _msgPendingAttach = null;
-  const input = document.getElementById('msgAttachInput');
-  if (input) input.value = '';
-  _msgRenderAttachStatus('파일을 끌어다 놓거나 클릭하여 선택');
+window.msgRemoveAttach = (idx) => {
+  if (idx < 0 || idx >= _msgPendingAttaches.length) return;
+  _msgPendingAttaches.splice(idx, 1);
+  _msgRenderAttaches();
 };
 
-// 드래그&드롭 핸들러 — 영역 hover 강조 + 파일 단일 처리 (다중 드롭은 첫 파일만)
 window.msgDragOver = (e) => {
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   const el = document.getElementById('msgAttachDrop');
-  if (el) {
-    el.style.borderColor = 'var(--teal, #E8714A)';
-    el.style.background = '#fff7f4';
-  }
+  if (el) { el.style.borderColor = 'var(--teal, #E8714A)'; el.style.background = '#fff7f4'; }
 };
 
 window.msgDragLeave = (e) => {
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   const el = document.getElementById('msgAttachDrop');
-  if (el) {
-    el.style.borderColor = 'var(--border)';
-    el.style.background = '#fafafa';
-  }
+  if (el) { el.style.borderColor = 'var(--border)'; el.style.background = '#fafafa'; }
 };
 
 window.msgDrop = (e) => {
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   const el = document.getElementById('msgAttachDrop');
-  if (el) {
-    el.style.borderColor = 'var(--border)';
-    el.style.background = '#fafafa';
-  }
+  if (el) { el.style.borderColor = 'var(--border)'; el.style.background = '#fafafa'; }
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
-  _msgAcceptFile(files[0]);  // 여러 개 드롭해도 첫 파일만
+  for (const f of files) _msgAcceptFile(f);
 };
 
-async function _msgUploadAttachIfAny() {
-  if (!_msgPendingAttach || _msgPendingAttach.status === 'done') {
-    return _msgPendingAttach?.status === 'done' ? {
-      url: _msgPendingAttach.url, name: _msgPendingAttach.file.name, sizeKB: _msgPendingAttach.sizeKB,
-    } : null;
+async function _msgUploadAll() {
+  const out = [];
+  for (const a of _msgPendingAttaches) {
+    if (a.status === 'done' && a.url) { out.push({ url: a.url, name: a.name, sizeKB: a.sizeKB }); continue; }
+    if (!a.file) continue;
+    a.status = 'uploading'; _msgRenderAttaches();
+    try {
+      const safeName = a.file.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]+/g, '_');
+      const rand = Math.random().toString(36).slice(2, 8);
+      const path = `messageAttachments/${window.MY_ACADEMY_ID || 'default'}/${Date.now()}_${rand}_${safeName}`;
+      const r = ref(storage, path);
+      await uploadBytesResumable(r, a.file, { contentType: a.file.type || 'application/octet-stream' });
+      const url = await getDownloadURL(r);
+      a.status = 'done'; a.url = url;
+      _msgRenderAttaches();
+      out.push({ url, name: a.name, sizeKB: a.sizeKB });
+    } catch (e) {
+      a.status = 'pending'; _msgRenderAttaches();
+      throw new Error(`"${a.name}" 업로드 실패: ${e.message}`);
+    }
   }
-  const f = _msgPendingAttach.file;
-  _msgPendingAttach.status = 'uploading';
-  _msgRenderAttachStatus(`업로드 중… ${f.name}`, 'var(--text)');
-  try {
-    const safeName = f.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]+/g, '_');
-    const path = `messageAttachments/${window.MY_ACADEMY_ID || 'default'}/${Date.now()}_${safeName}`;
-    const r = ref(storage, path);
-    await uploadBytesResumable(r, f, { contentType: f.type || 'application/octet-stream' });
-    const url = await getDownloadURL(r);
-    _msgPendingAttach.status = 'done';
-    _msgPendingAttach.url = url;
-    _msgPendingAttach.sizeKB = Math.round(f.size / 1024);
-    _msgRenderAttachStatus(`업로드 완료: ${f.name} (${_msgPendingAttach.sizeKB} KB)`, 'var(--text)');
-    return { url, name: f.name, sizeKB: _msgPendingAttach.sizeKB };
-  } catch (e) {
-    _msgPendingAttach.status = 'pending';
-    _msgRenderAttachStatus(`업로드 실패: ${e.message}`, '#dc2626');
-    throw e;
-  }
+  return out;
 }
+
+function _msgClearAttaches() {
+  _msgPendingAttaches = [];
+  const input = document.getElementById('msgAttachInput');
+  if (input) input.value = '';
+  _msgRenderAttaches();
+}
+window.msgClearAttaches = _msgClearAttaches;
 
 // ── 공지 첨부 파일 (다중) — 학원장 공지 작성·수정 시 ──
 // 자료실/메시지와 동일 정책 (20MB/파일 + 화이트리스트 _msgAttachAllowed 재사용). 다중 첨부 지원
@@ -4659,15 +4648,16 @@ window.sendMessage = async() => {
   const chk = await _checkContentLimit('sentMessages');
   if (!chk.ok) { showAlert(`${chk.label} 한도 초과 (${chk.cur}/${chk.max})`, `기존 ${chk.label} 1개 이상 삭제 후 발송해주세요.`); return; }
   try{
-    let attachment = null;
-    if (_msgPendingAttach) {
-      attachment = await _msgUploadAttachIfAny();
+    let attachments = [];
+    if (_msgPendingAttaches.length > 0) {
+      try { attachments = await _msgUploadAll(); }
+      catch (e) { showAlert('첨부 업로드 실패', e.message); return; }
     }
     const idToken = await currentUser.getIdToken();
     const urgent = !!document.getElementById('msgUrgent')?.checked;
     const res = await fetch('/api/sendPush',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title, body, targets, idToken, attachment, urgent }),
+      body: JSON.stringify({ title, body, targets, idToken, attachments, urgent }),
     });
     const result=await res.json();
     showToast(result.success ? result.message : (result.message||result.error||'발송 실패'));
@@ -4677,7 +4667,7 @@ window.sendMessage = async() => {
       document.getElementById('msgBody').value = '';
       const urgentEl = document.getElementById('msgUrgent');
       if (urgentEl) urgentEl.checked = false;
-      msgClearAttach();
+      _msgClearAttaches();
       // 발송 이력 즉시 갱신 — server 가 sent doc 생성하므로 surgical insert 대신 재fetch (현 필터 유지)
       _msgSentCache = null;
       _msgSentState = { lastDoc: null, exhausted: false, docs: [] };
@@ -4809,7 +4799,10 @@ function _msgRenderSent(d) {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;width:100%;">
         <div style="flex:1 1 0;min-width:0;overflow:hidden;">
           <div style="display:flex;align-items:baseline;gap:8px;">
-            <div style="font-size:13px;font-weight:600;flex:1 1 0;min-width:0;${_MSG_ONE_LINE}">${esc(n.title)||''}${n.attachment?.url ? ' <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부</span>' : ''}</div>
+            <div style="font-size:13px;font-weight:600;flex:1 1 0;min-width:0;${_MSG_ONE_LINE}">${esc(n.title)||''}${(() => {
+              const cnt = (Array.isArray(n.attachments) ? n.attachments.length : 0) || (n.attachment?.url ? 1 : 0);
+              return cnt > 0 ? ` <span style="font-size:10px;color:var(--teal);font-weight:500;background:#fff7f4;padding:1px 6px;border-radius:4px;">첨부${cnt > 1 ? ' ' + cnt : ''}</span>` : '';
+            })()}</div>
             <div style="font-size:11px;color:#bbb;flex-shrink:0;${_MSG_ONE_LINE}">${esc(targetLabel)} · ${esc(n.date)||''} ${isOpen?'<span style="color:var(--teal);">▼</span>':'<span style="color:#ccc;">▶</span>'}</div>
           </div>
           ${_msgBodyPreview(n.body)}

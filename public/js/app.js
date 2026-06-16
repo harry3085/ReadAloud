@@ -6575,7 +6575,7 @@ function setupForegroundMessage() {
 // 알림 팝업 모달 (포그라운드 수신 전용)
 // 이전엔 checkUnreadNotifs 가 이걸로 미확인 알림 순차 노출했지만, 2026-04-29 부터
 // 로그인 시엔 합산 summary 모달 (showUnreadSummaryModal) 만 띄우고 개별 노출 안 함.
-function showNotifModal(title, body, docId, attachment){
+function showNotifModal(title, body, docId, attachmentOrList){
   const overlay = document.getElementById('notifModalOverlay');
   const titleEl = document.getElementById('notifModalTitle');
   const bodyEl  = document.getElementById('notifModalBody');
@@ -6583,16 +6583,20 @@ function showNotifModal(title, body, docId, attachment){
   if(!overlay) return;
   if(titleEl) titleEl.textContent = title;
   if(bodyEl) {
-    // body 텍스트 + 첨부 다운로드 영역
+    // body 텍스트 + 첨부 다운로드 영역 (다중 지원)
     bodyEl.innerHTML = '';
     const bodyDiv = document.createElement('div');
     bodyDiv.style.whiteSpace = 'pre-wrap';
     bodyDiv.style.wordBreak = 'break-word';
     bodyDiv.textContent = body || '';
     bodyEl.appendChild(bodyDiv);
-    if (attachment && attachment.url && attachment.name) {
-      bodyEl.appendChild(_buildNotifAttachmentEl(attachment));
-    }
+    // attachmentOrList: 옛 단일 객체 또는 배열 둘 다 처리
+    const atts = Array.isArray(attachmentOrList)
+      ? attachmentOrList
+      : (attachmentOrList && attachmentOrList.url ? [attachmentOrList] : []);
+    atts.forEach(att => {
+      if (att && att.url && att.name) bodyEl.appendChild(_buildNotifAttachmentEl(att));
+    });
   }
   overlay.style.display='flex';
   if(btn){
@@ -6604,6 +6608,13 @@ function showNotifModal(title, body, docId, attachment){
       await updateNotifBadge();
     };
   }
+}
+
+// 알림 표시용 — attachments 배열 우선, 옛 attachment 단수 폴백
+function _notifAttachments(n) {
+  if (Array.isArray(n?.attachments) && n.attachments.length > 0) return n.attachments;
+  if (n?.attachment && n.attachment.url && n.attachment.name) return [n.attachment];
+  return [];
 }
 
 // 첨부 파일 표시 요소 — 다운로드 버튼 + 만료일 안내
@@ -6735,7 +6746,7 @@ window.openNotifPanel = async() => {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
             <div style="font-size:12px;color:#777;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${esc(n.body||'')}</div>
-            ${(n.attachment && n.attachment.url && n.attachment.name) ? _renderNotifRowAttachment(n.attachment) : ''}
+            ${_notifAttachments(n).map(a => _renderNotifRowAttachment(a)).join('')}
             <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
           </div>
         </div>

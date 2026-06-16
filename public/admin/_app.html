@@ -749,14 +749,15 @@
             <textarea id="msgBody" rows="12" placeholder="알림 내용" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;outline:none;min-height:240px;"></textarea>
           </div>
           <div>
-            <div style="color:var(--gray);margin-bottom:4px;">첨부 파일 <span style="font-size:11px;color:var(--gray);">(선택, 20MB 이하, 10일 후 자동 삭제)</span></div>
-            <input id="msgAttachInput" type="file" style="display:none;" onchange="msgPickAttach(event)">
+            <div style="color:var(--gray);margin-bottom:4px;">첨부 파일 <span style="font-size:11px;color:var(--gray);">(선택 · 여러 파일 가능 · 파일당 20MB · 10일 후 자동 삭제)</span></div>
+            <input id="msgAttachInput" type="file" multiple style="display:none;" onchange="msgPickAttach(event)">
             <div id="msgAttachDrop" style="border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;transition:.15s;cursor:pointer;background:#fafafa;"
               onclick="document.getElementById('msgAttachInput').click()"
               ondragover="msgDragOver(event)" ondragleave="msgDragLeave(event)" ondrop="msgDrop(event)">
-              <div id="msgAttachStatus" style="font-size:13px;color:var(--gray);">파일을 끌어다 놓거나 클릭하여 선택</div>
+              <div style="font-size:13px;color:var(--gray);">파일을 끌어다 놓거나 클릭하여 선택 (여러 개 가능)</div>
               <div style="font-size:10px;color:var(--gray);margin-top:6px;">허용: PDF · Word · Excel · PowerPoint · 한글(hwp) · 이미지 · 텍스트</div>
             </div>
+            <div id="msgAttachList" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;"></div>
           </div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);cursor:pointer;padding:4px 2px;">
             <input type="checkbox" id="msgUrgent" style="cursor:pointer;margin:0;">
