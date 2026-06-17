@@ -757,6 +757,18 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
   } else if (passed && existing?.score !== undefined && !isNewBest) {
     showToast(`기존 최고점 ${existing.score}점 유지`);
   }
+
+  // 응시 후 캐시 동기 — 학생이 결과→시험목록 돌아갈 때 통과/미통과 즉시 반영 (2026-06-18)
+  // myTests 캐시는 그대로 (시험 list 자체는 변동 없음), userCompMap 만 그 testId 갱신
+  try {
+    const newCompEntry = passed
+      ? { score, latestScore: score, passed: true, latestPassed: true }
+      : { latestScore: score, latestPassed: false };
+    _testListState.forEach(state => {
+      if (state.userCompMap) state.userCompMap.set(testId, { ...(state.userCompMap.get(testId) || {}), ...newCompEntry });
+    });
+  } catch (e) { console.warn('[userCompleted] 캐시 동기 실패 — 다음 진입 시 fresh fetch:', e); }
+
   return { isNewBest, prevBest };
 }
 
@@ -827,7 +839,36 @@ const TEST_TYPE_UI = {
 //   - 10일 default, 더보기 +10일씩, 30일 상한
 //   - 캐시 없음 (학원장 변경 즉시 반영, 학생앱 실시간성 우선)
 //   - userCompleted N+1 → collectionGroup batch 1회 (진입당)
-const _testListState = new Map();  // type → { daysLoaded, userCompMap }
+const _testListState = new Map();  // type → { daysLoaded, userCompMap, myTests?, fetchedAt?, cacheKey? }
+// 학원 lastTestUpdate 헤드체크 캐시 — 같은 진입 흐름에서 여러 type 페이지 들어가도 1 read 만
+let _lastUpdateCheck = { value: -1, ts: 0 };
+const _LAST_UPDATE_TTL = 30000;  // 30초 동안 한 번만 fetch — 학생이 짧은 시간에 여러 페이지 이동 시 효율
+async function _getAcademyLastTestUpdate() {
+  const now = Date.now();
+  if (_lastUpdateCheck.value >= 0 && (now - _lastUpdateCheck.ts) < _LAST_UPDATE_TTL) {
+    return _lastUpdateCheck.value;
+  }
+  try {
+    const snap = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID));
+    const v = snap.data()?.lastTestUpdate?.toMillis?.() || 0;
+    _lastUpdateCheck = { value: v, ts: now };
+    return v;
+  } catch (e) {
+    console.warn('[testList] lastTestUpdate 조회 실패 — 캐시 무효화:', e);
+    _lastUpdateCheck = { value: -1, ts: 0 };
+    return Date.now();  // 안전: 조회 실패 시 캐시 무효
+  }
+}
+// 응시 후 강제 헤드체크 (다음 진입 시 재fetch 유도)
+function _invalidateTestListCache(type) {
+  _lastUpdateCheck = { value: -1, ts: 0 };
+  if (type && _testListState.has(type)) {
+    const s = _testListState.get(type);
+    s.myTests = null;
+    s.fetchedAt = 0;
+  }
+}
+window._invalidateTestListCache = _invalidateTestListCache;
 window._invalidateTestListCache = () => { _testListState.clear(); };  // 호환 NOP
 
 async function _loadTestListByType(type) {
@@ -855,40 +896,56 @@ async function _loadTestListPage(type) {
   const myUid = currentUser?.uid || '';
   const sinceDate = new Date(Date.now() - state.daysLoaded * 864e5);
 
-  // server-side filter — 그 학생 대상만 (3 분리 쿼리 병렬, 2026-05-14)
-  const baseConstraints = [
-    where('academyId','==', window.MY_ACADEMY_ID),
-    where('testMode','==', type),
-    where('createdAt', '>=', sinceDate),
-    orderBy('createdAt','desc'),
-    limit(200),
-  ];
-  const queries = [
-    query(collection(db,'genTests'), ...baseConstraints, where('targetAll','==', true)),
-    query(collection(db,'genTests'), ...baseConstraints, where('targetUids','array-contains', myUid)),
-  ];
-  if (myGroup) {
-    queries.push(query(collection(db,'genTests'), ...baseConstraints, where('targetGroups','array-contains', myGroup)));
-  }
-  const snaps = await Promise.all(queries.map(q => getDocs(q)));
-  // dedup + createdAt desc 정렬
-  const seen = new Set();
-  const allTests = [];
-  snaps.forEach(snap => {
-    snap.docs.forEach(d => {
-      if (!seen.has(d.id)) {
-        seen.add(d.id);
-        allTests.push({id: d.id, ...d.data()});
-      }
+  // 헤드체크 — academies/{id}.lastTestUpdate 1 read 후 캐시 valid 여부 판단 (2026-06-18)
+  // 캐시 hit: fetchedAt > lastUpdate + 같은 daysLoaded (학생이 [더 보기] 안 눌렀음)
+  // 캐시 miss: lastUpdate 가 더 늦거나 daysLoaded 바뀌었거나 캐시 없음
+  let myTests;
+  const lastUpdate = await _getAcademyLastTestUpdate();
+  const cacheValid = Array.isArray(state.myTests)
+    && state.cacheKey === state.daysLoaded
+    && state.fetchedAt > lastUpdate;
+  if (cacheValid) {
+    myTests = state.myTests;
+  } else {
+    // server-side filter — 그 학생 대상만 (3 분리 쿼리 병렬, 2026-05-14)
+    const baseConstraints = [
+      where('academyId','==', window.MY_ACADEMY_ID),
+      where('testMode','==', type),
+      where('createdAt', '>=', sinceDate),
+      orderBy('createdAt','desc'),
+      limit(200),
+    ];
+    const queries = [
+      query(collection(db,'genTests'), ...baseConstraints, where('targetAll','==', true)),
+      query(collection(db,'genTests'), ...baseConstraints, where('targetUids','array-contains', myUid)),
+    ];
+    if (myGroup) {
+      queries.push(query(collection(db,'genTests'), ...baseConstraints, where('targetGroups','array-contains', myGroup)));
+    }
+    const snaps = await Promise.all(queries.map(q => getDocs(q)));
+    // dedup + createdAt desc 정렬
+    const seen = new Set();
+    const allTests = [];
+    snaps.forEach(snap => {
+      snap.docs.forEach(d => {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          allTests.push({id: d.id, ...d.data()});
+        }
+      });
     });
-  });
-  allTests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-  // active / excludedUids 클라 필터만 (대상 매칭은 server-side 완료)
-  const myTests = allTests.filter(t => {
-    if (t.active === false) return false;
-    if (Array.isArray(t.excludedUids) && t.excludedUids.includes(myUid)) return false;
-    return true;
-  });
+    allTests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    // active / excludedUids 클라 필터만 (대상 매칭은 server-side 완료)
+    myTests = allTests.filter(t => {
+      if (t.active === false) return false;
+      if (Array.isArray(t.excludedUids) && t.excludedUids.includes(myUid)) return false;
+      return true;
+    });
+    // 캐시 저장 — 다음 진입 시 헤드체크 valid 면 fetch 0
+    state.myTests = myTests;
+    state.fetchedAt = Date.now();
+    state.cacheKey = state.daysLoaded;
+  }
 
   // userCompleted batch — 한 진입당 1회 (collectionGroup, N+1 → 1)
   if (!state.userCompMap) {

@@ -247,6 +247,7 @@ service cloud.firestore {
         isAdmin() && academyId == myAcademyId()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'lastAdminLoginAt',
+            'lastTestUpdate',
             'paymentSettings',
             'usage',
             'branding',

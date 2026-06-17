@@ -15091,6 +15091,13 @@ window.tpPublish = async () => {
     };
     const docRef = await addDoc(collection(db,'genTests'), docPayload);
 
+    // 학생앱 헤드체크용 — 시험 출제 시점 박기 (학생앱 시험 목록 캐시 무효 트리거)
+    // 학생앱은 academies/{id}.lastTestUpdate 만 1 read 해서 캐시 valid 여부 판단
+    try {
+      await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'),
+        { lastTestUpdate: serverTimestamp() });
+    } catch (e) { console.warn('[tpPublish] lastTestUpdate 업데이트 실패 — 학생앱 캐시 무효 안 될 수 있음:', e); }
+
     showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
     closeModal();
 
