@@ -3317,3 +3317,129 @@ minmini(이성민) 학생 `auth/too-many-requests` 에러 보고. 진단 결과 
 3. FCM 토큰 만료 진단
 4. 객관식·해석에도 시간 제한 옵션 추가 (옵션 B — 학원장 요청 시)
 5. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-13 ~ 18: 메시지 다중 첨부 + 진도체크 캐시 surgical + 학생앱 시험목록 캐시·헤드체크
+
+SW v655 → v658 (3 commit). 학원장 보고 3건 연쇄 — 메시지 첨부 1개 한계
++ 출제 직후 진도체크에 안 보임(5시간 stale) + Firestore reads 비용 절감.
+
+### 1) 메시지 첨부 다중 파일 지원 (`f0fc480`, v656)
+
+학원장 보고 — 메시지 작성 시 첨부 1개만 가능. 공지(다중)와 비대칭.
+
+- 학원장 핸들러 — `_msgPendingAttach` (단일) → `_msgPendingAttaches[]` (배열).
+  공지 패턴(`_noticePendingAttaches` / `_noticeUploadAll`) 그대로 mirror
+- 신규 함수: `_msgRenderAttaches` / `_msgAcceptFile` / `msgRemoveAttach` /
+  `_msgUploadAll` / `_msgClearAttaches`. 옛 `_msgUploadAttachIfAny` /
+  `msgClearAttach` 폐기
+- `_app.html`: `<input multiple>` + 첨부 리스트 영역 + 안내 문구 갱신
+- `sendMessage`: payload `attachment` (단수) → `attachments` (배열)
+- `api/sendPush.js`: `attachments[]` 우선, 옛 `attachment` 단수 폴백.
+  pushNotifications / userNotifications doc 양쪽 박음. 최대 10개 안전망.
+  옛 코드 호환 위해 첫 번째를 `attachment` 도 동시 박음 (이중 저장)
+- 학생앱 표시 — `_notifAttachments(n)` 헬퍼: `n.attachments` 배열 우선,
+  옛 `n.attachment` 단수 폴백. 알림 패널·showNotifModal 양쪽 다중 표시
+- 학원장 발송이력 배지 — `첨부` → `첨부 N` (1개면 그대로, 2+ 카운트)
+
+### 2) 출제 직후 진도체크 캐시 surgical insert (`a6df668`, v657)
+
+학원장 보고 — 오후 5시 출제 시험이 10시 넘어도 진도체크 일자별·시험별
+진도체크에 안 보임. 진단:
+- `_prog.testsByDate[ymd]` / `_tlState.data` 가 **SPA 세션 유지 동안 영구
+  캐시** — 시간 만료 로직 없음
+- 학원장이 ↻ 새로고침 누르기 전엔 5시간 전 캐시 그대로
+- 시험관리 > 최근시험은 매번 fresh fetch — 영향 없음
+
+수정 — `tpPublish` 의 addDoc 후 surgical insert (학원장 reads 0):
+- `await addDoc` → `docRef = await addDoc(...)` 로 결과 받기
+- 새 시험 row 만들기 (박은 필드 + `_computeTestStats(t, [], allStudents)` 0값)
+- `_tlState.data.unshift()` + `_pageMutate('testListBody', ...)` —
+  정렬·페이지 상태 유지하며 재렌더 (다른 참조 안전망 동봉)
+- `_prog.testsByDate[date]` 가 그 날짜 캐시 있을 때만 push.
+  현재 일자별 화면이 그 날짜면 `progRenderByDate()` 자동 재렌더
+- 시험관리 (`_renderTestAssignDetail`) 는 기존 fresh fetch 유지
+
+학원장 1인 운영 default 학원에선 새 시험 즉시 반영 + reads 증가 0.
+멀티학원장 도입 시 다른 학원장 출제는 여전히 ↻ 필요 (별도 작업).
+
+### 3) 학생앱 시험 목록 SPA 세션 캐시 + 헤드체크 (`cf94640`, v658)
+
+reads 분석 — default 학원 ~656k reads/월 추정. 가장 큰 부담:
+- 학생앱 시험 목록 fetch: 학생 94명 × 일 2회 × ~50 reads = ~280k/월
+- 같은 세션에서 학생이 시험 페이지 5회 왔다갔다해도 매번 fetch
+
+수정 — SPA 세션 캐시 + 헤드체크 패턴:
+
+- **Firestore Rules**: `academies/{id}` update 허용 키에 `lastTestUpdate` 추가
+- **학원장 `tpPublish`**: 출제 시 `academies.lastTestUpdate =
+  serverTimestamp()` 박음 (surgical insert 옆에 1줄 추가)
+- **학생앱 헤드체크 (`_getAcademyLastTestUpdate`)**: 30초 TTL.
+  같은 세션 여러 페이지 이동 시 학원 doc 1 read 만
+- **`_loadTestListPage` 캐시 분기**:
+  · `state.myTests` + `cacheKey === daysLoaded` + `fetchedAt > lastUpdate`
+    → 캐시 사용 (fetch 0, 헤드체크 1 read 만)
+  · 그 외 → 기존 3 쿼리 fetch + 캐시 저장
+- **`_writeUserCompleted` 후 캐시 동기**: 응시 완료 시점에 모든
+  `_testListState.userCompMap` 에 새 결과 박기. `myTests` 캐시 자체는
+  유지 (시험 list 변동 X)
+- `_invalidateTestListCache(type)` window 노출 — 강제 무효 가능
+
+학원장 출제 → 학생 30초 안 진입 시 헤드체크 차이 감지 → 자동 fresh fetch.
+30초 안엔 옛 캐시 가능 (트레이드오프).
+
+### reads 절감 추정
+
+| 시나리오 | 현재 | 적용 후 |
+|---------|------|--------|
+| 학생 진입 (변경 없음) | ~20 | 1 |
+| 학생 진입 (변경 있음) | ~20 | 21 |
+| 같은 세션 5회 페이지 이동 | ~100 | 1 |
+| **월 추정** | **~780k** | **~225k (~71% ↓)** |
+
+### 작업 규칙 추가 (2026-06-18)
+
+신규:
+- **SPA 세션 영구 캐시는 stale 위험** — `_prog.testsByDate[ymd]` /
+  `_tlState.data` 처럼 시간 만료 없는 캐시는 학원장이 5시간 자리 비우면
+  5시간 전 데이터 그대로. CRUD 후 surgical insert + 외부 변경은 헤드체크
+  (`lastUpdate` 1 read) 로 보완. 영구 캐시 도입 시 무효화 경로 동시 설계 필수.
+- **헤드체크 패턴 (academies.lastTestUpdate)** — 시험 목록 같은 자주
+  read 되는 컬렉션은 학원 doc 의 timestamp 1 read 로 변경 감지. 전체
+  fetch 대비 95% reads 절감. 단점: 학원 update 1 write 늘어남 (write 비
+  read 보다 비싼 게 아니라 OK). 같은 세션 짧은 시간엔 헤드체크도 TTL (30초)
+  로 추가 절감.
+- **명시적 픽킹 객체 패턴 신규 필드 carry — 학생앱·학원장앱 양쪽 확인** —
+  6/12 `startVocab` 의 `opts.timeLimitSec` 누락 회귀 표본. 신규 필드 추가 시
+  Firestore 박은 곳·읽는 곳 모두 grep. 새 필드 carry 위치 누락이 가장 흔한
+  회귀 패턴.
+- **CRUD 후 캐시 동기 — myTests vs userCompMap 분리 대상 구분** — 시험 응시
+  완료 후 `_testListState` 동기 시 `myTests` (시험 list) 자체는 변동 없고
+  `userCompMap` 만 그 testId 결과 박으면 충분. 분리 처리가 캐시 효율 ↑.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-13 ~ 18)
+
+- 메시지 다중 첨부: ~100%
+- 진도체크 캐시 surgical insert: ~100% (1인 운영 default 충분)
+- 학생앱 시험 목록 reads 최적화: ~100% (헤드체크 + SPA 세션 캐시)
+- 다른 학원장 변경 감지 / FCM 자동 알림: 미착수 (Phase 5 또는 멀티학원장 도입 시)
+- 멀티테넌시·결제·말하기·녹음숙제·AI Generator: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `firestore.rules`: academies update 허용 키에 `lastTestUpdate` 추가
+- `public/admin/js/app.js`: 메시지 다중 첨부 핸들러 + `tpPublish` surgical insert
+  + `lastTestUpdate` 박기
+- `public/admin/_app.html`: 메시지 입력 `multiple` + 첨부 리스트 영역
+- `public/js/app.js`: `_notifAttachments` 헬퍼 + `_getAcademyLastTestUpdate` +
+  `_loadTestListPage` 캐시 분기 + `_writeUserCompleted` userCompMap 동기
+- `api/sendPush.js`: `attachments[]` 처리 + 옛 단수 호환
+- SW 캐시: `kunsori-v655` → `kunsori-v658`
+
+**다음 세션 후보** (변동):
+1. 학생앱 reads 절감 효과 실측 (Firebase Console 며칠 추적)
+2. 학원장앱 시험관리 (`_renderTestAssignDetail`) 도 같은 패턴 통일 — 2단계
+3. 다른 학원장 변경 감지 + FCM 자동 알림 — 멀티학원장 도입 시 묶음
+4. minmini 학생 후속 관찰 / 디바이스 정보 진단 / FCM 토큰 만료 (변동 없음)
+5. Phase 5 출시 준비 (변동 없음)
