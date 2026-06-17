@@ -15061,7 +15061,13 @@ window.tpPublish = async () => {
 
   try {
     const tIndex = _buildTargetIndex(targets);
-    await addDoc(collection(db,'genTests'), {
+    const _timeLimitSec = ['vocab','fill_blank','unscramble'].includes(cfg.testMode)
+      ? (() => {
+          const _tl = parseInt(document.getElementById('tpTimeLimit')?.value);
+          return isFinite(_tl) ? Math.max(5, Math.min(120, _tl)) : 30;
+        })()
+      : null;
+    const docPayload = {
       name, academy:'큰소리영어',
       academyId: window.MY_ACADEMY_ID || 'default',
       date,
@@ -15079,18 +15085,54 @@ window.tpPublish = async () => {
       ...(cfg.testMode === 'recording' ? {} : { passScore }),
       bookName,
       ...(vocabOptions ? { vocabOptions } : {}),
-      ...((() => {
-        // 시험 유형 무관 — 문제당 제한시간(초). vocab/fill_blank/unscramble 만 모달에 노출
-        if (!['vocab','fill_blank','unscramble'].includes(cfg.testMode)) return {};
-        const _tl = parseInt(document.getElementById('tpTimeLimit')?.value);
-        return { timeLimitSec: isFinite(_tl) ? Math.max(5, Math.min(120, _tl)) : 30 };
-      })()),
+      ...(_timeLimitSec != null ? { timeLimitSec: _timeLimitSec } : {}),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',
-    });
+    };
+    const docRef = await addDoc(collection(db,'genTests'), docPayload);
 
     showToast(`✓ "${name}" 배정 완료 (${questions.length}문제)`);
     closeModal();
+
+    // ── 진도체크 캐시 surgical insert (2026-06-13) ──
+    // 진도체크 일자별·시험별 진도체크 캐시는 SPA 세션 유지 동안 영구 유지라
+    // 학원장이 화면 ↻ 누르기 전엔 새 시험이 안 보임. 출제 직후 직접 끼워넣어 즉시 반영.
+    try {
+      const newTest = {
+        id: docRef.id,
+        _src: 'genTests',
+        ...docPayload,
+        createdAt: new Date(),  // serverTimestamp sentinel 대신 클라 시각 (정렬용, 다음 fetch 시 Firestore Timestamp 로 교체)
+      };
+      // 1) 시험별 진도체크 (_tlState + testListBody pageState) — attachStats 호환 0값
+      if (Array.isArray(_tlState?.data)) {
+        const withStats = {
+          ...newTest,
+          attemptCount: 0, avgScore: null,
+          _passedCount: 0, _attemptedCount: 0,
+          _targetCount: (typeof _computeTestStats === 'function'
+            ? _computeTestStats(newTest, [], allStudents || []).targetCount
+            : 0),
+        };
+        _tlState.data.unshift(withStats);
+        // testListBody 가 initPagination 으로 등록돼있으면 페이지·정렬 유지하며 재렌더
+        _pageMutate('testListBody', d => {
+          if (d !== _tlState.data && d[0]?.id !== withStats.id) d.unshift(withStats);
+          return undefined;
+        });
+      }
+      // 2) 일자별 — 출제일(date) 캐시에 push (그 날짜를 본 적 있을 때만)
+      if (_prog?.testsByDate && Array.isArray(_prog.testsByDate[date])) {
+        _prog.testsByDate[date].push(newTest);
+        // 현재 일자별 화면이 그 날짜를 보고 있으면 재렌더 (반 선택돼있으면 그 그룹만 표시됨)
+        const curDate = document.getElementById('progDateInput')?.value;
+        if (curDate === date && typeof progRenderByDate === 'function') {
+          progRenderByDate().catch(_=>{});
+        }
+      }
+    } catch (e) {
+      console.warn('[tpPublish] surgical insert 실패 (캐시 동기 — 화면 영향 없음):', e);
+    }
 
     await _renderTestAssignDetail(_activeTestType);
   } catch(e) {
