@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, startAfter, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, getCountFromServer, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, startAfter, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -6760,14 +6760,26 @@ async function updateNotifBadge(count){
   const badge = document.getElementById('notifBadge');
   if(!badge) return;
   if(count===undefined && currentUser){
+    // aggregate count — 안 읽음 doc 전체 fetch 대신 1 read 만 (2026-06-18, reads ~90% 절감)
     try{
-      const snap = await getDocs(query(
+      const c = await getCountFromServer(query(
         collection(db,'userNotifications'),
         where('uid','==',currentUser.uid),
         where('read','==',false)
       ));
-      count = snap.size;
-    }catch(e){ count=0; }
+      count = c.data().count;
+    }catch(e){
+      // 인덱스/네트워크 오류 시 폴백 — 옛 방식 getDocs + size
+      console.warn('[notifBadge] getCountFromServer 실패, getDocs 폴백:', e.message);
+      try{
+        const snap = await getDocs(query(
+          collection(db,'userNotifications'),
+          where('uid','==',currentUser.uid),
+          where('read','==',false)
+        ));
+        count = snap.size;
+      }catch(_){ count=0; }
+    }
   }
   if(count>0){
     badge.textContent = count>9?'9+':count;
