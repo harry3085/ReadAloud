@@ -1,6 +1,6 @@
 import { initializeApp, getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, updatePassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, updateDoc, query, where, orderBy, limit, startAfter, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
@@ -6778,6 +6778,45 @@ async function updateNotifBadge(count){
 }
 
 // 알림 패널 (헤더 🔔 클릭)
+// 알림 패널 페이지네이션 (2026-06-18) — 10개 + 더보기 (reads ~94% 절감)
+const NOTIF_PAGE_SIZE = 10;
+let _notifPanelState = { lastDoc: null, exhausted: false, notifs: [] };
+
+function _renderNotifRow(n) {
+  return `<div id="notifRow-${n.id}" onclick="readNotif('${n.id}')" style="padding:14px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;background:${n.read?'white':'#f0fafa'};">
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <span data-role="notif-icon" style="font-size:20px;flex-shrink:0;">${n.read?'🔔':'🔴'}</span>
+      <div style="flex:1;min-width:0;">
+        <div data-role="notif-title" style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
+        <div style="font-size:12px;color:#777;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${esc(n.body||'')}</div>
+        ${_notifAttachments(n).map(a => _renderNotifRowAttachment(a)).join('')}
+        <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _renderNotifPanelMore() {
+  return _notifPanelState.exhausted
+    ? '<div style="text-align:center;padding:12px;color:#bbb;font-size:11px;">모두 표시됨</div>'
+    : `<div id="notifMoreWrap" style="text-align:center;padding:10px;"><button onclick="loadMoreNotifs()" style="background:#f5f5f5;border:none;border-radius:8px;padding:8px 18px;font-size:12px;color:#555;cursor:pointer;">+ ${NOTIF_PAGE_SIZE}개 더 보기</button></div>`;
+}
+
+async function _fetchNotifsPage(reset = false) {
+  if (reset) _notifPanelState = { lastDoc: null, exhausted: false, notifs: [] };
+  if (_notifPanelState.exhausted) return;
+  const constraints = [
+    where('uid','==',currentUser.uid),
+    orderBy('createdAt','desc'),
+    limit(NOTIF_PAGE_SIZE),
+  ];
+  if (_notifPanelState.lastDoc) constraints.push(startAfter(_notifPanelState.lastDoc));
+  const snap = await getDocs(query(collection(db,'userNotifications'), ...constraints));
+  _notifPanelState.lastDoc = snap.docs[snap.docs.length - 1] || _notifPanelState.lastDoc;
+  _notifPanelState.exhausted = snap.size < NOTIF_PAGE_SIZE;
+  snap.docs.forEach(d => _notifPanelState.notifs.push({ id: d.id, ...d.data() }));
+}
+
 window.openNotifPanel = async() => {
   const panel = document.getElementById('notifPanel');
   const list  = document.getElementById('notifPanelList');
@@ -6785,30 +6824,28 @@ window.openNotifPanel = async() => {
   panel.style.display='block';
   list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">로딩 중...</div>';
   try{
-    const snap = await getDocs(query(
-      collection(db,'userNotifications'),
-      where('uid','==',currentUser.uid)
-    ));
-    const notifs = snap.docs
-      .map(d=>({id:d.id,...d.data()}))
-      .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
-    if(!notifs.length){
+    await _fetchNotifsPage(true);
+    if(!_notifPanelState.notifs.length){
       list.innerHTML='<div style="padding:32px 16px;text-align:center;color:#bbb;font-size:13px;">📭 알림이 없어요</div>';
       return;
     }
-    list.innerHTML = notifs.map(n=>`
-      <div onclick="readNotif('${n.id}')" style="padding:14px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;background:${n.read?'white':'#f0fafa'};">
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <span style="font-size:20px;flex-shrink:0;">${n.read?'🔔':'🔴'}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:${n.read?'500':'700'};font-size:14px;color:${n.read?'#555':'#111'};margin-bottom:3px;">${esc(n.title||'알림')}</div>
-            <div style="font-size:12px;color:#777;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${esc(n.body||'')}</div>
-            ${_notifAttachments(n).map(a => _renderNotifRowAttachment(a)).join('')}
-            <div style="font-size:11px;color:#bbb;margin-top:4px;">${n.createdAt?.toDate?n.createdAt.toDate().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</div>
-          </div>
-        </div>
-      </div>`).join('');
-  }catch(e){ list.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패</div>'; }
+    list.innerHTML = _notifPanelState.notifs.map(_renderNotifRow).join('') + _renderNotifPanelMore();
+  }catch(e){ console.warn(e); list.innerHTML='<div style="padding:20px;color:#e05050;">불러오기 실패</div>'; }
+};
+
+window.loadMoreNotifs = async() => {
+  const btn = document.querySelector('#notifMoreWrap button');
+  if (btn) { btn.disabled = true; btn.textContent = '로딩 중...'; }
+  try {
+    const prevLen = _notifPanelState.notifs.length;
+    await _fetchNotifsPage(false);
+    const list = document.getElementById('notifPanelList');
+    if (!list) return;
+    const added = _notifPanelState.notifs.slice(prevLen);
+    const moreWrap = document.getElementById('notifMoreWrap');
+    if (moreWrap) moreWrap.remove();
+    list.insertAdjacentHTML('beforeend', added.map(_renderNotifRow).join('') + _renderNotifPanelMore());
+  } catch(e) { console.warn('[loadMoreNotifs]', e); if (btn) { btn.disabled = false; btn.textContent = `+ ${NOTIF_PAGE_SIZE}개 더 보기`; } }
 };
 
 // 알림 패널 행에 첨부 표시 (HTML 문자열 반환 — innerHTML 안에 박힘)
@@ -6831,7 +6868,20 @@ function _renderNotifRowAttachment(att) {
 window.readNotif = async(docId) => {
   try{
     await updateDoc(doc(db,'userNotifications',docId),{read:true});
-    await openNotifPanel();
+    // 서지컬 갱신 — 전체 재fetch 폐기 (2026-06-18, reads 0 추가)
+    const entry = _notifPanelState.notifs.find(n => n.id === docId);
+    if (entry) entry.read = true;
+    const row = document.getElementById('notifRow-'+docId);
+    if (row) {
+      row.style.background = 'white';
+      const icon = row.querySelector('[data-role="notif-icon"]');
+      if (icon) icon.textContent = '🔔';
+      const titleEl = row.querySelector('[data-role="notif-title"]');
+      if (titleEl) {
+        titleEl.style.fontWeight = '500';
+        titleEl.style.color = '#555';
+      }
+    }
     await updateNotifBadge();
   }catch(e){console.warn(e);}
 };
@@ -6850,7 +6900,12 @@ window.markAllNotifsRead = async() => {
       where('read','==',false)
     ));
     await Promise.all(snap.docs.map(d=>updateDoc(d.ref,{read:true})));
-    await openNotifPanel();
+    // 서지컬 갱신 — 전체 재fetch 폐기 (2026-06-18)
+    _notifPanelState.notifs.forEach(n => { n.read = true; });
+    const list = document.getElementById('notifPanelList');
+    if (list && _notifPanelState.notifs.length) {
+      list.innerHTML = _notifPanelState.notifs.map(_renderNotifRow).join('') + _renderNotifPanelMore();
+    }
     await updateNotifBadge(0);
     showToast('모두 읽음 처리됐어요!');
   }catch(e){console.warn(e);}
