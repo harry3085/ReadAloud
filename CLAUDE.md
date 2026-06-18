@@ -3443,3 +3443,116 @@ reads 분석 — default 학원 ~656k reads/월 추정. 가장 큰 부담:
 3. 다른 학원장 변경 감지 + FCM 자동 알림 — 멀티학원장 도입 시 묶음
 4. minmini 학생 후속 관찰 / 디바이스 정보 진단 / FCM 토큰 만료 (변동 없음)
 5. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-18 (오후 추가 작업): 알림 패널·뱃지 최적화 + 인덱스 회귀 교훈
+
+오전 학생앱 시험 목록 캐시·헤드체크 작업 (cf94640) 후, Firebase 쿼리 통계
+화면 진단으로 추가 비효율 발견 → 알림 패널·뱃지 reads 절감 작업. 도중
+인덱스 누락 회귀 1회 (폴백 안전망 동봉으로 즉시 회복).
+
+### 1) 알림 패널 페이지네이션 (`95c88d9`, v659)
+
+학원장 통찰 — 알림 패널 열면 학생 한 달치 모두 fetch. `limit` 도 없고
+`orderBy` 도 server-side 아님. 게다가 `readNotif`/`markAllNotifsRead` 가
+끝에 `openNotifPanel()` 재호출 → 알림 5개 읽으면 전체 fetch 5번.
+
+- `_notifPanelState` (lastDoc, exhausted, notifs[])
+- `openNotifPanel`: `orderBy desc + limit 10 + cursor`
+- `loadMoreNotifs`: `startAfter(lastDoc) + 10개 append`
+- `readNotif`: 그 row 만 surgical (read:true 박고 색상·아이콘만 변경, 재fetch 0)
+- `markAllNotifsRead`: 현재 노출된 row 모두 surgical, 재fetch 0
+- `_renderNotifRow` 헬퍼 분리 (재사용)
+- firestore import 에 `startAfter` 추가
+
+**reads 절감 추정**: 학생 1회 사용 (알림 30개, 5개 읽기) 180 → 10 (~94% ↓)
+
+### 2) 인덱스 누락 회귀 + 폴백 안전망 (`3cca68e`, v660)
+
+학원장 보고 "알림함 불러오기 실패" — 신규 쿼리 `where('uid','==') +
+orderBy('createdAt','desc')` 가 `userNotifications` 의 composite 인덱스
+부재로 거부. [[feedback-index-before-filter]] 위반 (신규 쿼리 추가 시
+인덱스 사전 deploy 필수).
+
+긴급 대응:
+- `firestore.indexes.json`: `userNotifications (uid, createdAt DESC)` 인덱스 추가
+- `firebase deploy --only firestore:indexes` 배포 (빌드 1~5분)
+- **코드 폴백**: try/catch 로 인덱스 에러 잡고 옛 방식 (where uid 만 +
+  클라 정렬 + slice) 으로 자동 fallback — 빌드 중에도 학생 영향 0
+- `_fallbackAll` 캐시로 더보기도 폴백 동작
+
+### 3) 안 읽음 뱃지 aggregate count (`11692c2`, v661)
+
+학원장 정확한 통찰 — "뱃지 카운트도 전체 fetch 후 size 만 쓰는 거 아냐?".
+확인 결과 정확. `getCountFromServer` 로 교체:
+
+```js
+// before: getDocs(...).size → 10 reads
+// after:  getCountFromServer(...).count → 1 read
+```
+
+- `updateNotifBadge`: snap.size → c.data().count + 폴백 안전망
+- import 에 `getCountFromServer` 추가
+- 학원장 admin 앱은 이미 광범위 사용 중 (대시보드·메시지 한도·시험 카운트)
+
+**reads 절감 추정**: 학생당 일 ~10회 갱신 × 10 reads → 1 read = 월 ~282k → ~28k
+
+### 4) 로그인 모달 aggregate count 수평전개 (`d0cb15b`, v662)
+
+`checkUnreadNotifs` (학생 로그인 직후 자동 모달 띄움 함수) 도 동일 패턴
+— `snap.size` 만 사용. updateNotifBadge 와 통일.
+
+- 학생앱 `.size` grep 전수 검토 후 1건 발견 → 동일 패턴 적용
+- 학원장앱은 이미 모두 적용됨 (수평전개 결과 무변경)
+
+**reads 절감 추정**: 학생 94 × 일 2회 진입 × 10 reads → 1 = 월 ~56k → ~5.6k
+
+### 5) 학원장 결정 — 학생 사용 중 변경 작업 회피
+
+오후 작업 중 인덱스 회귀 1회 발생 → 폴백으로 즉시 복구됐으나 학원장
+판단 "학생 많이 쓰는 시간엔 추가 변경 보류". 합리적 운영 결정.
+보류된 다음 작업들은 메모리에 등록:
+- 홈 뱃지 + 시험 목록 캐시 통합 (옵션 B) — reads ~89% ↓ 추가 가능
+- 학원장 진도체크 헤드체크 확장 — [[project-admin-headcheck-extension]]
+- 옛 schema 정리 Phase 1~3 — [[project-legacy-schema-cleanup]]
+
+### 작업 규칙 추가 (2026-06-18 오후)
+
+신규:
+- **신규 쿼리 추가 시 인덱스 사전 deploy 필수** —
+  [[feedback-index-before-filter]] 재강조. composite 인덱스
+  (`where(eq) + orderBy(다른필드)`) 누락 시 "The query requires an index"
+  로 학생 영향. 폴백 안전망 (try/catch + 옛 방식) 동봉이 회귀 복구
+  표준.
+- **`getCountFromServer` 는 카운트만 필요한 단일 조건 쿼리에 적용** —
+  차집합 계산이나 `snap.docs` 도 같이 쓰는 케이스에는 효과 없음.
+  `snap.size` 만 쓰는지 확인 후 교체. 폴백 안전망 동봉.
+- **변경 작업은 사용자 사용량 적은 시간대에** — 학원 운영 시간·시험 시간
+  회피. 새벽·심야·주말이 안전. 학원장 결정 존중. 회귀 시 영향 최소화.
+- **수평전개는 결과 보고 → 사용자 컨펌 → 작업** 단계 분리 필수 —
+  "확인해볼까", "스캔해볼까" 단계에서는 결과만 보고. 작업 진행은
+  사용자 명시 동의 후. [[feedback-confirm-specs-before-work]] /
+  [[feedback-answer-before-work]] 재강조.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-18 오후)
+
+- 알림 패널 페이지네이션 + surgical: ~100%
+- 안 읽음 뱃지 aggregate count: ~100%
+- 인덱스 회귀 복구 + 폴백 안전망 정착: ~100%
+- 학생앱 reads 누적 절감 (오늘): ~1,340k reads/월
+- 멀티테넌시·결제·말하기·녹음숙제·AI Generator: 변동 없음
+
+파일:
+- `public/js/app.js`: `_notifPanelState` + 페이지네이션 함수들 +
+  `_renderNotifRow` 헬퍼 + `readNotif`/`markAllNotifsRead` surgical +
+  `updateNotifBadge`/`checkUnreadNotifs` aggregate count + 폴백 안전망
+- `firestore.indexes.json`: `userNotifications (uid, createdAt DESC)` 인덱스
+- SW 캐시: `kunsori-v658` → `kunsori-v662`
+
+**다음 세션 후보** (학생 사용 적은 시간대 진행):
+1. 홈 뱃지 + 시험 목록 캐시 통합 (옵션 B) — 추가 reads ~89% ↓
+2. 학원장앱 진도체크 헤드체크 확장 — 다중 사용자 stale 해결
+3. 옛 schema 정리 Phase 1 — dead code 3건 (~30분)
+4. 학생앱 reads 실측 (다음 7일 통계 비교)
+5. Phase 5 출시 준비 (변동 없음)
