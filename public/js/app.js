@@ -6741,17 +6741,28 @@ function showUnreadSummaryModal(count){
 }
 
 // 앱 진입 시 미확인 알림 합산 표시 (1개 모달, 풀스크린 차단 X)
+// aggregate count — 안 읽음 doc 전체 fetch 대신 1 read 만 (2026-06-18, reads ~90% 절감)
 async function checkUnreadNotifs(){
   if(!currentUser) return;
   try{
-    const snap = await getDocs(query(
+    const q = query(
       collection(db,'userNotifications'),
       where('uid','==',currentUser.uid),
       where('read','==',false)
-    ));
-    await updateNotifBadge(snap.size);
-    if(snap.empty) return;
-    showUnreadSummaryModal(snap.size);
+    );
+    let count = 0;
+    try {
+      const c = await getCountFromServer(q);
+      count = c.data().count;
+    } catch (e) {
+      // 폴백 — 옛 getDocs 방식 (네트워크/일시 오류 시 안전망)
+      console.warn('[checkUnreadNotifs] getCountFromServer 실패, getDocs 폴백:', e.message);
+      const snap = await getDocs(q);
+      count = snap.size;
+    }
+    await updateNotifBadge(count);
+    if (count === 0) return;
+    showUnreadSummaryModal(count);
   }catch(e){ console.log('알림 확인 실패',e); }
 }
 
