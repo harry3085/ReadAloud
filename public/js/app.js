@@ -6805,16 +6805,38 @@ function _renderNotifPanelMore() {
 async function _fetchNotifsPage(reset = false) {
   if (reset) _notifPanelState = { lastDoc: null, exhausted: false, notifs: [] };
   if (_notifPanelState.exhausted) return;
-  const constraints = [
-    where('uid','==',currentUser.uid),
-    orderBy('createdAt','desc'),
-    limit(NOTIF_PAGE_SIZE),
-  ];
-  if (_notifPanelState.lastDoc) constraints.push(startAfter(_notifPanelState.lastDoc));
-  const snap = await getDocs(query(collection(db,'userNotifications'), ...constraints));
-  _notifPanelState.lastDoc = snap.docs[snap.docs.length - 1] || _notifPanelState.lastDoc;
-  _notifPanelState.exhausted = snap.size < NOTIF_PAGE_SIZE;
-  snap.docs.forEach(d => _notifPanelState.notifs.push({ id: d.id, ...d.data() }));
+  try {
+    const constraints = [
+      where('uid','==',currentUser.uid),
+      orderBy('createdAt','desc'),
+      limit(NOTIF_PAGE_SIZE),
+    ];
+    if (_notifPanelState.lastDoc) constraints.push(startAfter(_notifPanelState.lastDoc));
+    const snap = await getDocs(query(collection(db,'userNotifications'), ...constraints));
+    _notifPanelState.lastDoc = snap.docs[snap.docs.length - 1] || _notifPanelState.lastDoc;
+    _notifPanelState.exhausted = snap.size < NOTIF_PAGE_SIZE;
+    snap.docs.forEach(d => _notifPanelState.notifs.push({ id: d.id, ...d.data() }));
+  } catch (e) {
+    // 인덱스 빌드 중 또는 부재 시 폴백 — where(uid) 만 + 클라 정렬 + 클라 slice
+    // (옛 동작과 동일 — reads 절감 효과는 없지만 학생 영향 0)
+    console.warn('[notifPanel] indexed query failed, falling back to client-side sort:', e.message);
+    if (reset) {
+      const snap = await getDocs(query(collection(db,'userNotifications'), where('uid','==',currentUser.uid)));
+      const all = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      _notifPanelState.notifs = all.slice(0, NOTIF_PAGE_SIZE);
+      _notifPanelState._fallbackAll = all;  // 더보기용
+      _notifPanelState.exhausted = all.length <= NOTIF_PAGE_SIZE;
+    } else if (Array.isArray(_notifPanelState._fallbackAll)) {
+      const next = _notifPanelState._fallbackAll.slice(
+        _notifPanelState.notifs.length,
+        _notifPanelState.notifs.length + NOTIF_PAGE_SIZE
+      );
+      _notifPanelState.notifs.push(...next);
+      _notifPanelState.exhausted = _notifPanelState.notifs.length >= _notifPanelState._fallbackAll.length;
+    }
+  }
 }
 
 window.openNotifPanel = async() => {
