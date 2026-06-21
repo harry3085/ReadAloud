@@ -6544,10 +6544,20 @@ window.showModal = (html, opts = {}) => {
     mc.style.overflow = '';
   }
   document.getElementById('modalOverlay').style.display = 'flex';
+  if (opts.draggable) {
+    // 헤더 element 찾기 — data-drag-handle 속성 우선, 없으면 첫 자식 div
+    requestAnimationFrame(() => {
+      const headerEl = mc.querySelector('[data-drag-handle]')
+        || mc.firstElementChild?.firstElementChild;
+      if (headerEl) _enableModalDrag(headerEl);
+    });
+  }
 };
 window.closeModal = () => {
   document.getElementById('modalOverlay').style.display='none';
-  document.getElementById('modalBox').style.width='';
+  const box = document.getElementById('modalBox');
+  box.style.width='';
+  box.style.transform='';                  // 드래그 위치 리셋 (다음 모달은 중앙)
   // 결제 항목 패널 정리 — 닫는 경로 (✓ 완료 / ✕ 취소 / 바깥 클릭) 무관 그리드 갱신.
   // 라인 3134 wrapper 가 이 정의로 덮어씌워지는 상황 우회 (인라인 hook).
   if (_billingPanelId !== null) {
@@ -6556,6 +6566,53 @@ window.closeModal = () => {
     if (currentPage === 'payment') _renderBillingGrid(0, { refetch: false });
   }
 };
+
+// 모달 드래그 이동 헬퍼 (2026-06-18) — AI 정리 모달 등 일부 모달용
+// 헤더 element 에 mousedown 박고 mousemove 따라 modalBox transform 적용
+// 사용 조건: showModal(html, {draggable: true}) + 헤더 div 에 data-drag-handle 속성
+function _enableModalDrag(headerEl) {
+  const box = document.getElementById('modalBox');
+  if (!box || !headerEl) return;
+  headerEl.style.cursor = 'move';
+  headerEl.style.userSelect = 'none';
+
+  headerEl.addEventListener('mousedown', (e) => {
+    // 헤더 안 button·input·a 클릭은 드래그 X (텍스트 선택 가능하게)
+    if (e.target.closest('button, input, textarea, select, a')) return;
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const m = (box.style.transform || '').match(/translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)/);
+    const baseTX = m ? parseFloat(m[1]) : 0;
+    const baseTY = m ? parseFloat(m[2]) : 0;
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      // 화면 한계 — modal 일부(헤더 ~50px) 는 항상 보이게
+      const rect = box.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      // 현재 viewport 안 모달 좌상단 위치 = rect.left, rect.top (이미 transform 반영됨)
+      // 이동량 dx, dy 적용 후 위치
+      const futureLeft = rect.left + (dx - (baseTX === 0 ? 0 : 0));
+      // 단순 한계 — 좌/우/상/하 50px 는 화면 안에 남기
+      let nextTX = baseTX + dx;
+      let nextTY = baseTY + dy;
+      // rect.left 가 이미 (transform 적용 후) 박스 실제 위치. 다음 위치 추정:
+      const nextLeft = rect.left - baseTX + nextTX;
+      const nextTop = rect.top - baseTY + nextTY;
+      if (nextLeft < -rect.width + 50) nextTX = baseTX + dx - (nextLeft - (-rect.width + 50));
+      if (nextLeft > vw - 50) nextTX = baseTX + dx - (nextLeft - (vw - 50));
+      if (nextTop < 0) nextTY = baseTY + dy - nextTop;
+      if (nextTop > vh - 50) nextTY = baseTY + dy - (nextTop - (vh - 50));
+      box.style.transform = `translate(${nextTX}px, ${nextTY}px)`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
 // 리사이즈 드래그 후 오버레이에서 mouseup 시 닫히는 문제 방지
 // mousedown 시작이 오버레이일 때만 닫힘
 let _modalMouseDownOnOverlay = false;
@@ -9510,8 +9567,8 @@ window.genCleanupActivePage = async () => {
 function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetName, model) {
   const html = `
   <div style="width:min(1100px,95vw);max-height:88vh;display:flex;flex-direction:column;">
-    <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ AI 정리 결과 비교</div>
+    <div data-drag-handle style="padding:18px 22px;border-bottom:1px solid var(--border);" title="헤더를 마우스로 드래그하여 이동">
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ AI 정리 결과 비교 <span style="font-size:10px;color:var(--gray);font-weight:400;">⋮⋮ 드래그 가능</span></div>
       <div style="font-size:12px;color:var(--gray);margin-top:5px;">
         ${esc(pageTitle)} · 프리셋: ${esc(presetName)} · 모델: <code>${esc(model||'')}</code>
       </div>
@@ -9532,7 +9589,7 @@ function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetNa
       <button class="btn btn-primary" onclick="cleanupApplySingle('${esc(pageId)}')">적용 (덮어쓰기)</button>
     </div>
   </div>`;
-  showModal(html);
+  showModal(html, { draggable: true });
 }
 
 window.cleanupApplySingle = async (pageId) => {
@@ -9719,8 +9776,8 @@ function _cleanupRenderBatchResult(presetName) {
 
   const html = `
   <div style="width:min(1100px,95vw);height:min(85vh,750px);display:flex;flex-direction:column;">
-    <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
-      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ 일괄 AI 정리 결과</div>
+    <div data-drag-handle style="padding:18px 22px;border-bottom:1px solid var(--border);" title="헤더를 마우스로 드래그하여 이동">
+      <div style="font-size:17px;font-weight:700;line-height:1.3;">✨ 일괄 AI 정리 결과 <span style="font-size:10px;color:var(--gray);font-weight:400;">⋮⋮ 드래그 가능</span></div>
       <div style="font-size:12px;color:var(--gray);margin-top:5px;">프리셋: ${esc(presetName)} · 각 페이지별로 적용/건너뜀 선택</div>
     </div>
     <div style="padding:10px 22px 0;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--teal-light);">${tabs}</div>
@@ -9730,7 +9787,7 @@ function _cleanupRenderBatchResult(presetName) {
       <div style="display:flex;gap:8px;align-items:center;">${footerRight}</div>
     </div>
   </div>`;
-  showModal(html);
+  showModal(html, { draggable: true });
 }
 
 window.cleanupBatchGoto = (i) => {
