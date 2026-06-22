@@ -5569,19 +5569,34 @@ function _vqRenderMcqFeedback(ans) {
   const correctText = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
   const container = document.getElementById('vqChoicesArea');
   if (!container) return;
+  // 시간만료/입력누락 — input 이 비었음. 정답/오답 표시를 시간만료용으로 분기 (2026-06-21)
+  // 옛 버전: 시간만료여도 정답 옵션에 ✓ 표시 + banner 오답 → 학생 혼란 (정답 누른 줄 아는데 오답 나옴)
+  const userInputEmpty = !ans.input || !String(ans.input).trim();
   container.innerHTML = ans.choices.map((opt, j) => {
     const isUser = opt === ans.input;
     const isCorrect = opt === correctText;
     let bg = 'white', color = 'var(--teal)', border = 'var(--teal)';
-    if (isCorrect) { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; }
-    else if (isUser) { bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444'; }
+    if (isCorrect) {
+      // 시간만료 시 정답을 호박색 + (정답) 으로 표시 — ✓ (학생이 누른 듯) 와 구분
+      if (userInputEmpty) { bg = '#fef3c7'; color = '#92400e'; border = '#f59e0b'; }
+      else { bg = '#d1fae5'; color = '#047857'; border = '#10b981'; }
+    } else if (isUser) {
+      bg = '#fee2e2'; color = '#b91c1c'; border = '#ef4444';
+    }
+    const mark = isCorrect
+      ? (userInputEmpty ? ' (정답)' : ' ✓')
+      : (isUser ? ' ✗' : '');
     return `<button disabled
       style="padding:14px 16px;background:${bg};border:2px solid ${border};color:${color};border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;box-shadow:0 2px 4px rgba(0,0,0,0.08);text-align:left;opacity:${isCorrect||isUser?1:0.5};">
-      ${['①','②','③','④'][j]} ${esc(opt)}${isCorrect?' ✓':(isUser?' ✗':'')}
+      ${['①','②','③','④'][j]} ${esc(opt)}${mark}
     </button>`;
   }).join('');
-  // 배너로 결과 표시
-  _vqShowFeedbackBanner(ans.input === correctText, correctText);
+  // 배너 — 시간만료 시 명시 ("⏰ 시간 만료") 로 학생 혼란 차단
+  if (userInputEmpty) {
+    _vqShowFeedbackBanner(false, '⏰ 시간 만료 — 정답: ' + correctText);
+  } else {
+    _vqShowFeedbackBanner(ans.input === correctText, correctText);
+  }
 }
 
 // 스펠링 채점 정규화: NFKC + hidden 공백/zero-width 제거 + collapse + lowercase
