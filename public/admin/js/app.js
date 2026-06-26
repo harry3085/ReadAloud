@@ -1847,11 +1847,15 @@ function renderStudentTable(status, students){
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     if (!students.length) {
-      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#bbb;padding:20px;">반을 선택하세요</td></tr>';
       return;
     }
     tbody.innerHTML = students.map((u,i) => {
       const { amtCell, dueCell } = _tuitionCells(u);
+      const billOn = u.tuitionPlan?.active === true;
+      const billCell = billOn
+        ? '<span title="자동 청구 ON" style="color:#16a34a;font-weight:700;font-size:15px;">✓</span>'
+        : '<span title="자동 청구 OFF — 학생 수정에서 [매월 자동 청구서 생성] 체크" style="color:#dc2626;font-weight:700;font-size:15px;">✗</span>';
       return `<tr>
       <td><input type="checkbox" value="${u.id}"></td>
       <td>${i+1}</td>
@@ -1863,6 +1867,7 @@ function renderStudentTable(status, students){
       <td class="td-sm">${esc(u.grade)||'-'}</td>
       <td><span class="badge ${u.fcmToken?'badge-green':'badge-gray'}">${u.fcmToken?'수신':'미설정'}</span></td>
       <td class="td-sub">${u.createdAt?.toDate?u.createdAt.toDate().toLocaleDateString('ko-KR'):'-'}</td>
+      <td class="td-center">${billCell}</td>
       <td class="td-sm" style="text-align:right;font-variant-numeric:tabular-nums;">${amtCell}</td>
       <td class="td-sm" style="text-align:center;">${dueCell}</td>
     </tr>`;
