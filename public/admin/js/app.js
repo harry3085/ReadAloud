@@ -16124,14 +16124,23 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   // 50점 이하 제출분 — 학원장 확인 강조 (대기·에러보다 진한 빨강)
                   const isLowScore = (typeof lastScore === 'number') && lastScore <= 50;
                   // 측정값 비정상 — 회차 중 하나라도 abnormal 이면 학원장 확인 (2026-06-27 학원장 요청)
-                  // 임계는 클라 sanity check 와 동일 (학생 제출 전 안내 + 학원장 우선 확인)
+                  // 임계는 클라 sanity check + 모달 색상 spec 과 동일
                   const minDur = t.questions?.[0]?.minDurationSec || 0;
+                  // 본문 단어수 기반 표준 시간 (150 WPM) — 학원장 minDur 설정과 별개 자동 임계
+                  const _ft = t.questions?.[0]?.fullText || '';
+                  const _ftW = String(_ft).trim().split(/\s+/).filter(Boolean).length;
+                  const _expSec = _ftW >= 30 ? Math.round((_ftW / 150) * 60) : 0;
                   const abnormalReasons = [];
                   recs.forEach(r => {
                     if (r.voiceActivity != null && r.voiceActivity < 0.10) abnormalReasons.push('음성<10%');
                     if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
                     if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
                     if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
+                    // 시간 비율 < 30% — 본문 표준 시간 대비 (학원장 minDur 미설정 시에도 작동)
+                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.3) {
+                      const ratio = Math.round((r.duration / _expSec) * 100);
+                      abnormalReasons.push(`시간${ratio}%`);
+                    }
                   });
                   const isAbnormal = abnormalReasons.length > 0;
                   const isWarning = isLowScore || isAbnormal;
