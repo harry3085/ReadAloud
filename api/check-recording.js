@@ -127,7 +127,13 @@ Scoring guide (overall score & each category, 0-100):
 - 75-89: Most words clear, minor omissions or unclear sections
 - 60-74: Noticeable omissions, mispronunciation, or rushed portions
 - 40-59: Many words missed or unclear; partial reading
-- 0-39: Silent, noise only, or entirely different content
+- 0-39: Silent (침묵), noise only (단순 소음), irrelevant babbling (무의미한 웅얼거림), or entirely different content (원문과 완전히 다른 내용). 이 경우 즉시 0점 처리하고 세부 채점 및 억지 피드백 생성을 중단할 것.
+
+CRITICAL — 0점 처리 시 세부 항목 통일:
+score 가 0점 (또는 0-10 사이) 으로 처리되는 경우, categoryScores 의 모든 항목 (pronunciation, intonation, pace, accuracy) 값 또한 반드시 0 으로 설정하라.
+- 본문과 무관한 내용·침묵·소음·무의미 발화일 때 발음/억양/속도/정확도를 따로 평가하지 말 것.
+- feedback.weakPronunciation / tips / positives 등 세부 피드백도 빈 배열 또는 한 줄 "본문을 읽어주세요" 안내로 통일.
+- 본문 단어를 추측해서 weakPronunciation 으로 생성하지 말 것 (학생이 그 단어를 실제 발음한 게 아니면 무의미).
 
 CRITICAL — 학생별 점수 차이를 명확히 반영하라:
 - 모든 학생에게 같은 점수 (예: 78점 디폴트, 75/70/85/80 디폴트 카테고리) 를 부여하지 말 것.
