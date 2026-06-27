@@ -5661,23 +5661,28 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const cc = r.categoryComments;
     const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
     const positives = fb?.positives || [];
-    const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
+    // 말소리 — 녹음 중 실제 음성이 잡힌 시간 비율 (학원장 참고용)
+    const vaTitle = '녹음 중 실제 말소리가 잡힌 시간 비율 (Voice Activity) — 낮으면 침묵·잡음·마이크 멀음 의심';
+    const vaVal = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
+    const va = `<span title="${vaTitle}">말소리 <b>${vaVal}</b></span>`;
     // 표준 시간 (150 WPM 기준) — 본문 단어수로부터 계산. 학생 시간 / 표준 시간 비율 표시
     const expectedSec = (ftWords >= 30) ? Math.round((ftWords / 150) * 60) : null;
+    const durTitle = '학생이 실제로 녹음한 시간 (일시정지 제외) / 본문 표준 시간 (단어수 ÷ 150 WPM). 비율 30% 미만 = 본문 부분 읽기 의심';
     let dur;
     if (r.duration) {
       if (expectedSec) {
         const ratio = Math.round((r.duration / expectedSec) * 100);
         const ratioColor = ratio >= 70 ? '#16a34a' : (ratio >= 30 ? '#f59e0b' : '#dc2626');
-        dur = `${r.duration}초/${expectedSec}초 <b title="학생 녹음 시간 / 본문 표준 시간 (150 WPM 기준). 30% 미만 = 부분 읽기 의심" style="color:${ratioColor};">(${ratio}%)</b>`;
+        dur = `<span title="${durTitle}">${r.duration}초/${expectedSec}초 <b style="color:${ratioColor};">(${ratio}%)</b></span>`;
       } else {
-        dur = r.duration + '초';
+        dur = `<span title="학생이 실제로 녹음한 시간 (일시정지 제외)">${r.duration}초</span>`;
       }
     } else {
       dur = '-';
     }
     const wpm = (r.duration > 0 && ftWords > 0) ? Math.round((ftWords / r.duration) * 60) : 0;
-    const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
+    const wpmTitle = '분당 단어 수 (Words Per Minute) — 영어 원어민 평균 150, 한국 학생 100~130. 너무 느리면 끊김, 너무 빠르면 단어 누락 의심';
+    const wpmTxt = wpm > 0 ? ` · <span title="${wpmTitle}">속도 <b>${wpm} WPM</b></span>` : '';
     // 학원장 참고용 음향 지표 (학생 비공개). 거부 아닌 안내로 전환됨 — 낮은 명료도/높은 단조는 색으로 표시.
     const vbrPct = (typeof r.voiceBandRatio === 'number') ? Math.round(r.voiceBandRatio * 100) : null;
     const monoPct = (typeof r.monotony === 'number') ? Math.round(r.monotony * 100) : null;
@@ -5704,7 +5709,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
           ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
-          <span style="font-size:10px;color:var(--gray);">${dur} · 말소리 ${va}${wpmTxt}${acousticInline}${completionInline}</span>
+          <span style="font-size:10px;color:var(--gray);">${dur} · ${va}${wpmTxt}${acousticInline}${completionInline}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
