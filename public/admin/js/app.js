@@ -5662,7 +5662,20 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
     const positives = fb?.positives || [];
     const va = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
-    const dur = r.duration ? r.duration + '초' : '-';
+    // 표준 시간 (150 WPM 기준) — 본문 단어수로부터 계산. 학생 시간 / 표준 시간 비율 표시
+    const expectedSec = (ftWords >= 30) ? Math.round((ftWords / 150) * 60) : null;
+    let dur;
+    if (r.duration) {
+      if (expectedSec) {
+        const ratio = Math.round((r.duration / expectedSec) * 100);
+        const ratioColor = ratio >= 70 ? '#16a34a' : (ratio >= 30 ? '#f59e0b' : '#dc2626');
+        dur = `${r.duration}초/${expectedSec}초 <b title="학생 녹음 시간 / 본문 표준 시간 (150 WPM 기준). 30% 미만 = 부분 읽기 의심" style="color:${ratioColor};">(${ratio}%)</b>`;
+      } else {
+        dur = r.duration + '초';
+      }
+    } else {
+      dur = '-';
+    }
     const wpm = (r.duration > 0 && ftWords > 0) ? Math.round((ftWords / r.duration) * 60) : 0;
     const wpmTxt = wpm > 0 ? ` · 속도 ${wpm} WPM` : '';
     // 학원장 참고용 음향 지표 (학생 비공개). 거부 아닌 안내로 전환됨 — 낮은 명료도/높은 단조는 색으로 표시.
