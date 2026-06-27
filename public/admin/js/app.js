@@ -16090,10 +16090,14 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                     : (c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '');
                   const dateStr = c.date || submittedAt || '';
                   const lastScore = (typeof last?.score === 'number') ? last.score : (c.score ?? c.latestFailedScore);
-                  const headColor = '#0369a1';
+                  // 50점 이하 제출분 — 학원장 확인 강조 (대기·에러보다 진한 빨강)
+                  const isLowScore = (typeof lastScore === 'number') && lastScore <= 50;
+                  const cardBg = isLowScore ? '#fca5a5' : '#f0f9ff';
+                  const cardBorder = isLowScore ? '#dc2626' : '#bae6fd';
+                  const headColor = isLowScore ? '#7f1d1d' : '#0369a1';
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
                   // 진도체크·최근시험 모두 최소화 — 한 줄 카드. 클릭 시 상세 모달(#3)
-                  return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
+                  return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                       ${xBtnRec}
                       <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                       <div style="color:${headColor};">${headLabel}${dateStr ? ' · ' + esc(dateStr) : ''}</div>
@@ -16106,10 +16110,15 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const submittedAt = c.completedAt?.toDate?.()
                     ? _ymdKST(c.completedAt.toDate())
                     : (c.latestFailedAt?.toDate?.() ? _ymdKST(c.latestFailedAt.toDate()) : '');
-                  return `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
+                  // 50점 이하 — 학원장 확인 강조 (대기·에러보다 진한 빨강)
+                  const isLowOld = oldScore <= 50;
+                  const cardBgO = isLowOld ? '#fca5a5' : '#f0f9ff';
+                  const cardBorderO = isLowOld ? '#dc2626' : '#bae6fd';
+                  const headColorO = isLowOld ? '#7f1d1d' : '#0369a1';
+                  return `<div style="background:${cardBgO};border:1px solid ${cardBorderO};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;">
                     ${xBtnRec}
                     <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
-                    <div style="color:#0369a1;">📤 제출됨 · ${oldScore}점${submittedAt ? ' · ' + esc(submittedAt) : ''}</div>
+                    <div style="color:${headColorO};">📤 제출됨 · ${oldScore}점${submittedAt ? ' · ' + esc(submittedAt) : ''}</div>
                   </div>`;
                 }
                 // AI/네트워크 에러 (catch 진입) — 빨간 ⚠️ 카드
