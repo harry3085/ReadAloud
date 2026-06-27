@@ -119,6 +119,7 @@ Then ALWAYS provide detailed feedback (regardless of score) so the student can i
 Return strictly JSON (no markdown):
 {
   "score": <integer 0-100>,
+  "transcribedWords": [<English words actually heard in the audio, in order, lowercase, up to 200 words>],
   "missedWords": [<up to 5 important words omitted>],
   "note": "<one-line Korean comment>",
   "feedback": {
@@ -197,7 +198,17 @@ CRITICAL — weakPronunciation.issue rules:
 - GOOD example: "Mighty [ˈmaɪti] — 첫 음절 'MIGH' 길고 강하게, t 는 받침처럼 짧게. '마이-티' 가 아니라 '마이리' 에 가깝게."
 - If you cannot produce a useful actionable instruction for a word, DO NOT include it in weakPronunciation. Empty array is better than vague feedback.
 
-Feedback Korean: natural, encouraging, appropriate for middle/high school students.`;
+Feedback Korean: natural, encouraging, appropriate for middle/high school students.
+
+CRITICAL — transcribedWords (완독률 측정용):
+- audio 에서 실제로 들린 영어 단어를 순서대로 lowercase 배열로 반환.
+- 침묵·소음·한국어·웅얼거림은 단어로 받아 적지 말 것 (영어 단어만).
+- 본문 단어를 추측해서 채우지 말 것 — audio 에 실제 들린 단어만.
+- 본문에 없는 단어가 들리면 그것도 포함 (정확한 기록).
+- 들린 게 없으면 빈 배열 [].
+- 최대 200 단어 (긴 본문은 처음~끝까지 들린 만큼).
+- 서버가 이 배열로 본문 단어와 매칭해 완독률을 계산해 학원장 화면에 표시함.
+- 정직하게 작성. 본문 추측 금지.`;
 }
 
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
@@ -293,6 +304,7 @@ module.exports = async (req, res) => {
       type: 'object',
       properties: {
         score: { type: 'integer' },
+        transcribedWords: { type: 'array', items: { type: 'string' } },
         missedWords: { type: 'array', items: { type: 'string' } },
         note: { type: 'string' },
         feedback: {
@@ -451,6 +463,26 @@ module.exports = async (req, res) => {
       ? parsed.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 5) : [];
     const note = String(parsed.note || '').trim().slice(0, 200);
 
+    // 완독률 측정 — transcribedWords vs 본문 단어 매칭 (2026-06-27 옵션 B)
+    // AI 가 추정한 들린 단어를 본문과 매칭해 객관적 완독률 계산
+    const transcribedWords = Array.isArray(parsed.transcribedWords)
+      ? parsed.transcribedWords.map(w => String(w || '').trim().toLowerCase()).filter(Boolean).slice(0, 200)
+      : [];
+    let completionRate = null;
+    let bookWordCount = 0;
+    let heardWordCount = 0;
+    try {
+      // 본문에서 영단어만 추출 (소문자, 알파벳만)
+      const bookWords = String(originalText || '').toLowerCase().match(/[a-z]+/g) || [];
+      const bookUniqueSet = new Set(bookWords);
+      const heardSet = new Set(transcribedWords);
+      // 본문 unique 단어 중 들린 단어 비율 (중복 안 셈 — 한 번이라도 들렸으면 매칭)
+      const matched = [...bookUniqueSet].filter(w => heardSet.has(w));
+      bookWordCount = bookUniqueSet.size;
+      heardWordCount = matched.length;
+      completionRate = bookWordCount > 0 ? Math.round((heardWordCount / bookWordCount) * 100) : null;
+    } catch (_) {}
+
     const fb = parsed.feedback || {};
     const fbMissed = Array.isArray(fb.missedWords)
       ? fb.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 3) : [];
@@ -501,6 +533,10 @@ module.exports = async (req, res) => {
       },
       categoryScores,
       categoryComments,
+      // 완독률 — 객관적 본문 단어 매칭 비율 (학원장 화면 표시용)
+      completionRate,
+      bookWordCount,
+      heardWordCount,
       elapsedMs,
     });
   } catch (e) {

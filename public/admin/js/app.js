@@ -5674,6 +5674,14 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const acousticInline =
       (vbrPct != null ? ` · <span title="실제 사람 음성 대역(300~3400Hz) 에너지 비율 — 낮으면 웅얼거림·잡음·비음성 의심">명료도 <b style="color:${vbrColor};">${vbrPct}%</b></span>` : '') +
       (monoPct != null ? ` · <span title="피치 변화가 적을수록 높음(100%=완전 단조) — 무성의·기계적 읽기 의심">단조로움 <b style="color:${monoColor};">${monoPct}%</b></span>` : '');
+    // 완독률 — AI 의 transcribedWords 와 본문 단어 매칭 비율 (학생 비공개, 학원장 참고)
+    const compRate = (typeof r.completionRate === 'number') ? r.completionRate : null;
+    const compColor = compRate == null ? '' : (compRate >= 70 ? '#16a34a' : (compRate >= 40 ? '#f59e0b' : '#dc2626'));
+    const compInfo = (typeof r.heardWordCount === 'number' && typeof r.bookWordCount === 'number')
+      ? ` (${r.heardWordCount}/${r.bookWordCount} 단어)` : '';
+    const completionInline = (compRate != null)
+      ? ` · <span title="AI 가 audio 에서 들었다고 보고한 영단어와 본문 단어 매칭 비율 — 본문 전체를 다 읽었는지 판단${compInfo}">완독률 <b style="color:${compColor};">${compRate}%</b></span>`
+      : '';
     const catBadge = (label, color, scoreVal, comment) => {
       if (typeof scoreVal !== 'number' && !comment) return '';
       return `<div style="margin-top:3px;font-size:11px;line-height:1.5;"><span style="background:${color};color:white;padding:1px 7px;border-radius:3px;font-weight:700;margin-right:5px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
@@ -5683,7 +5691,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
           ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
-          <span style="font-size:10px;color:var(--gray);">${dur} · 말소리 ${va}${wpmTxt}${acousticInline}</span>
+          <span style="font-size:10px;color:var(--gray);">${dur} · 말소리 ${va}${wpmTxt}${acousticInline}${completionInline}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}

@@ -3567,6 +3567,10 @@ async function _rv2Submit() {
     recordingsDetail[lastIdx].feedback = feedback;
     if (categoryScores) recordingsDetail[lastIdx].categoryScores = categoryScores;
     if (categoryComments) recordingsDetail[lastIdx].categoryComments = categoryComments;
+    // 완독률 — 객관적 본문 단어 매칭 비율 (학원장 화면 표시용, 2026-06-27)
+    if (typeof data.completionRate === 'number') recordingsDetail[lastIdx].completionRate = data.completionRate;
+    if (typeof data.bookWordCount === 'number') recordingsDetail[lastIdx].bookWordCount = data.bookWordCount;
+    if (typeof data.heardWordCount === 'number') recordingsDetail[lastIdx].heardWordCount = data.heardWordCount;
 
     // Phase B : 통과/불통 개념 폐기 — 모든 응시는 "제출 완료" 단일 흐름
     const today = _ymdKST();
