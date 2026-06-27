@@ -350,7 +350,7 @@ module.exports = async (req, res) => {
           required: ['pronunciation', 'intonation', 'pace', 'accuracy'],
         },
       },
-      required: ['score', 'missedWords', 'note', 'feedback', 'categoryScores', 'categoryComments'],
+      required: ['score', 'transcribedWords', 'missedWords', 'note', 'feedback', 'categoryScores', 'categoryComments'],
     };
 
     // 진단 — Gemini 에 보내는 audio 메타 (Vercel 로그에서 학생별 비교)
