@@ -3556,3 +3556,201 @@ orderBy('createdAt','desc')` 가 `userNotifications` 의 composite 인덱스
 3. 옛 schema 정리 Phase 1 — dead code 3건 (~30분)
 4. 학생앱 reads 실측 (다음 7일 통계 비교)
 5. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-21 ~ 22: 모달 드래그 + MCQ 시간만료 표시 + 클린업 프롬프트 동기
+
+SW v663 ↑ (~4 commit).
+
+### 1) AI 정리 모달 드래그 이동 (`fdd1e49`, v663)
+학원장 요청 — AI OCR 의 AI 정리 모달이 화면 중앙 고정이라 아래 페이지 목록·내용 가림.
+- `_enableModalDrag(headerEl)` 헬퍼 — mousedown→mousemove translate, 화면 한계(50px), 헤더 안 button/input/textarea 클릭은 드래그 X
+- `showModal(html, {draggable: true})` 옵션, `data-drag-handle` 속성 우선
+- `closeModal`: `modalBox.transform = ''` 리셋
+- AI 정리 모달 2개 적용 (`_cleanupShowCompareModal` + `_cleanupRenderBatchResult`)
+- 직전 commit fdd1e49 에서 SW bump 누락 → `7b45b24` 보완 (v663 표시 정상화)
+
+### 2) 단어시험 MCQ 시간만료 정답·오답 표시 모순 (`ab2ea90`, v664)
+학원장 보고 — 김수호 학생 ④ 주정부 (정답) 누른 줄 알았는데 × 오답. 진단:
+- 데이터 정상 (charCode 동일). 화면 모순의 원인 — 시간만료 시 `vqNext({allowEmpty:true})` → `ans.input=''` 박힘
+- `_vqRenderMcqFeedback` 의 옵션별 `isCorrect`(opt === correctText) 는 ④에 ✓ 표시
+- `_vqShowFeedbackBanner('' === correctText)` 는 × 오답 → 두 비교 분리돼 모순 화면
+- fix: `userInputEmpty` 분기 추가
+  · 정답 옵션: 시간만료 시 호박색 + "(정답)" / 정상 응시 시 초록색 + " ✓"
+  · banner: 시간만료 시 "⏰ 시간 만료 — 정답: XXX" 명시
+
+### 3) 클린업 '기본 정리' 프롬프트 코드 default 동기 (`5ae1ac4`, v665)
+학원장이 super 앱에서 글로벌 `appConfig/cleanupPresets` 의 '기본 정리' 프롬프트
+6번 규칙 추가: "출력은 반드시 영어 원문 그대로 유지하세요. 한국어 번역 절대 금지."
+- 배경: AI OCR 정리 시 영어 본문이 한국어로 번역돼 나오는 경우 발생
+- `public/admin/js/app.js` `_CLEANUP_DEFAULT_PRESETS` 의 '기본 정리' prompt 동기 (emergency fallback)
+- CLAUDE.md 작업 규칙 (양방향 자동 동기 없음 — 사용자 명시 요청 시만)
+
+### 작업 규칙 추가 (2026-06-21~22)
+- **화면 id 만으로 화면 상태 구분 불가 시 명시 마커** — innerHTML 교체 패턴
+  (`_vqRenderResult` 가 vocabQuiz 화면 안 결과 UI 박음) 에선 curId 가 '시험 중' 과
+  '결과 보기 중' 모두 같음. `dataset.stage = 'result'` 같은 명시 마커로 구분.
+- **모달 드래그 옵션 plain — false positive 회피** — 모든 showModal 에 자동 활성화는
+  호출처가 많아 회귀 검증 비용 큼. `{draggable: true}` 옵션 + `data-drag-handle`
+  속성 약속 + 점진 적용이 안전.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-21~22)
+- AI 정리 모달 드래그: ~100% (필요 시 다른 모달도 옵션 추가)
+- MCQ 시간만료 표시 정합성: ~100%
+- 클린업 프롬프트 동기: ~100%
+- SW 캐시: `kunsori-v662` → `kunsori-v665`
+
+---
+
+## 2026-06-26: 재원생 목록 결제 컬럼
+
+학생관리 재원생 테이블에서 자동결제 등록 여부 한눈에 확인 (`789dea3`, v666):
+- `_app.html` studentTableBody thead: 등록일과 수강료 사이에 '결제' th (sortable + title 툴팁)
+- colspan 12 → 13 갱신
+- 재원생 row 에 결제 td 추가
+  · `tuitionPlan.active === true`: 초록 ✓ (title="자동 청구 ON")
+  · 그 외: 빨간 ✗ (title="OFF — 학생 수정에서 [매월 자동 청구서 생성] 체크")
+- 휴원/퇴원 테이블은 그대로 (자동 OFF 가 정상)
+
+진단 — default 학원 자동청구 OFF: 김가윤(4시반, 230,000원 — 검토 필요), TEST반 김기헌·문성미 (TEST 계정).
+
+---
+
+## 2026-06-27 ~ 28: 녹음숙제 검증 시스템 광범위 강화 (학원장 보고 연쇄 대응)
+
+SW v666 → v682 (~21 commit). 학원장 보고 → 진단 → 다층 안전망 구축. 사후 진단·우선 확인 도구 + AI 강화 + 학생 안내 + 학원장 액션 일체화.
+
+### 발견된 핵심 문제 — AI 채점 부정확
+
+학원장 보고 케이스들 — 명백한 무음/부분 읽기에 AI 가 정상 점수 부여:
+- **서준호 6/24**: voiceActivity 0%, 89초 → **78점** (옛 시스템)
+- **조민서 6/23**: voiceActivity 0%, 89초 → **85점**
+- **성소율 6/24**: duration 20초/표준 128초 (16%) → **75점**
+- **문성미 6/9**: voiceActivity 0%, 31초 → 35점 + categoryScores 70/65/70/30 (모순)
+
+광범위 진단 — 최근 14일 67건 시험에서 100% transcript 빈값 + 일부 음성<10% 인데 75~85점 다수.
+
+### 구축한 다층 안전망
+
+#### 1) 학원장 사후 진단·식별 도구 (1be2396·a2ab2d3·28bc56f·1376a0a·aef1aa3·10eb167·a8b4e3b·59e1b95)
+
+학생 카드 색상 강조 — 우선 확인 대상 즉시 식별:
+- 50점 이하 / 측정값 명백 abnormal → 진한 빨강 (#fca5a5)
+- 임계: 음성<10% / 명료도<30% / 단조>70% / 짧음(minDur*0.5) / **시간 비율<50%** (본문 단어수 기반)
+- 라벨 표시: `⚠ 음성<10%, 시간14%` 같이 사유 명시
+
+학원장 상세 모달 — 6개 지표 색상 분기 + hover 툴팁:
+- 시간 비율 / 말소리 / 속도 WPM / 명료도 / 단조로움 / 완독률
+- 각 지표 ≥정상 초록 / 주의 호박 / 이상 빨강
+- 라벨까지 span 으로 묶어서 hover 시 의미 설명
+- **본문 보기** 펼침 (details/summary) — 학원장이 audio 들으면서 본문 비교
+
+학생 카드 강조 6개 임계 통일:
+| 지표 | 임계 |
+|------|------|
+| 점수 | ≤ 50 |
+| 음성 활동 | < 10% |
+| 명료도 | < 30% |
+| 단조로움 | > 70% |
+| 짧음 (학원장 minDur) | < minDur*0.5 |
+| **시간 비율 (본문 표준)** | < 50% |
+
+#### 2) AI 평가 강화 (7d96ff7·6aad1f8·ec153cb·037657b·b6b67db)
+
+**0-39 점수 가이드 명확화** — 학원장이 Gemini 에 직접 문의해서 받은 개선안:
+- "Silent (침묵), noise only (단순 소음), irrelevant babbling (무의미한 웅얼거림),
+  or entirely different content (원문과 완전히 다른 내용). 이 경우 즉시 0점 처리"
+- "score 0-10 사이 시 categoryScores 4개 모두 0 강제"
+- "본문 단어 추측해서 weakPronunciation 생성 금지"
+
+**본문 부분 읽기 차단** — 클라 + AI 동시:
+- 클라: 본문 단어수 ≥ 30 시 `expectedDuration = words/150 * 60`. duration < expectedDuration * 0.5 면 모달
+- AI: 프롬프트에 본문 단어수·예상 시간·녹음 길이 전달 + "30% 미만 → score 30 이하 강제"
+
+**완독률 측정 (옵션 B)**:
+- 프롬프트에 `transcribedWords` 응답 요청 (audio 에서 들린 영단어 배열)
+- 서버에서 본문 단어 매칭 → `completionRate = matched/bookUnique * 100`
+- responseSchema.required 에 추가 강제
+- 학원장 모달: "완독률 25% (80/320 단어)" 표시 + 색상 분기
+- 재평가 흐름에도 동일 정보 박힘
+
+**무음 케이스 서버 강제 0점** (b6b67db) — AI 모순 응답 차단:
+- transcribedWords.length === 0 OR voiceActivity < 5% OR completionRate < 5%
+  → score 0 + categoryScores 4개 모두 0 + feedback 빈 배열 강제
+- AI 가 무음에 가상 점수 응답해도 서버가 정직 처리
+
+#### 3) 학생 안내·자가 인지 (000f1fe·3d62ca7·ae00a65)
+
+**저장 전 sanity check 모달** — 임계 해당 시 학생에게 안내:
+- 음성<10% / 명료도<30% / 단조>70% / 짧음 / 시간 비율<50%
+- "마이크 확인 / 본문 일부만 읽음" 같은 친화 문구
+- [확인] 그대로 제출 / [취소] 다시 녹음
+
+**실시간 게인 막대** (3d62ca7) — Web Audio API AnalyserNode:
+- 녹음 중 마이크 입력 강도 시각 표시 (가로 막대)
+- 색상: <5% 빨강 / <15% 호박 / <40% 초록 / ≥40% 진초록
+- 80ms transition (부드러운 갱신)
+- 5초 무음 자동 모달 (3d62ca7) → 학원장 피드백 후 폐기 (ae00a65, "잠시 쉴 때도 떠서 거추장")
+- 텍스트 고정: "막대가 움직이지 않으면 녹음이 안 되고 있어요"
+
+**디바이스 정보 박음** (3d62ca7) — 학원장 진단용:
+- userAgent / platform / os / browser (KAKAOTALK 인앱·삼성 브라우저 식별)
+- 학원장 상세 모달 인라인 표시 "📱 Android · Chrome"
+- 같은 폰 모델 학생들 패턴 즉시 파악
+
+#### 4) 학원장 액션 (3387a41)
+
+**[🚫 재시험] 버튼** — 학원장 상세 모달 풋터 (재평가 옆):
+- 기존 녹음 + AI 평가 + 성적 기록 모두 삭제 → 학생 재응시 가능
+- userCompleted/{uid} doc 삭제 / scores doc 삭제 / Storage audio 삭제
+- academies.lastTestUpdate 갱신 (학생앱 캐시 30초 안 자동 fresh)
+- excludedUids 와 다름 — 응시 가능 상태로 복원
+
+### 작업 규칙 추가 (2026-06-27~28)
+
+신규:
+- **AI 모순 응답은 서버 후처리로 정직 정정** — Gemini 가 0-39 가이드 무시하고
+  무음에 score 35 + categoryScores 70/65/70/30 응답하는 사례. 프롬프트 강화만으론
+  한계. 서버가 transcribedWords/voiceActivity/completionRate 검증 후 강제 0점.
+- **다층 안전망 구축 패턴** — 단일 차단보다 4단계 (사후 식별 / AI 강화 / 학생 안내 /
+  학원장 액션) 가 효과. 한 단계 실패해도 다음 단계가 잡음.
+- **임계 통일 — 학원장 결정 후 3곳 동시 적용** — 시간 비율 50% 결정 시 카드 강조 +
+  모달 색상 + 학생 저장 전 모달 모두 동일 임계. 일관성 ↑ + 혼선 ↓.
+- **실시간 게인 UX — 자동 알림 모달은 학생 흐름 방해** — 5초 무음 자동 모달은
+  학생이 본문 보다가 쉬는 케이스에도 떠서 거추장. 시각 피드백(막대 색)만 +
+  고정 안내 문구가 자연스러움.
+- **완독률 측정 — transcribedWords required 필수** — responseSchema 의 required
+  에 안 박으면 AI 가 생략 가능 필드로 인식 → 빈값 응답. 강제 응답 받으려면
+  required 필수.
+- **재평가 vs 재시험 구분** — 재평가: 같은 녹음 파일 AI 재호출 (한도 +1).
+  재시험: 기존 데이터 삭제 후 학생 재응시 (한도 차감 X). 학원장이 새 시험
+  출제하던 흐름 대체.
+- **디바이스 정보 박기 — 학원장 진단 필수** — Quantum 4 같은 폰 모델별 마이크
+  문제 패턴 즉시 파악. userAgent 박고 학원장 모달에 한 줄 표시 (`📱 Android · Chrome`).
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-06-27~28)
+
+- 녹음숙제 검증 시스템 다층 안전망: ~100% (사후 식별 + AI 강화 + 학생 안내 + 학원장 액션)
+- 학원장 진단 도구: ~100% (카드 강조 6임계 + 모달 6지표 색상·툴팁 + 본문 보기 + 디바이스 정보)
+- AI 평가 정확도: 크게 향상 (0-39 강화 + transcribedWords required + 무음 서버 강제 0점)
+- 학생 사전 차단: ~100% (게인 막대 + 저장 전 sanity check 5임계)
+- 학원장 액션: ~100% (재평가 + 재시험 2 옵션)
+
+파일:
+- `api/check-recording.js`: 0-39 강화 + transcribedWords required + 본문 정보 +
+  무음 케이스 서버 강제 0점
+- `api/adminAction.js`: 재평가 흐름에 wordCount/expectedDuration/voiceActivity carry +
+  completionRate/bookWordCount/heardWordCount 박음
+- `public/admin/js/app.js`: 학생 카드 강조 6임계 + 모달 6지표 색상·툴팁 +
+  본문 보기 펼침 + [🚫 재시험] 버튼 + 디바이스 인라인
+- `public/js/app.js`: 게인 막대 (Web Audio API) + 저장 전 sanity check 5임계 +
+  본문 단어수 자동 임계 + 디바이스 정보 박음 + voiceActivity 서버 전송
+- SW 캐시: `kunsori-v666` → `kunsori-v682`
+
+**다음 세션 후보** (학생 사용 적은 시간대 진행):
+1. 옛 응시 일괄 재평가 — 학원장 결정 (수십 건, 학원 한도 부담)
+2. AI 평가 추세 관찰 — 새 안전망 효과 측정 (며칠 후 통계)
+3. 다른 마이크 문제 학생 진단 — 디바이스 정보 박힘 데이터 활용
+4. 멀티학원장 / 옛 schema / 시험 목록 캐시 통합 (변동 없음)
+5. Phase 5 출시 준비 (변동 없음)
