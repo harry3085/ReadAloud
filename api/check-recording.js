@@ -78,16 +78,39 @@ function isRetryable(status, data) {
 // 통합 프롬프트 — 1회 호출로 점수 + 피드백 둘 다 반환.
 // 점수 미달이라도 피드백은 항상 포함 (학습 효과 우선, 비용 차이 미미).
 // evaluationSeconds: 0/null = 전체 평가, 양수 = 앞 N초만 평가 (학원 설정)
-function buildEvalPrompt(originalText, evaluationSeconds) {
+// wordCount / expectedDuration / actualDuration: 본문 일부만 읽은 케이스 차단용 (2026-06-27)
+function buildEvalPrompt(originalText, evaluationSeconds, meta = {}) {
   const evalScope = (evaluationSeconds && evaluationSeconds > 0)
     ? `Evaluate ONLY the first ${evaluationSeconds} seconds of the recording.`
     : `Evaluate the ENTIRE recording.`;
+  // 본문 정보 블록 — 클라가 측정값 보내면 명시. AI 가 "본문 일부만 읽기" 케이스 식별.
+  const { wordCount, expectedDuration, actualDuration } = meta;
+  const hasMeta = (typeof wordCount === 'number' && wordCount > 0)
+    && (typeof expectedDuration === 'number' && expectedDuration > 0)
+    && (typeof actualDuration === 'number' && actualDuration >= 0);
+  const metaBlock = hasMeta
+    ? `
+
+본문 정보 (참고 — AI 가 audio 들으면서 함께 비교):
+- 본문 총 단어 수: ${wordCount} 단어
+- 정상 읽기 예상 시간 (150 WPM 기준): 약 ${expectedDuration}초
+- 학생 녹음 길이: ${actualDuration}초
+- 녹음 비율: ${Math.round((actualDuration / expectedDuration) * 100)}% (정상 대비)
+
+CRITICAL — 본문 부분 읽기 / 반복 읽기 차단:
+- 녹음 길이가 본문 예상 시간의 30% 미만 (현재 ${Math.round((actualDuration / expectedDuration) * 100)}%) 면 score 30 이하 강제.
+- 학생이 본문 일부 (몇 문장) 만 읽고 끝낸 케이스, 또는 같은 부분을 반복 읽은 케이스에 해당.
+- 일부 발음이 정확하다 해도 본문 완독률이 낮으면 정상 점수 부여 불가.
+- audio 듣고 학생이 본문 전체를 읽었는지 확인 — 일부만 읽었거나 같은 문장 반복하면 점수에 즉시 반영.
+- 본문 단어 중 절반 이상을 들었으면 정상 평가, 그 미만이면 score 50 이하.`
+    : '';
   return `You are a Korean English teacher evaluating a student's reading recording.
 
 ORIGINAL TEXT:
 """
 ${originalText}
 """
+${metaBlock}
 
 ${evalScope}
 Compare the student's audio to the ORIGINAL TEXT above — measure how much was read clearly and in order.
@@ -257,7 +280,13 @@ module.exports = async (req, res) => {
     // 통합 프롬프트 — score + feedback 둘 다 1회 호출로 (mode 무관, 항상 동일)
     // evaluationSeconds: 0 또는 미지정 = 전체 평가, 양수 = 앞 N초만 평가 (학원 설정)
     const reqEvalSec = parseInt(body.evaluationSeconds);
-    const prompt = buildEvalPrompt(originalText, isFinite(reqEvalSec) && reqEvalSec > 0 ? reqEvalSec : 0);
+    // 본문 단어수 + 예상·실제 길이 (2026-06-27, 본문 일부만 읽기 차단용)
+    const meta = {
+      wordCount: parseInt(body.wordCount) || 0,
+      expectedDuration: parseInt(body.expectedDuration) || 0,
+      actualDuration: parseInt(body.actualDuration) || 0,
+    };
+    const prompt = buildEvalPrompt(originalText, isFinite(reqEvalSec) && reqEvalSec > 0 ? reqEvalSec : 0, meta);
 
     // responseSchema — 통합 응답 구조 (Phase C: positives/intonation/stress + categoryScores/Comments)
     const responseSchema = {

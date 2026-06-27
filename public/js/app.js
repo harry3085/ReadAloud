@@ -3074,6 +3074,7 @@ async function _rv2AfterStop(mime) {
   const check = await _rv2PreCheckRecording(blob, duration, _rv2.savedRounds, qThreshold, {
     minDurationSec: q.minDurationSec,
     maxDurationSec: q.maxDurationSec,
+    fullText: q.fullText || '',
   });
   if (!check.ok) {
     // persistent 알림 — 새 녹음 시작 (rv2StartRecord) 까지 화면에 유지
@@ -3258,8 +3259,18 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
   if (duration < minDur * 0.5) {
     warnings.push(`녹음이 많이 짧아요. 본문을 끝까지 다 읽었는지 확인해 주세요. (현재 ${duration}초 · 권장 최소 ${minDur}초)`);
   }
+  // 본문 단어수 기반 자동 임계 — 학원장 minDurationSec 설정과 별개 (2026-06-27)
+  // 본문 일부만 읽거나 반복 읽기 차단. 150 WPM 기준 예상 시간의 30% 미만이면 경고.
+  const fullText = (qOverrides && qOverrides.fullText) || '';
+  const wordCount = fullText.trim().split(/\s+/).filter(Boolean).length;
+  if (wordCount >= 30) {
+    const expectedDuration = Math.round((wordCount / 150) * 60);  // 150 WPM
+    if (duration < expectedDuration * 0.3 && !warnings.some(w => w.includes('많이 짧'))) {
+      warnings.push(`본문을 일부만 읽었거나 반복해서 읽은 것 같아요. 본문 전체를 처음부터 끝까지 차근차근 읽어 주세요. (현재 ${duration}초 · 본문 예상 ${expectedDuration}초)`);
+    }
+  }
 
-  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony, warning, warnings };
+  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony, warning, warnings, wordCount, expectedDuration: wordCount >= 30 ? Math.round((wordCount / 150) * 60) : null };
 }
 
 window.rv2Retake = () => {
@@ -3518,6 +3529,10 @@ async function _rv2Submit() {
     const idToken = currentUser ? await currentUser.getIdToken() : '';
     // 평가구간: q.evaluationSeconds 우선 (시험별), 없으면 0 (전체)
     const evalSec = (typeof q.evaluationSeconds === 'number') ? q.evaluationSeconds : 0;
+    // 본문 단어수 + 예상 시간 + 실제 녹음 길이 — AI 가 "본문 일부만 읽은 케이스" 차단용 (2026-06-27)
+    const _ftWords = (q.fullText || '').trim().split(/\s+/).filter(Boolean).length;
+    const _expectedDur = _ftWords >= 30 ? Math.round((_ftWords / 150) * 60) : null;
+    const _actualDur = lastRound.duration || 0;
     const res = await _rv2FetchWithRetry('/api/check-recording', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3527,6 +3542,9 @@ async function _rv2Submit() {
         audioUrl,           // Storage URL — 서버가 fetch (4.5MB body 한도 회피)
         mimeType: sendMime,
         evaluationSeconds: evalSec,
+        wordCount: _ftWords,
+        expectedDuration: _expectedDur,
+        actualDuration: _actualDur,
       }),
     }, 1);  // 1회 재시도
     const data = await res.json();
