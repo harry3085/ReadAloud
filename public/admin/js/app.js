@@ -5864,6 +5864,11 @@ window.showScoreDetail = async(scoreId, testId) => {
     const reEvalBtn = (isRecording && Array.isArray(comp?.recordings) && comp.recordings.length)
       ? `<button class="btn btn-secondary" onclick="tpReEvaluateRecording('${esc(s.testId||'')}','${esc(s.uid||'')}','${esc(s.userName||'').replace(/'/g,"&#39;")}')" style="color:#7C3AED;border-color:#ddd6fe;" title="마지막 녹음을 AI 로 다시 평가 (학원 녹음 한도 +1)">🔁 재평가</button>`
       : '';
+    // 녹음숙제 응시 데이터 있을 때 [🚫 재시험] (기존 녹음·평가 삭제 후 학생 재응시 가능)
+    // 🚫 (빨강 강조 이모지) — 기존 데이터 폐기 의미. 재평가(🔁)와 시각 구분
+    const retakeBtn = (isRecording && comp)
+      ? `<button class="btn btn-secondary" onclick="tpRetakeRecording('${esc(s.testId||'')}','${esc(s.uid||'')}','${esc(s.userName||'').replace(/'/g,"&#39;")}')" style="color:#dc2626;border-color:#fecaca;background:#fef2f2;" title="기존 녹음·평가 삭제 후 학생이 다시 응시 가능">🚫 재시험</button>`
+      : '';
     showModal(`
       <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">
         <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
@@ -5924,7 +5929,7 @@ window.showScoreDetail = async(scoreId, testId) => {
         </div>
 
         <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <div>${reEvalBtn}</div>
+          <div style="display:flex;gap:6px;">${reEvalBtn}${retakeBtn}</div>
           <button class="btn btn-secondary" onclick="closeModal()">닫기</button>
         </div>
       </div>
@@ -14612,6 +14617,69 @@ window.tpExcludeStudent = async (testId, uid, studentName, btnEl) => {
     }
   } catch(e) {
     showAlert('제외 실패', e.message);
+  }
+};
+
+// 녹음숙제 재시험 — 기존 녹음·평가 모두 삭제하고 학생 재응시 가능 (2026-06-28)
+// 학원장이 학생만 새 시험 출제하던 흐름 대체. 같은 시험에 학생 미응시 상태로 복원.
+// 삭제 대상: userCompleted/{uid} doc + scores doc (mode=recording) + Storage audio 파일
+// excludedUids 와 다름 — excludedUids 는 학생 제외 (응시 불가), 재시험은 응시 다시 가능
+window.tpRetakeRecording = async (testId, uid, studentName) => {
+  if (!testId || !uid) return;
+  if (!(await showConfirm(
+    `"${studentName || '학생'}" 재시험`,
+    `기존 녹음과 AI 평가를 모두 삭제하고 학생이 같은 시험을 다시 응시할 수 있게 합니다.\n\n• 녹음 파일 (Storage) 삭제\n• AI 평가 결과 삭제\n• 성적 기록 삭제\n\n복구할 수 없습니다.`
+  ))) return;
+  try {
+    showToast('🔄 재시험 준비 중...');
+    // 1. userCompleted 의 audioUrl 들 미리 받기 (Storage 삭제용)
+    const ucRef = doc(db, 'genTests', testId, 'userCompleted', uid);
+    const ucSnap = await getDoc(ucRef);
+    const audioUrls = [];
+    if (ucSnap.exists()) {
+      const d = ucSnap.data();
+      (d.recordings || []).forEach(r => { if (r.audioUrl) audioUrls.push(r.audioUrl); });
+    }
+    // 2. userCompleted doc 삭제
+    try { await deleteDoc(ucRef); } catch (e) { console.warn('[retake] userCompleted 삭제:', e.message); }
+    // 3. scores 컬렉션 — 그 학생·그 시험·recording 모드 doc 삭제
+    try {
+      const scSnap = await getDocs(query(
+        collection(db, 'scores'),
+        where('academyId', '==', window.MY_ACADEMY_ID),
+        where('testId', '==', testId),
+        where('uid', '==', uid),
+      ));
+      const recScores = scSnap.docs.filter(d => (d.data().mode || '').toLowerCase() === 'recording');
+      for (const d of recScores) {
+        try { await deleteDoc(d.ref); } catch (e) { console.warn('[retake] score 삭제:', e.message); }
+      }
+    } catch (e) { console.warn('[retake] scores 쿼리:', e.message); }
+    // 4. Storage audio 파일 삭제 (Best-effort — 실패해도 진행. GCS lifecycle 60일 안전망)
+    for (const url of audioUrls) {
+      try {
+        const path = (url.match(/\/o\/([^?]+)/) || [])[1];
+        if (path) {
+          const decoded = decodeURIComponent(path);
+          await deleteObject(ref(storage, decoded));
+        }
+      } catch (e) { console.warn('[retake] storage 삭제 (lifecycle 안전망):', e.message); }
+    }
+    // 학생앱 시험 목록 캐시 헤드체크 — 학생이 30초 안에 새 진입하면 자동 fresh fetch
+    try {
+      await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID || 'default'),
+        { lastTestUpdate: serverTimestamp() });
+    } catch (e) { console.warn('[retake] lastTestUpdate 갱신 실패 — 학생 새로고침 시까지 옛 캐시:', e); }
+    showToast(`✓ 재시험 준비 완료 — "${studentName || '학생'}" 학생이 다시 응시할 수 있어요`);
+    closeModal();
+    // 펼침 화면 갱신
+    if (typeof tpToggleTestProgress === 'function') {
+      await tpToggleTestProgress(testId);
+      await tpToggleTestProgress(testId);
+    }
+  } catch (e) {
+    console.error('[tpRetakeRecording]', e);
+    showAlert('재시험 준비 실패', e.message);
   }
 };
 
