@@ -2942,7 +2942,7 @@ function _rv2RenderRoundCard(i, cur) {
         <button onclick="rv2StopRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#DC2626;color:white;font-size:13px;font-weight:700;cursor:pointer;">⏹ 녹음 종료</button>
       </div>
       <div id="rv2Timer" style="text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px;font-variant-numeric:tabular-nums;">00:00</div>
-      <!-- 실시간 게인 — 마이크 입력 강도 막대 + 안내 텍스트 (2026-06-28) -->
+      <!-- 실시간 게인 — 마이크 입력 강도 막대 + 고정 안내 (2026-06-28) -->
       <div style="margin-top:10px;padding:8px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:14px;flex-shrink:0;">🎤</span>
@@ -2950,7 +2950,7 @@ function _rv2RenderRoundCard(i, cur) {
             <div id="rv2GainBar" style="height:100%;width:2%;background:#9ca3af;border-radius:6px;transition:width 0.08s ease-out,background 0.2s;"></div>
           </div>
         </div>
-        <div id="rv2GainText" style="text-align:center;font-size:11px;color:#9ca3af;margin-top:4px;font-weight:600;">🎤 마이크 준비 중...</div>
+        <div style="text-align:center;font-size:11px;color:#6b7280;margin-top:4px;font-weight:500;">막대가 움직이지 않으면 녹음이 안 되고 있어요</div>
       </div>
       ${pausedBadge}
     `;
@@ -3071,20 +3071,8 @@ function _rv2StartGainMeter() {
       const rms = Math.sqrt(sum / _rv2.gainBuf.length);  // 0 ~ 1
       const level = Math.min(100, Math.round(rms * 200));  // 0~100% (보기 좋게 가중)
       _rv2UpdateGainUI(level);
-
-      // 낮은 음량 누적 감지 — 일시정지 중엔 무시
-      const now = performance.now();
-      const dt = now - (_rv2.lastGainTick || now);
-      _rv2.lastGainTick = now;
-      if (!_rv2.isPaused) {
-        if (level < 5) _rv2.lowVoiceStreakMs += dt;
-        else _rv2.lowVoiceStreakMs = 0;
-        // 5초 연속 거의 무음 → 1회 안내
-        if (!_rv2.lowVoiceAlerted && _rv2.lowVoiceStreakMs >= 5000) {
-          _rv2.lowVoiceAlerted = true;
-          _rv2NoticeLowVoice();
-        }
-      }
+      // 5초 무음 자동 알림 폐기 (2026-06-28) — 학생이 본문 보다가 잠시 쉬는 경우도 떠서 거추장.
+      // 막대 시각 피드백만 — 학생이 안 움직이는 거 보고 스스로 판단.
       _rv2.gainAnimFrame = requestAnimationFrame(loop);
     };
     _rv2.gainAnimFrame = requestAnimationFrame(loop);
@@ -3102,41 +3090,15 @@ function _rv2StopGainMeter() {
 
 function _rv2UpdateGainUI(level) {
   const bar = document.getElementById('rv2GainBar');
-  const text = document.getElementById('rv2GainText');
   if (!bar) return;
-  // 색상 분기 — 낮음 빨강 / 작음 호박 / 정상 초록 (그라데이션)
-  let color, label;
-  if (level < 5) { color = '#dc2626'; label = '🔇 마이크 소리가 들리지 않아요'; }
-  else if (level < 15) { color = '#f59e0b'; label = '🔉 소리가 작아요 — 조금 더 크게'; }
-  else if (level < 40) { color = '#22c55e'; label = '🔊 잘 들려요'; }
-  else { color = '#16a34a'; label = '🔊 좋아요!'; }
+  // 색상만 분기 — 낮음 빨강 / 작음 호박 / 정상 초록 (시각 피드백)
+  let color;
+  if (level < 5) color = '#dc2626';
+  else if (level < 15) color = '#f59e0b';
+  else if (level < 40) color = '#22c55e';
+  else color = '#16a34a';
   bar.style.width = Math.max(2, level) + '%';
   bar.style.background = color;
-  if (text) { text.textContent = label; text.style.color = color; }
-}
-
-// 5초 연속 낮은 음량 — 학생 안내 + 재녹음 옵션
-async function _rv2NoticeLowVoice() {
-  const proceed = await showConfirm(
-    '🔇 마이크 소리가 들리지 않아요',
-    '5초 동안 거의 무음이에요. 다음을 확인해 보세요:\n\n• 폰 케이스가 마이크 구멍을 막고 있지 않은지\n• 음소거 상태가 아닌지\n• 다른 앱(전화·카톡 음성)을 끄기\n• 폰을 입 가까이 두기 (30cm 이내)\n\n[확인] 다시 녹음 / [취소] 계속 녹음'
-  );
-  if (proceed) {
-    // 다시 녹음 — 현재 녹음 중단 후 초기화
-    if (_rv2.mediaRecorder && _rv2.isRecording) {
-      try { _rv2.mediaRecorder.stop(); } catch(_) {}
-    }
-    _rv2.isRecording = false;
-    _rv2StopGainMeter();
-    _rv2.chunks = [];
-    _rv2.elapsedSec = 0;
-    showToast('마이크 확인 후 다시 [🎙 녹음] 눌러 주세요');
-    _rv2Render();
-  } else {
-    // 그래도 계속 — 다시 감지 시작 (한 번 더 누적될 수 있음)
-    _rv2.lowVoiceStreakMs = 0;
-    _rv2.lowVoiceAlerted = false;  // 다시 5초 누적되면 또 안내
-  }
 }
 
 // 타이머 — elapsedSec 누적 (일시정지 시 멈춤). 250ms 마다 갱신
