@@ -5661,10 +5661,12 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const cc = r.categoryComments;
     const hasCat = cs && (typeof cs.pronunciation === 'number' || typeof cs.intonation === 'number' || typeof cs.pace === 'number' || typeof cs.accuracy === 'number');
     const positives = fb?.positives || [];
-    // 말소리 — 녹음 중 실제 음성이 잡힌 시간 비율 (학원장 참고용)
-    const vaTitle = '녹음 중 실제 말소리가 잡힌 시간 비율 (Voice Activity) — 낮으면 침묵·잡음·마이크 멀음 의심';
-    const vaVal = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) + '%' : '-';
-    const va = `<span title="${vaTitle}">말소리 <b>${vaVal}</b></span>`;
+    // 말소리 — 녹음 중 실제 음성이 잡힌 시간 비율 (학원장 참고용). 색상: ≥30 초록 / 10~29 호박 / <10 빨강
+    const vaTitle = '녹음 중 실제 말소리가 잡힌 시간 비율 (Voice Activity) — 30% 이상 정상, 10% 미만 = 사실상 무음 (마이크 멀음·음소거)';
+    const vaPct = (typeof r.voiceActivity === 'number') ? Math.round(r.voiceActivity * 100) : null;
+    const vaVal = vaPct != null ? vaPct + '%' : '-';
+    const vaColor = vaPct == null ? '' : (vaPct >= 30 ? '#16a34a' : (vaPct >= 10 ? '#f59e0b' : '#dc2626'));
+    const va = `<span title="${vaTitle}">말소리 <b style="color:${vaColor};">${vaVal}</b></span>`;
     // 표준 시간 (150 WPM 기준) — 본문 단어수로부터 계산. 학생 시간 / 표준 시간 비율 표시
     const expectedSec = (ftWords >= 30) ? Math.round((ftWords / 150) * 60) : null;
     const durTitle = '학생이 실제로 녹음한 시간 (일시정지 제외) / 본문 표준 시간 (단어수 ÷ 150 WPM). 비율 30% 미만 = 본문 부분 읽기 의심';
@@ -5680,9 +5682,12 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     } else {
       dur = '-';
     }
+    // 속도 WPM — 본문 단어수 / 녹음시간 (학생이 본문 전체를 그 시간 안에 읽었다고 가정한 추정값)
+    // 정상 100~180. 50 미만 = 너무 느림. 300 이상 = 부분 읽기 의심 (실제 발음 속도 아님)
     const wpm = (r.duration > 0 && ftWords > 0) ? Math.round((ftWords / r.duration) * 60) : 0;
-    const wpmTitle = '분당 단어 수 (Words Per Minute) — 영어 원어민 평균 150, 한국 학생 100~130. 너무 느리면 끊김, 너무 빠르면 단어 누락 의심';
-    const wpmTxt = wpm > 0 ? ` · <span title="${wpmTitle}">속도 <b>${wpm} WPM</b></span>` : '';
+    const wpmTitle = '분당 단어 수 — 본문을 그 시간 안에 다 읽었다고 가정한 추정값. 정상 100~180, 한국 학생 100~130. 300 이상 = 본문 부분 읽기 의심 (실제 발음 속도 아님)';
+    const wpmColor = wpm <= 0 ? '' : ((wpm >= 100 && wpm <= 180) ? '#16a34a' : ((wpm < 50 || wpm > 300) ? '#dc2626' : '#f59e0b'));
+    const wpmTxt = wpm > 0 ? ` · <span title="${wpmTitle}">속도 <b style="color:${wpmColor};">${wpm} WPM</b></span>` : '';
     // 학원장 참고용 음향 지표 (학생 비공개). 거부 아닌 안내로 전환됨 — 낮은 명료도/높은 단조는 색으로 표시.
     const vbrPct = (typeof r.voiceBandRatio === 'number') ? Math.round(r.voiceBandRatio * 100) : null;
     const monoPct = (typeof r.monotony === 'number') ? Math.round(r.monotony * 100) : null;
