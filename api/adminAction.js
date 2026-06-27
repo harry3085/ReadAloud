@@ -100,6 +100,11 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   // 진단 로그 — 학생별 재평가 비교 (Vercel 로그에서 확인)
   console.log(`[reEval][${uid.slice(0,8)}] start: testId=${testId.slice(0,8)} audioUrl=${last.audioUrl.slice(0, 80)}... mime=${last.mimeType || 'audio/webm'} evalSec=${evalSec} fullTextLen=${fullText.length}`);
 
+  // 본문 단어수 + 예상/실제 길이 — 완독률 계산용 (2026-06-27 옵션 B)
+  const _ftWords = String(fullText || '').trim().split(/\s+/).filter(Boolean).length;
+  const _expectedDur = _ftWords >= 30 ? Math.round((_ftWords / 150) * 60) : null;
+  const _actualDur = parseInt(last.duration) || 0;
+
   let data;
   try {
     const cr = await fetch(`${host}/api/check-recording`, {
@@ -111,6 +116,9 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
         audioUrl: last.audioUrl,
         mimeType: last.mimeType || 'audio/webm',
         evaluationSeconds: evalSec,
+        wordCount: _ftWords,
+        expectedDuration: _expectedDur,
+        actualDuration: _actualDur,
       }),
     });
     // HTML 응답 방어 (Vercel Auth 보호 등) — JSON 파싱 전 Content-Type 검사
@@ -152,6 +160,10 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   const newLast = { ...last, score, missedWords, note, feedback };
   if (categoryScores) newLast.categoryScores = categoryScores;
   if (categoryComments) newLast.categoryComments = categoryComments;
+  // 완독률 — AI 의 transcribedWords 매칭 결과 (2026-06-27 옵션 B 재평가 보완)
+  if (typeof data.completionRate === 'number') newLast.completionRate = data.completionRate;
+  if (typeof data.bookWordCount === 'number') newLast.bookWordCount = data.bookWordCount;
+  if (typeof data.heardWordCount === 'number') newLast.heardWordCount = data.heardWordCount;
   newRecs[newRecs.length - 1] = newLast;
 
   // userCompleted 업데이트 — Phase B: 통과/불통 폐기, completedAt 단일 흐름
