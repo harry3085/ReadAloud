@@ -5750,7 +5750,20 @@ function _adminBuildDetail(mode, comp){
   if(m==='mcq')         return _adminMcqBuildDetail(comp.questions, comp.answers);
   if(m==='fill_blank')  return _adminFbBuildDetail(comp.questions, comp.answers, comp.detail);
   if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
-  if(m==='recording')   return _adminRecBuildDetail(comp.recordings, comp._recFullText || '');
+  if(m==='recording')   {
+    const ft = comp._recFullText || '';
+    // 본문 보기 — 학원장이 학생 녹음 들으면서 비교용 (2026-06-28)
+    const fullTextHtml = ft
+      ? `<details style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;background:#fafafa;">
+           <summary style="padding:8px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;">
+             <span style="font-size:14px;">📄</span> 본문 보기
+             <span style="color:var(--gray);font-weight:500;font-size:11px;">(클릭하여 펼치기 · ${ft.trim().split(/\s+/).filter(Boolean).length} 단어)</span>
+           </summary>
+           <div style="padding:0 14px 12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;border-top:1px solid var(--border);padding-top:10px;">${esc(ft)}</div>
+         </details>`
+      : '';
+    return fullTextHtml + _adminRecBuildDetail(comp.recordings, ft);
+  }
   return '';
 }
 
