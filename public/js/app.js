@@ -3358,12 +3358,12 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
     warnings.push(`녹음이 많이 짧아요. 본문을 끝까지 다 읽었는지 확인해 주세요. (현재 ${duration}초 · 권장 최소 ${minDur}초)`);
   }
   // 본문 단어수 기반 자동 임계 — 학원장 minDurationSec 설정과 별개 (2026-06-27)
-  // 본문 일부만 읽거나 반복 읽기 차단. 150 WPM 기준 예상 시간의 30% 미만이면 경고.
+  // 본문 일부만 읽거나 반복 읽기 차단. 150 WPM 기준 예상 시간의 50% 미만이면 경고 (학원장 결정, 2026-06-28).
   const fullText = (qOverrides && qOverrides.fullText) || '';
   const wordCount = fullText.trim().split(/\s+/).filter(Boolean).length;
   if (wordCount >= 30) {
     const expectedDuration = Math.round((wordCount / 150) * 60);  // 150 WPM
-    if (duration < expectedDuration * 0.3 && !warnings.some(w => w.includes('많이 짧'))) {
+    if (duration < expectedDuration * 0.5 && !warnings.some(w => w.includes('많이 짧'))) {
       warnings.push(`본문을 일부만 읽었거나 반복해서 읽은 것 같아요. 본문 전체를 처음부터 끝까지 차근차근 읽어 주세요. (현재 ${duration}초 · 본문 예상 ${expectedDuration}초)`);
     }
   }
