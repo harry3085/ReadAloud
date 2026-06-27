@@ -16092,15 +16092,31 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const lastScore = (typeof last?.score === 'number') ? last.score : (c.score ?? c.latestFailedScore);
                   // 50점 이하 제출분 — 학원장 확인 강조 (대기·에러보다 진한 빨강)
                   const isLowScore = (typeof lastScore === 'number') && lastScore <= 50;
-                  const cardBg = isLowScore ? '#fca5a5' : '#f0f9ff';
-                  const cardBorder = isLowScore ? '#dc2626' : '#bae6fd';
-                  const headColor = isLowScore ? '#7f1d1d' : '#0369a1';
+                  // 측정값 비정상 — 회차 중 하나라도 abnormal 이면 학원장 확인 (2026-06-27 학원장 요청)
+                  // 임계는 클라 sanity check 와 동일 (학생 제출 전 안내 + 학원장 우선 확인)
+                  const minDur = t.questions?.[0]?.minDurationSec || 0;
+                  const abnormalReasons = [];
+                  recs.forEach(r => {
+                    if (r.voiceActivity != null && r.voiceActivity < 0.10) abnormalReasons.push('음성<10%');
+                    if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
+                    if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
+                    if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
+                  });
+                  const isAbnormal = abnormalReasons.length > 0;
+                  const isWarning = isLowScore || isAbnormal;
+                  const cardBg = isWarning ? '#fca5a5' : '#f0f9ff';
+                  const cardBorder = isWarning ? '#dc2626' : '#bae6fd';
+                  const headColor = isWarning ? '#7f1d1d' : '#0369a1';
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
+                  const warnSuffix = isAbnormal ? ` ⚠ ${[...new Set(abnormalReasons)].join(', ')}` : '';
+                  const cardTitle = isAbnormal
+                    ? `클릭 — 상세 보기\n⚠ 측정값 이상: ${[...new Set(abnormalReasons)].join(', ')}`
+                    : '클릭 — 상세 보기';
                   // 진도체크·최근시험 모두 최소화 — 한 줄 카드. 클릭 시 상세 모달(#3)
-                  return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="클릭 — 상세 보기" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
+                  return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="${esc(cardTitle)}" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                       ${xBtnRec}
                       <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
-                      <div style="color:${headColor};">${headLabel}${dateStr ? ' · ' + esc(dateStr) : ''}</div>
+                      <div style="color:${headColor};">${headLabel}${dateStr ? ' · ' + esc(dateStr) : ''}${warnSuffix}</div>
                     </div>`;
                 }
                 // 옛 데이터 (recordings 없이 latestFailedScore 또는 score 만)
