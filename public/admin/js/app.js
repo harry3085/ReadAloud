@@ -5669,12 +5669,12 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const va = `<span title="${vaTitle}">말소리 <b style="color:${vaColor};">${vaVal}</b></span>`;
     // 표준 시간 (150 WPM 기준) — 본문 단어수로부터 계산. 학생 시간 / 표준 시간 비율 표시
     const expectedSec = (ftWords >= 30) ? Math.round((ftWords / 150) * 60) : null;
-    const durTitle = '학생이 실제로 녹음한 시간 (일시정지 제외) / 본문 표준 시간 (단어수 ÷ 150 WPM). 비율 30% 미만 = 본문 부분 읽기 의심';
+    const durTitle = '학생이 실제로 녹음한 시간 (일시정지 제외) / 본문 표준 시간 (단어수 ÷ 150 WPM). 비율 50% 미만 = 본문 부분 읽기 의심';
     let dur;
     if (r.duration) {
       if (expectedSec) {
         const ratio = Math.round((r.duration / expectedSec) * 100);
-        const ratioColor = ratio >= 70 ? '#16a34a' : (ratio >= 30 ? '#f59e0b' : '#dc2626');
+        const ratioColor = ratio >= 70 ? '#16a34a' : (ratio >= 50 ? '#f59e0b' : '#dc2626');
         dur = `<span title="${durTitle}">${r.duration}초/${expectedSec}초 <b style="color:${ratioColor};">(${ratio}%)</b></span>`;
       } else {
         dur = `<span title="학생이 실제로 녹음한 시간 (일시정지 제외)">${r.duration}초</span>`;
@@ -16136,8 +16136,8 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                     if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
                     if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
                     if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
-                    // 시간 비율 < 30% — 본문 표준 시간 대비 (학원장 minDur 미설정 시에도 작동)
-                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.3) {
+                    // 시간 비율 < 50% — 본문 표준 시간 대비 (학원장 minDur 미설정 시에도 작동)
+                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.5) {
                       const ratio = Math.round((r.duration / _expSec) * 100);
                       abnormalReasons.push(`시간${ratio}%`);
                     }
