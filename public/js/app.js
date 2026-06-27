@@ -3091,6 +3091,7 @@ async function _rv2AfterStop(mime) {
     voiceActivity: check.voiceActivity,
     voiceBandRatio: check.voiceBandRatio,   // 학원장 상세 참고용
     monotony: check.monotony,
+    warnings: check.warnings || [],         // sanity check — 제출 모달용
   };
   // warning 있으면 안내 표시 (거부 아님 — [저장] 가능). 없으면 알림 제거.
   _rv2.alertMessage = check.warning || null;
@@ -3241,7 +3242,24 @@ async function _rv2PreCheckRecording(blob, duration, savedRounds, currentThresho
     warning = '같은 소리가 반복되는 느낌이에요. 다음엔 본문을 차근차근 읽어보세요. (그대로 저장해도 됩니다)';
   }
 
-  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony, warning };
+  // sanity check — 명백 abnormal 케이스 (학생 제출 전 확인 모달 트리거)
+  // AI 채점 부정확 사례 다발 (2026-06-27 학원장 보고) — 명백 abnormal 시
+  // 학생에게 안내 + 제출 여부 확인 후 진행. 쉬운 안내 문구.
+  const warnings = [];
+  if (vadRatio !== null && vadRatio < 0.10) {
+    warnings.push('녹음 소리가 거의 들리지 않아요. 마이크가 가까운지, 음소거 상태가 아닌지 확인해 주세요.');
+  }
+  if (voiceBandRatio !== null && voiceBandRatio < 0.30) {
+    warnings.push('말소리가 잘 잡히지 않아요. 주변이 시끄럽거나 마이크가 멀리 있는 것 같아요.');
+  }
+  if (monotony !== null && monotony > 0.70) {
+    warnings.push('녹음이 너무 단조로워요. 본문을 차근차근 읽고 있는지 확인해 주세요.');
+  }
+  if (duration < minDur * 0.5) {
+    warnings.push(`녹음이 많이 짧아요. 본문을 끝까지 다 읽었는지 확인해 주세요. (현재 ${duration}초 · 권장 최소 ${minDur}초)`);
+  }
+
+  return { ok: true, hash, voiceActivity: vadRatio, voiceBandRatio, monotony, warning, warnings };
 }
 
 window.rv2Retake = () => {
@@ -3252,6 +3270,24 @@ window.rv2Retake = () => {
 
 window.rv2SaveRound = async () => {
   if (!_rv2.currentTake) return;
+  // sanity check — 명백 abnormal 측정값 있으면 학생 확인 (2026-06-27)
+  // "그래도 제출" 시 통과 / "다시 녹음" 시 currentTake 폐기
+  const warnings = _rv2.currentTake.warnings || [];
+  if (warnings.length > 0) {
+    const list = warnings.map(w => '• ' + w).join('\n');
+    const proceed = await showConfirm(
+      '⚠️ 녹음 다시 확인해 주세요',
+      list + '\n\n그대로 제출할까요? (다시 녹음을 권장해요)'
+    );
+    if (!proceed) {
+      // 다시 녹음 — currentTake 폐기, 회차 카운트는 그대로
+      if (_rv2.currentTake?.url) URL.revokeObjectURL(_rv2.currentTake.url);
+      _rv2.currentTake = null;
+      _rv2.alertMessage = '다시 녹음해 주세요. 위 안내를 참고하면 좋아요.';
+      _rv2Render();
+      return;
+    }
+  }
   _rv2.savedRounds.push(_rv2.currentTake);
   _rv2.currentTake = null;
   const idx = _rv2.savedRounds.length - 1;
