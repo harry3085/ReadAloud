@@ -2942,6 +2942,16 @@ function _rv2RenderRoundCard(i, cur) {
         <button onclick="rv2StopRecord()" style="flex:1;padding:12px;border-radius:12px;border:none;background:#DC2626;color:white;font-size:13px;font-weight:700;cursor:pointer;">⏹ 녹음 종료</button>
       </div>
       <div id="rv2Timer" style="text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px;font-variant-numeric:tabular-nums;">00:00</div>
+      <!-- 실시간 게인 — 마이크 입력 강도 막대 + 안내 텍스트 (2026-06-28) -->
+      <div style="margin-top:10px;padding:8px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:14px;flex-shrink:0;">🎤</span>
+          <div style="flex:1;height:8px;background:#e2e8f0;border-radius:6px;overflow:hidden;position:relative;">
+            <div id="rv2GainBar" style="height:100%;width:2%;background:#9ca3af;border-radius:6px;transition:width 0.08s ease-out,background 0.2s;"></div>
+          </div>
+        </div>
+        <div id="rv2GainText" style="text-align:center;font-size:11px;color:#9ca3af;margin-top:4px;font-weight:600;">🎤 마이크 준비 중...</div>
+      </div>
       ${pausedBadge}
     `;
   } else if (hasTake) {
@@ -2995,14 +3005,139 @@ window.rv2StartRecord = async () => {
     _rv2.isPaused = false;
     _rv2.elapsedSec = 0;
     _rv2.lastTick = Date.now();
+    // 디바이스 정보 박음 (학원장 진단용, 학생 비공개) — 2026-06-28
+    _rv2.deviceInfo = _rv2BuildDeviceInfo();
     _rv2Render();
 
+    // 실시간 게인 측정 (Web Audio API AnalyserNode + requestAnimationFrame)
+    _rv2StartGainMeter();
     _rv2StartTimerLoop();
   } catch(e) {
     console.error(e);
     showToast('마이크 접근 실패: ' + (e.message || '권한을 허용해주세요'));
   }
 };
+
+// 디바이스 정보 — userAgent / platform 박음 (학원장 진단·문제 폰 모델 식별용)
+function _rv2BuildDeviceInfo() {
+  try {
+    const ua = (navigator.userAgent || '').slice(0, 200);
+    const platform = navigator.platform || '';
+    // 간단한 OS·브라우저 추정 (학원장이 즉시 인지 가능하게)
+    let os = 'Unknown';
+    if (/Android/i.test(ua)) os = 'Android';
+    else if (/iPad|iPhone|iPod/i.test(ua)) os = 'iOS';
+    else if (/Windows/i.test(ua)) os = 'Windows';
+    else if (/Mac/i.test(ua)) os = 'Mac';
+    let browser = 'Unknown';
+    if (/KAKAOTALK/i.test(ua)) browser = '카카오톡 인앱';
+    else if (/SamsungBrowser/i.test(ua)) browser = '삼성 브라우저';
+    else if (/Chrome\//i.test(ua) && !/Edg|OPR/i.test(ua)) browser = 'Chrome';
+    else if (/Safari\//i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+    else if (/Firefox/i.test(ua)) browser = 'Firefox';
+    else if (/Edg/i.test(ua)) browser = 'Edge';
+    return { ua, platform, os, browser };
+  } catch (_) { return null; }
+}
+
+// 실시간 게인 측정 — AnalyserNode → RMS → UI 막대 갱신
+// 음성 강도 낮으면 학생에게 안내 ("마이크 확인 후 다시 녹음")
+function _rv2StartGainMeter() {
+  _rv2StopGainMeter();
+  if (!_rv2.stream) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    _rv2.audioCtx = new Ctx();
+    const source = _rv2.audioCtx.createMediaStreamSource(_rv2.stream);
+    const analyser = _rv2.audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    _rv2.analyser = analyser;
+    _rv2.gainBuf = new Uint8Array(analyser.frequencyBinCount);
+    _rv2.lowVoiceStreakMs = 0;          // 낮은 음량 연속 시간
+    _rv2.lowVoiceAlerted = false;       // 안내 모달 1회만
+    _rv2.lastGainTick = performance.now();
+
+    const loop = () => {
+      if (!_rv2.isRecording || !_rv2.analyser) { _rv2.gainAnimFrame = null; return; }
+      _rv2.analyser.getByteTimeDomainData(_rv2.gainBuf);
+      // RMS — 0~127 범위 (Uint8 1byte 중앙=128)
+      let sum = 0;
+      for (let i = 0; i < _rv2.gainBuf.length; i++) {
+        const v = (_rv2.gainBuf[i] - 128) / 128;  // -1 ~ 1
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / _rv2.gainBuf.length);  // 0 ~ 1
+      const level = Math.min(100, Math.round(rms * 200));  // 0~100% (보기 좋게 가중)
+      _rv2UpdateGainUI(level);
+
+      // 낮은 음량 누적 감지 — 일시정지 중엔 무시
+      const now = performance.now();
+      const dt = now - (_rv2.lastGainTick || now);
+      _rv2.lastGainTick = now;
+      if (!_rv2.isPaused) {
+        if (level < 5) _rv2.lowVoiceStreakMs += dt;
+        else _rv2.lowVoiceStreakMs = 0;
+        // 5초 연속 거의 무음 → 1회 안내
+        if (!_rv2.lowVoiceAlerted && _rv2.lowVoiceStreakMs >= 5000) {
+          _rv2.lowVoiceAlerted = true;
+          _rv2NoticeLowVoice();
+        }
+      }
+      _rv2.gainAnimFrame = requestAnimationFrame(loop);
+    };
+    _rv2.gainAnimFrame = requestAnimationFrame(loop);
+  } catch (e) {
+    console.warn('[gain] init failed:', e.message);
+  }
+}
+
+function _rv2StopGainMeter() {
+  if (_rv2.gainAnimFrame) { cancelAnimationFrame(_rv2.gainAnimFrame); _rv2.gainAnimFrame = null; }
+  if (_rv2.audioCtx) { try { _rv2.audioCtx.close(); } catch(_) {} _rv2.audioCtx = null; }
+  _rv2.analyser = null;
+  _rv2.gainBuf = null;
+}
+
+function _rv2UpdateGainUI(level) {
+  const bar = document.getElementById('rv2GainBar');
+  const text = document.getElementById('rv2GainText');
+  if (!bar) return;
+  // 색상 분기 — 낮음 빨강 / 작음 호박 / 정상 초록 (그라데이션)
+  let color, label;
+  if (level < 5) { color = '#dc2626'; label = '🔇 마이크 소리가 들리지 않아요'; }
+  else if (level < 15) { color = '#f59e0b'; label = '🔉 소리가 작아요 — 조금 더 크게'; }
+  else if (level < 40) { color = '#22c55e'; label = '🔊 잘 들려요'; }
+  else { color = '#16a34a'; label = '🔊 좋아요!'; }
+  bar.style.width = Math.max(2, level) + '%';
+  bar.style.background = color;
+  if (text) { text.textContent = label; text.style.color = color; }
+}
+
+// 5초 연속 낮은 음량 — 학생 안내 + 재녹음 옵션
+async function _rv2NoticeLowVoice() {
+  const proceed = await showConfirm(
+    '🔇 마이크 소리가 들리지 않아요',
+    '5초 동안 거의 무음이에요. 다음을 확인해 보세요:\n\n• 폰 케이스가 마이크 구멍을 막고 있지 않은지\n• 음소거 상태가 아닌지\n• 다른 앱(전화·카톡 음성)을 끄기\n• 폰을 입 가까이 두기 (30cm 이내)\n\n[확인] 다시 녹음 / [취소] 계속 녹음'
+  );
+  if (proceed) {
+    // 다시 녹음 — 현재 녹음 중단 후 초기화
+    if (_rv2.mediaRecorder && _rv2.isRecording) {
+      try { _rv2.mediaRecorder.stop(); } catch(_) {}
+    }
+    _rv2.isRecording = false;
+    _rv2StopGainMeter();
+    _rv2.chunks = [];
+    _rv2.elapsedSec = 0;
+    showToast('마이크 확인 후 다시 [🎙 녹음] 눌러 주세요');
+    _rv2Render();
+  } else {
+    // 그래도 계속 — 다시 감지 시작 (한 번 더 누적될 수 있음)
+    _rv2.lowVoiceStreakMs = 0;
+    _rv2.lowVoiceAlerted = false;  // 다시 5초 누적되면 또 안내
+  }
+}
 
 // 타이머 — elapsedSec 누적 (일시정지 시 멈춤). 250ms 마다 갱신
 function _rv2StartTimerLoop() {
@@ -3058,6 +3193,7 @@ window.rv2StopRecord = () => {
   _rv2.isRecording = false;
   _rv2.isPaused = false;
   if (_rv2.timerInterval) { clearInterval(_rv2.timerInterval); _rv2.timerInterval = null; }
+  _rv2StopGainMeter();   // 게인 측정 종료
 };
 
 async function _rv2AfterStop(mime) {
@@ -3493,6 +3629,7 @@ async function _rv2Submit() {
           voiceActivity: (typeof r.voiceActivity === 'number') ? r.voiceActivity : null,
           voiceBandRatio: (typeof r.voiceBandRatio === 'number') ? r.voiceBandRatio : null,
           monotony: (typeof r.monotony === 'number') ? r.monotony : null,
+          ...(_rv2.deviceInfo ? { deviceInfo: _rv2.deviceInfo } : {}),
         });
         continue;
       }
@@ -3511,6 +3648,7 @@ async function _rv2Submit() {
         voiceActivity: (typeof r.voiceActivity === 'number') ? r.voiceActivity : null,
         voiceBandRatio: (typeof r.voiceBandRatio === 'number') ? r.voiceBandRatio : null,
         monotony: (typeof r.monotony === 'number') ? r.monotony : null,
+        ...(_rv2.deviceInfo ? { deviceInfo: _rv2.deviceInfo } : {}),
       });
       _rv2ShowSubmitting(`🎤 녹음 업로드 중... (${i+1}/${_rv2.savedRounds.length})`, `Storage 저장`);
     }

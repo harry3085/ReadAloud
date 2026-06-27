@@ -5705,6 +5705,11 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const completionInline = (compRate != null)
       ? ` · <span title="AI 가 audio 에서 들었다고 보고한 영단어와 본문 단어 매칭 비율 — 본문 전체를 다 읽었는지 판단${compInfo}">완독률 <b style="color:${compColor};">${compRate}%</b></span>`
       : '';
+    // 디바이스 정보 — 학생 폰 모델·OS·브라우저 (학원장 진단용, 마이크 문제 학생 식별)
+    const dev = r.deviceInfo;
+    const deviceInline = (dev && (dev.os || dev.browser))
+      ? ` · <span title="학생 폰: ${esc(dev.ua||'')}" style="color:#6b7280;">📱 ${esc(dev.os||'?')} · ${esc(dev.browser||'?')}</span>`
+      : '';
     const catBadge = (label, color, scoreVal, comment) => {
       if (typeof scoreVal !== 'number' && !comment) return '';
       return `<div style="margin-top:3px;font-size:11px;line-height:1.5;"><span style="background:${color};color:white;padding:1px 7px;border-radius:3px;font-weight:700;margin-right:5px;">${label}${typeof scoreVal === 'number' ? ' ' + scoreVal : ''}</span>${comment ? esc(comment) : ''}</div>`;
@@ -5714,7 +5719,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
           ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
-          <span style="font-size:10px;color:var(--gray);">${dur} · ${va}${wpmTxt}${acousticInline}${completionInline}</span>
+          <span style="font-size:10px;color:var(--gray);">${dur} · ${va}${wpmTxt}${acousticInline}${completionInline}${deviceInline}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
