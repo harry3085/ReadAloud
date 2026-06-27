@@ -3645,6 +3645,8 @@ async function _rv2Submit() {
         wordCount: _ftWords,
         expectedDuration: _expectedDur,
         actualDuration: _actualDur,
+        // 클라 측 voiceActivity — 서버 검증용 (무음 케이스 강제 0점, 2026-06-28)
+        voiceActivity: (typeof lastRound.voiceActivity === 'number') ? lastRound.voiceActivity : null,
       }),
     }, 1);  // 1회 재시도
     const data = await res.json();

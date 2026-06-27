@@ -518,6 +518,44 @@ module.exports = async (req, res) => {
       accuracy: String(cc.accuracy || '').trim().slice(0, 120),
     };
 
+    // ── 응답 검증 — AI 모순 응답 강제 정정 (2026-06-28) ─────────────────
+    // AI 가 무음·본문 무관 케이스에 가상 점수 부여하는 사례 발견 (문성미 회차 2:
+    // voiceActivity 0% 인데 score 35 + categoryScores 70/65/70/30)
+    // transcribedWords 빈 배열 또는 클라 측 voiceActivity 매우 낮음 → 모든 결과 0 강제
+    const clientVoiceActivity = parseFloat(body.voiceActivity);
+    const isSilent =
+      transcribedWords.length === 0
+      || (isFinite(clientVoiceActivity) && clientVoiceActivity < 0.05)
+      || (typeof completionRate === 'number' && completionRate < 5);
+    if (isSilent) {
+      console.log(`[check-rec][force-zero] transcribed=${transcribedWords.length} voiceActivity=${clientVoiceActivity} completion=${completionRate}`);
+      // 점수·카테고리 모두 0 강제
+      const overrideScore = 0;
+      const overrideCat = { pronunciation: 0, intonation: 0, pace: 0, accuracy: 0 };
+      const overrideCatCm = {
+        pronunciation: '소리가 들리지 않았어요',
+        intonation: '소리가 들리지 않았어요',
+        pace: '소리가 들리지 않았어요',
+        accuracy: '본문 읽는 소리가 잡히지 않았어요',
+      };
+      res.status(200).json({
+        success: true,
+        score: overrideScore,
+        missedWords: [],
+        note: '녹음에서 본문 읽는 소리가 들리지 않았어요. 마이크를 확인하고 다시 녹음해 주세요.',
+        feedback: { missedWords: [], weakPronunciation: [], tips: [], positives: [], intonation: '', stress: '' },
+        categoryScores: overrideCat,
+        categoryComments: overrideCatCm,
+        transcribedWords: [],
+        completionRate: completionRate ?? 0,
+        bookWordCount,
+        heardWordCount: 0,
+        forcedZero: true,  // 디버그용 — 학원장 화면 표시 안 함
+        elapsedMs,
+      });
+      return;
+    }
+
     res.status(200).json({
       success: true,
       score,

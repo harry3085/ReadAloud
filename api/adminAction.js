@@ -119,6 +119,8 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
         wordCount: _ftWords,
         expectedDuration: _expectedDur,
         actualDuration: _actualDur,
+        // 클라 측 voiceActivity carry — 무음 케이스 강제 0점 분기용 (2026-06-28)
+        voiceActivity: (typeof last.voiceActivity === 'number') ? last.voiceActivity : null,
       }),
     });
     // HTML 응답 방어 (Vercel Auth 보호 등) — JSON 파싱 전 Content-Type 검사
