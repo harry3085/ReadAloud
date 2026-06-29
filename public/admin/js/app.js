@@ -16230,27 +16230,34 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const _ftW = String(_ft).trim().split(/\s+/).filter(Boolean).length;
                   const _expSec = _ftW >= 30 ? Math.round((_ftW / 150) * 60) : 0;
                   const abnormalReasons = [];
+                  const cautionReasons = [];
                   recs.forEach(r => {
                     if (r.voiceActivity != null && r.voiceActivity < 0.10) abnormalReasons.push('음성<10%');
                     if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
                     if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
                     if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
-                    // 시간 비율 < 80% — 본문 표준 시간 대비 (2026-06-30 50% → 80% 변경, 학원장 강조 강화)
-                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.8) {
+                    // 시간 비율 — 본문 표준 시간 대비 (2026-06-30 단계 색상)
+                    // < 90% = 강한 빨강 (이상 명확) / 90~110% = 약한 빨강 (도달·회피 확인 권장) / > 110% = 정상 (느린 학생)
+                    if (_expSec > 0 && r.duration != null) {
                       const ratio = Math.round((r.duration / _expSec) * 100);
-                      abnormalReasons.push(`시간${ratio}%`);
+                      if (ratio < 90) abnormalReasons.push(`시간${ratio}%`);
+                      else if (ratio <= 110) cautionReasons.push(`시간${ratio}%`);
                     }
                   });
                   const isAbnormal = abnormalReasons.length > 0;
                   const isWarning = isLowScore || isAbnormal;
-                  const cardBg = isWarning ? '#fca5a5' : '#f0f9ff';
-                  const cardBorder = isWarning ? '#dc2626' : '#bae6fd';
-                  const headColor = isWarning ? '#7f1d1d' : '#0369a1';
+                  const isCaution = !isWarning && cautionReasons.length > 0;
+                  // 3단계 색상 — 강한 빨강 / 약한 빨강(분홍) / 정상 파랑
+                  const cardBg = isWarning ? '#fca5a5' : (isCaution ? '#fee2e2' : '#f0f9ff');
+                  const cardBorder = isWarning ? '#dc2626' : (isCaution ? '#f87171' : '#bae6fd');
+                  const headColor = isWarning ? '#7f1d1d' : (isCaution ? '#b91c1c' : '#0369a1');
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
-                  const warnSuffix = isAbnormal ? ` ⚠ ${[...new Set(abnormalReasons)].join(', ')}` : '';
+                  const warnSuffix = isAbnormal
+                    ? ` ⚠ ${[...new Set(abnormalReasons)].join(', ')}`
+                    : (isCaution ? ` · ${[...new Set(cautionReasons)].join(', ')} (도달·회피 확인)` : '');
                   const cardTitle = isAbnormal
                     ? `클릭 — 상세 보기\n⚠ 측정값 이상: ${[...new Set(abnormalReasons)].join(', ')}`
-                    : '클릭 — 상세 보기';
+                    : (isCaution ? `클릭 — 상세 보기\n시간 비율 정상이나 도달 위치·회피 점프 추가 확인 권장 (${[...new Set(cautionReasons)].join(', ')})` : '클릭 — 상세 보기');
                   // 진도체크·최근시험 모두 최소화 — 한 줄 카드. 클릭 시 상세 모달(#3)
                   return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="${esc(cardTitle)}" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                       ${xBtnRec}
