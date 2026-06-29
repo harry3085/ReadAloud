@@ -5647,6 +5647,31 @@ function _adminUqBuildDetail(questions, answers){
 // 풀카드 와 #3 성적 상세 모달 이 동일 내용을 쓰도록 단일화. (시간·말소리%·속도WPM·
 // 점수·note·AI 피드백 모두 포함). clickSafe: 부모가 클릭 가능한 카드(#1)면
 // audio·details 클릭이 모달 열기와 충돌 안 하게 stopPropagation.
+// 본문 형광펜 시각화 (2026-06-30) — 학생 발화 sequence 따라 매칭된 단어 노란색, 미매칭 회색
+// LCS-like 매칭으로 흔한 단어 (the/is) false positive 회피 — 학생 발화 순서 유지
+function _highlightFullText(fullText, transcribedWords){
+  if (!fullText || !Array.isArray(transcribedWords) || transcribedWords.length === 0) return esc(fullText);
+  // 토큰화 — 영단어·공백·구두점 분리 (원본 형식 보존)
+  const tokens = String(fullText).match(/[a-zA-Z']+|[^a-zA-Z]+/g) || [];
+  const heard = transcribedWords.map(w => String(w || '').toLowerCase());
+  let heardIdx = 0;
+  let html = '';
+  for (const tok of tokens) {
+    const isWord = /^[a-zA-Z']+$/.test(tok);
+    if (!isWord) { html += esc(tok); continue; }
+    const lower = tok.toLowerCase();
+    let matched = false;
+    // 현재 heardIdx 부터 앞으로 25 단어 안에서 매칭 (sequence 매칭과 동일 윈도우)
+    for (let i = heardIdx; i < Math.min(heardIdx + 25, heard.length); i++) {
+      if (heard[i] === lower) { heardIdx = i + 1; matched = true; break; }
+    }
+    html += matched
+      ? `<mark style="background:#fef08a;padding:0 1px;border-radius:2px;color:var(--text);">${esc(tok)}</mark>`
+      : `<span style="color:#9ca3af;">${esc(tok)}</span>`;
+  }
+  return html;
+}
+
 function _adminRecBuildDetail(recordings, fullText, opts){
   if(!Array.isArray(recordings)||!recordings.length) return '';
   const stop = (opts && opts.clickSafe) ? ' onclick="event.stopPropagation()"' : '';
@@ -5765,14 +5790,26 @@ function _adminBuildDetail(mode, comp){
   if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
   if(m==='recording')   {
     const ft = comp._recFullText || '';
-    // 본문 보기 — 학원장이 학생 녹음 들으면서 비교용 (2026-06-28)
+    // 마지막 회차 transcribedWords 로 본문 형광펜 시각화 (2026-06-30)
+    const lastRec = (comp.recordings||[]).slice(-1)[0];
+    const lastTW = Array.isArray(lastRec?.transcribedWords) ? lastRec.transcribedWords : null;
+    const bodyHtml = (lastTW && lastTW.length > 0)
+      ? _highlightFullText(ft, lastTW)
+      : esc(ft);
+    const legendHtml = (lastTW && lastTW.length > 0)
+      ? `<div style="font-size:10px;color:var(--gray);padding:0 14px 8px;display:flex;gap:12px;flex-wrap:wrap;">
+           <span><mark style="background:#fef08a;padding:1px 4px;border-radius:2px;">노란색</mark> 학생이 읽은 단어</span>
+           <span><span style="color:#9ca3af;">회색</span> 누락·미인식</span>
+         </div>`
+      : '';
     const fullTextHtml = ft
       ? `<details style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;background:#fafafa;">
            <summary style="padding:8px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;">
-             <span style="font-size:14px;">📄</span> 본문 보기
+             <span style="font-size:14px;">📄</span> 본문 보기${lastTW && lastTW.length > 0 ? ' (학생 읽음 표시)' : ''}
              <span style="color:var(--gray);font-weight:500;font-size:11px;">(클릭하여 펼치기 · ${ft.trim().split(/\s+/).filter(Boolean).length} 단어)</span>
            </summary>
-           <div style="padding:0 14px 12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;border-top:1px solid var(--border);padding-top:10px;">${esc(ft)}</div>
+           <div style="padding:0 14px 12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;border-top:1px solid var(--border);padding-top:10px;">${bodyHtml}</div>
+           ${legendHtml}
          </details>`
       : '';
     return fullTextHtml + _adminRecBuildDetail(comp.recordings, ft);

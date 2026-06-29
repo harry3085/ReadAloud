@@ -169,6 +169,8 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   // sequence 매칭 — 도달 위치 + 회피 점프 (2026-06-30)
   if (typeof data.lastReadPosition === 'number') newLast.lastReadPosition = data.lastReadPosition;
   if (typeof data.avoidanceJumps === 'number') newLast.avoidanceJumps = data.avoidanceJumps;
+  // transcribedWords — 학원장 본문 형광펜 시각화용 (2026-06-30)
+  if (Array.isArray(data.transcribedWords)) newLast.transcribedWords = data.transcribedWords;
   newRecs[newRecs.length - 1] = newLast;
 
   // userCompleted 업데이트 — Phase B: 통과/불통 폐기, completedAt 단일 흐름

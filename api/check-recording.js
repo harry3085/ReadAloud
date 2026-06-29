@@ -634,6 +634,8 @@ module.exports = async (req, res) => {
       // sequence 매칭 — 도달 위치 (%) + 회피 점프 카운트 (2026-06-30)
       lastReadPosition,
       avoidanceJumps,
+      // transcribedWords — 학원장 본문 형광펜 시각화용 (2026-06-30)
+      transcribedWords,
       elapsedMs,
     });
   } catch (e) {
