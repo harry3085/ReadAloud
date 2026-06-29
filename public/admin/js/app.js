@@ -5647,27 +5647,50 @@ function _adminUqBuildDetail(questions, answers){
 // 풀카드 와 #3 성적 상세 모달 이 동일 내용을 쓰도록 단일화. (시간·말소리%·속도WPM·
 // 점수·note·AI 피드백 모두 포함). clickSafe: 부모가 클릭 가능한 카드(#1)면
 // audio·details 클릭이 모달 열기와 충돌 안 하게 stopPropagation.
-// 본문 형광펜 시각화 (2026-06-30 set intersection 으로 변경)
-// 학생이 들은 단어 set ∩ 본문 단어 — 완독률 계산과 동일 알고리즘으로 일관성 확보
-// 흔한 단어 (the/is) 가 본문 곳곳 노란색 = 학생 단어 인식 시각 표현
-// 부분 읽기·회피 패턴은 별도 신호 (lastReadPosition, avoidanceJumps) 로 학원장에 제공
+// 본문 형광펜 시각화 (2026-06-30 위치 기반 매핑)
+// 학생 발화 sequence 가 본문 어느 위치 매칭됐는지 추적 → 매칭 위치만 노란색
+// 흔한 단어 (the/is) 도 학생 실제 발음 위치만 노란색 (false positive 없음)
+// 가운데 건너뜀(회피)·뒤 미독(부분 읽기) 모두 명확 식별
 function _highlightFullText(fullText, transcribedWords){
   if (!fullText || !Array.isArray(transcribedWords) || transcribedWords.length === 0) return esc(fullText);
-  // flatMap split — 옛 데이터 (문장형 element) 도 단어 단위로 자동 추출. apostrophe 포함 (서버 완독률 기준과 동일)
-  const heardSet = new Set(
-    transcribedWords.flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || [])
-  );
+  // 학생 발화 (flatMap split — 옛 문장형 element 도 자동 단어 추출)
+  const heard = transcribedWords.flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || []);
   // 토큰화 — 영단어·공백·구두점 분리 (원본 형식 보존)
   const tokens = String(fullText).match(/[a-zA-Z']+|[^a-zA-Z]+/g) || [];
-  let html = '';
-  for (const tok of tokens) {
-    const isWord = /^[a-zA-Z']+$/.test(tok);
-    if (!isWord) { html += esc(tok); continue; }
-    const matched = heardSet.has(tok.toLowerCase());
-    html += matched
-      ? `<mark style="background:#fef08a;padding:0 1px;border-radius:2px;color:var(--text);">${esc(tok)}</mark>`
-      : `<span style="color:#9ca3af;">${esc(tok)}</span>`;
+  // 본문 영단어 → 토큰 인덱스 매핑 (위치 추적용)
+  const bookWords = [];
+  tokens.forEach((tok, i) => {
+    if (/^[a-zA-Z']+$/.test(tok)) bookWords.push({ tok: tok.toLowerCase(), idx: i });
+  });
+  // LCS-like — 학생 sequence 따라가며 매칭된 본문 토큰 인덱스 기록
+  const matchedTokens = new Set();
+  let bookPos = 0;
+  for (const h of heard) {
+    for (let j = bookPos; j < Math.min(bookPos + 25, bookWords.length); j++) {
+      if (bookWords[j].tok === h) {
+        matchedTokens.add(bookWords[j].idx);
+        bookPos = j + 1;
+        break;
+      }
+    }
   }
+  // 도달 위치 — 마지막 매칭 토큰 인덱스. 그 너머는 학생 안 읽음 (옅은 회색 이탤릭)
+  const maxMatched = matchedTokens.size > 0 ? Math.max(...matchedTokens) : -1;
+  let html = '';
+  tokens.forEach((tok, i) => {
+    const isWord = /^[a-zA-Z']+$/.test(tok);
+    if (!isWord) { html += esc(tok); return; }
+    if (matchedTokens.has(i)) {
+      // 학생이 거기서 실제 발음 — 노란 형광펜
+      html += `<mark style="background:#fef08a;padding:0 1px;border-radius:2px;color:var(--text);">${esc(tok)}</mark>`;
+    } else if (i > maxMatched) {
+      // 도달 위치 너머 — 학생 안 읽음 (옅은 회색 이탤릭)
+      html += `<span style="color:#cbd5e1;font-style:italic;">${esc(tok)}</span>`;
+    } else {
+      // 도달 위치 안인데 매칭 안 됨 — 학생 누락·AI 미인식·가운데 건너뜀
+      html += `<span style="color:#9ca3af;">${esc(tok)}</span>`;
+    }
+  });
   return html;
 }
 
@@ -5797,8 +5820,9 @@ function _adminBuildDetail(mode, comp){
       : esc(ft);
     const legendHtml = (lastTW && lastTW.length > 0)
       ? `<div style="font-size:10px;color:var(--gray);padding:0 14px 8px;display:flex;gap:12px;flex-wrap:wrap;">
-           <span><mark style="background:#fef08a;padding:1px 4px;border-radius:2px;">노란색</mark> 학생이 읽은 단어</span>
-           <span><span style="color:#9ca3af;">회색</span> 누락·미인식</span>
+           <span><mark style="background:#fef08a;padding:1px 4px;border-radius:2px;">노란색</mark> 학생이 읽은 부분</span>
+           <span><span style="color:#9ca3af;">회색</span> 누락·미인식·건너뜀</span>
+           <span><span style="color:#cbd5e1;font-style:italic;">옅은 회색 이탤릭</span> 도달 못한 부분</span>
          </div>`
       : '';
     const fullTextHtml = ft
