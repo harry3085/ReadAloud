@@ -5647,24 +5647,23 @@ function _adminUqBuildDetail(questions, answers){
 // 풀카드 와 #3 성적 상세 모달 이 동일 내용을 쓰도록 단일화. (시간·말소리%·속도WPM·
 // 점수·note·AI 피드백 모두 포함). clickSafe: 부모가 클릭 가능한 카드(#1)면
 // audio·details 클릭이 모달 열기와 충돌 안 하게 stopPropagation.
-// 본문 형광펜 시각화 (2026-06-30) — 학생 발화 sequence 따라 매칭된 단어 노란색, 미매칭 회색
-// LCS-like 매칭으로 흔한 단어 (the/is) false positive 회피 — 학생 발화 순서 유지
+// 본문 형광펜 시각화 (2026-06-30 set intersection 으로 변경)
+// 학생이 들은 단어 set ∩ 본문 단어 — 완독률 계산과 동일 알고리즘으로 일관성 확보
+// 흔한 단어 (the/is) 가 본문 곳곳 노란색 = 학생 단어 인식 시각 표현
+// 부분 읽기·회피 패턴은 별도 신호 (lastReadPosition, avoidanceJumps) 로 학원장에 제공
 function _highlightFullText(fullText, transcribedWords){
   if (!fullText || !Array.isArray(transcribedWords) || transcribedWords.length === 0) return esc(fullText);
+  // flatMap split — 옛 데이터 (문장형 element) 도 단어 단위로 자동 추출. apostrophe 포함 (서버 완독률 기준과 동일)
+  const heardSet = new Set(
+    transcribedWords.flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || [])
+  );
   // 토큰화 — 영단어·공백·구두점 분리 (원본 형식 보존)
   const tokens = String(fullText).match(/[a-zA-Z']+|[^a-zA-Z]+/g) || [];
-  const heard = transcribedWords.map(w => String(w || '').toLowerCase());
-  let heardIdx = 0;
   let html = '';
   for (const tok of tokens) {
     const isWord = /^[a-zA-Z']+$/.test(tok);
     if (!isWord) { html += esc(tok); continue; }
-    const lower = tok.toLowerCase();
-    let matched = false;
-    // 현재 heardIdx 부터 앞으로 25 단어 안에서 매칭 (sequence 매칭과 동일 윈도우)
-    for (let i = heardIdx; i < Math.min(heardIdx + 25, heard.length); i++) {
-      if (heard[i] === lower) { heardIdx = i + 1; matched = true; break; }
-    }
+    const matched = heardSet.has(tok.toLowerCase());
     html += matched
       ? `<mark style="background:#fef08a;padding:0 1px;border-radius:2px;color:var(--text);">${esc(tok)}</mark>`
       : `<span style="color:#9ca3af;">${esc(tok)}</span>`;
