@@ -3673,6 +3673,9 @@ async function _rv2Submit() {
     if (typeof data.completionRate === 'number') recordingsDetail[lastIdx].completionRate = data.completionRate;
     if (typeof data.bookWordCount === 'number') recordingsDetail[lastIdx].bookWordCount = data.bookWordCount;
     if (typeof data.heardWordCount === 'number') recordingsDetail[lastIdx].heardWordCount = data.heardWordCount;
+    // sequence 매칭 — 도달 위치 + 회피 점프 (2026-06-30, 학원장 화면 표시용)
+    if (typeof data.lastReadPosition === 'number') recordingsDetail[lastIdx].lastReadPosition = data.lastReadPosition;
+    if (typeof data.avoidanceJumps === 'number') recordingsDetail[lastIdx].avoidanceJumps = data.avoidanceJumps;
 
     // Phase B : 통과/불통 개념 폐기 — 모든 응시는 "제출 완료" 단일 흐름
     const today = _ymdKST();

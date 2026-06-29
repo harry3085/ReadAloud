@@ -3,12 +3,13 @@
 // Phase 5.5 신규 — 배치 처리용
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// 폴백 체인 (2026-05-18 재배치): 2.5-flash-lite → 3.1-flash-lite → 2.5-flash
-// 2.5-flash-lite 503 급증 대응 — 2순위를 더 저렴·빠른 3.1-flash-lite 로,
-// 2.5-flash 는 3순위 강등 (audio 비용 큼). 같은 모델 최대 2회 재시도 후 다음.
+// 폴백 체인 (2026-06-30 재배치): 3.1-flash-lite → 2.5-flash-lite → 2.5-flash
+// 2.5-flash-lite hallucination (무음·부분 읽기에 본문 추측 가짜 응답) 다발 검증 →
+// 3.1-flash-lite 가 audio 정확도·일관성 ↑ 확인되어 1순위 격상. 2.5-lite 백업, 2.5-flash 최후.
+// 같은 모델 최대 2회 재시도 후 다음.
 const MODELS = [
-  'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
 ];
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -119,7 +120,7 @@ Then ALWAYS provide detailed feedback (regardless of score) so the student can i
 Return strictly JSON (no markdown):
 {
   "score": <integer 0-100>,
-  "transcribedWords": [<English words actually heard in the audio, in order, lowercase, up to 200 words>],
+  "transcribedWords": [<MUST be flat array of INDIVIDUAL words (NOT sentences). Each element = one English word, lowercase, in speaking order. Example: ["the", "cat", "sat"]. NEVER bundle words into sentences like "the cat sat".>],
   "missedWords": [<up to 5 important words omitted>],
   "note": "<one-line Korean comment>",
   "feedback": {
@@ -153,6 +154,13 @@ Scoring guide (overall score & each category, 0-100):
 - 40-59: Many words missed or unclear; partial reading
 - 0-39: Silent (침묵), noise only (단순 소음), irrelevant babbling (무의미한 웅얼거림), or entirely different content (원문과 완전히 다른 내용). 이 경우 즉시 0점 처리하고 세부 채점 및 억지 피드백 생성을 중단할 것.
 
+CRITICAL — 느린 속도는 페널티 X:
+- 학생이 천천히 또박또박 읽는 것은 학습 단계상 정상이며 감점 사유가 아님.
+- 본문을 끝까지 정확히 읽었는데 단순히 속도가 느리다는 이유로 overall score 를 깎지 말 것.
+- pace 카테고리도 느린 속도 자체는 70+ 부여 (단어가 끊겨 알아듣기 어려울 때만 60 이하).
+- 예시: 단어 누락 적음(90%+) + 발음 또렷 + 느린 속도 = score 80+ (속도 페널티 금지).
+- 빠른데 단어가 뭉치거나 발음이 흐려질 때만 pace 와 종합 score 에 반영.
+
 CRITICAL — 0점 처리 시 세부 항목 통일:
 score 가 0점 (또는 0-10 사이) 으로 처리되는 경우, categoryScores 의 모든 항목 (pronunciation, intonation, pace, accuracy) 값 또한 반드시 0 으로 설정하라.
 - 본문과 무관한 내용·침묵·소음·무의미 발화일 때 발음/억양/속도/정확도를 따로 평가하지 말 것.
@@ -170,7 +178,8 @@ CRITICAL — 학생별 점수 차이를 명확히 반영하라:
 Category meanings:
 - pronunciation: 자음·모음 정확도, 단어 발음
 - intonation: 문장 끝 톤(올림/내림), 의문문 자연스러움
-- pace: 자연스러운 읽기 속도 (너무 빠르거나 느리지 않음)
+- pace: 읽기 속도 평가 — **느린 속도는 페널티 X** (학생이 천천히 또박또박 읽는 건 학습 단계상 정상).
+  빠른데 단어가 뭉치거나 발음이 흐려질 때만 감점. 정상 또는 느린 속도는 70+ 부여.
 - accuracy: 단어 누락·순서·완독률
 
 CRITICAL: 반드시 categoryScores 와 categoryComments 의 4 카테고리 (pronunciation, intonation, pace, accuracy) 를 모두 채워야 합니다. 하나라도 누락하면 학원장 화면에 빈 칸이 보입니다.
@@ -178,7 +187,8 @@ CRITICAL: Keep all comments SHORT (한 줄, 60자 이내). 짧고 명확하게.
 Examples for category comments:
 - pronunciation: "또렷하게 잘 읽었어요" / "단어 끝 자음을 흐리지 마세요"
 - intonation: "문장 끝 톤이 평탄했어요. 마침표·물음표에 따라 변화 주세요"
-- pace: "자연스러운 속도였어요" / "조금 빨라서 단어가 뭉쳐졌어요"
+- pace: "자연스러운 속도였어요" / "천천히 또박또박 잘 읽었어요" / "조금 빨라서 단어가 뭉쳐졌어요"
+  (느린 속도 자체는 페널티 X — 또박또박 읽었으면 70+ 부여, 단어 끊김 심하면 60 정도)
 - accuracy: "단어 4개를 빠뜨렸어요" / "본문 거의 모두 읽었어요"
 positives 예: "발음이 또렷해요" / "끊김 없이 한 호흡으로 읽었어요"
 
@@ -202,12 +212,16 @@ Feedback Korean: natural, encouraging, appropriate for middle/high school studen
 
 CRITICAL — transcribedWords (완독률 측정용):
 - audio 에서 실제로 들린 영어 단어를 순서대로 lowercase 배열로 반환.
+- **MUST be flat array of INDIVIDUAL words. NEVER bundle into sentences.**
+  - WRONG: ["the cat sat on the mat"] ← 문장 1개 = 1 element (절대 금지)
+  - WRONG: ["the cat", "sat on", "the mat"] ← 구 묶음 (절대 금지)
+  - CORRECT: ["the", "cat", "sat", "on", "the", "mat"] ← 단어 1개 = 1 element
 - 침묵·소음·한국어·웅얼거림은 단어로 받아 적지 말 것 (영어 단어만).
 - 본문 단어를 추측해서 채우지 말 것 — audio 에 실제 들린 단어만.
 - 본문에 없는 단어가 들리면 그것도 포함 (정확한 기록).
 - 들린 게 없으면 빈 배열 [].
-- 최대 200 단어 (긴 본문은 처음~끝까지 들린 만큼).
-- 서버가 이 배열로 본문 단어와 매칭해 완독률을 계산해 학원장 화면에 표시함.
+- 최대 500 단어 (긴 본문은 처음~끝까지 들린 만큼).
+- 서버가 이 배열로 본문 단어와 매칭해 완독률·도달 위치를 계산해 학원장 화면에 표시함.
 - 정직하게 작성. 본문 추측 금지.`;
 }
 
@@ -370,6 +384,10 @@ module.exports = async (req, res) => {
         maxOutputTokens: 3000,
         responseMimeType: 'application/json',
         responseSchema,
+        // 2026-06-30: 폴백 3순위 2.5-flash 가 thinking model — maxOutputTokens 3000 중
+        // thinking 이 96% 소비해 응답 잘림(MAX_TOKENS). 보험으로 작동시키려 thinking 끔.
+        // 1·2순위 lite 모델들은 thinking 없거나 작아 영향 0.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     };
 
@@ -463,24 +481,48 @@ module.exports = async (req, res) => {
       ? parsed.missedWords.map(w => String(w || '').trim()).filter(Boolean).slice(0, 5) : [];
     const note = String(parsed.note || '').trim().slice(0, 200);
 
-    // 완독률 측정 — transcribedWords vs 본문 단어 매칭 (2026-06-27 옵션 B)
-    // AI 가 추정한 들린 단어를 본문과 매칭해 객관적 완독률 계산
+    // 완독률 + 도달 위치 측정 — transcribedWords vs 본문 단어 매칭
+    // 2026-06-30: AI 가 문장 element 로 응답하는 케이스 (서준호 6/29 등) 대응 →
+    // flatMap split 으로 어떤 응답 형식이든 단어 단위로 추출. slice 500 (단어 단위라 늘림).
     const transcribedWords = Array.isArray(parsed.transcribedWords)
-      ? parsed.transcribedWords.map(w => String(w || '').trim().toLowerCase()).filter(Boolean).slice(0, 200)
+      ? parsed.transcribedWords
+          .flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || [])
+          .filter(Boolean)
+          .slice(0, 500)
       : [];
     let completionRate = null;
     let bookWordCount = 0;
     let heardWordCount = 0;
+    let lastReadPosition = null;
+    let avoidanceJumps = 0;
+    let bookWordsAll = [];
     try {
       // 본문에서 영단어만 추출 (소문자, 알파벳만)
-      const bookWords = String(originalText || '').toLowerCase().match(/[a-z]+/g) || [];
-      const bookUniqueSet = new Set(bookWords);
+      bookWordsAll = String(originalText || '').toLowerCase().match(/[a-z']+/g) || [];
+      const bookUniqueSet = new Set(bookWordsAll);
       const heardSet = new Set(transcribedWords);
-      // 본문 unique 단어 중 들린 단어 비율 (중복 안 셈 — 한 번이라도 들렸으면 매칭)
       const matched = [...bookUniqueSet].filter(w => heardSet.has(w));
       bookWordCount = bookUniqueSet.size;
       heardWordCount = matched.length;
       completionRate = bookWordCount > 0 ? Math.round((heardWordCount / bookWordCount) * 100) : null;
+
+      // sequence 매칭 (LCS-like) — 학생이 도달한 본문 위치 + 회피 점프 카운트
+      // 2026-06-30: 부분 읽기·회피 vs 정상 완독 구분. 흔한 단어 함정 회피 (unique 매칭 X)
+      if (bookWordsAll.length > 0 && transcribedWords.length > 0) {
+        const heard = transcribedWords.filter(w => w.length >= 3);
+        let bookIdx = 0, maxPos = 0;
+        for (const w of heard) {
+          for (let j = bookIdx; j < Math.min(bookIdx + 25, bookWordsAll.length); j++) {
+            if (bookWordsAll[j] === w) {
+              if (j - bookIdx > 15) avoidanceJumps++;
+              bookIdx = j + 1;
+              if (j > maxPos) maxPos = j;
+              break;
+            }
+          }
+        }
+        lastReadPosition = Math.round((maxPos / bookWordsAll.length) * 100);
+      }
     } catch (_) {}
 
     const fb = parsed.feedback || {};
@@ -562,6 +604,8 @@ module.exports = async (req, res) => {
         completionRate: completionRate ?? 0,
         bookWordCount,
         heardWordCount: 0,
+        lastReadPosition: 0,
+        avoidanceJumps: 0,
         forcedZero: true,  // 디버그용 — 학원장 화면 표시 안 함
         elapsedMs,
       });
@@ -587,6 +631,9 @@ module.exports = async (req, res) => {
       completionRate,
       bookWordCount,
       heardWordCount,
+      // sequence 매칭 — 도달 위치 (%) + 회피 점프 카운트 (2026-06-30)
+      lastReadPosition,
+      avoidanceJumps,
       elapsedMs,
     });
   } catch (e) {

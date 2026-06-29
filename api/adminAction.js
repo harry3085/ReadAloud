@@ -166,6 +166,9 @@ async function _reEvaluateRecording(db, body, idToken, caller) {
   if (typeof data.completionRate === 'number') newLast.completionRate = data.completionRate;
   if (typeof data.bookWordCount === 'number') newLast.bookWordCount = data.bookWordCount;
   if (typeof data.heardWordCount === 'number') newLast.heardWordCount = data.heardWordCount;
+  // sequence 매칭 — 도달 위치 + 회피 점프 (2026-06-30)
+  if (typeof data.lastReadPosition === 'number') newLast.lastReadPosition = data.lastReadPosition;
+  if (typeof data.avoidanceJumps === 'number') newLast.avoidanceJumps = data.avoidanceJumps;
   newRecs[newRecs.length - 1] = newLast;
 
   // userCompleted 업데이트 — Phase B: 통과/불통 폐기, completedAt 단일 흐름

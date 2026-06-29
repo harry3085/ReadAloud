@@ -5705,6 +5705,19 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const completionInline = (compRate != null)
       ? ` · <span title="AI 가 audio 에서 들었다고 보고한 영단어와 본문 단어 매칭 비율 — 본문 전체를 다 읽었는지 판단${compInfo}">완독률 <b style="color:${compColor};">${compRate}%</b></span>`
       : '';
+    // 도달 위치 — 학생이 본문 어디까지 읽고 멈췄나 (sequence 매칭, 2026-06-30)
+    const pos = (typeof r.lastReadPosition === 'number') ? r.lastReadPosition : null;
+    const posColor = pos == null ? '' : (pos >= 90 ? '#16a34a' : (pos >= 70 ? '#f59e0b' : '#dc2626'));
+    const jumps = (typeof r.avoidanceJumps === 'number') ? r.avoidanceJumps : null;
+    // 회피 의심 — 점프 ≥8회 또는 점프 ≥3회 (도달 위치 정상 시)
+    const isAvoidance = (jumps != null && pos != null && pos >= 90 && jumps >= 8);
+    const posLabel = pos == null ? '' :
+      (pos >= 90 ? (isAvoidance ? '회피 의심' : '끝까지') :
+       pos >= 70 ? '거의 끝까지' :
+       pos >= 40 ? '중간 중단' : '부분만');
+    const positionInline = (pos != null)
+      ? ` · <span title="학생이 본문 어디까지 도달해서 읽고 멈췄는지 (단어 순서 매칭 기반)${jumps != null ? ' · 회피 점프 ' + jumps + '회' : ''}">도달 <b style="color:${posColor};">${pos}%</b> <span style="color:${posColor};font-size:10px;">(${posLabel})</span></span>`
+      : '';
     // 디바이스 정보 — 학생 폰 모델·OS·브라우저 (학원장 진단용, 마이크 문제 학생 식별)
     const dev = r.deviceInfo;
     const deviceInline = (dev && (dev.os || dev.browser))
@@ -5719,7 +5732,7 @@ function _adminRecBuildDetail(recordings, fullText, opts){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">${isLast?'최종':(i+1)+'회차'}</span>
           ${score!=null?`<span style="font-size:12px;color:#0369a1;font-weight:700;">${score}점</span>`:''}
-          <span style="font-size:10px;color:var(--gray);">${dur} · ${va}${wpmTxt}${acousticInline}${completionInline}${deviceInline}</span>
+          <span style="font-size:10px;color:var(--gray);">${dur} · ${va}${wpmTxt}${acousticInline}${completionInline}${positionInline}${deviceInline}</span>
           ${isLast ? '<span style="font-size:10px;color:#7C3AED;font-weight:700;">← AI 평가</span>' : ''}
         </div>
         ${r.sentence?`<div style="font-size:12px;color:var(--text);line-height:1.4;margin-bottom:6px;">${esc(r.sentence)}</div>`:''}
@@ -16222,8 +16235,8 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                     if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
                     if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
                     if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
-                    // 시간 비율 < 50% — 본문 표준 시간 대비 (학원장 minDur 미설정 시에도 작동)
-                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.5) {
+                    // 시간 비율 < 80% — 본문 표준 시간 대비 (2026-06-30 50% → 80% 변경, 학원장 강조 강화)
+                    if (_expSec > 0 && r.duration != null && r.duration < _expSec * 0.8) {
                       const ratio = Math.round((r.duration / _expSec) * 100);
                       abnormalReasons.push(`시간${ratio}%`);
                     }
