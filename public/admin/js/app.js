@@ -5653,14 +5653,16 @@ function _adminUqBuildDetail(questions, answers){
 // 가운데 건너뜀(회피)·뒤 미독(부분 읽기) 모두 명확 식별
 function _highlightFullText(fullText, transcribedWords){
   if (!fullText || !Array.isArray(transcribedWords) || transcribedWords.length === 0) return esc(fullText);
+  // apostrophe 무시 정규화 — "it's" ↔ "its" 매칭 (AI 가 apostrophe 안 박는 경향)
+  const norm = s => s.replace(/'/g, '');
   // 학생 발화 (flatMap split — 옛 문장형 element 도 자동 단어 추출)
-  const heard = transcribedWords.flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || []);
+  const heard = transcribedWords.flatMap(s => String(s || '').toLowerCase().match(/[a-z']+/g) || []).map(norm);
   // 토큰화 — 영단어·공백·구두점 분리 (원본 형식 보존)
   const tokens = String(fullText).match(/[a-zA-Z']+|[^a-zA-Z]+/g) || [];
-  // 본문 영단어 → 토큰 인덱스 매핑 (위치 추적용)
+  // 본문 영단어 → 토큰 인덱스 매핑 (위치 추적용, apostrophe 정규화)
   const bookWords = [];
   tokens.forEach((tok, i) => {
-    if (/^[a-zA-Z']+$/.test(tok)) bookWords.push({ tok: tok.toLowerCase(), idx: i });
+    if (/^[a-zA-Z']+$/.test(tok)) bookWords.push({ tok: norm(tok.toLowerCase()), idx: i });
   });
   // LCS-like — 학생 sequence 따라가며 매칭된 본문 토큰 인덱스 기록
   const matchedTokens = new Set();
