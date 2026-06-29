@@ -5679,16 +5679,18 @@ function _highlightFullText(fullText, transcribedWords){
   let html = '';
   tokens.forEach((tok, i) => {
     const isWord = /^[a-zA-Z']+$/.test(tok);
-    if (!isWord) { html += esc(tok); return; }
     if (matchedTokens.has(i)) {
       // 학생이 거기서 실제 발음 — 노란 형광펜
       html += `<mark style="background:#fef08a;padding:0 1px;border-radius:2px;color:var(--text);">${esc(tok)}</mark>`;
     } else if (i > maxMatched) {
-      // 도달 위치 너머 — 학생 안 읽음 (옅은 회색 이탤릭)
+      // 도달 위치 너머 — 학생 안 읽음 (단어·구두점·공백 모두 옅은 회색 이탤릭)
       html += `<span style="color:#cbd5e1;font-style:italic;">${esc(tok)}</span>`;
-    } else {
+    } else if (isWord) {
       // 도달 위치 안인데 매칭 안 됨 — 학생 누락·AI 미인식·가운데 건너뜀
       html += `<span style="color:#9ca3af;">${esc(tok)}</span>`;
+    } else {
+      // 도달 위치 안 구두점·공백 — 기본 색
+      html += esc(tok);
     }
   });
   return html;
