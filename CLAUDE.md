@@ -3754,3 +3754,203 @@ SW v666 → v682 (~21 commit). 학원장 보고 → 진단 → 다층 안전망 
 3. 다른 마이크 문제 학생 진단 — 디바이스 정보 박힘 데이터 활용
 4. 멀티학원장 / 옛 schema / 시험 목록 캐시 통합 (변동 없음)
 5. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-06-30: 녹음 AI 평가 모델·알고리즘 종합 정비 (3 모델 비교 → 1순위 변경 + 형광펜 DP LCS)
+
+SW v682 → v691 (~13 commit). 학원장 보고 5건 진단 → 3 모델 비교 테스트 → 1순위 모델 변경 +
+transcribedWords split + sequence 매칭 + 형광펜 시각화 + 임계 정책 변경 종합.
+
+### 1) 3 모델 비교 진단
+
+scripts/diag/compare-recording-models.js 외 케이스별 비교 스크립트 5종 — 정상응시(권서현 6/25)
+/ 무음의심(조민서 6/24) / 부분읽기(성소율 6/24) / 홍지성 6/25·6/29 / 이은섭·성지율·임하리·서준호·
+차윤민·권도현·이지호·용주영 등.
+
+핵심 발견 (모델별 패턴 확정):
+- **2.5-flash-lite (1순위)** — hallucination 다발:
+  · 조민서 무음 audio → score 95, 344 단어 본문 추측 응답
+  · 이은섭 부분 읽기 → 162 단어 (본문 전체) 응답, 학생 실제 42초만 발화
+  · 성지율 정상 → 227 단어 (본문 전체) 응답, 도달 100% 가짜
+- **3.1-flash-lite (2순위)** — 가장 우수: 무음 정직 0점, 정상 응시 정확한 score, 응답 시간 빠름 (3.2s)
+- **2.5-flash (3순위)** — thinking model (응답 형식 문제):
+  · responseMimeType:application/json + thinking tokens 가 maxOutputTokens 96% 소비 → 응답 잘림
+  · maxOutputTokens 늘려도 thinking 비례 증가 (3000→16384 도 잘림)
+  · 운영 (3000 limit) 에선 사실상 dead code — 폴백 3순위 도달 0건
+
+### 2) 1순위 모델 변경 (commit 644d17f)
+
+api/check-recording.js MODELS swap — 2.5-flash-lite → 3.1-flash-lite → 2.5-flash
+**→ 3.1-flash-lite → 2.5-flash-lite → 2.5-flash**.
+
+근거: 3.1-lite 무음 정직 응답 (가짜 점수 차단) / 3.1-lite 정상 응시 정확도 ↑ (홍지성 81% →
+89%) / 3.1-lite 응답 시간 빠름 (7s → 3.2s) / 3.1-lite 503 영향 ↓ (사용량 적음).
+
+비용: 학원당 월 +$3 추정 (default 학원 ~1500 응시). 503 시 fallback = 2.5-lite 호출 = **상호
+보완 폴백 체인**.
+
+### 3) 503 비용 처리 정리 (사용자 통찰)
+
+작업규칙 — Gemini 503/429 응답은 **요금 0** (구글 표준): 1순위 503 받은 호출만 무료, 폴백된
+모델은 그 모델 가격으로 청구. 폴백 정책 ≠ 가격 할인.
+
+### 4) transcribedWords split + 프롬프트 강화 (commit 644d17f)
+
+서준호 6/29 응시 진단 — Vercel 로그에서 transcribedWords 가 **문장 element** 로 응답:
+["you've been looking at puppies for months", "said d w", ...]. 운영 코드가 문장 element
+그대로 박음 → bookUnique.has 매칭 안 됨 → 완독률 0%.
+
+수정: flatMap(s => match(/[a-z']+/g) || []) — 문장도 단어 단위 자동 추출. slice 200 → 500.
+프롬프트 강화 — "MUST be flat array of INDIVIDUAL words. NEVER bundle into sentences." 예시 포함.
+
+영향: 옛 응시 5건 중 3건 (서준호 본문1·2, 임하리) 완독률 부정확 → [🔁 재평가] 시 정상화.
+
+### 5) sequence 매칭 도입 — lastReadPosition + avoidanceJumps (commit 644d17f)
+
+서버 _calcLastReadPosition 신설: 학생 단어 마다 본문 위치 +25 윈도우 안에서 매칭 → 매칭된
+마지막 위치 = lastReadPosition, 큰 점프 (>15) = avoidanceJumps.
+
+학원장 모달 인라인: "시간 비율 105% · 완독률 85% · 도달 100% (끝까지)"
+
+검증 (학원장 진단과 일치): 이은섭 반만 → 41% / 성지율 14/17줄 → 82% / 임하리 정상 → 100% +
+6 점프 (자연 D.W. 건너뜀) / 권도현 본문 끝까지 + 발음 부정확 → 100% + 1 점프.
+
+### 6) 느린 속도 페널티 제거 (commit 5b6efb0)
+
+서지율 6/29 CH5 — 본문 87% 완독 + 다 읽었는데 score 25 (매우 낮음). 원인: AI categoryScores
+pace 30 으로 종합 score 강한 페널티. 학생 duration 227s / 표준 95s = **시간 비율 239%**
+(천천히 또박또박 읽음, 학습 단계 정상).
+
+수정 — buildEvalPrompt 3곳: pace 카테고리 "느린 속도는 페널티 X" 명시 / 코멘트 예시 "천천히
+또박또박 잘 읽었어요" 추가 / Overall Score 가이드 신규.
+
+### 7) 학원장 카드 색상 정책 (commit cbabb20)
+
+학원장 정책 — **AI 점수보다 객관 측정(완독·도달) 우선**.
+
+3단계 색상:
+- 도달 100% OR 완독률 90%+ → 🔵 정상 (시간·점수 무관, hasNormalIndicator)
+- 시간 < 90% OR 점수 ≤50 OR 측정값 이상 → 🔴 강한 빨강
+- 시간 90~110% → 🟠 약한 빨강 (도달·완독 정상이면 자동 해제)
+- 시간 > 110% → 🔵 정상 (느린 학생 정상)
+
+⚠ hallucination 위험 인지: 무음 + AI 본문 추측 → 완독률 100% 가짜 = 정상 표시 가능. 1순위
+3.1-lite + split 으로 크게 감소했으나 0 아님.
+
+### 8) 형광펜 시각화 5단계 진화
+
+학원장 통찰 — 본문에 학생 읽은 단어 형광펜으로 시각화. 알고리즘 5번 진화:
+
+#### 8a) 위치 기반 sequence 매칭 (Greedy + cutoff) — 5b6efb0
+LCS-like sequence 매칭으로 학생 도달 위치 추적. 매칭된 위치 노란색 / 도달 너머 옅은 회색 이탤릭.
+
+#### 8b) set intersection (완독률 일관) — 76b21be
+용주영 케이스: 완독률 86% 인데 LCS 11% 만 매칭. 원인 LCS sequence 한 방향 진행 → 학생 누락
+시 다발 미스. set intersection 으로 변경. 단점: 흔한 단어 (the) 모든 위치 false positive.
+
+#### 8c) 위치 기반 매핑 (LCS 매칭 위치 Set) — 027e161
+학원장 통찰 — set intersection false positive. 가운데 3줄 건너뜀: 도달 100% + 완독 89% +
+가운데 the 노란색 (가짜). LCS 결과의 매칭된 토큰 인덱스만 Set 에 기록 → 그 위치만 노란색.
+도달 너머 (maxMatched 초과) 옅은 회색 이탤릭.
+
+#### 8d) 구두점·apostrophe 정규화 — 92d852a·09ca87b
+도달 못한 부분 구두점 (. , " ! ?) 도 옅은 회색 이탤릭 / apostrophe 정규화 norm = s =>
+s.replace(/'/g, '') — it's ↔ its 매칭.
+
+#### 8e) DP LCS 정식 알고리즘 (commit 118f9ee) ★ 최종
+권도현 케이스 — 완독률 75% 인데 Greedy LCS 42%, 사용자 "엇비슷하게 칠해져야지" 요구. 원인:
+Greedy LCS 한 방향 진행 → 학생 발음 부정확 시 bookPos 못 따라가 다발 미스. 윈도우 확대
+(25→40) 도 흔한 단어 false jump 로 악화 (권도현 42% → 27%).
+
+해결 — 정식 DP LCS (동적계획법): 학생 sequence × 본문 sequence DP 테이블 (Int16Array 메모리
+최적) / 윈도우 제약 없이 최장 공통 부분 수열 정확 계산 / 흔한 단어도 최적 위치 자동 매칭 (false
+jump 없음) / 시간 복잡도 O(N×M) 브라우저 즉시.
+
+시뮬레이션 (CH5 응시 6명) — 사용자 의도 완벽 만족:
+- 이지호: 완독률 93% / Greedy 46% → DP **97%** (+117)
+- 서지율: 완독률 82% / Greedy 47% → DP **84%** (+84)
+- 권도현: 완독률 75% / Greedy 42% → DP **74%** (+73)
+- 성지율: 완독률 89% / Greedy 73% → DP 78% (+10)
+- 홍주영: 완독률 92% / Greedy 99% → DP 99% (변동 없음)
+- 고다율: 완독률 99% / Greedy 100% → DP 100% (변동 없음)
+
+→ **DP LCS = 완독률과 거의 일치**, 정상 응시 영향 없음.
+
+### 9) 시간 비율 임계 정책 변경
+
+학원장 카드 강조 (수차례 조정): 50% → 80% → 90% (단계 색상 도입). 90~110% 약한 빨강 +
+도달 100%·완독 90%+ 시 자동 해제.
+
+### 10) thinkingBudget: 0 + adminAction carry
+
+api/check-recording.js generationConfig 에 thinkingConfig: { thinkingBudget: 0 } 추가 — 폴백
+3순위 2.5-flash 가 thinking 으로 잘리지 않도록 보험. 1·2순위 lite 모델은 영향 0.
+
+api/adminAction.js 재평가 흐름에 lastReadPosition·avoidanceJumps·transcribedWords carry — 운영
+응답과 재평가 응답 동일 데이터 박힘.
+
+### 작업 규칙 추가 (2026-06-30)
+
+신규:
+- **AI 응답 변동성 = 운영상 문제** — 같은 audio + 같은 모델 라도 sampling 으로 다른 응답
+  (홍지성 응시 시점 18% / 재테스트 72%). 학원장이 보는 점수가 응시 시점 운에 따라 변동. 근본
+  해결책 = 1순위 모델 변경 + 응답 검증 + 폴백 보강.
+- **Greedy LCS sequence 매칭의 한 방향 진행 한계** — 학생 단어 누락 시 bookPos 못 따라가 그
+  뒤 매칭 다발 미스. 윈도우 확대 (25→40) 도 흔한 단어 false jump 로 악화 (권도현 42%→27%).
+  → 정식 DP LCS (동적계획법) 필수. 시간 복잡도 O(N×M) 작아 브라우저 즉시.
+- **AI transcribedWords 응답 형식 변동** — 단어 단위 vs 문장 element 응답 변동성 (temperature
+  0.9 영향). flatMap split 으로 어떤 응답 형식이든 단어 단위 자동 추출. 운영 코드 방어 필수.
+- **흔한 단어 (the, is) 매칭의 위치 정보 손실** — set intersection 형광펜은 본문 모든 위치 매칭
+  (false positive). 가운데 건너뜀 케이스 식별 불가. 위치 기반 매핑 (LCS 매칭 위치 Set) 으로
+  해결.
+- **AI 점수 vs 객관 측정 우선순위** — 학원장 카드 정책: 도달 100% 또는 완독률 90%+ → 정상. AI
+  score 극단이어도 객관 측정 우선. AI 응답 변동성 영향 최소화.
+- **느린 속도 페널티 = AI 평가 흔한 부작용** — 학생이 천천히 또박또박 읽는 게 학습 단계 정상인데
+  AI categoryScores pace 가 깎임 + 종합 score 추가 페널티. 프롬프트에 "느린 속도는 페널티 X"
+  명시 필수.
+- **2.5-flash thinking model 운영 한계** — responseMimeType:application/json + thinking
+  tokens 가 maxOutputTokens 96% 소비 → 응답 잘림. thinkingBudget:0 으로 thinking 끄거나
+  responseMimeType 제거 (plain text 파싱) 필요. 다만 폴백 3순위 도달 거의 0 라 운영 영향 작음.
+- **DP LCS 시뮬레이션 우선** — Greedy → DP 같은 알고리즘 변경 시 운영 학생 데이터로 시뮬레이션
+  먼저. 권도현·이지호 등 케이스 검증 후 적용. 시뮬레이션 결과 보고 사용자 결정 받음.
+
+### 파일 크기 / SW 캐시 (2026-06-30)
+
+- api/check-recording.js: 1순위 모델 swap + transcribedWords flatMap split + 프롬프트 단어 단위
+  강제 + sequence 매칭 + 느린 속도 페널티 제거 + thinkingBudget 0 + 응답에 transcribedWords 추가
+- api/adminAction.js: 재평가 시 lastReadPosition·avoidanceJumps·transcribedWords carry
+- public/admin/js/app.js: 학원장 모달 도달 N% 인라인 + 형광펜 DP LCS + apostrophe 정규화 + 3색
+  시각화 + 시간 비율 3단계 색상 + hasNormalIndicator
+- public/js/app.js: recordings 에 transcribedWords + sequence 결과 박음
+- SW 캐시: kunsori-v682 → kunsori-v691
+
+### 진행률 (2026-06-30)
+
+- 녹음 AI 평가 신뢰도: **~100%** (모델 변경 + split + sequence + 형광펜 DP LCS + 카드 정책)
+- 학원장 진단 도구: **~100%** (도달·점프·완독률·형광·카드 색상 3단계)
+- 느린 속도 페널티 제거: ~100% (서지율 같은 케이스 정상화)
+- 응답 변동성 보완: ~80% (modelUsed·elapsedMs 박힘 미완)
+
+**완료 (이 세션, 2026-06-30)**:
+- ✅ 3 모델 비교 진단 (정상·무음·부분읽기·hallucination 패턴 확정)
+- ✅ 1순위 모델 변경 (2.5-flash-lite → 3.1-flash-lite, hallucination 차단)
+- ✅ transcribedWords flatMap split (문장 응답 대응)
+- ✅ 프롬프트 강화 (단어 단위 응답 강제 + 예시)
+- ✅ sequence 매칭 도입 (lastReadPosition·avoidanceJumps)
+- ✅ 학원장 모달 도달 위치 인라인 표시
+- ✅ 느린 속도 페널티 제거 (서지율 케이스)
+- ✅ 학원장 카드 색상 3단계 정책 (도달·완독 우선)
+- ✅ 시간 비율 임계 단계 변경 (50→90, 90~110 약한 빨강)
+- ✅ 형광펜 5단계 진화 — Greedy → set → 위치 기반 → DP LCS
+- ✅ 도달 못한 부분 구두점도 옅은 회색 이탤릭
+- ✅ apostrophe 정규화 (it's ↔ its)
+- ✅ DP LCS 정식 알고리즘 (권도현 42% → 74%, 이지호 46% → 97%)
+- ✅ thinkingBudget 0 (2.5-flash 폴백 보험)
+- ✅ adminAction.js 재평가 carry
+
+**다음 세션 후보**:
+1. modelUsed·elapsedMs 응답 박힘 (응답 변동성 추적, 향후 신규 응시)
+2. 옛 응시 [🔁 재평가] 권장 학생 명단 (서준호·서지율·이지호·임하리 등 split·DP LCS 적용)
+3. AI 평가 추세 관찰 (새 안전망 며칠 후 통계)
+4. Phase 5 출시 준비 (변동 없음)
