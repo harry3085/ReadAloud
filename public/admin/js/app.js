@@ -16314,22 +16314,25 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const abnormalReasons = [];
                   const cautionReasons = [];
                   recs.forEach(r => {
-                    if (r.voiceActivity != null && r.voiceActivity < 0.10) abnormalReasons.push('음성<10%');
-                    if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도<30%');
-                    if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조>70%');
-                    if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push(`짧음(${r.duration}s/${minDur}s)`);
-                    // 시간 비율 — 본문 표준 시간 대비 (2026-06-30 단계 색상)
-                    // < 90% = 강한 빨강 (이상 명확) / 90~110% = 약한 빨강 (도달·회피 확인 권장) / > 110% = 정상 (느린 학생)
+                    // 카드 라벨 = 항목명만 (수치 없이) — 학원장 요청 2026-06-30
+                    if (r.voiceActivity != null && r.voiceActivity < 0.10) abnormalReasons.push('음성');
+                    if (r.voiceBandRatio != null && r.voiceBandRatio < 0.30) abnormalReasons.push('명료도');
+                    if (r.monotony != null && r.monotony > 0.70) abnormalReasons.push('단조');
+                    if (minDur > 0 && r.duration != null && r.duration < minDur * 0.5) abnormalReasons.push('짧음');
+                    // 시간 비율 — < 90% = 강한 빨강 (90~110% 또는 > 110% = 정상)
                     if (_expSec > 0 && r.duration != null) {
                       const ratio = Math.round((r.duration / _expSec) * 100);
-                      if (ratio < 90) abnormalReasons.push(`시간${ratio}%`);
-                      else if (ratio <= 110) cautionReasons.push(`시간${ratio}%`);
+                      if (ratio < 90) abnormalReasons.push('시간');
+                    }
+                    // 도달 위치 < 90% = 약한 빨강 (시간 무관) — 학원장 요청 2026-06-30
+                    if (typeof r.lastReadPosition === 'number' && r.lastReadPosition < 90) {
+                      cautionReasons.push('도달');
                     }
                   });
-                  // 본문 정확히 읽었으면 (도달 100% OR 완독률 90%+) 시간·점수·기타 이상 무관 정상 표시
-                  // 학원장 정책 — AI 점수보다 객관 측정(완독·도달) 우선 (2026-06-30)
+                  // 본문 정확히 읽었으면 (도달 90%+ OR 완독률 90%+) 시간·점수·기타 이상 무관 정상 표시
+                  // 학원장 정책 — AI 점수보다 객관 측정(완독·도달) 우선 (2026-06-30 도달 100% → 90% 완화)
                   const hasNormalIndicator = recs.some(r =>
-                    (typeof r.lastReadPosition === 'number' && r.lastReadPosition >= 100)
+                    (typeof r.lastReadPosition === 'number' && r.lastReadPosition >= 90)
                     || (typeof r.completionRate === 'number' && r.completionRate >= 90)
                   );
                   const isAbnormal = !hasNormalIndicator && abnormalReasons.length > 0;
