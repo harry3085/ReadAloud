@@ -5771,21 +5771,22 @@ function _adminRecBuildDetail(recordings, fullText, opts){
     const compColor = compRate == null ? '' : (compRate >= 70 ? '#16a34a' : (compRate >= 40 ? '#f59e0b' : '#dc2626'));
     const compInfo = (typeof r.heardWordCount === 'number' && typeof r.bookWordCount === 'number')
       ? ` (${r.heardWordCount}/${r.bookWordCount} 단어)` : '';
+    // 매칭 (옛 라벨 "완독률") — AI 가 들은 단어 중 본문 단어와 일치 비율 (단어 인식 정확도)
     const completionInline = (compRate != null)
-      ? ` · <span title="AI 가 audio 에서 들었다고 보고한 영단어와 본문 단어 매칭 비율 — 본문 전체를 다 읽었는지 판단${compInfo}">완독률 <b style="color:${compColor};">${compRate}%</b></span>`
+      ? ` · <span title="AI 가 audio 에서 들었다고 보고한 영단어와 본문 단어 일치 비율 — 단어 인식 정확도${compInfo}">매칭 <b style="color:${compColor};">${compRate}%</b></span>`
       : '';
-    // 도달 위치 — 학생이 본문 어디까지 읽고 멈췄나 (sequence 매칭, 2026-06-30)
+    // 완독 (옛 라벨 "도달") — 학생이 본문 어디까지 도달했나 (sequence 매칭 기반)
     const pos = (typeof r.lastReadPosition === 'number') ? r.lastReadPosition : null;
     const posColor = pos == null ? '' : (pos >= 90 ? '#16a34a' : (pos >= 70 ? '#f59e0b' : '#dc2626'));
     const jumps = (typeof r.avoidanceJumps === 'number') ? r.avoidanceJumps : null;
-    // 회피 의심 — 점프 ≥8회 또는 점프 ≥3회 (도달 위치 정상 시)
+    // 회피 의심 — 점프 ≥8회 (완독 정상 시)
     const isAvoidance = (jumps != null && pos != null && pos >= 90 && jumps >= 8);
     const posLabel = pos == null ? '' :
       (pos >= 90 ? (isAvoidance ? '회피 의심' : '끝까지') :
        pos >= 70 ? '거의 끝까지' :
        pos >= 40 ? '중간 중단' : '부분만');
     const positionInline = (pos != null)
-      ? ` · <span title="학생이 본문 어디까지 도달해서 읽고 멈췄는지 (단어 순서 매칭 기반)${jumps != null ? ' · 회피 점프 ' + jumps + '회' : ''}">도달 <b style="color:${posColor};">${pos}%</b> <span style="color:${posColor};font-size:10px;">(${posLabel})</span></span>`
+      ? ` · <span title="학생이 본문 어디까지 도달해서 읽고 멈췄는지 (단어 순서 매칭 기반)${jumps != null ? ' · 회피 점프 ' + jumps + '회' : ''}">완독 <b style="color:${posColor};">${pos}%</b> <span style="color:${posColor};font-size:10px;">(${posLabel})</span></span>`
       : '';
     // 디바이스 정보 — 학생 폰 모델·OS·브라우저 (학원장 진단용, 마이크 문제 학생 식별)
     const dev = r.deviceInfo;
@@ -5844,7 +5845,7 @@ function _adminBuildDetail(mode, comp){
       ? `<div style="font-size:10px;color:var(--gray);padding:0 14px 8px;display:flex;gap:12px;flex-wrap:wrap;">
            <span><mark style="background:#fef08a;padding:1px 4px;border-radius:2px;">노란색</mark> 학생이 읽은 부분</span>
            <span><span style="color:#9ca3af;">회색</span> 누락·미인식·건너뜀</span>
-           <span><span style="color:#cbd5e1;font-style:italic;">옅은 회색 이탤릭</span> 도달 못한 부분</span>
+           <span><span style="color:#cbd5e1;font-style:italic;">옅은 회색 이탤릭</span> 미완독 부분</span>
          </div>`
       : '';
     const fullTextHtml = ft
@@ -16324,9 +16325,9 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                       const ratio = Math.round((r.duration / _expSec) * 100);
                       if (ratio < 90) abnormalReasons.push('시간');
                     }
-                    // 도달 위치 < 90% = 약한 빨강 (시간 무관) — 학원장 요청 2026-06-30
+                    // 완독 (옛 도달) < 90% = 약한 빨강 (시간 무관) — 학원장 요청 2026-06-30
                     if (typeof r.lastReadPosition === 'number' && r.lastReadPosition < 90) {
-                      cautionReasons.push('도달');
+                      cautionReasons.push('완독');
                     }
                   });
                   // 본문 정확히 읽었으면 (도달 90%+ OR 완독률 90%+) 시간·점수·기타 이상 무관 정상 표시
@@ -16345,10 +16346,10 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                   const headLabel = (typeof lastScore === 'number') ? `📤 제출됨 · ${lastScore}점` : '📤 제출됨';
                   const warnSuffix = isAbnormal
                     ? ` ⚠ ${[...new Set(abnormalReasons)].join(', ')}`
-                    : (isCaution ? ` · ${[...new Set(cautionReasons)].join(', ')} (도달·회피 확인)` : '');
+                    : (isCaution ? ` · ${[...new Set(cautionReasons)].join(', ')} (완독·회피 확인)` : '');
                   const cardTitle = isAbnormal
                     ? `클릭 — 상세 보기\n⚠ 측정값 이상: ${[...new Set(abnormalReasons)].join(', ')}`
-                    : (isCaution ? `클릭 — 상세 보기\n시간 비율 정상이나 도달 위치·회피 점프 추가 확인 권장 (${[...new Set(cautionReasons)].join(', ')})` : '클릭 — 상세 보기');
+                    : (isCaution ? `클릭 — 상세 보기\n완독 위치·회피 점프 추가 확인 권장 (${[...new Set(cautionReasons)].join(', ')})` : '클릭 — 상세 보기');
                   // 진도체크·최근시험 모두 최소화 — 한 줄 카드. 클릭 시 상세 모달(#3)
                   return `<div onclick="tpOpenStudentScoreDetail('${esc(testId)}','${esc(s.uid)}')" title="${esc(cardTitle)}" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:6px;padding:5px 22px 5px 9px;font-size:11px;position:relative;cursor:pointer;">
                       ${xBtnRec}
