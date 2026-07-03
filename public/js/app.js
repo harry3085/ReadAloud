@@ -2572,7 +2572,7 @@ async function _raSubmit(){
       const ext = rec.mime.includes('mp4') ? 'm4a' : 'webm';
       const path = `recordings/genTests/${t.id}/${currentUser.uid}/q${i+1}_${Date.now()}.${ext}`;
       const r = ref(storage, path);
-      await uploadBytes(r, rec.audioBlob);
+      await uploadBytes(r, rec.audioBlob, { cacheControl: 'public, max-age=2592000, immutable' });
       const url = await getDownloadURL(r);
       uploadedUrls.push({ questionIdx: i, sentence: s.questions[i].sentence, url, duration: rec.duration });
       const prog = document.getElementById('raUploadProgress');
@@ -2756,7 +2756,7 @@ async function _rv2UploadRound(i) {
   const tsBase = Date.now();
   const path = `recordings/genTests/${_rv2.test.id}/${currentUser.uid}/round${i+1}_${tsBase}_${i}.${ext}`;
   const fileRef = ref(storage, path);
-  await uploadBytes(fileRef, r.blob);
+  await uploadBytes(fileRef, r.blob, { cacheControl: 'public, max-age=2592000, immutable' });
   const url = await getDownloadURL(fileRef);
   r.audioUrl = url;
   r.uploaded = true;
@@ -3600,7 +3600,7 @@ async function _rv2Submit() {
       const path = `recordings/genTests/${t.id}/${currentUser.uid}/round${i+1}_${tsBase}_${i}.${ext}`;
       const fileRef = ref(storage, path);
       console.log(`[rv2Submit] upload round${i+1} → ${path} (${r.blob.size} bytes)`);
-      await uploadBytes(fileRef, r.blob);
+      await uploadBytes(fileRef, r.blob, { cacheControl: 'public, max-age=2592000, immutable' });
       const url = await getDownloadURL(fileRef);
       r.audioUrl = url;
       recordingsDetail.push({
