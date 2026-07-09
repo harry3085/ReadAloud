@@ -4294,9 +4294,10 @@ function _pickerRenderBox() {
   const c = _picker.cfg; if (!c) return;
   const box = document.getElementById(c.boxEl); if (!box) return;
   const isAll = _picker.targets.some(t => t.type === 'all');
-  const selClassIds = new Set(_picker.targets.filter(t=>t.type==='class').map(t=>t.id));
   const selStudentIds = new Set(_picker.targets.filter(t=>t.type==='student').map(t=>t.id));
   const dim = isAll ? 'opacity:.4;pointer-events:none;' : '';
+  // 2026-07-09 학원장 UX 개선 — 반 체크박스 상태 = 반 학생 체크 비율
+  // 모두 체크 = checked / 일부 체크 = indeterminate + 부분 색상 / 미체크 = 미체크
   box.innerHTML = `
     ${c.allowAll ? `
       <div style="padding:8px 12px;background:${isAll?'#e0f2fe':'#f8f9fa'};border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="pickerToggleAll()">
@@ -4306,24 +4307,41 @@ function _pickerRenderBox() {
       </div>
     ` : ''}
     <div style="${dim}">
-      ${_picker.sortedGroups.map(g => `
+      ${_picker.sortedGroups.map(g => {
+        const students = _picker.groupMap[g] || [];
+        const checkedCount = students.filter(u => selStudentIds.has(u.id)).length;
+        const allChecked = students.length > 0 && checkedCount === students.length;
+        const partial = checkedCount > 0 && !allChecked;
+        const cntColor = partial ? 'var(--teal)' : (allChecked ? 'var(--teal)' : 'var(--gray)');
+        const cntText = checkedCount > 0 ? `${checkedCount} / ${students.length}명` : `${students.length}명`;
+        return `
         <div style="border-bottom:1px solid #f0f0f0;">
-          <div style="padding:7px 12px;background:#f8f9fa;display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="pickerToggleClass('${esc(g)}')">
-            <input type="checkbox" id="pck-g-${esc(g)}" ${selClassIds.has(g)?'checked':''} onclick="event.stopPropagation();pickerToggleClass('${esc(g)}')">
+          <div style="padding:7px 12px;background:${partial?'#fef3c7':'#f8f9fa'};display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="pickerToggleClass('${esc(g)}')">
+            <input type="checkbox" id="pck-g-${esc(g)}" ${allChecked?'checked':''} onclick="event.stopPropagation();pickerToggleClass('${esc(g)}')">
             <span style="font-weight:600;font-size:13px;">👥 ${esc(g)}</span>
-            <span style="font-size:11px;color:var(--gray);margin-left:auto;">${_picker.groupMap[g].length}명</span>
+            <span style="font-size:11px;color:${cntColor};margin-left:auto;font-weight:${partial?'700':'400'};">${cntText}</span>
           </div>
           <div style="padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:3px;">
-            ${_picker.groupMap[g].map(u => `
+            ${students.map(u => `
               <label style="display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border:1px solid var(--border);border-radius:11px;cursor:pointer;font-size:11px;background:white;">
                 <input type="checkbox" id="pck-s-${esc(u.id)}" ${selStudentIds.has(u.id)?'checked':''}
                   onchange="pickerToggleStudent('${esc(u.id)}','${esc(u.name||'').replace(/'/g,"\\'")}','${esc(g).replace(/'/g,"\\'")}')">
                 👤 ${esc(u.name||'')}
               </label>`).join('')}
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>`;
   box.style.cssText = `max-height:${c.height}px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;`;
+  // 렌더 후 반 체크박스 indeterminate 상태 설정 (부분 체크 시각화)
+  setTimeout(() => {
+    _picker.sortedGroups.forEach(g => {
+      const students = _picker.groupMap[g] || [];
+      const checkedCount = students.filter(u => selStudentIds.has(u.id)).length;
+      const cb = document.getElementById(`pck-g-${g}`);
+      if (cb) cb.indeterminate = checkedCount > 0 && checkedCount < students.length;
+    });
+  }, 0);
 }
 
 function _pickerRenderSummary() {
@@ -4354,13 +4372,25 @@ window.pickerToggleAll = () => {
 };
 
 window.pickerToggleClass = (g) => {
-  // 전체 모드면 해제 후 진행
+  // 2026-07-09 학원장 UX 개선 — 반 클릭 시 반 학생 개별 체크 (반 참조 대신)
+  // 그 뒤 개별 학생 체크 해제로 편하게 제외 가능
   _picker.targets = _picker.targets.filter(t => t.type !== 'all');
-  const exists = _picker.targets.find(t => t.type==='class' && t.id===g);
-  if (exists) {
-    _picker.targets = _picker.targets.filter(t => !(t.type==='class' && t.id===g));
+  // 옛 반 참조 제거 (기존 데이터 호환)
+  _picker.targets = _picker.targets.filter(t => !(t.type === 'class' && t.id === g));
+  const students = _picker.groupMap[g] || [];
+  const currentStudentIds = new Set(_picker.targets.filter(t => t.type === 'student').map(t => t.id));
+  const allChecked = students.length > 0 && students.every(u => currentStudentIds.has(u.id));
+  if (allChecked) {
+    // 반의 모든 학생 체크됨 → 반 학생 전체 제거
+    const studentIds = new Set(students.map(u => u.id));
+    _picker.targets = _picker.targets.filter(t => !(t.type === 'student' && studentIds.has(t.id)));
   } else {
-    _picker.targets.push({ type:'class', id:g, name:g+' 전체', groupName:g });
+    // 반 학생 중 미체크 있음 → 미체크 학생 추가
+    students.forEach(u => {
+      if (!currentStudentIds.has(u.id)) {
+        _picker.targets.push({ type: 'student', id: u.id, name: u.name || '', groupName: g });
+      }
+    });
   }
   _pickerRenderBox();
   _pickerRenderSummary();
