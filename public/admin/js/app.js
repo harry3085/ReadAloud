@@ -17399,12 +17399,22 @@ window.progRenderByDate = async function () {
     const targetLabel = _buildTargetName ? _buildTargetName(t.targets) : (t.targetName || '');
     const type = (t.testMode || t.mode || '').toLowerCase();
     const typeLabel = ({ vocab:'단어시험', fill_blank:'빈칸채우기', unscramble:'언스크램블', mcq:'본문이해·문법', recording:'녹음숙제' })[type] || type;
+    // vocab 옵션 정보 (mcq 비율·형식) — 학원장 요청 2026-07-13
+    let vocabOpt = '';
+    if (type === 'vocab' && t.vocabOptions) {
+      const opts = t.vocabOptions;
+      if (opts.format === 'speaking') {
+        vocabOpt = ' · 말하기';
+      } else if (typeof opts.mcqRatio === 'number') {
+        vocabOpt = ` · 객${opts.mcqRatio}%`;
+      }
+    }
     return `
       <div class="card" style="padding:14px 16px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
           <div style="min-width:0;flex:1;">
             <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.4;">${esc(t.name || '시험')}${badges}${_tpEditNameBtnHtml(t)}</div>
-            <div style="font-size:11px;color:var(--gray);margin-top:3px;">${esc(typeLabel)} · ${esc(targetLabel)} · ${qCount}문항 · ${esc(dateStr)}</div>
+            <div style="font-size:11px;color:var(--gray);margin-top:3px;">${esc(typeLabel)} · ${esc(targetLabel)} · ${qCount}문항${vocabOpt} · ${esc(dateStr)}</div>
           </div>
         </div>
         <!-- 학생 카드 그리드 자동 펼침 (table 외 div) -->
