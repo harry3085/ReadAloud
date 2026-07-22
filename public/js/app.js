@@ -2448,12 +2448,9 @@ async function _raStartRecording(){
   const s = _raState;
   try{
     s.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // iOS Safari 는 webm/opus 녹음 가능하지만 <audio> 재생 미지원 → "오류" 표시.
-    // iOS 는 mp4/AAC 우선 (2026-07-22, 김다윤 iPhone iOS 18.7 케이스). AI 평가는 mp4 호환.
-    const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const mime = _isIOS
-      ? (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'))
-      : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm'));
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
     s.mediaRecorder = new MediaRecorder(s.stream, { mimeType: mime });
     s.chunks = [];
 
@@ -2918,12 +2915,15 @@ function _rv2RenderRoundCard(i, cur) {
   else if (isCurrent)   statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:var(--c-brand-cream);color:var(--c-brand);font-weight:700;">진행 중</span>';
   else                  statusBadge = '<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:#f5f5f5;color:#aaa;">대기</span>';
 
-  // 오디오 영역
+  // 오디오 영역 — iOS Safari 는 webm 재생 미지원이라 "오류" 표시.
+  // onerror 시 안내 문구 노출: 저장은 정상, 다음 회차 진행 유도 (2026-07-22)
   let audioHtml = '';
+  const _audioErrorMsg = `<div class="audio-error-notice" style="display:none;font-size:11px;color:#92400e;margin-top:6px;padding:8px 12px;background:#fef3c7;border-radius:6px;line-height:1.5;">ⓘ 미리 듣기가 안 되지만 <b>저장은 정상 완료</b>됐어요. 다음 회차를 진행하세요.</div>`;
+  const _audioErrHandler = `this.style.opacity='0.5';const n=this.parentElement.querySelector('.audio-error-notice');if(n)n.style.display='block';`;
   if (saved) {
-    audioHtml = `<div style="margin-bottom:10px;"><audio src="${saved.url}" controls style="width:100%;height:36px;"></audio></div>`;
+    audioHtml = `<div style="margin-bottom:10px;"><audio src="${saved.url}" controls onerror="${_audioErrHandler}" style="width:100%;height:36px;"></audio>${_audioErrorMsg}</div>`;
   } else if (hasTake) {
-    audioHtml = `<div style="margin-bottom:10px;"><audio src="${_rv2.currentTake.url}" controls preload="auto" style="width:100%;height:36px;"></audio></div>`;
+    audioHtml = `<div style="margin-bottom:10px;"><audio src="${_rv2.currentTake.url}" controls preload="auto" onerror="${_audioErrHandler}" style="width:100%;height:36px;"></audio>${_audioErrorMsg}</div>`;
   }
 
   // 버튼 영역
@@ -2996,12 +2996,9 @@ window.rv2StartRecord = async () => {
     // 새 녹음 시작 시 persistent 알림 클리어 (학생이 행동했으니 이전 알림 의미 없음)
     _rv2.alertMessage = null;
     _rv2.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // iOS Safari 는 webm/opus 녹음 가능하지만 <audio> 재생 미지원 → "오류" 표시.
-    // iOS 는 mp4/AAC 우선 (2026-07-22, 김다윤 iPhone iOS 18.7 케이스). AI 평가는 mp4 호환.
-    const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const mime = _isIOS
-      ? (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'))
-      : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm'));
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
     _rv2.mediaRecorder = new MediaRecorder(_rv2.stream, { mimeType: mime });
     _rv2.chunks = [];
     _rv2.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _rv2.chunks.push(e.data); };
