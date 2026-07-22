@@ -2448,9 +2448,12 @@ async function _raStartRecording(){
   const s = _raState;
   try{
     s.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
+    // iOS Safari 는 webm/opus 녹음 가능하지만 <audio> 재생 미지원 → "오류" 표시.
+    // iOS 는 mp4/AAC 우선 (2026-07-22, 김다윤 iPhone iOS 18.7 케이스). AI 평가는 mp4 호환.
+    const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const mime = _isIOS
+      ? (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'))
+      : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm'));
     s.mediaRecorder = new MediaRecorder(s.stream, { mimeType: mime });
     s.chunks = [];
 
@@ -2993,9 +2996,12 @@ window.rv2StartRecord = async () => {
     // 새 녹음 시작 시 persistent 알림 클리어 (학생이 행동했으니 이전 알림 의미 없음)
     _rv2.alertMessage = null;
     _rv2.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
+    // iOS Safari 는 webm/opus 녹음 가능하지만 <audio> 재생 미지원 → "오류" 표시.
+    // iOS 는 mp4/AAC 우선 (2026-07-22, 김다윤 iPhone iOS 18.7 케이스). AI 평가는 mp4 호환.
+    const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const mime = _isIOS
+      ? (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'))
+      : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm'));
     _rv2.mediaRecorder = new MediaRecorder(_rv2.stream, { mimeType: mime });
     _rv2.chunks = [];
     _rv2.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _rv2.chunks.push(e.data); };
