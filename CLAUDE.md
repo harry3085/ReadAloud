@@ -3990,3 +3990,172 @@ api/adminAction.js 재평가 흐름에 lastReadPosition·avoidanceJumps·transcr
 ```
 130초 · 말소리 71% · 속도 148 WPM · 명료도 70% · 단조 30% · 매칭 87% · 완독 100% (끝까지) · 📱 Android Chrome
 ```
+
+---
+
+## 2026-07-01 ~ 22: 여러 세션 통합 (Storage 비용·iOS 재생·UX 정비·재응시 옵션)
+
+SW v691 → v699 (~15 commit). 6/30 녹음 AI 종합 정비 이후 세션들 통합.
+
+### 1) 학원장 카드 색상 정책 최종 정비 (commit `f732681`·`cbabb20`)
+
+3단계 색상 규칙 확정 (도달·완독 우선):
+```
+도달 100% OR 완독률 90%+ → 🔵 정상 (시간·점수 무관, hasNormalIndicator)
+       ↓ 그 외
+시간 < 90% OR 점수 ≤50 OR 측정값 이상 → 🔴 강한 빨강
+       ↓ 그 외
+시간 90~110% + 도달 < 90% → 🟠 약한 빨강 (도달 라벨)
+```
+
+- 도달 100% → 90% 기준 완화 (거의 끝까지 읽은 학생도 정상)
+- 카드 라벨 수치 제거 (시간14% → 시간, 음성<10% → 음성 등, 항목명만)
+- 시간 비율 90~110% 자체 caution 트리거 폐기 (도달 부족만 caution)
+
+### 2) 라벨 통일 — 완독률·도달 → 매칭·완독 (commit `da61f68`)
+
+학원장 통찰 — 옛 라벨 의미 어긋남 (완독률=단어 매칭, 도달=본문 완독).
+사용자 지시·답변 시 **매칭/완독** 사용 규칙 확정. `[[[CLAUDE.md 앞부분 용어 정리 참조]]]`
+
+### 3) Firebase Storage 비용 최적화 (commit `cc0aa74`)
+
+**진단** — Firebase Console "Non-Firebase Services" 526~617원/월 발생:
+- 실제로 Firebase Storage (GCP Cloud Storage) 자체 요금 (저장·egress·operations)
+- 시스템 버킷 (artifacts·cloudbuild·gcf-sources) 잔존 없음 (Vercel 사용, Cloud Functions 배포 X)
+- Non-Firebase Services 항목 = Storage GCP 청구 분류
+- lifecycle 정상 (recordings 60일 삭제 완벽, 60일 이상 파일 0건 확인)
+- default 학원 recordings 3568개 = 9GB 안정 (자연 정체점)
+
+**해결** — audio 업로드 시 브라우저 캐시 헤더 3곳 (v1·v2 업로드·백업):
+```js
+cacheControl: 'public, max-age=2592000, immutable'
+```
+- 학원장·학생 반복 재생 시 캐시 사용 (Egress 60% 절감 예상)
+- 학원 성장 시 절감 효과 커짐 (10곳 = 월 $3~5)
+- AI 정확도 영향 X (audio 압축 아님)
+
+**audio 압축 보류** — Gemini 검증 결과 32~64 kbps = AI 정확도 저하 위험. 브라우저 기본 128 kbps 유지.
+
+### 4) iOS 재생 이슈 진단·롤백 (commit `b0a505f` → `7a6763f`)
+
+**보고** — 김다윤 (iPhone iOS 18.7) 1회차 저장 후 미리 듣기 "오류" 표시.
+
+**진단**:
+- Storage 저장 성공 (4MB webm)
+- iOS Safari 는 webm/opus 녹음 가능하나 `<audio>` 재생 미지원 → "오류"
+- 백엔드 무관, UI 재생만 실패
+
+**첫 시도 (롤백됨)** — iOS 감지 후 audio/mp4 우선 (b0a505f):
+- 회귀 위험 큼 (iOS 학생 141건 이미 webm 로 정상 응시 중)
+- 학원장 지적 "한 학생 케이스로 방식 변경 무리"
+
+**최종 (7a6763f)** — 롤백 + 안내 문구:
+- MediaRecorder mimeType 원복 (webm/opus 우선)
+- `<audio>` 태그 onerror 이벤트 → 안내:
+  "ⓘ 미리 듣기가 안 되지만 저장은 정상 완료됐어요. 다음 회차를 진행하세요."
+- 학생 안심 + 회귀 위험 0
+
+**iOS 사용자 비율 확인** (최근 30일 default 학원):
+- 총 응시 738건 (deviceInfo 박힘) — Android 74% / **iOS 22%** / Unknown·Mac·Windows 5%
+- iOS + 카카오톡 인앱 19건 — 인앱 브라우저 케이스도 유사 문제 가능
+
+### 5) 반/학생 selector UX 개선 (commit `08dbe9b`)
+
+**옛 흐름** — 반 체크 = 반 참조 (type='class') 자체 targets 추가. 반에서 학생 개별 제외 불가.
+
+**신 흐름** — 반 클릭 시 반 학생 모두 개별 체크 (type='student') → 개별 학생 체크 해제로 제외.
+
+- 반 체크박스 상태: 모두 체크 = checked / 일부 = indeterminate + 노란 배경 + "N/M명" 강조
+- pickerToggleClass 재작성 (반 학생 모두 targets 추가/제거)
+- pickerResolveUids 는 옛 type='class' 도 호환 (기존 초안·발송이력)
+
+### 6) 진도체크 카드 옵션 표시 (commit `d2f94e0`)
+
+학원장 요청 — 단어시험 카드에 mcq/주관식 비율 정보 추가.
+- `단어시험 · 어스본 10명 · 16문항 · 객50% · 26-07-13 18:32`
+- format=speaking → · 말하기 / mcqRatio 값 → · 객N%
+
+### 7) 재원생 결제 컬럼 (commit `789dea3`, 6월말 이미 반영)
+
+학생관리 재원생 테이블에 자동청구 등록 여부 컬럼 (✓/✗). 자동청구 OFF 학생 즉시 식별.
+
+### 8) 형광펜 알고리즘 진화 5단계 요약 (6/30 세션에서 이미 CLAUDE.md 반영됨)
+
+Greedy → set intersection → 위치 기반 → 구두점·apostrophe 정규화 → **DP LCS 정식** (최종)
+
+- 시뮬레이션: 권도현 42%→74%, 이지호 46%→97%, 서지율 47%→84%
+- 완독률과 거의 일치, 정상 응시 영향 없음
+
+### 9) 틀린문제만재응시 + 100점까지 옵션 (commit `41f080e`) ★ 최신
+
+**학원장 요청** — 불통 학생 재응시 시 이전 오답만 다시 풀기 (100점 강제 옵션).
+
+**옵션 2개 (단어시험 전용)**:
+- **틀린문제만재응시** (부모) — 재응시 시 이전 오답만 표시
+- **100점까지** (자식, 부모 선택 시 활성) — 100점 될 때까지 계속 불통
+
+**학생앱 흐름**:
+1. **startVocab** — `retryWrongOnly` + userCompleted 있음 → 이전 오답 word 추출 → 원본 questions 필터
+2. **_vqSubmit** — 원본 questions 전체 + 이전·현재 답안 병합 (word 기준, 이번 답안이 덮어쓰기)
+   → 최종 점수 = 전체 문제 대비 (누적)
+   → passed 판정: `requirePerfect ? score===100 : score>=passScore`
+3. **_vqRenderResult** — canRetryWrong 시 재응시 버튼 라벨 "🔁 틀린 N문제 다시 풀기"
+
+**시나리오 예 (16문제, 통과 80)**:
+- A: 재응시 ✓ + 100점 ⬜ → 1차 62점 → 2차 (6문제 중 5정답) → 누적 94점 통과
+- B: 둘 다 ✓ → 100점 될 때까지 계속 (1차 62 → 2차 94 → 3차 100 통과)
+- C: 둘 다 ⬜ → 기존 (전체 문제 다시)
+
+**데이터 정책**:
+- scores 컬렉션: 매 시도 별도 doc (기존 정책 유지 — attemptLabel 자동 카운트)
+- userCompleted: 원본 questions + 문제별 최고 답안 병합 저장
+
+**호환성**:
+- vocabOptions.retryWrongOnly 없는 옛 시험 = false 로 처리 (기존 동작 그대로)
+
+### 작업 규칙 추가 (2026-07)
+
+신규:
+- **iOS Safari 는 녹음 vs 재생 코덱 지원 불일치** — MediaRecorder 로 webm/opus 녹음 가능하나
+  `<audio>` 재생 미지원. 개발자가 PC Chrome 위주 테스트 시 놓치기 쉬움. HTML5 audio 태그에
+  onerror 이벤트로 학생 안내 필수. 코덱 변경 시 다수 iOS 학생 회귀 위험 (한 사례로 전환 X,
+  기존 학생 실제 사용 확인 우선).
+- **Firebase Storage 비용 = 저장 + Egress + Operations 종합** — 저장 요금 (5GB 무료 + $0.026/GB)
+  은 매우 작음. Egress ($0.12/GB, 1GB/일 무료) 가 주 요인. 학원장·학생 audio 재생 시 캐시
+  헤더 (30일 immutable) 로 60% 절감 가능. audio 압축은 AI 정확도 저하 위험 (Gemini 검증).
+- **Firebase Console 청구 카테고리 분류 함정** — Firebase Storage 는 실제 GCP Cloud Storage 위에서
+  돌아감. Firebase Console 은 이를 "Non-Firebase Services" 로 분류 (설명은 Cloud Functions
+  배포 스토리지). 실제 원인 파악은 Cloud Console SKU 별 상세 확인 필수.
+- **반/학생 selector = 반 클릭 시 학생 개별 체크** — 반 참조 (type='class') 자체 targets 저장
+  하면 학생 개별 제외 불가. 반 클릭 시 그 반 학생 모두 개별 (type='student') 추가하면 학생
+  체크 해제로 편하게 제외. 반 체크박스 상태는 indeterminate (부분) 로 시각화.
+- **AI 응답 형식 변동 대응 = split 방어** — Gemini transcribedWords 가 단어 vs 문장 element
+  응답 변동성. `flatMap(s => s.match(/[a-z']+/g) || [])` 로 어떤 형식이든 단어 단위 자동 추출.
+  운영 코드 방어 필수.
+- **재응시 답안 병합 = word 기준** — 문제 인덱스가 매 응시 셔플로 달라짐. `word` 를 unique key
+  로 사용해서 이전·현재 답안 매핑. 이번 시도 답안이 이전 답안 덮어쓰기.
+
+### 진행률 (2026-07-22 종료)
+
+- Storage 비용 최적화: **~80%** (캐시 헤더 적용, audio 압축 보류)
+- iOS 재생 이슈: **~100%** (안내 문구, 롤백 안정)
+- 학원장 카드·모달 정책: **~100%** (도달·완독 우선, 라벨 통일)
+- 형광펜 DP LCS: **~100%** (완독률 일관)
+- 반/학생 selector UX: **~100%** (반 클릭 → 학생 개별)
+- **틀린문제만재응시**: **~100%** (핵심 기능 배포, 실행 후 보완 대기)
+- 진도체크 카드 옵션 표시: ~100%
+- 멀티테넌시·결제·말하기·AI Generator·메시지: 변동 없음
+- Phase 5 출시 준비: 0%
+
+### 파일 크기 / SW 캐시 (2026-07 통합)
+- api/check-recording.js·adminAction.js: 변동 없음 (6/30 완료)
+- public/admin/js/app.js: +~200줄 (picker 재작성 + 카드 정책 + 옵션 UI + 진도체크 라벨)
+- public/js/app.js: +~120줄 (audio 캐시 헤더 + iOS 안내 + 틀린문제 병합·판정)
+- SW 캐시: `kunsori-v691` → `kunsori-v699`
+
+**다음 세션 후보**:
+1. **틀린문제만재응시 실행 결과 관찰·보완** (학원장 트리거)
+2. 학원장 학생 카드에 시도 횟수 표시 (attemptLabel 카드 노출)
+3. 진도체크 카드 옵션 뱃지 (`틀린만재응시` 표시)
+4. Storage 캐시 헤더 효과 실측 (며칠 후 요금 추이)
+5. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
