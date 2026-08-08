@@ -7350,13 +7350,23 @@ window.stqToggleMic = () => {
   try { rec.start(); } catch(e) { console.warn(e); showToast('마이크 시작 실패: ' + e.message); }
 };
 
-// DP LCS 매칭률 계산 (학원장 형광펜과 동일 알고리즘)
+// 매칭률 — 관대한 채점 (문장 이해 우선, 발음 미흡 허용)
+// 3가지 방식 중 최고점 채택:
+//   1. DP LCS (순서 반영)
+//   2. 내용어 set intersection (관사·전치사 제외)
+//   3. 핵심 명사·동사 포함율
+// stopwords 는 매칭 분모에서 제외 (a/the 만 맞아도 정답 되지 않도록)
+const _STQ_STOPWORDS = new Set([
+  'a','an','the','is','are','was','were','be','been','being',
+  'do','does','did','have','has','had','of','to','in','on','at','for','with','by','from','as'
+]);
 function _stqCalcMatchRate(heardText, answerText) {
   const norm = (v) => String(v || '').toLowerCase().replace(/'/g, '').match(/[a-z]+/g) || [];
   const heard = norm(heardText);
   const answer = norm(answerText);
-  if (answer.length === 0) return 0;
-  if (heard.length === 0) return 0;
+  if (answer.length === 0 || heard.length === 0) return 0;
+
+  // 1) DP LCS (순서 반영)
   const n = heard.length, m = answer.length;
   const dp = Array.from({ length: n + 1 }, () => new Int16Array(m + 1));
   for (let i = 1; i <= n; i++) {
@@ -7366,7 +7376,25 @@ function _stqCalcMatchRate(heardText, answerText) {
         : Math.max(dp[i - 1][j], dp[i][j - 1]);
     }
   }
-  return Math.round((dp[n][m] / m) * 100);
+  const lcsRate = (dp[n][m] / m) * 100;
+
+  // 2) 내용어(non-stopword) set intersection — 관사 등 stopword 는 분모 제외
+  const heardSet = new Set(heard);
+  const contentAnswer = answer.filter(w => !_STQ_STOPWORDS.has(w));
+  let contentRate = lcsRate;
+  if (contentAnswer.length > 0) {
+    const matched = contentAnswer.filter(w => heardSet.has(w)).length;
+    contentRate = (matched / contentAnswer.length) * 100;
+  }
+
+  // 3) 전체 unique set intersection (순서 완전 무시 — 가장 관대)
+  const answerSet = new Set(answer);
+  let unorderedMatched = 0;
+  for (const w of answerSet) if (heardSet.has(w)) unorderedMatched++;
+  const unorderedRate = (unorderedMatched / answerSet.size) * 100;
+
+  // 3가지 중 최고점 채택 (관대한 채점)
+  return Math.round(Math.max(lcsRate, contentRate, unorderedRate));
 }
 
 window.stqSubmit = () => {
@@ -7375,24 +7403,35 @@ window.stqSubmit = () => {
   const q = s.questions[s.currentIdx];
   const heard = s.transcript.trim();
   const matchRate = _stqCalcMatchRate(heard, q.en || '');
-  const isCorrect = matchRate >= (s.opts.matchThreshold || 80);
-  s.answers[s.currentIdx] = { transcript: heard, matchRate, isCorrect, hintUsed: s.hintCount };
+  // 이중 임계 — 학원장 설정 threshold (엄격) 와 그 -20 (관대, min 50) 둘 다 통과 판정
+  // 관대 통과: 발음 미흡해도 문장 이해 확인 시 정답 인정
+  const strictThreshold = s.opts.matchThreshold || 80;
+  const lenientThreshold = Math.max(50, strictThreshold - 20);
+  const isStrictCorrect = matchRate >= strictThreshold;
+  const isLenientCorrect = matchRate >= lenientThreshold;
+  const isCorrect = isLenientCorrect;   // 관대 채점 통과도 정답으로
+  s.answers[s.currentIdx] = { transcript: heard, matchRate, isCorrect, isStrictCorrect, hintUsed: s.hintCount };
   const liveEl = document.getElementById('stqLiveTranscript');
   if (liveEl) {
     const color = isCorrect ? '#059669' : '#dc2626';
-    const mark = isCorrect ? '✓ 정답' : '✗ 오답';
+    const bgAnswer = isCorrect ? '#ecfdf5' : '#fef2f2';
+    let mark;
+    if (isStrictCorrect) mark = '✓ 정답';
+    else if (isLenientCorrect) mark = '✓ 정답 (문장 이해 확인)';
+    else mark = '✗ 다시 연습해봐요';
+    // 정답 문장을 크게·먼저 노출 (학생이 자기가 말한 문장의 실제 정답 확인)
     liveEl.innerHTML =
-      '<div style="font-size:11px;color:' + color + ';font-weight:700;margin-bottom:6px;">' + mark + ' · 매칭 ' + matchRate + '%</div>' +
-      '<div style="font-size:11px;color:var(--gray);margin-bottom:2px;">내 답:</div>' +
-      '<div style="font-size:13px;color:var(--text);margin-bottom:8px;padding:6px 10px;background:#f9fafb;border-radius:6px;">' + (esc(heard) || '<em>(발화 없음)</em>') + '</div>' +
-      '<div style="font-size:11px;color:var(--gray);margin-bottom:2px;">정답:</div>' +
-      '<div style="font-size:13px;color:' + color + ';font-weight:600;padding:6px 10px;background:' + (isCorrect?'#ecfdf5':'#fef2f2') + ';border-radius:6px;">' + esc(q.en || '') + '</div>';
+      '<div style="font-size:13px;color:' + color + ';font-weight:800;margin-bottom:10px;">' + mark + ' · 매칭 ' + matchRate + '%</div>' +
+      '<div style="font-size:11px;color:var(--gray);margin-bottom:3px;">정답 문장</div>' +
+      '<div style="font-size:17px;font-weight:700;color:' + color + ';padding:10px 12px;background:' + bgAnswer + ';border-radius:8px;line-height:1.5;margin-bottom:10px;">' + esc(q.en || '') + '</div>' +
+      '<div style="font-size:11px;color:var(--gray);margin-bottom:3px;">내 발화</div>' +
+      '<div style="font-size:14px;color:var(--text);padding:8px 12px;background:#f9fafb;border-radius:8px;line-height:1.5;">' + (esc(heard) || '<em style="color:#bbb;">(발화 없음)</em>') + '</div>';
   }
   const submitBtn = document.getElementById('stqSubmitBtn');
   const micBtn = document.getElementById('stqMicBtn');
   if (submitBtn) submitBtn.disabled = true;
   if (micBtn) micBtn.disabled = true;
-  setTimeout(() => { _stqAdvance(); }, 2500);
+  setTimeout(() => { _stqAdvance(); }, 2800);
 };
 
 window.stqSkip = () => {
