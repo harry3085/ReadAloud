@@ -7270,18 +7270,49 @@ function _stqRenderStep() {
   if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
 }
 
+// 핵심 단어 우선 순위 계산 — 긴 non-stopword > 짧은 non-stopword > stopword, 원래 순서 tie-break
+function _stqRankKeyWords(sentence) {
+  const tokens = (sentence || '').split(/\s+/).filter(Boolean);
+  return tokens
+    .map((tok, idx) => {
+      const clean = tok.toLowerCase().replace(/[^a-z']/g, '');
+      const isStop = _STQ_STOPWORDS.has(clean);
+      // 점수: 긴 non-stopword 우선 (10 이상), stopword 는 낮게 (0)
+      const score = isStop ? 0 : (10 + clean.length);
+      return { idx, tok, score };
+    })
+    .sort((a, b) => b.score - a.score || a.idx - b.idx);
+}
+
 window.stqHint = () => {
   const s = _stqState;
   if (!s.opts.allowHint) return;
   if (s.hintCount >= _STQ_HINT_MAX) { showToast('힌트는 최대 ' + _STQ_HINT_MAX + '회까지'); return; }
   s.hintCount++;
   const q = s.questions[s.currentIdx];
-  const words = (q.en || '').split(/\s+/).filter(Boolean);
-  const hintWords = words.slice(0, s.hintCount).join(' ');
+  const tokens = (q.en || '').split(/\s+/).filter(Boolean);
+  // 핵심 단어 순위 (긴 non-stopword 우선) — 매 문제 첫 힌트 때 캐시
+  if (!s._hintOrder || s._hintOrderQIdx !== s.currentIdx) {
+    s._hintOrder = _stqRankKeyWords(q.en || '');
+    s._hintOrderQIdx = s.currentIdx;
+  }
+  // 힌트 카운트만큼 순위 top N 의 인덱스 노출
+  const revealedIdx = new Set(s._hintOrder.slice(0, s.hintCount).map(o => o.idx));
+  const revealedWords = s._hintOrder.slice(0, s.hintCount).map(o => o.tok);
+  // 문장 형태로 표시 — 노출된 자리는 원단어, 아니면 밑줄
+  const masked = tokens.map((tok, i) => {
+    if (revealedIdx.has(i)) return `<span style="color:#78350f;font-weight:800;">${esc(tok)}</span>`;
+    const under = '_'.repeat(Math.max(2, tok.replace(/[^a-zA-Z']/g, '').length));
+    return `<span style="color:#d1c4b8;">${under}</span>`;
+  }).join(' ');
   const hintArea = document.getElementById('stqHintArea');
   const hintText = document.getElementById('stqHintText');
   if (hintArea) hintArea.style.display = 'block';
-  if (hintText) hintText.textContent = hintWords + (s.hintCount < words.length ? ' ...' : '');
+  if (hintText) {
+    // 마스킹 문장 + 아래 노출 단어 리스트
+    hintText.innerHTML = `<div style="font-family:monospace;font-size:14px;line-height:1.6;margin-bottom:4px;">${masked}</div>` +
+      `<div style="font-size:11px;color:#a08776;">핵심: <strong style="color:#78350f;">${revealedWords.map(esc).join(', ')}</strong></div>`;
+  }
   const btn = document.getElementById('stqHintBtn');
   if (btn) {
     if (s.hintCount >= _STQ_HINT_MAX) { btn.textContent = '💡 힌트 (max)'; btn.disabled = true; }
