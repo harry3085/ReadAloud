@@ -7242,6 +7242,8 @@ function _stqRenderStep() {
   const s = _stqState;
   const q = s.questions[s.currentIdx];
   if (!q) return;
+  // 다음 문제 진입 시 이전 TTS 재생 중단
+  if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
   const barEl = document.getElementById('stqProgressBar');
   const txtEl = document.getElementById('stqProgressText');
   if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
@@ -7431,8 +7433,24 @@ window.stqSubmit = () => {
   const micBtn = document.getElementById('stqMicBtn');
   if (submitBtn) submitBtn.disabled = true;
   if (micBtn) micBtn.disabled = true;
+  // 정답 문장 TTS 읽어주기 (한 번)
+  _stqSpeakAnswer(q.en || '');
   setTimeout(() => { _stqAdvance(); }, 2800);
 };
+
+// 정답 문장 TTS — Web Speech Synthesis
+function _stqSpeakAnswer(text) {
+  if (!text || typeof window.speechSynthesis === 'undefined') return;
+  try {
+    window.speechSynthesis.cancel();  // 이전 재생 중단
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = 0.95;     // 살짝 느리게
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    window.speechSynthesis.speak(u);
+  } catch(e) { console.warn('[stq] TTS:', e); }
+}
 
 window.stqSkip = () => {
   const s = _stqState;
@@ -7533,6 +7551,7 @@ window.quitSentence = async () => {
   if (!(await showConfirm('시험을 중단할까요?', ''))) return;
   const s = _stqState;
   if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
+  if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
   goHome();
 };
 
