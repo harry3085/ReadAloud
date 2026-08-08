@@ -13224,6 +13224,24 @@ function _qsRenderViewCard(q, i) {
     </div>`;
   }
 
+  // 2026-07-22 문장시험
+  if (q.type === 'sentence') {
+    const wc = q.wordCount || (q.en || '').split(/\s+/).filter(Boolean).length;
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+      ${header}
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;">
+        <div style="padding:8px 12px;background:#f0fdfa;border-radius:6px;border-left:3px solid #14b8a6;">
+          <div style="font-size:10px;color:#0f766e;margin-bottom:2px;">한글 (학생이 보고 말할 문장)</div>
+          <div style="font-size:14px;font-weight:600;color:#134e4a;">${esc(q.ko||'')}</div>
+        </div>
+        <div style="padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #3b82f6;">
+          <div style="font-size:10px;color:#1e40af;margin-bottom:2px;">영어 (정답, ${wc}단어)</div>
+          <div style="font-size:14px;font-weight:700;color:#1e3a8a;">${esc(q.en||'')}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
   // 기본(MCQ)
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
     ${header}
