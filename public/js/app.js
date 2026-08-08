@@ -7308,15 +7308,17 @@ window.stqToggleMic = () => {
   if (btn) { btn.textContent = '⏸ 정지'; btn.style.background = '#dc2626'; }
   const liveEl = document.getElementById('stqLiveTranscript');
   if (liveEl) liveEl.textContent = '';
-  let finalText = '';
+  // 매 event 마다 event.results 전체를 재순회해 재구성 (누적 X)
+  // 안드로이드 일부 브라우저는 resultIndex 를 항상 0 으로 보내 누적 시 단어 중복 발생
   rec.onresult = (event) => {
+    let finalText = '';
     let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    for (let i = 0; i < event.results.length; i++) {
       const r = event.results[i];
       if (r.isFinal) finalText += r[0].transcript + ' ';
-      else interim += r[0].transcript;
+      else interim += r[0].transcript + ' ';
     }
-    s.transcript = (finalText + ' ' + interim).trim();
+    s.transcript = (finalText + interim).replace(/\s+/g, ' ').trim();
     if (liveEl) liveEl.textContent = s.transcript || '(듣는 중...)';
     const submitBtn = document.getElementById('stqSubmitBtn');
     if (submitBtn && s.transcript) submitBtn.disabled = false;
