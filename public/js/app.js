@@ -416,6 +416,7 @@ const _BADGE_MAP = {
   mcq: 'mcqBadge',
   fill_blank: 'blankBadge',
   recording: 'recBadge',
+  sentence: 'sentenceBadge',
 };
 let _badgeUpdateInflight = null;
 
@@ -4421,7 +4422,7 @@ let _exitToast=null; // 종료 안내 토스트 타이머
 
 // SW 자동 reload (2026-06-05) — 시험 중이면 대기, 다른 화면 전환 시 자동 적용
 // 새 sw.js activate 시 SW_UPDATED postMessage 받음 (sw.js 의 activate handler)
-const _EXAM_SCREENS = new Set(['vocabQuiz','unscrambleQuiz','recAiQuiz','readingMcq','fillBlank','result']);
+const _EXAM_SCREENS = new Set(['vocabQuiz','unscrambleQuiz','recAiQuiz','readingMcq','fillBlank','sentenceQuiz','result']);
 function _isInExam(id) { return _EXAM_SCREENS.has(id); }
 let _pendingReload = false;
 function _trySwReload() {
@@ -4471,6 +4472,7 @@ const _EXAM_QUIT_FNS = {
   unscrambleQuiz: 'quitUnscramble2',
   readingMcq: 'quitReadingMcq',
   fillBlank: 'quitFillBlank',
+  sentenceQuiz: 'quitSentence',
 };
 
 window.addEventListener('popstate', async e=>{
@@ -7193,4 +7195,307 @@ window.markAllNotifsRead = async() => {
     await updateNotifBadge(0);
     showToast('모두 읽음 처리됐어요!');
   }catch(e){console.warn(e);}
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// 문장시험 (2026-07-22) — 한글 문장 보고 영어로 말하기 (Web Speech STT)
+// 학원장이 sentenceOptions.matchThreshold 로 정답 임계 설정 (기본 80%)
+// 각 문제: 한글 표시 → 학생 마이크 → 실시간 STT → 힌트(3회) → 제출 → DP LCS 매칭
+// ═══════════════════════════════════════════════════════════════════════
+let _stqState = {
+  test: null, questions: [], currentIdx: 0, answers: [],
+  opts: {}, rec: null, listening: false, transcript: '', hintCount: 0,
+  _submitted: false, _submitting: false,
+};
+const _STQ_HINT_MAX = 3;
+
+window.startSentence = async (testId, testName) => {
+  try {
+    const snap = await getDoc(doc(db, 'genTests', testId));
+    if (!snap.exists()) { showToast('시험 정보를 불러올 수 없어요.'); return; }
+    const test = { id: testId, ...snap.data() };
+    let questions = (test.questions || []).filter(q => q.type === 'sentence' && q.ko && q.en);
+    if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+    const opts = {
+      matchThreshold: test.sentenceOptions?.matchThreshold ?? 80,
+      shuffleQ: test.sentenceOptions?.shuffleQ !== false,
+      allowHint: test.sentenceOptions?.allowHint !== false,
+    };
+    if (opts.shuffleQ) questions = _rngShuffle(questions);
+    const ok = await _checkMicSupport({ needSpeech: true });
+    if (!ok) return;
+    _stqState = {
+      test, questions, currentIdx: 0,
+      answers: questions.map(() => ({ transcript: '', matchRate: 0, isCorrect: false, hintUsed: 0 })),
+      opts, rec: null, listening: false, transcript: '', hintCount: 0,
+      _submitted: false, _submitting: false,
+    };
+    show('sentenceQuiz');
+    _stqRenderStep();
+  } catch (e) {
+    console.error(e);
+    showToast('시험 시작 실패: ' + e.message);
+  }
+};
+
+function _stqRenderStep() {
+  const s = _stqState;
+  const q = s.questions[s.currentIdx];
+  if (!q) return;
+  const barEl = document.getElementById('stqProgressBar');
+  const txtEl = document.getElementById('stqProgressText');
+  if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
+  if (txtEl) txtEl.textContent = (s.currentIdx + 1) + '/' + s.questions.length;
+  const koEl = document.getElementById('stqKoSentence');
+  if (koEl) koEl.textContent = q.ko || '';
+  s.hintCount = 0;
+  const hintArea = document.getElementById('stqHintArea');
+  if (hintArea) hintArea.style.display = 'none';
+  const hintBtn = document.getElementById('stqHintBtn');
+  if (hintBtn) {
+    hintBtn.disabled = !s.opts.allowHint;
+    hintBtn.style.opacity = s.opts.allowHint ? '1' : '0.3';
+    hintBtn.textContent = '💡 힌트';
+  }
+  s.transcript = '';
+  const liveEl = document.getElementById('stqLiveTranscript');
+  if (liveEl) liveEl.innerHTML = '<span style="color:var(--gray);font-size:12px;font-style:italic;">마이크 버튼을 눌러 시작하세요</span>';
+  const submitBtn = document.getElementById('stqSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  const micBtn = document.getElementById('stqMicBtn');
+  if (micBtn) { micBtn.textContent = '🎤 마이크'; micBtn.style.background = 'var(--teal)'; micBtn.disabled = false; }
+  s.listening = false;
+  if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
+}
+
+window.stqHint = () => {
+  const s = _stqState;
+  if (!s.opts.allowHint) return;
+  if (s.hintCount >= _STQ_HINT_MAX) { showToast('힌트는 최대 ' + _STQ_HINT_MAX + '회까지'); return; }
+  s.hintCount++;
+  const q = s.questions[s.currentIdx];
+  const words = (q.en || '').split(/\s+/).filter(Boolean);
+  const hintWords = words.slice(0, s.hintCount).join(' ');
+  const hintArea = document.getElementById('stqHintArea');
+  const hintText = document.getElementById('stqHintText');
+  if (hintArea) hintArea.style.display = 'block';
+  if (hintText) hintText.textContent = hintWords + (s.hintCount < words.length ? ' ...' : '');
+  const btn = document.getElementById('stqHintBtn');
+  if (btn) {
+    if (s.hintCount >= _STQ_HINT_MAX) { btn.textContent = '💡 힌트 (max)'; btn.disabled = true; }
+    else btn.textContent = '💡 힌트 (' + s.hintCount + '/' + _STQ_HINT_MAX + ')';
+  }
+};
+
+window.stqToggleMic = () => {
+  const s = _stqState;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
+  const btn = document.getElementById('stqMicBtn');
+  if (s.listening) {
+    if (s.rec) { try { s.rec.stop(); } catch(_){} }
+    s.listening = false;
+    if (btn) { btn.textContent = '🎤 마이크'; btn.style.background = 'var(--teal)'; }
+    return;
+  }
+  const rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  s.rec = rec;
+  s.listening = true;
+  if (btn) { btn.textContent = '⏸ 정지'; btn.style.background = '#dc2626'; }
+  const liveEl = document.getElementById('stqLiveTranscript');
+  if (liveEl) liveEl.textContent = '';
+  let finalText = '';
+  rec.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const r = event.results[i];
+      if (r.isFinal) finalText += r[0].transcript + ' ';
+      else interim += r[0].transcript;
+    }
+    s.transcript = (finalText + ' ' + interim).trim();
+    if (liveEl) liveEl.textContent = s.transcript || '(듣는 중...)';
+    const submitBtn = document.getElementById('stqSubmitBtn');
+    if (submitBtn && s.transcript) submitBtn.disabled = false;
+  };
+  rec.onerror = (e) => { console.warn('[stq] SR error:', e.error); };
+  rec.onend = () => {
+    s.listening = false;
+    if (btn) { btn.textContent = '🎤 마이크'; btn.style.background = 'var(--teal)'; }
+  };
+  try { rec.start(); } catch(e) { console.warn(e); showToast('마이크 시작 실패: ' + e.message); }
+};
+
+// DP LCS 매칭률 계산 (학원장 형광펜과 동일 알고리즘)
+function _stqCalcMatchRate(heardText, answerText) {
+  const norm = (v) => String(v || '').toLowerCase().replace(/'/g, '').match(/[a-z]+/g) || [];
+  const heard = norm(heardText);
+  const answer = norm(answerText);
+  if (answer.length === 0) return 0;
+  if (heard.length === 0) return 0;
+  const n = heard.length, m = answer.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int16Array(m + 1));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] = (heard[i - 1] === answer[j - 1])
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return Math.round((dp[n][m] / m) * 100);
+}
+
+window.stqSubmit = () => {
+  const s = _stqState;
+  if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
+  const q = s.questions[s.currentIdx];
+  const heard = s.transcript.trim();
+  const matchRate = _stqCalcMatchRate(heard, q.en || '');
+  const isCorrect = matchRate >= (s.opts.matchThreshold || 80);
+  s.answers[s.currentIdx] = { transcript: heard, matchRate, isCorrect, hintUsed: s.hintCount };
+  const liveEl = document.getElementById('stqLiveTranscript');
+  if (liveEl) {
+    const color = isCorrect ? '#059669' : '#dc2626';
+    const mark = isCorrect ? '✓ 정답' : '✗ 오답';
+    liveEl.innerHTML =
+      '<div style="font-size:11px;color:' + color + ';font-weight:700;margin-bottom:6px;">' + mark + ' · 매칭 ' + matchRate + '%</div>' +
+      '<div style="font-size:11px;color:var(--gray);margin-bottom:2px;">내 답:</div>' +
+      '<div style="font-size:13px;color:var(--text);margin-bottom:8px;padding:6px 10px;background:#f9fafb;border-radius:6px;">' + (esc(heard) || '<em>(발화 없음)</em>') + '</div>' +
+      '<div style="font-size:11px;color:var(--gray);margin-bottom:2px;">정답:</div>' +
+      '<div style="font-size:13px;color:' + color + ';font-weight:600;padding:6px 10px;background:' + (isCorrect?'#ecfdf5':'#fef2f2') + ';border-radius:6px;">' + esc(q.en || '') + '</div>';
+  }
+  const submitBtn = document.getElementById('stqSubmitBtn');
+  const micBtn = document.getElementById('stqMicBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  if (micBtn) micBtn.disabled = true;
+  setTimeout(() => { _stqAdvance(); }, 2500);
+};
+
+window.stqSkip = () => {
+  const s = _stqState;
+  if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
+  s.answers[s.currentIdx] = { transcript: '', matchRate: 0, isCorrect: false, hintUsed: s.hintCount, skipped: true };
+  _stqAdvance();
+};
+
+function _stqAdvance() {
+  const s = _stqState;
+  if (s.currentIdx < s.questions.length - 1) {
+    s.currentIdx++;
+    _stqRenderStep();
+  } else {
+    _stqSubmitFinal();
+  }
+}
+
+async function _stqSubmitFinal() {
+  const s = _stqState;
+  const t = s.test;
+  if (!t || !currentUser) return;
+  if (s._submitted || s._submitting) return;
+  s._submitting = true;
+  const correct = s.answers.filter(a => a.isCorrect).length;
+  const total = s.questions.length;
+  const score = total ? Math.round((correct / total) * 100) : 0;
+  const passScore = t.passScore ?? 80;
+  const passed = score >= passScore;
+  const today = _ymdKST();
+  try {
+    await addDoc(collection(db, 'scores'), {
+      academyId: window.MY_ACADEMY_ID || 'default',
+      uid: currentUser.uid, userId: currentUser.uid,
+      userName: userProfile?.name || '', name: userProfile?.name || '',
+      group: userProfile?.group || '',
+      testId: t.id, testName: t.name || '',
+      unitId: t.id, unitName: t.name || '',
+      bookName: t.bookName || '',
+      mode: 'sentence',
+      score, correct, wrong: total - correct, total,
+      passed, passScore,
+      date: today,
+      createdAt: serverTimestamp(),
+    });
+    try {
+      await _writeUserCompleted(t.id, {
+        score, passed, passScore,
+        correct, wrong: total - correct, total,
+        questions: s.questions, answers: s.answers,
+      });
+    } catch(e) { console.warn('genTest 완료 기록 실패', e); }
+    s._submitted = true;
+  } catch(e) {
+    console.error(e);
+    showToast('점수 저장 실패: ' + e.message);
+  } finally {
+    s._submitting = false;
+  }
+  _stqRenderResult({ correct, wrong: total - correct, total, score, passed, passScore });
+}
+
+function _stqRenderResult({ correct, wrong, total, score, passed, passScore }) {
+  const screen = document.getElementById('sentenceQuiz');
+  if (!screen) return;
+  _screenSnapshotOnce('sentenceQuiz');
+  const s = _stqState;
+  const detailHtml = s.questions.map((q, i) => {
+    const a = s.answers[i] || {};
+    const bg = a.isCorrect ? '#F0FDF4' : '#FEF2F2';
+    const border = a.isCorrect ? '#BBF7D0' : '#FECACA';
+    const color = a.isCorrect ? '#059669' : '#dc2626';
+    return '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left;">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+        '<span style="font-size:11px;color:var(--gray);font-weight:700;">' + (i+1) + '.</span>' +
+        '<span style="font-size:12px;color:' + color + ';font-weight:700;">' + (a.isCorrect ? '✓ 정답' : '✗ 오답') + ' · 매칭 ' + (a.matchRate||0) + '%</span>' +
+        (a.hintUsed ? '<span style="font-size:10px;color:#78350f;">💡 힌트 ' + a.hintUsed + '회</span>' : '') +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text);margin-bottom:4px;">' + esc(q.ko||'') + '</div>' +
+      '<div style="font-size:11px;color:var(--gray);">내답: ' + (esc(a.transcript||'') || '<em>(미발화)</em>') + '</div>' +
+      '<div style="font-size:11px;color:' + color + ';">정답: ' + esc(q.en||'') + '</div>' +
+    '</div>';
+  }).join('');
+  screen.innerHTML = _renderResultShell('sentence', {
+    correct, wrong, total, score, passed, passScore,
+    detailHtml,
+  });
+  screen.dataset.stage = 'result';
+}
+
+window.stqRetakeCurrent = () => {
+  const t = _stqState && _stqState.test;
+  if (!t || !t.id) { showToast('시험 정보 없음'); return; }
+  startSentence(t.id, t.name || '');
+};
+
+window.quitSentence = async () => {
+  if (!(await showConfirm('시험을 중단할까요?', ''))) return;
+  const s = _stqState;
+  if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
+  goHome();
+};
+
+// MVP: 이전 결과 보기 = 재응시 (별도 리뷰 화면 없음, 재응시 흐름 재사용)
+window.stqViewPreviousResult = (testId, testName) => {
+  startSentence(testId, testName);
+};
+
+// TEST_TYPE_UI.sentence — 문장시험 (한국어 → 영어 말하기)
+if (typeof TEST_TYPE_UI !== 'undefined' && !TEST_TYPE_UI.sentence) {
+  TEST_TYPE_UI.sentence = {
+    defaultName:'문장 시험', subtitleEmoji:'🗣', subtitleDefault:'문장 말하기',
+    pendingBg:'#f3e8ff', pendingColor:'#7c3aed',
+    completedArrow:'↻', showRetakeBadge:true,
+    accent:'#7c3aed', retakeBtnBg:'#A855F7',
+    screenId:'sentenceQuiz', listFn:'goSentence', retakeFn:'stqRetakeCurrent',
+    pendingElId:'stqListPending', completedElId:'stqListCompleted',
+    startFn:'startSentence', viewPrevFn:'stqViewPreviousResult',
+  };
+}
+
+const loadSentenceList = () => _loadTestListByType('sentence');
+window.goSentence = async () => {
+  show('sentenceList');
+  await loadSentenceList();
 };

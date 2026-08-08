@@ -397,6 +397,7 @@ const pageLabels = {
   'test-mcq':'본문이해·문법_객관식',
   'test-subj':'해석하기_주관식',
   'test-rec-ai':'녹음숙제',
+  'test-sentence':'문장시험',
 };
 window.goPage = async(id) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -430,6 +431,7 @@ window.goPage = async(id) => {
   else if(id==='test-mcq')        await _renderTestAssignDetail('mcq');
   else if(id==='test-subj')       await _renderTestAssignDetail('subj');
   else if(id==='test-rec-ai')     await _renderTestAssignDetail('rec-ai');
+  else if(id==='test-sentence')   await _renderTestAssignDetail('sentence');
 };
 
 window.toggleNav = (group) => {
@@ -14328,6 +14330,18 @@ const _TEST_TYPE_CONFIG = {
     gradingMode: 'ai',
     hint: 'Page 단위 녹음숙제를 학생앱에 배정합니다. 회차·통과점수·시간은 배정 시 설정. AI 가 정확도를 평가합니다.',
   },
+  // 2026-07-22 문장시험 (한글→영어 STT)
+  'sentence': {
+    rootId: 'sentenceAssignRoot',
+    kindLabel: '문장',
+    sourceType: 'sentence',
+    testMode: 'sentence',
+    enabled: true,
+    phaseLabel: null,
+    actions: ['assign'],
+    gradingMode: 'auto',
+    hint: '한글 문장을 보고 영어로 말하는 시험입니다. 매칭률 기준으로 자동 채점 (기본 80%).',
+  },
 };
 
 function _renderTestAssignShell(type) {
@@ -15427,6 +15441,31 @@ window.tpOpenPublishModal = async () => {
             </div>`
           : ''}
 
+        ${cfg.testMode === 'sentence'
+          ? `<div style="margin-bottom:14px;padding:10px 12px;background:#f0fdfa;border-radius:6px;border:1px solid #a7f3d0;">
+              <div style="font-size:11px;font-weight:700;color:#134e4a;margin-bottom:8px;">🗣 문장시험 옵션</div>
+              <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="학생 발화와 정답 문장의 매칭률 임계. 이 값 이상이면 정답, 미만이면 오답.">
+                  매칭률 기준:
+                  <input type="range" id="tpSentenceMatchThreshold" min="50" max="100" step="5" value="80"
+                    oninput="document.getElementById('tpSentenceMatchThresholdVal').textContent=this.value+'%';"
+                    style="width:120px;">
+                  <span id="tpSentenceMatchThresholdVal" style="font-size:11px;font-weight:700;min-width:36px;color:#134e4a;">80%</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
+                  <input type="checkbox" id="tpSentenceShuffleQ" checked> 문제 순서 섞기
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
+                  <input type="checkbox" id="tpSentenceAllowHint" checked> 힌트 버튼 허용 (최대 3회, 감점 X)
+                </label>
+              </div>
+              <div style="font-size:10px;color:#0f766e;margin-top:6px;line-height:1.5;">
+                ※ 학생이 한글을 보고 영어로 말하기 → 실시간 STT → 제출 → 정답 대비 매칭률 계산<br>
+                ※ 마이크 권한 필요 — Chrome/Safari 권장
+              </div>
+            </div>`
+          : ''}
+
         <div style="margin-bottom:12px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;">👥 배정 대상</div>
           <div id="tpTargetSummary" style="padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:12px;color:var(--gray);margin-bottom:10px;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;"></div>
@@ -15563,6 +15602,17 @@ window.tpPublish = async () => {
     }
   }
 
+  // 2026-07-22 문장시험 옵션
+  let sentenceOptions = null;
+  if (cfg.testMode === 'sentence') {
+    const _th = parseInt(document.getElementById('tpSentenceMatchThreshold')?.value);
+    sentenceOptions = {
+      matchThreshold: isFinite(_th) ? Math.max(50, Math.min(100, _th)) : 80,
+      shuffleQ: document.getElementById('tpSentenceShuffleQ')?.checked !== false,
+      allowHint: document.getElementById('tpSentenceAllowHint')?.checked !== false,
+    };
+  }
+
   // 안전망: vocab+speaking 일 때 말하기 출제 데이터(homophones/koPron/sent/sentKo) 자동 채움
   // 정상 시나리오 (Wordsnap·AI Generator·세트 수정 저장) 면 이미 채워져 있어 0 호출 — skip
   if (cfg.testMode === 'vocab' && vocabOptions?.format === 'speaking') {
@@ -15635,6 +15685,7 @@ window.tpPublish = async () => {
       ...(cfg.testMode === 'recording' ? {} : { passScore }),
       bookName,
       ...(vocabOptions ? { vocabOptions } : {}),
+      ...(sentenceOptions ? { sentenceOptions } : {}),
       ...(_timeLimitSec != null ? { timeLimitSec: _timeLimitSec } : {}),
       createdAt: serverTimestamp(),
       createdBy: auth.currentUser?.uid || '',

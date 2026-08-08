@@ -229,6 +229,10 @@
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
       녹음숙제
     </div>
+    <div class="nav-item" onclick="goPage('test-sentence')" id="nav-test-sentence">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      문장시험
+    </div>
     <div class="nav-item" onclick="goPage('test-list')" id="nav-test-list">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
       진도체크
@@ -1099,6 +1103,14 @@
       <div><div class="page-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>녹음숙제</div><div class="page-sub">본문 문장을 AI가 추출해 녹음 숙제로 배정합니다 <span style="color:#888;margin-left:6px;">· 제출된 녹음은 60일간 저장됩니다</span></div></div>
     </div>
     <div id="recAiAssignRoot"></div>
+  </div>
+
+  <!-- 문장시험 (2026-07-22) -->
+  <div class="page" id="page-test-sentence">
+    <div class="page-header">
+      <div><div class="page-title">🗣 문장시험</div><div class="page-sub">한글 문장을 보고 영어로 말하기 (Web Speech STT). 매칭률 기준 자동 채점.</div></div>
+    </div>
+    <div id="sentenceAssignRoot"></div>
   </div>
 
 </main>
