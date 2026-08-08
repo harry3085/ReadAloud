@@ -642,7 +642,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType, sentences, chunkCount } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType, sentences, chunkCount, sentenceLength } = req.body || {};
 
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
@@ -661,6 +661,13 @@ module.exports = async function handler(req, res) {
     // 입력 문장 원문 100% 보존 (변경·누락 절대 X). 청크 분할 + meaningKo 자동 생성.
     if (mode === 'unscramble-from-text') {
       return await handleUnscrambleFromText({ sentences, chunkCount, apiKey, res });
+    }
+
+    // ─── 문장시험 본문 추출 (한글번역 + 영어원문 verbatim) ───
+    // 2026-07-22: 학원장 요청 신 시험 유형 sentence.
+    // pages 본문에서 N 문장 verbatim 추출 + 각 한글번역. 길이 3단계 필터.
+    if (mode === 'sentence-from-book') {
+      return await handleSentenceFromBook({ pages, count, sentenceLength, apiKey, res });
     }
 
     // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
@@ -984,6 +991,143 @@ Output ONLY valid JSON (no markdown):
     }
   ]
 }`;
+
+// 문장시험 본문 추출 — 페이지 본문에서 N 문장 verbatim + 한글 번역 (2026-07-22)
+// 학원장이 length 옵션으로 문장 길이 필터 (short/medium/long). 원문 100% 보존 필수.
+const SENTENCE_FROM_BOOK_PROMPT = `You are an English sentence extractor for a Korean-English speaking test.
+
+You receive one or more English text passages. Your task:
+1. Extract EXACTLY N COMPLETE English sentences from the passages.
+2. Each sentence MUST be a VERBATIM copy from the source text — every word, form, punctuation, capitalization, spelling MUST match the source character-for-character. Do NOT paraphrase, summarize, combine, rewrite, or modify anything.
+3. Filter by target length (words):
+   - short: 5 to 8 words per sentence
+   - medium: 9 to 13 words per sentence
+   - long: 14 to 20 words per sentence
+4. Skip sentences with heavy proper nouns, weird formatting, dialogue attribution ("said X"), or fragmentary structure — pick natural, teachable sentences that stand alone.
+5. Avoid picking the same or very similar sentences twice.
+6. For EACH selected English sentence, produce a natural Korean translation (ko).
+   - Use only Korean hangul, basic punctuation (. ? , !), and Arabic numerals if needed. NO English letters in the translation itself.
+   - Translation must be natural spoken Korean (not literal word-by-word).
+
+If the source text does not have enough qualifying sentences for the requested length, return as many as you can (do not force sentences that don't fit the length).
+
+Output ONLY a valid JSON object (no markdown, no prose):
+{
+  "sentences": [
+    {
+      "en": "The boy picked up the red ball.",
+      "ko": "그 소년이 빨간 공을 주웠다.",
+      "wordCount": 7,
+      "sourcePageId": "page-id-from-input"
+    },
+    ...
+  ]
+}`;
+
+// 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
+async function handleSentenceFromBook({ pages, count, sentenceLength, apiKey, res }) {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    return res.status(400).json({ error: 'pages array is required' });
+  }
+  if (pages.length > 10) {
+    return res.status(400).json({ error: `페이지는 최대 10개까지 (요청: ${pages.length}개)` });
+  }
+  const N = Math.max(1, Math.min(30, parseInt(count) || 10));
+  const lenKey = (sentenceLength === 'short' || sentenceLength === 'medium' || sentenceLength === 'long')
+    ? sentenceLength : 'medium';
+  const lenLabel = { short: '5-8', medium: '9-13', long: '14-20' }[lenKey];
+
+  // 본문 전처리 (3000자 제한 재사용)
+  const MAX_CHARS_PER_PAGE = 3000;
+  const normalizedPages = pages.map(p => ({
+    id: String(p.id || '').slice(0, 100),
+    title: String(p.title || '').slice(0, 200),
+    text: String(p.text || '').trim().slice(0, MAX_CHARS_PER_PAGE),
+  })).filter(p => p.text.length > 0);
+  if (normalizedPages.length === 0) {
+    return res.status(400).json({ error: 'No valid page content' });
+  }
+
+  const userPrompt = `Target: extract ${N} sentences of ${lenLabel} words each (length category: ${lenKey}).
+
+Source passages:
+${normalizedPages.map((p, i) => `[Passage ${i + 1}] id: ${p.id}\nTitle: ${p.title}\n---\n${p.text}\n---`).join('\n\n')}
+
+Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} items (fewer OK if source is short).`;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (status) => status === 503 || status === 429;
+
+  let rawText = null, usedModel = null, lastError = null, lastStatus = null;
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await callGemini(model, apiKey, SENTENCE_FROM_BOOK_PROMPT, userPrompt);
+        if (result.ok) { usedModel = model; rawText = result.text; break outer; }
+        lastError = result.error; lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+        }
+        if (isTransient(lastStatus) && attempt === 0) { await sleep(800); continue; }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+  if (!rawText) {
+    return res.status(502).json({ error: 'All AI models failed', detail: lastError, triedModels: GEMINI_MODELS });
+  }
+
+  const parsed = parseAIResponse(rawText);
+  if (!parsed || !Array.isArray(parsed.sentences)) {
+    return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
+  }
+
+  // Verbatim 검증 — 각 en 문장이 원본 본문에 존재해야 (공백·개행 정규화)
+  const normText = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const bookNorm = normalizedPages.map(p => ({ id: p.id, title: p.title, textNorm: normText(p.text) }));
+  const sentencesOut = [];
+  const seenEn = new Set();
+  for (const s of parsed.sentences) {
+    if (!s || typeof s !== 'object') continue;
+    const en = String(s.en || '').trim();
+    const ko = String(s.ko || '').trim();
+    if (!en || !ko) continue;
+    if (en.length < 5 || en.length > 300) continue;
+    // 한글 번역에 영문자 섞임 방지 (약자 등)
+    if (/[a-zA-Z]/.test(ko.replace(/\d/g, ''))) continue;
+    // Verbatim 검증
+    const enNorm = normText(en);
+    if (seenEn.has(enNorm)) continue;
+    const matched = bookNorm.find(p => p.textNorm.includes(enNorm));
+    if (!matched) continue;  // 원문에 없음 = 폐기 (verbatim 실패)
+    seenEn.add(enNorm);
+    const wordCount = en.split(/\s+/).filter(Boolean).length;
+    sentencesOut.push({
+      type: 'sentence',
+      en, ko, wordCount,
+      sourcePageId: matched.id,
+      sourcePageTitle: matched.title,
+      length: lenKey,
+    });
+  }
+
+  if (sentencesOut.length === 0) {
+    return res.status(502).json({ error: 'AI 응답에서 검증 통과 문장 0개 — 다시 시도해 주세요', model: usedModel, rawSnippet: rawText.slice(0, 300) });
+  }
+
+  return res.status(200).json({
+    success: true,
+    model: usedModel,
+    sentences: sentencesOut,
+    requestedCount: N,
+    actualCount: sentencesOut.length,
+    sentenceLength: lenKey,
+  });
+}
 
 async function handleUnscrambleFromText({ sentences, chunkCount, apiKey, res }) {
   if (!Array.isArray(sentences) || sentences.length === 0) {

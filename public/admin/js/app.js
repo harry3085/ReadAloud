@@ -10437,6 +10437,7 @@ let _qgActiveChapter = null;  // {id, name, bookId} | null
 let _qgCurrentType = 'mcq';   // 현재 선택된 문제 유형
 let _qgWordsnapDraft = '';        // Book 클릭 등으로 _qgRender 시 textarea 보존 (2026-05-23)
 let _qgUnscrambleSnapDraft = '';  // 동일
+let _qgSentenceSnapDraft = '';    // 문장시험 직접 입력 (2026-07-22) — Excel 붙여넣기 (탭 구분)
 
 // ─── 유형별 옵션 스키마 (Phase 2.5) ───
 // enabled:false 인 유형은 UI에는 보이되 [생성] 클릭 시 "Phase X 이후 구현 예정" 토스트
@@ -10508,6 +10509,18 @@ const QG_TYPE_OPTIONS = {
     noAi: true,  // AI 호출 없이 로컬 생성 (페이지 본문이 그대로 fullText)
     noteHint: '선택한 Page 의 전체 문장을 학생이 N회 반복 녹음합니다. 무결성 통과 후 마지막 녹음을 AI 가 평가·피드백해요. (녹음 횟수·임계값은 시험 배정 시 / 무결성 기준은 학원 설정에서 조정)',
     options: [],  // 옵션 없음 — 학원 설정 (학원 단위) + 시험 배정 시 (시험별) 두 단계에서 결정
+  },
+  // 2026-07-22 학원장 요청 신 시험 유형 — 문장시험 (한글→영어 STT)
+  'sentence': {
+    label: '문장시험',
+    icon: '🗣',
+    enabled: true,
+    phaseLabel: null,
+    noteHint: '본문에서 문장을 추출해 문장시험을 만듭니다. 학생이 한글 문장을 보고 영어로 말하면 매칭률로 채점 (Excel 붙여넣기 직접 입력 가능).',
+    options: [
+      { key:'count',          label:'문제수',     type:'number', default:10, min:1, max:30 },
+      { key:'sentenceLength', label:'문장 길이',  type:'select', choices:['짧음(5-8)','보통(9-13)','길다(14-20)'], default:'보통(9-13)' },
+    ],
   },
 };
 
@@ -11105,13 +11118,15 @@ function _qgRenderOptions(type) {
     return '';
   }).join('');
 
-  // 'word' (단어시험) Wordsnap / 'unscramble' 직접 입력 섹션 — AI 생성 버튼 위
+  // 'word' (단어시험) Wordsnap / 'unscramble' / 'sentence' 직접 입력 섹션 — AI 생성 버튼 위
   const snapHtml = (type === 'word') ? _qgBuildWordsnapSection()
                  : (type === 'unscramble') ? _qgBuildUnscrambleSnapSection()
+                 : (type === 'sentence') ? _qgBuildSentenceSnapSection()
                  : '';
   panel.innerHTML = optionsHtml + snapHtml;
   if (type === 'word') setTimeout(() => window._qgWordsnapUpdateStatus?.(), 0);
   if (type === 'unscramble') setTimeout(() => window._qgUnscrambleSnapUpdateStatus?.(), 0);
+  if (type === 'sentence') setTimeout(() => window._qgSentenceSnapUpdateStatus?.(), 0);
 
   if (btn) {
     if (!cfg.enabled) {
@@ -11221,6 +11236,8 @@ window.qgGenerate = async () => {
     await _qgCallVocab(opts);
   } else if (type === 'unscramble') {
     await _qgCallUnscramble(opts);
+  } else if (type === 'sentence') {
+    await _qgCallSentence(opts);
   } else {
     showToast('지원되지 않는 유형입니다');
   }
@@ -11761,6 +11778,188 @@ window.qgRunUnscrambleSnap = async () => {
   }
 };
 
+// ═══ 문장시험 직접 입력 (Excel 붙여넣기: 각 줄 '한글\t영어') 2026-07-22 ═══
+function _qgBuildSentenceSnapSection() {
+  const bookNote = _qgActiveBook
+    ? `<span style="color:#0a7a3a;font-weight:700;">✓ 저장 위치: ${esc(_qgActiveBook.name)}${_qgActiveChapter ? ' · ' + esc(_qgActiveChapter.name) : ''}</span>`
+    : `<span style="color:#c33;">⚠ 좌측에서 Book 폴더를 먼저 선택하세요 (저장 위치 필수)</span>`;
+  return `
+    <div style="margin-top:14px;padding:12px;border:2px dashed var(--teal);border-radius:8px;background:var(--teal-light);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal);">${iconSvg('clipboard')} 문장 직접 입력 · 문장시험 (Excel 붙여넣기)</div>
+        <button class="btn btn-secondary" onclick="qgSentenceSnapPaste()"
+          style="font-size:10px;padding:2px 8px;flex-shrink:0;">📥 붙여넣기</button>
+      </div>
+      <div style="font-size:10px;margin-bottom:6px;line-height:1.5;">${bookNote}</div>
+      <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
+        <b>각 줄에 '한글문장 → Tab → 영어문장'</b> 형식. Excel 두 칸 선택 → 복사 → 여기 붙여넣기.
+      </div>
+      <textarea id="qgSentenceSnapInput" rows="5" spellcheck="false"
+        oninput="_qgSentenceSnapUpdateStatus()"
+        placeholder="나는 사과를 먹는다.\tI eat an apple.&#10;그는 매일 학교에 간다.\tHe goes to school every day.&#10;오늘 날씨가 좋다.\tThe weather is nice today."
+        style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;">${esc(_qgSentenceSnapDraft)}</textarea>
+      <div id="qgSentenceSnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
+      <button class="btn btn-primary" onclick="qgRunSentenceSnap()" id="qgSentenceSnapBtn"
+        style="width:100%;padding:9px;font-size:12px;font-weight:700;background:var(--teal);">
+        📋 문장으로 문장시험 생성
+      </button>
+    </div>
+  `;
+}
+
+// Excel 붙여넣기 파싱 — 각 줄 '한글\t영어' (탭 구분). 반환: { rows, errors }
+function _qgParseSentenceRows(text) {
+  const lines = (text || '').split(/\r?\n/);
+  const rows = [];
+  const errors = [];
+  const seen = new Set();
+  lines.forEach((line, i) => {
+    const s = line.trim();
+    if (!s) return;
+    const parts = s.split(/\t+/);
+    if (parts.length < 2) { errors.push({ line: i + 1, msg: '탭(\\t) 없음 — [한글]TAB[영어] 형식' }); return; }
+    const ko = (parts[0] || '').trim();
+    const en = (parts[1] || '').trim();
+    if (!ko) { errors.push({ line: i + 1, msg: '한글 문장 없음' }); return; }
+    if (!en) { errors.push({ line: i + 1, msg: '영어 문장 없음' }); return; }
+    if (ko.length > 300 || en.length > 300) { errors.push({ line: i + 1, msg: '문장이 너무 김 (300자 초과)' }); return; }
+    if (en.length < 3) { errors.push({ line: i + 1, msg: '영어 문장이 너무 짧음' }); return; }
+    // 한글 문장이 실제 한글 포함? (영어만 있으면 잘못된 순서 의심)
+    if (!/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ko)) { errors.push({ line: i + 1, msg: '첫 칸에 한글 없음 (순서 뒤바뀜?)' }); return; }
+    // 영어 문장에 영문자 있어야
+    if (!/[a-zA-Z]/.test(en)) { errors.push({ line: i + 1, msg: '둘째 칸에 영문자 없음' }); return; }
+    const key = ko + '|' + en.toLowerCase();
+    if (seen.has(key)) { errors.push({ line: i + 1, msg: '중복 문장' }); return; }
+    seen.add(key);
+    rows.push({ ko, en });
+  });
+  return { rows, errors };
+}
+
+window._qgSentenceSnapUpdateStatus = () => {
+  const ta = document.getElementById('qgSentenceSnapInput');
+  const status = document.getElementById('qgSentenceSnapStatus');
+  if (!ta || !status) return;
+  _qgSentenceSnapDraft = ta.value;
+  if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
+  const { rows, errors } = _qgParseSentenceRows(ta.value);
+  const parts = [];
+  if (rows.length) parts.push(`<span style="color:#0a7a3a;font-weight:700;">✓ ${rows.length}쌍 문장</span>`);
+  if (errors.length) parts.push(`<span style="color:#c33;">⚠ ${errors.length}줄 오류</span>`);
+  status.innerHTML = parts.join(' · ') || '<span style="color:#c33;">파싱 결과 없음</span>';
+};
+
+window.qgSentenceSnapPaste = async () => {
+  const ta = document.getElementById('qgSentenceSnapInput');
+  if (!ta) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    ta.value = text || '';
+    window._qgSentenceSnapUpdateStatus();
+    ta.focus();
+  } catch(e) {
+    showToast('클립보드 읽기 실패 — textarea 에 직접 Ctrl+V 로 붙여넣으세요');
+    ta.focus();
+  }
+};
+
+// Excel 붙여넣기 직접 저장 (AI 호출 X — 입력값 그대로 세트로 저장)
+window.qgRunSentenceSnap = async () => {
+  const ta = document.getElementById('qgSentenceSnapInput');
+  if (!ta) return;
+  if (!_qgActiveBook) {
+    showAlert('Book 선택 필요', '좌측에서 Book 폴더를 먼저 선택해야 저장됩니다.');
+    return;
+  }
+  const { rows, errors } = _qgParseSentenceRows(ta.value);
+  if (rows.length === 0) {
+    showAlert('입력 확인', '유효한 [한글TAB영어] 쌍이 없습니다. 각 줄 = 한글문장 + Tab + 영어문장');
+    return;
+  }
+  const errNote = errors.length ? `\n(오류 ${errors.length}줄 제외)` : '';
+  const ok = await showConfirm(
+    `${rows.length}쌍 문장 → 문장시험 세트 저장?`,
+    `직접 입력이라 AI 호출 없이 즉시 저장됩니다.${errNote}`
+  );
+  if (!ok) return;
+
+  // 문제 객체로 변환 (AI 응답과 동일 구조)
+  const questions = rows.map((r, i) => ({
+    type: 'sentence',
+    en: r.en,
+    ko: r.ko,
+    wordCount: r.en.split(/\s+/).filter(Boolean).length,
+    sourcePageId: '',
+    sourcePageTitle: '',
+    length: 'manual',
+  }));
+  _qgGenerated = questions;
+  _qgExcluded.clear();
+
+  // 결과 모달 (기존 미리보기 재사용)
+  _qgShowResultModal({
+    success: true,
+    questions,
+    requestedCount: rows.length,
+    defaultName: _qgBuildDefaultName(),
+    _qgOpts: { type: 'sentence', direct: true },
+  });
+  ta.value = '';
+  _qgSentenceSnapDraft = '';
+  window._qgSentenceSnapUpdateStatus();
+};
+
+// ─── 문장시험 AI 생성 호출 (본문 page → 서버 mode='sentence-from-book') ───
+async function _qgCallSentence(opts) {
+  const btn = document.getElementById('qgGenBtn');
+  const status = document.getElementById('qgStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.innerHTML = '🤖 AI 호출 중...<br><span style="font-size:10px;">5~15초 소요</span>';
+
+  const selectedPages = (_genPages||[])
+    .filter(p => _qgSelectedPageIds.has(p.id))
+    .map(p => ({ id: p.id, title: p.title||'', text: p.text||'' }));
+
+  // 문장 길이 매핑 (한글 label → 서버 key)
+  const lenLabel = String(opts.sentenceLength || '');
+  const sentenceLength = /짧/.test(lenLabel) ? 'short' : (/길/.test(lenLabel) ? 'long' : 'medium');
+
+  try {
+    const t0 = Date.now();
+    const res = await _geminiFetch('/api/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'sentence-from-book',
+        pages: selectedPages,
+        count: opts.count,
+        sentenceLength,
+      }),
+    });
+    const data = await res.json();
+    const sec = ((Date.now()-t0)/1000).toFixed(1);
+
+    if (!res.ok || !data.success) {
+      if (data.rawSnippet) console.warn('[sentence-from-book raw]', data.rawSnippet);
+      if (status) status.innerHTML = `<span style="color:#c33;">❌ 실패 (${sec}s) — ${esc(data.error||'unknown')}</span>`;
+      showToast('생성 실패: ' + (data.error||'unknown'));
+      return;
+    }
+
+    // 응답 sentences → questions 통일 (다른 유형과 동일 형식)
+    _qgGenerated = (data.sentences || []).map(s => ({ ...s, type: 'sentence' }));
+    _qgExcluded.clear();
+    if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · ${_qgGenerated.length}/${data.requestedCount}문장</span>`;
+
+    _qgShowResultModal({ ...data, questions: _qgGenerated, defaultName: _qgBuildDefaultName(), _qgOpts: opts });
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#c33;">❌ 네트워크 에러</span>`;
+    showToast('네트워크 에러: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ─── Vocab API 호출 (Phase 6) ───
 async function _qgCallVocab(opts) {
   const btn = document.getElementById('qgGenBtn');
@@ -12131,6 +12330,22 @@ function _qgRenderQuestion(q, idx) {
         <div style="font-size:10px;color:var(--gray);margin-top:4px;">${iconSvg('pen')} 완성: ${esc(chunks.join(' '))}</div>
       </div>
     `;
+  } else if (q.type === 'sentence') {
+    // 2026-07-22 문장시험 (한글→영어 STT)
+    const wc = q.wordCount || (q.en || '').split(/\s+/).filter(Boolean).length;
+    body = `
+      <div style="font-size:11px;color:#0d9488;font-weight:700;margin-bottom:5px;">🗣 문장 (${wc}단어)</div>
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;">
+        <div style="padding:8px 12px;background:#f0fdfa;border-radius:6px;border-left:3px solid #14b8a6;">
+          <div style="font-size:10px;color:#0f766e;margin-bottom:2px;">한글 (학생이 보고 말할 문장)</div>
+          <div style="font-size:14px;font-weight:600;color:#134e4a;">${esc(q.ko || '')}</div>
+        </div>
+        <div style="padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #3b82f6;">
+          <div style="font-size:10px;color:#1e40af;margin-bottom:2px;">영어 (정답)</div>
+          <div style="font-size:14px;font-weight:700;color:#1e3a8a;">${esc(q.en || '')}</div>
+        </div>
+      </div>
+    `;
   } else {
     body = `
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${esc(q.question)}</div>
@@ -12145,7 +12360,7 @@ function _qgRenderQuestion(q, idx) {
     `;
   }
 
-  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : q.type==='recording' ? '🎤' : q.type==='vocab' ? '📝' : q.type==='unscramble' ? '🔀' : '📖';
+  const typeIcon = q.type==='fill_blank' ? '✏️' : q.type==='subjective' ? '✍️' : q.type==='recording' ? '🎤' : q.type==='vocab' ? '📝' : q.type==='unscramble' ? '🔀' : q.type==='sentence' ? '🗣' : '📖';
   return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;${excluded?'opacity:0.35;background:#fafafa;':''}">
     <div style="display:flex;gap:10px;align-items:start;">
       <input type="checkbox" ${excluded?'':'checked'} onchange="qgToggleExclude(${idx})" style="margin-top:3px;">
@@ -12402,6 +12617,7 @@ const _TYPE_LABEL_MAP = {
   mcq:'객관식',
   subjective:'주관식',
   recording:'녹음',
+  sentence:'문장',  // 2026-07-22 신 유형
   // _TEST_TYPE_CONFIG UI 키 별칭 (관리자앱 내부 접근 시 필요)
   blank:'빈칸', subj:'주관식', 'rec-ai':'녹음',
 };
@@ -12785,6 +13001,7 @@ const _QS_SOURCE_TO_UI_TYPE = {
   mcq: 'mcq',
   subjective: 'subj',
   recording: 'rec-ai',
+  sentence: 'sentence',  // 2026-07-22 신 유형 (Phase 2 — 시험 배정 UI 는 다음 세션)
 };
 
 window.qsAssignSet = async (setId) => {
