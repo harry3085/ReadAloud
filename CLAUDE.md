@@ -4159,3 +4159,162 @@ Greedy → set intersection → 위치 기반 → 구두점·apostrophe 정규�
 3. 진도체크 카드 옵션 뱃지 (`틀린만재응시` 표시)
 4. Storage 캐시 헤더 효과 실측 (며칠 후 요금 추이)
 5. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
+
+---
+
+## 2026-08-08: 문장시험 신규 유형 완성 + 학생앱 UX 정비
+
+SW v701 → v709 (~8 commit). 신규 시험 유형(문장시험) Phase 3-5 완성 + 발화
+중복 원인 특정 + 학생앱 글자·마이크·채점 관대함·힌트 로직 정비. 이 세션은
+새 유형 출시로 인해 광범위한 학생앱 변경 포함 — 운영 관찰 후 보완 예정.
+
+### 문장시험 개요 — 새 시험 유형
+학생이 한글 문장을 보고 영어로 발화 → Web Speech STT + DP LCS 매칭율 채점.
+전형적 흐름: 마이크 → 발화 → 자동 종료 → 매칭율 계산 → 정답 문장 TTS 재생
++ 다음 문제.
+
+**데이터 모델** (genTests):
+- `testMode: 'sentence'` / `sentenceOptions: { matchThreshold, shuffleQ, allowHint }`
+- `questions[i]: { type:'sentence', ko: '한글', en: '영어 정답' }`
+
+### 1) Phase 1-2 (이전 세션): AI 문제 생성 + 세트 저장
+- `api/generate-quiz.js` `mode='sentence-from-book'` — VERBATIM 본문 문장 추출 +
+  한글 번역 + 길이 필터 (short 5-8·medium 9-13·long 14-20)
+- 학원장 AI Generator 문장시험 유형 UI (Excel 탭 붙여넣기 or AI 생성)
+- 문제세트 목록 조회·상세 렌더 지원
+
+### 2) Phase 3 (학원장 배정) — commit `dd4efd5`
+- 시험관리 [문장시험] 메뉴 추가 (사이드바 + goPage 라우팅)
+- `_TEST_TYPE_CONFIG['sentence']` — rootId/kindLabel/testMode/gradingMode:auto
+- 출제 모달 sentence 분기 — matchThreshold 슬라이더 (50-100%, default 80) +
+  shuffleQ + allowHint 옵션. tpPublish sentenceOptions 최상위 박음
+
+### 3) Phase 4 (학생앱 응시) — commit `dd4efd5`
+- `sentenceQuiz` 화면 (`_app.html`) — 한글 문장 카드 + 힌트 영역 + 발화 표시
+- `startSentence`/`_stqRenderStep`/`_stqCalcMatchRate` (DP LCS) 신규
+- `stqHint`/`stqToggleMic`/`stqSubmit`/`stqSkip`/`_stqAdvance`/
+  `_stqSubmitFinal`/`_stqRenderResult`/`stqRetakeCurrent`/`quitSentence`
+
+### 4) Phase 5 (학생 홈 통합) — commit `dd4efd5`
+- 홈 카드 빈칸채우기 → 문장시험 교체 (`c-lav` 보라 유지, 빈칸은 학원장만)
+- `sentenceList` 화면 (진행중/완료 섹션)
+- `_BADGE_MAP.sentence = 'sentenceBadge'` 통합 뱃지
+- `_EXAM_SCREENS`/`_EXAM_QUIT_FNS` 에 sentenceQuiz 추가 (뒤로가기 quit)
+- `TEST_TYPE_UI.sentence` 정식 등록 (보라 팔레트, listFn:'goSentence',
+  pendingElId/completedElId)
+
+### 5) 발화 화면 UX·중복 원인 특정 (commit `f8dad6a`·`b8a129c`·`ad204e8`·`66eabdf`)
+
+**첫 보고**: 학생 발화 화면 단어 반복 + 하단 버튼 줄바꿈으로 크기 제각각.
+
+**UI fix** (`f8dad6a`, v703): 마이크 단독 상단 한 줄 (전체 폭) + 힌트/제출/
+SKIP 하단 flex:1 균등 배분 + white-space:nowrap.
+
+**중복 재발** — 3차례 시도:
+1. `f8dad6a` — event.results 전체 재순회 (resultIndex=0 누적 가정)
+2. `b8a129c` — Map 기반 인덱스별 dedupe (cumulative 응답 대응)
+3. `ad204e8` — [↻ 지우기] 버튼 + 진단 로그 (F12 로 SR 실제 동작 확인)
+
+**최종 원인 발견** — 사용자 통찰 "단어시험 말하기에서는 잘 되는데?":
+- 단어시험 말하기 `rec.continuous = false` (단발성 발화, SR 자동 종료)
+- 문장시험 `rec.continuous = true` (연속 인식) → utterance 마다 `results[i]`
+  추가로 브라우저 이상 동작 시 중복 유발
+- fix (`66eabdf`, v706) — 단어시험 말하기와 동일하게 `continuous=false` +
+  `maxAlternatives=5` (여러 후보 중 정답과 DP LCS 매칭율 최고인 것 선택)
+
+### 6) 글자·마이크·관대 채점 (commit `4a1a6be`, v707)
+
+**전체 글자 크기 상향**:
+- `html/body font-size: 17px` (default 16 → 17, 학생앱 base 통일)
+- `.card-label` 12→13 / `.card-name` 18→20 (홈 카드)
+- `.unit-name` 16→17 / `.unit-count` 13→14 (시험 목록)
+- 문장시험 한글 문장 17→22 / 발화 표시 15→18
+
+**마이크 버튼 1.5x**:
+- padding 14→22px, font-size 15→18px, weight 700→800
+- box-shadow 추가 (강조)
+
+**관대한 채점** — 발음 미흡해도 문장 이해 확인 시 정답:
+- `_stqCalcMatchRate` 3-way max:
+  1. DP LCS (순서 반영)
+  2. 내용어 set intersection (stopwords 제외)
+  3. 전체 unique set intersection (순서 완전 무시, 가장 관대)
+- `_STQ_STOPWORDS` — a/an/the/is/of/at/for/with 등 20종 관사·전치사
+- 이중 임계: 학원장 설정 threshold(엄격) + threshold-20(관대, min 50).
+  관대 통과도 정답 인정 (`isLenientCorrect`)
+- 결과 화면 재구성 — 정답 문장 크게·먼저·색상 강조 → 내 발화 아래 회색
+  (학생이 자기 발음 통했음/실패 즉시 인지)
+- 관대 통과 시 라벨: `✓ 정답 (문장 이해 확인)`
+
+### 7) 정답 TTS 재생 (commit `fb74649`, v708)
+
+- `_stqSpeakAnswer` — SpeechSynthesis 로 en-US TTS (rate 0.95, 살짝 느리게)
+- 제출 직후 자동 재생 → 학생이 화면 정답 문장 눈으로 보면서 발음까지 학습
+- 다음 문제 진입·quit 시 `speechSynthesis.cancel()` 로 겹침 방지
+
+### 8) 힌트 — 핵심 단어 우선 (commit `05683dc`, v709)
+
+옛: 첫 N개 단어 순서로 노출. 신: 긴 non-stopword 우선.
+
+- `_stqRankKeyWords` — 긴 non-stopword > 짧은 non-stopword > stopword 순 정렬
+- 문장 형태 마스킹 표시 (`___ ___ key ___ ___`) + 아래 노출 핵심 단어 리스트
+- 문제별 순위 캐시 (같은 문제 여러 번 눌러도 일관된 순서)
+
+예: "The cat is sleeping on the mat"
+- 힌트 1 → `___ ___ ___ sleeping ___ ___ ___` (핵심: sleeping)
+- 힌트 2 → `___ ___ ___ sleeping ___ ___ mat`
+- 힌트 3 → `___ cat ___ sleeping ___ ___ mat`
+
+### 작업 규칙 추가 (2026-08-08)
+
+신규:
+- **Web Speech API `continuous` 는 duplicate 유발의 root cause** —
+  `continuous=true` 는 utterance 마다 `results[i]` 를 계속 추가.
+  브라우저별 이상 동작 (cumulative 응답, resultIndex 고정) 이 있을 때 중복
+  누적. **단발성 STT 는 항상 `continuous=false`** 로 시작 (단어시험 말하기가
+  선례). 사용자 통찰이 정답 — "다른 곳은 잘 되는데 여기만" 이면 다른 곳
+  코드를 먼저 grep 해 차이 발견.
+- **관대한 채점 3-way max 패턴** — 음성 인식 채점은 발음 미흡 학생 낙담 방지
+  가 UX 핵심. (a) 순서 반영 LCS + (b) 내용어 set (stopword 제외) + (c) 전체
+  unique set — 셋 중 최고점 채택. 학원장 설정 임계 + 그 -20 관대 임계 이중
+  적용. 관대 통과도 정답으로 하되 라벨로 구분 표시.
+- **결과 화면 = 정답 문장을 먼저·크게·색상 강조** — 학생 발화보다 정답을
+  주인공으로 배치. 학생이 자기가 알고 있었는지 즉시 확인. 정답 TTS 자동
+  재생으로 눈+귀 동시 학습.
+- **힌트는 핵심 단어(non-stopword) 우선 노출** — 첫 단어 순서 노출은 the/a
+  같은 관사만 계속 노출돼 실질 도움 X. 긴 명사·동사 (혹은 stopword 아닌 것)
+  우선. 마스킹 표시 (`___ ___ key ___`) 로 위치 감 유지.
+- **점진 배포 + SW bump 매번 + 발화 진단 로그 상시** — 학생앱 신규 유형처럼
+  광범위 변경은 매 fix commit 마다 SW bump (v701→709, 8회) + `console.log`
+  진단 로그 상시 유지 (제거 안 함). 학원장이 F12 로 브라우저별 동작 즉시
+  공유 가능. 로그 없으면 원격 진단 불가.
+
+### 진행률 / 파일 크기 / SW 캐시 (2026-08-08)
+
+- **문장시험 신규 유형 Phase 1-5 완성: ~100%** (AI 생성 + 배정 + 학생 응시 +
+  홈 통합 + 발화 UX + 관대 채점 + TTS + 힌트)
+- 학생앱 글자 크기 상향: ~100% (base 17px + 카드·시험목록·문장시험 전체)
+- 마이크 버튼 UX: ~100% (1.5x 높이 + shadow 강조)
+- 발화 중복 root cause 특정: ~100% (continuous=false 로 원천 차단)
+- 멀티테넌시·결제·녹음숙제·AI Generator·메시지: 변동 없음
+- Phase 5 출시 준비: 0%
+
+파일:
+- `api/generate-quiz.js`: sentence-from-book mode + 프롬프트 (Phase 1-2 이전 세션)
+- `public/admin/js/app.js`: 문장시험 배정 UI + 출제 옵션 + 상세 렌더
+- `public/admin/_app.html`: 문장시험 사이드바 + 페이지
+- `public/js/app.js`: 문장시험 응시 흐름 전체 (~350줄 신규) + 관대 채점 +
+  TTS + 힌트 우선 순위 + Web Speech continuous=false
+- `public/_app.html`: sentenceQuiz + sentenceList 화면 + 홈 카드 교체
+- `public/style.css`: 학생앱 base font-size + 카드 텍스트 상향
+- `public/sw.js`: v701 → v709
+
+**다음 세션 후보 (운영 관찰 후 보완)**:
+1. **문장시험 운영 관찰 — 학생 실사용 후 관대 채점 튜닝** (threshold 조정,
+   stopwords 리스트 추가, 발음 실패 케이스 로그 수집)
+2. **iOS Safari Web Speech 지원 확인** — 실제 학생 폰 테스트 필요
+3. **문장시험 결과 상세 학원장 화면** — 학원장이 학생 발화·매칭율 확인 가능하게
+4. **stqViewPreviousResult 정식 리뷰 화면** (현재 재응시로 스텁)
+5. **문장시험 정답 문장 TTS on/off 옵션** — 학원장 결정 필요 시
+6. **틀린문제만재응시 실행 결과 관찰·보완** (변동 없음)
+7. Phase 5 출시 준비 (변동 없음)
