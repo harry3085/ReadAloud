@@ -7300,41 +7300,44 @@ window.stqToggleMic = () => {
   }
   const rec = new SR();
   rec.lang = 'en-US';
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
+  // 단어시험 말하기와 동일 방식 — 단발성 발화 (continuous=false) 로 duplication 원천 차단
+  // continuous=true 는 utterance 마다 results[i] 를 계속 추가해 SR 이상 동작 시 중복 유발
+  rec.continuous = false;
+  rec.interimResults = true;  // 실시간 표시 유지
+  rec.maxAlternatives = 5;    // 여러 후보 중 정답과 가장 유사한 것 선택
   s.rec = rec;
   s.listening = true;
   if (btn) { btn.textContent = '⏸ 정지'; btn.style.background = '#dc2626'; }
   const liveEl = document.getElementById('stqLiveTranscript');
   if (liveEl) liveEl.textContent = '';
-  // Map 기반 인덱스별 dedupe — 브라우저별 SR 이상 동작(cumulative 응답·resultIndex 고정)에 안전
-  s.finalMap = new Map();  // resultIndex → 최종 transcript (지우기 버튼에서 접근)
+  // 단발성 모드 — event.results[0] 하나만 존재 (여러 alternatives)
+  const q = s.questions[s.currentIdx];
+  const answerText = q ? (q.en || '') : '';
   rec.onresult = (event) => {
-    let interim = '';
-    // 진단 로그 — 브라우저별 SR 이상 동작 추적용
     try {
       const dbg = [];
       for (let i = 0; i < event.results.length; i++) {
-        dbg.push({ i, final: event.results[i].isFinal, txt: event.results[i][0].transcript });
+        dbg.push({ i, final: event.results[i].isFinal, alts: event.results[i].length, txt: event.results[i][0].transcript });
       }
-      console.log('[stq SR]', 'resultIndex=', event.resultIndex, 'len=', event.results.length, dbg);
+      console.log('[stq SR]', 'resultIndex=', event.resultIndex, dbg);
     } catch(_) {}
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const r = event.results[i];
-      const txt = (r[0].transcript || '').trim();
-      if (r.isFinal) s.finalMap.set(i, txt);
-      else interim = txt;
+    // 마지막 result 만 사용 (단발성이라 사실상 1개)
+    const r = event.results[event.results.length - 1];
+    if (!r) return;
+    if (r.isFinal) {
+      // 최종 결과 — alternatives 중 정답과 가장 유사한 것 선택
+      let best = r[0].transcript || '';
+      let bestScore = _stqCalcMatchRate(best, answerText);
+      for (let i = 1; i < r.length; i++) {
+        const t = r[i].transcript || '';
+        const sc = _stqCalcMatchRate(t, answerText);
+        if (sc > bestScore) { bestScore = sc; best = t; }
+      }
+      s.transcript = best.trim();
+    } else {
+      // interim — 첫 후보만 실시간 표시
+      s.transcript = (r[0].transcript || '').trim();
     }
-    // 최종 결과 = 인덱스 정렬해 join + 최신 interim (겹치면 스킵)
-    const keys = [...s.finalMap.keys()].sort((a,b) => a - b);
-    let combined = keys.map(k => s.finalMap.get(k)).join(' ').trim();
-    if (interim) {
-      const c = combined.toLowerCase();
-      const it = interim.toLowerCase();
-      if (!c.endsWith(it)) combined = (combined + ' ' + interim).trim();
-    }
-    s.transcript = combined.replace(/\s+/g, ' ').trim();
     if (liveEl) liveEl.textContent = s.transcript || '(듣는 중...)';
     const submitBtn = document.getElementById('stqSubmitBtn');
     if (submitBtn && s.transcript) submitBtn.disabled = false;
