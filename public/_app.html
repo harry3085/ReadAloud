@@ -603,7 +603,10 @@
 
     <!-- 학생 발화 실시간 표시 -->
     <div style="margin:0 16px 10px;flex:1;min-height:0;overflow-y:auto;">
-      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:6px;padding:0 4px;">🎤 학생 발화 (실시간)</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding:0 4px;">
+        <div style="font-size:10px;color:var(--teal);font-weight:700;">🎤 학생 발화 (실시간)</div>
+        <button onclick="stqClearTranscript()" style="font-size:11px;background:transparent;border:1px solid #e5e7eb;color:#6b7280;padding:2px 8px;border-radius:8px;cursor:pointer;">↻ 지우기</button>
+      </div>
       <div id="stqLiveTranscript" style="background:white;border:2px solid var(--teal-light);border-radius:14px;padding:14px 16px;min-height:80px;font-size:15px;color:var(--text);line-height:1.6;word-break:break-word;">
         <span style="color:var(--gray);font-size:12px;font-style:italic;">마이크 버튼을 눌러 시작하세요</span>
       </div>

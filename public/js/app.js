@@ -7309,22 +7309,31 @@ window.stqToggleMic = () => {
   const liveEl = document.getElementById('stqLiveTranscript');
   if (liveEl) liveEl.textContent = '';
   // Map 기반 인덱스별 dedupe — 브라우저별 SR 이상 동작(cumulative 응답·resultIndex 고정)에 안전
-  const finalMap = new Map();  // resultIndex → 최종 transcript
+  s.finalMap = new Map();  // resultIndex → 최종 transcript (지우기 버튼에서 접근)
   rec.onresult = (event) => {
     let interim = '';
+    // 진단 로그 — 브라우저별 SR 이상 동작 추적용
+    try {
+      const dbg = [];
+      for (let i = 0; i < event.results.length; i++) {
+        dbg.push({ i, final: event.results[i].isFinal, txt: event.results[i][0].transcript });
+      }
+      console.log('[stq SR]', 'resultIndex=', event.resultIndex, 'len=', event.results.length, dbg);
+    } catch(_) {}
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
       const txt = (r[0].transcript || '').trim();
-      if (r.isFinal) finalMap.set(i, txt);
-      else interim = txt;   // 최신 interim 만 (같은 event 내 여러 개면 마지막)
+      if (r.isFinal) s.finalMap.set(i, txt);
+      else interim = txt;
     }
-    // 최종 결과 = 인덱스 정렬해 join + 최신 interim
-    const keys = [...finalMap.keys()].sort((a,b) => a - b);
-    const finalStr = keys.map(k => finalMap.get(k)).join(' ');
-    // interim 이 finalStr 끝과 겹치면(같은 발화 재인식) 중복 제거
-    let combined = finalStr;
-    if (interim && !combined.endsWith(interim)) combined = (combined + ' ' + interim).trim();
-    else if (interim && !combined) combined = interim;
+    // 최종 결과 = 인덱스 정렬해 join + 최신 interim (겹치면 스킵)
+    const keys = [...s.finalMap.keys()].sort((a,b) => a - b);
+    let combined = keys.map(k => s.finalMap.get(k)).join(' ').trim();
+    if (interim) {
+      const c = combined.toLowerCase();
+      const it = interim.toLowerCase();
+      if (!c.endsWith(it)) combined = (combined + ' ' + interim).trim();
+    }
     s.transcript = combined.replace(/\s+/g, ' ').trim();
     if (liveEl) liveEl.textContent = s.transcript || '(듣는 중...)';
     const submitBtn = document.getElementById('stqSubmitBtn');
@@ -7488,6 +7497,22 @@ window.quitSentence = async () => {
 // MVP: 이전 결과 보기 = 재응시 (별도 리뷰 화면 없음, 재응시 흐름 재사용)
 window.stqViewPreviousResult = (testId, testName) => {
   startSentence(testId, testName);
+};
+
+// 발화 지우기 — SR 이상 동작·재발음 시 사용
+window.stqClearTranscript = () => {
+  const s = _stqState;
+  s.transcript = '';
+  if (s.finalMap) s.finalMap.clear();
+  // 현재 SR 세션 abort 후 mic OFF 상태로 (사용자가 다시 마이크 눌러 시작)
+  if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
+  s.listening = false;
+  const btn = document.getElementById('stqMicBtn');
+  if (btn) { btn.textContent = '🎤 마이크'; btn.style.background = 'var(--teal)'; }
+  const liveEl = document.getElementById('stqLiveTranscript');
+  if (liveEl) liveEl.innerHTML = '<span style="color:var(--gray);font-size:12px;font-style:italic;">마이크 버튼을 눌러 다시 시작하세요</span>';
+  const submitBtn = document.getElementById('stqSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
 };
 
 // TEST_TYPE_UI.sentence — 문장시험 (한국어 → 영어 말하기)
