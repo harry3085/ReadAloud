@@ -7308,17 +7308,24 @@ window.stqToggleMic = () => {
   if (btn) { btn.textContent = '⏸ 정지'; btn.style.background = '#dc2626'; }
   const liveEl = document.getElementById('stqLiveTranscript');
   if (liveEl) liveEl.textContent = '';
-  // 매 event 마다 event.results 전체를 재순회해 재구성 (누적 X)
-  // 안드로이드 일부 브라우저는 resultIndex 를 항상 0 으로 보내 누적 시 단어 중복 발생
+  // Map 기반 인덱스별 dedupe — 브라우저별 SR 이상 동작(cumulative 응답·resultIndex 고정)에 안전
+  const finalMap = new Map();  // resultIndex → 최종 transcript
   rec.onresult = (event) => {
-    let finalText = '';
     let interim = '';
-    for (let i = 0; i < event.results.length; i++) {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
-      if (r.isFinal) finalText += r[0].transcript + ' ';
-      else interim += r[0].transcript + ' ';
+      const txt = (r[0].transcript || '').trim();
+      if (r.isFinal) finalMap.set(i, txt);
+      else interim = txt;   // 최신 interim 만 (같은 event 내 여러 개면 마지막)
     }
-    s.transcript = (finalText + interim).replace(/\s+/g, ' ').trim();
+    // 최종 결과 = 인덱스 정렬해 join + 최신 interim
+    const keys = [...finalMap.keys()].sort((a,b) => a - b);
+    const finalStr = keys.map(k => finalMap.get(k)).join(' ');
+    // interim 이 finalStr 끝과 겹치면(같은 발화 재인식) 중복 제거
+    let combined = finalStr;
+    if (interim && !combined.endsWith(interim)) combined = (combined + ' ' + interim).trim();
+    else if (interim && !combined) combined = interim;
+    s.transcript = combined.replace(/\s+/g, ' ').trim();
     if (liveEl) liveEl.textContent = s.transcript || '(듣는 중...)';
     const submitBtn = document.getElementById('stqSubmitBtn');
     if (submitBtn && s.transcript) submitBtn.disabled = false;
