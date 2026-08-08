@@ -991,7 +991,7 @@ window.loadMoreTestList = async(type) => {
 };
 
 // 공용 결과 화면 shell (헤더 + 점수 카드 + 문제별 상세 + 버튼)
-function _renderResultShell(type, {correct, wrong, total, score, passed, passScore, hintUsageCount, detailHtml}) {
+function _renderResultShell(type, {correct, wrong, total, score, passed, passScore, hintUsageCount, detailHtml, retryLabel}) {
   const ui = TEST_TYPE_UI[type] || TEST_TYPE_UI.vocab;
   return `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
@@ -1015,7 +1015,7 @@ function _renderResultShell(type, {correct, wrong, total, score, passed, passSco
         </div>` : ''}
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
         <button onclick="${ui.listFn}()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="${ui.retakeFn}()" style="flex:1;padding:14px;background:${ui.retakeBtnBg};border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔄 재응시</button>
+        <button onclick="${ui.retakeFn}()" style="flex:1;padding:14px;background:${ui.retakeBtnBg};border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">${retryLabel || '🔄 재응시'}</button>
       </div>
     </div>`;
 }
@@ -4983,8 +4983,35 @@ window.startVocab = async (testId, testName) => {
       shuffleQ: _raw.shuffleQ !== false,
       shuffleChoices: _raw.shuffleChoices !== false,
       speakingStrictness: _raw.speakingStrictness || 'normal',
+      retryWrongOnly: !!_raw.retryWrongOnly,
+      requirePerfect: !!_raw.requirePerfect,
     };
     const isSpeaking = opts.format === 'speaking';
+
+    // 틀린문제만재응시 옵션 — 이전 응시의 틀린 문제만 필터 (2026-07-22)
+    if (opts.retryWrongOnly) {
+      try {
+        const ucSnap = await getDoc(doc(db, 'genTests', testId, 'userCompleted', currentUser.uid));
+        if (ucSnap.exists()) {
+          const uc = ucSnap.data();
+          const prevQ = uc.questions || [];
+          const prevA = uc.answers || [];
+          if (prevQ.length > 0 && prevA.length > 0) {
+            const wrongWords = new Set();
+            prevQ.forEach((pq, i) => {
+              const pa = prevA[i];
+              if (!pa || !pq?.word) return;
+              if (!_vqIsAnsCorrect(pq, pa)) wrongWords.add(String(pq.word).toLowerCase());
+            });
+            if (wrongWords.size > 0 && wrongWords.size < questions.length) {
+              questions = questions.filter(q => wrongWords.has(String(q.word || '').toLowerCase()));
+              showToast(`이전에 틀린 ${wrongWords.size}문제만 다시 풀어요`);
+            }
+            // 틀린 문제 0 (100점) 또는 전부 틀림 → 전체 재응시
+          }
+        }
+      } catch (_) {}
+    }
 
     // 1) 문제 순서 섞기 (재풀이 시에도 매번 새로)
     if (opts.shuffleQ) questions = _rngShuffle(questions);
@@ -5928,15 +5955,42 @@ async function _vqSubmit() {
   if (s._submitted || s._submitting) return;  // 이중 저장 방지
   s._submitting = true;
 
+  const isRetry = !!s.opts?.retryWrongOnly;
+  const requirePerfect = !!s.opts?.requirePerfect;
+
+  // 2026-07-22 재응시 병합 — retryWrongOnly 시 원본 questions + 이전·현재 답안 병합 (word 기준)
+  let finalQuestions = s.questions;
+  let finalAnswers = s.answers;
+  if (isRetry) {
+    try {
+      const origQuestions = (t.questions || []).filter(q => q.type === 'vocab');
+      const ucSnap = await getDoc(doc(db, 'genTests', t.id, 'userCompleted', currentUser.uid));
+      const prevQ = ucSnap.exists() ? (ucSnap.data().questions || []) : [];
+      const prevA = ucSnap.exists() ? (ucSnap.data().answers || []) : [];
+      const prevMap = new Map();
+      prevQ.forEach((q, i) => { if (q?.word) prevMap.set(String(q.word).toLowerCase(), prevA[i]); });
+      const curMap = new Map();
+      s.questions.forEach((q, i) => { if (q?.word) curMap.set(String(q.word).toLowerCase(), s.answers[i]); });
+      if (origQuestions.length > s.questions.length) {
+        finalQuestions = origQuestions.slice();
+        finalAnswers = origQuestions.map(q => {
+          const key = String(q.word || '').toLowerCase();
+          // 이번 시도에 있으면 이번 답안 덮어쓰기, 없으면 이전 답안 유지
+          return curMap.get(key) || prevMap.get(key) || { input: '', direction: 'en2ko', format: 'mcq' };
+        });
+      }
+    } catch (e) { console.warn('재응시 병합 실패, 이번 시도만 저장:', e); }
+  }
+
   let correct = 0;
-  const total = s.questions.length;
-  s.questions.forEach((q, i) => {
-    if (_vqIsAnsCorrect(q, s.answers[i])) correct++;
+  const total = finalQuestions.length;
+  finalQuestions.forEach((q, i) => {
+    if (_vqIsAnsCorrect(q, finalAnswers[i])) correct++;
   });
 
   const score = total ? Math.round((correct / total) * 100) : 0;
   const passScore = t.passScore ?? 80;
-  const passed = score >= passScore;
+  const passed = requirePerfect ? (score === 100) : (score >= passScore);
   const today = _ymdKST();
 
   try {
@@ -5960,7 +6014,7 @@ async function _vqSubmit() {
       await _writeUserCompleted(t.id, {
         score, passed, passScore,
         correct, wrong: total - correct, total,
-        questions: s.questions, answers: s.answers,
+        questions: finalQuestions, answers: finalAnswers,
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
     s._submitted = true;
@@ -5973,7 +6027,8 @@ async function _vqSubmit() {
   }
   _vqRenderResult({
     correct, wrong: total - correct, total, score, passed, passScore,
-    questions: s.questions, answers: s.answers,
+    questions: finalQuestions, answers: finalAnswers,
+    canRetryWrong: isRetry && (total - correct) > 0,  // 재응시 버튼 표시 조건
   });
 }
 
@@ -6015,13 +6070,14 @@ function _vqBuildDetail(questions, answers) {
   }).join('');
 }
 
-function _vqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers }) {
+function _vqRenderResult({ correct, wrong, total, score, passed, passScore, questions, answers, canRetryWrong }) {
   const screen = document.getElementById('vocabQuiz');
   if (!screen) return;
   _screenSnapshotOnce('vocabQuiz');
   screen.innerHTML = _renderResultShell('vocab', {
     correct, wrong, total, score, passed, passScore,
     detailHtml: _vqBuildDetail(questions, answers),
+    retryLabel: canRetryWrong ? `🔁 틀린 ${wrong}문제 다시 풀기` : null,  // 2026-07-22 재응시 옵션
   });
   screen.dataset.stage = 'result';  // popstate 뒤로가기 보호 분기 — 결과 보기 중엔 모달 X
   updateVocabBadge();

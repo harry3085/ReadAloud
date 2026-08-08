@@ -15155,12 +15155,18 @@ window.tpOpenPublishModal = async () => {
                 </label>
                 </span>
               </div>
-              <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;">
+              <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;flex-wrap:wrap;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
                   <input type="checkbox" id="tpVocabShuffleQ" checked> 문제 순서 섞기
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;">
                   <input type="checkbox" id="tpVocabShuffleChoices" checked> 보기(4지문) 섞기
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;" title="불통 학생 재응시 시 이전에 틀린 문제만 다시 풀게 함">
+                  <input type="checkbox" id="tpVocabRetryWrongOnly" onchange="document.getElementById('tpVocabRequirePerfect').disabled=!this.checked;if(!this.checked)document.getElementById('tpVocabRequirePerfect').checked=false;"> 틀린문제만재응시
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;" title="100점 될 때까지 재응시 반복 (틀린문제만재응시 선택 시 활성화)">
+                  <input type="checkbox" id="tpVocabRequirePerfect" disabled> 100점까지
                 </label>
               </div>
               <div style="font-size:10px;color:var(--gray);margin-top:6px;">※ 학생이 풀 때마다 매번 새로 섞이며, 재시험 시에도 다시 섞입니다</div>
@@ -15312,6 +15318,9 @@ window.tpPublish = async () => {
       en2koRatio: isFinite(_e2kR) ? Math.max(0, Math.min(100, _e2kR)) : 50,
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
       shuffleChoices: document.getElementById('tpVocabShuffleChoices')?.checked !== false,
+      // 2026-07-22: 틀린문제만재응시 (부모) + 100점까지 (자식)
+      retryWrongOnly: !!document.getElementById('tpVocabRetryWrongOnly')?.checked,
+      requirePerfect: !!document.getElementById('tpVocabRequirePerfect')?.checked,
     };
     // 🎤 말하기 모드일 때만 엄격도 저장
     if (fmt === 'speaking') {
