@@ -4318,3 +4318,53 @@ SKIP 하단 flex:1 균등 배분 + white-space:nowrap.
 5. **문장시험 정답 문장 TTS on/off 옵션** — 학원장 결정 필요 시
 6. **틀린문제만재응시 실행 결과 관찰·보완** (변동 없음)
 7. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-08-10: 틀린문제만재응시 + 100점까지 조합 버그 fix
+
+SW v709 → v710 (1 commit `7ae9339`). 학원장 보고 — 8월10일 반반2 26 마더텅
+시험에서 학생 재시도 시 오답만이 아니라 전체 문제 출제. 사용자 자체 진단
+("80점 넘어 통과라 재시험 진행?") 정확한 방향 지목.
+
+### 원인
+- `_writeUserCompleted` 는 `passed && score > prevBest` 조건에서만 스냅샷
+  (`questions`/`answers`) 저장 (2026-04-23 작업규칙 7)
+- `requirePerfect=true` (100점까지) 옵션 시 100점 미만은 `passed=false`
+- 90점 응시 → 스냅샷 저장 skip → 재응시 시 `startVocab` 이 필터할 데이터 없음
+  → 필터 skip → 전체 문제 출제
+- 2026-07-22 재응시 기능 도입 시 이 조합 검토 누락 — `requirePerfect=false`
+  로만 테스트해서 통과 시 스냅샷 정상 박히는 케이스만 봄
+
+### fix (`7ae9339`)
+- `_writeUserCompleted` 에 `saveSnapshot` 옵션 추가
+- `retryWrongOnly=true` 인 시험은 통과 여부 무관하게 questions/answers 저장
+- 점수·통과 필드 (score/passed/date) 는 기존 최고점 유지 (덮어쓰지 않음)
+- `_vqSubmit` 에서 `saveSnapshot: isRetry` 전달
+
+### 운영 영향
+- **옛 응시 (v710 이전)**: 스냅샷 없음 → 지금 재시도해도 전체 출제
+- **첫 재시도 시 이번 스냅샷 자동 저장** → **그 다음 재시도부터** 오답만 출제
+- scores 컬렉션에는 문제별 답 상세 없음 → 백필 불가
+
+### 작업 규칙 추가 (2026-08-10)
+
+신규:
+- **옵션 조합 매트릭스 검토 = 신규 기능 배포 전 필수** — 특정 옵션(A) 이
+  다른 옵션(B) 을 트리거하는 코드 경로에 어떤 영향 미치는지 조합 매트릭스
+  확인. `retryWrongOnly` 도입 시 `requirePerfect` 와의 조합에서 스냅샷 저장
+  경로 차단됨 — 정상 통과 시나리오만 확인하고 배포한 사전 검토 부실이 원인.
+- **함수 재사용 시 그 함수의 조건 로직 확인 필수** — `_writeUserCompleted`
+  는 "통과 시에만 스냅샷" 정책 (작업규칙 7). 재응시 필터가 이 스냅샷 참조한다면
+  다양한 통과 조건에서 스냅샷이 실제로 저장되는지 확인. 신규 기능은 기존 규칙과
+  충돌 없는지 CLAUDE.md 규칙 재확인 후 배포.
+
+### 파일 크기 / SW 캐시 (2026-08-10)
+- `public/js/app.js`: +~10줄 (_writeUserCompleted saveSnapshot 분기 + _vqSubmit)
+- SW 캐시: `kunsori-v709` → `kunsori-v710`
+
+**다음 세션 후보 (변동 없음)**:
+1. 문장시험 운영 관찰 (변동 없음)
+2. iOS Safari Web Speech 지원 확인
+3. 옛 응시 학생 안내 — 이번 재시도는 전체, 그 다음부터 필터 (학원장 알림)
+4. Phase 5 출시 준비
