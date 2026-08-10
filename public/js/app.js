@@ -708,7 +708,8 @@ let currentTestId = null, currentTestName = '';
 // ── 내 시험 필터 공통 함수 ────────────────────────────────
 // ─── 공용: 시험 완료 기록 쓰기 (모든 유형 공통) ───
 // 항상 latestScore/latestPassed 갱신, 통과 + 최고점 초과 시에만 score/passed/상세 갱신
-async function _writeUserCompleted(testId, { score, passed, passScore, correct, wrong, total, questions, answers, extra }) {
+// saveSnapshot=true 면 isNewBest 아니어도 questions/answers 저장 (retryWrongOnly 재응시 필터용)
+async function _writeUserCompleted(testId, { score, passed, passScore, correct, wrong, total, questions, answers, extra, saveSnapshot }) {
   const compRef = doc(db,'genTests', testId,'userCompleted', currentUser.uid);
   const existingDoc = await getDoc(compRef);
   const existing = existingDoc.exists() ? existingDoc.data() : null;
@@ -738,6 +739,14 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
       answers: _clean(answers || []),
       date: today,
       completedAt: serverTimestamp(),
+      ...(extra ? _clean(extra) : {}),
+    });
+  } else if (saveSnapshot) {
+    // retryWrongOnly 재응시 필터 지원 — 최고점 아니어도 questions/answers 만 저장.
+    // 점수·통과 fields (score/passed/date 등) 는 기존 최고점 그대로 유지 (덮어쓰지 않음).
+    Object.assign(data, {
+      questions: _clean(questions || []),
+      answers: _clean(answers || []),
       ...(extra ? _clean(extra) : {}),
     });
   }
@@ -6017,6 +6026,8 @@ async function _vqSubmit() {
         score, passed, passScore,
         correct, wrong: total - correct, total,
         questions: finalQuestions, answers: finalAnswers,
+        // retryWrongOnly 재응시 필터에 필요 — 최고점 아니어도 questions/answers 저장 강제
+        saveSnapshot: isRetry,
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
     s._submitted = true;
