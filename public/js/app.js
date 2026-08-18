@@ -5000,6 +5000,8 @@ window.startVocab = async (testId, testName) => {
     const isSpeaking = opts.format === 'speaking';
 
     // 틀린문제만재응시 옵션 — 이전 응시의 틀린 문제만 필터 (2026-07-22)
+    // + 재응시 시 이전 direction/format 보존 (예문 사라짐 방지 등, 2026-08-14)
+    const prevFormatMap = new Map();  // word → { direction, format }
     if (opts.retryWrongOnly) {
       try {
         const ucSnap = await getDoc(doc(db, 'genTests', testId, 'userCompleted', currentUser.uid));
@@ -5012,7 +5014,12 @@ window.startVocab = async (testId, testName) => {
             prevQ.forEach((pq, i) => {
               const pa = prevA[i];
               if (!pa || !pq?.word) return;
-              if (!_vqIsAnsCorrect(pq, pa)) wrongWords.add(String(pq.word).toLowerCase());
+              const key = String(pq.word).toLowerCase();
+              // 재응시 시 원래 응시 시점의 direction/format 그대로 재현 (예문·문제 형태 일관)
+              if (pa.direction || pa.format) {
+                prevFormatMap.set(key, { direction: pa.direction, format: pa.format });
+              }
+              if (!_vqIsAnsCorrect(pq, pa)) wrongWords.add(key);
             });
             if (wrongWords.size > 0 && wrongWords.size < questions.length) {
               questions = questions.filter(q => wrongWords.has(String(q.word || '').toLowerCase()));
@@ -5028,11 +5035,21 @@ window.startVocab = async (testId, testName) => {
     if (opts.shuffleQ) questions = _rngShuffle(questions);
 
     // 2) 각 문제에 format/direction 배정 (객·주 선택, 영→한 모두 비율 기반 랜덤)
+    //    retryWrongOnly 재응시 시 prevFormatMap 에 이전 응시 direction/format 있으면 그대로 재사용
+    //    → 원래 en2ko(예문 표시) MCQ 가 재응시 시 ko2en 으로 바뀌어 예문 사라지는 문제 방지
     let answers = questions.map((q) => {
-      const fmt = isSpeaking ? 'speaking' : ((Math.random() * 100 < opts.mcqRatio) ? 'mcq' : 'short');
-      let dir = (Math.random() * 100 < opts.en2koRatio) ? 'en2ko' : 'ko2en';
-      // 스펠링 쓰기·말하기는 항상 한글→영어
-      if (fmt === 'short' || fmt === 'speaking') dir = 'ko2en';
+      const prevFmt = prevFormatMap.get(String(q.word || '').toLowerCase());
+      let fmt, dir;
+      if (prevFmt && prevFmt.format && prevFmt.direction) {
+        fmt = isSpeaking ? 'speaking' : prevFmt.format;   // speaking 시험은 speaking 강제
+        dir = prevFmt.direction;
+        if (fmt === 'short' || fmt === 'speaking') dir = 'ko2en';
+      } else {
+        fmt = isSpeaking ? 'speaking' : ((Math.random() * 100 < opts.mcqRatio) ? 'mcq' : 'short');
+        dir = (Math.random() * 100 < opts.en2koRatio) ? 'en2ko' : 'ko2en';
+        // 스펠링 쓰기·말하기는 항상 한글→영어
+        if (fmt === 'short' || fmt === 'speaking') dir = 'ko2en';
+      }
       const ans = { input: '', direction: dir, format: fmt };
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
