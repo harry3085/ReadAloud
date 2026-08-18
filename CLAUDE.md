@@ -4363,8 +4363,41 @@ SW v709 → v710 (1 commit `7ae9339`). 학원장 보고 — 8월10일 반반2 26
 - `public/js/app.js`: +~10줄 (_writeUserCompleted saveSnapshot 분기 + _vqSubmit)
 - SW 캐시: `kunsori-v709` → `kunsori-v710`
 
+---
+
+## 2026-08-14: 재응시 시 direction/format 보존 — 4지선다 예문 사라짐 fix
+
+SW v710 → v711 (1 commit `0d435fb`). 학원장 보고 — 틀린문제만 재응시 시
+4지선다 문제의 예문이 나오지 않음.
+
+### 원인
+- `startVocab` 이 재응시 시 direction/format 을 매번 랜덤 재배정 (line 5031-5036)
+- 예문 (`q.example`) 은 **en2ko(영→한) MCQ 에서만 표시** — 학생이 영단어 보고 한글 뜻 고를 때 힌트로 보여주는 설계 (ko2en 은 예문에 정답 포함될 수 있어 leak 방지)
+- 원래 en2ko(예문 표시) 였던 MCQ 가 재응시 때 ko2en 으로 랜덤 배정 → 예문 사라짐
+- 학생 입장에서 "재응시 때 예문이 안 나옴" 으로 보고
+
+### fix (`0d435fb`)
+- `retryWrongOnly=true` 재응시 시 `prevFormatMap` 구축 (word → {direction, format})
+- 이전 응시 answers 에 direction/format 있으면 그대로 재사용
+- 없는 경우만 랜덤 배정 (신규 시나리오 안전망)
+- speaking 시험은 speaking 강제 (모드 전환 불가)
+
+### 운영 영향
+- v710 이후 스냅샷 박힌 응시부터 정상 작동
+- 옛 응시 (v710 이전 스냅샷 없음) → 첫 재응시 시 스냅샷 저장 (v710 fix 로) → 그 다음 재응시부터 direction/format 보존
+
+### 작업 규칙 추가 (2026-08-14)
+
+신규:
+- **재응시 = 원본 응시 재현이 원칙** — 문제 순서·format·direction·힌트 표시 등 학생 학습 경험을 이전과 동일하게 유지. 매번 랜덤 재배정하면 학생이 다른 시험처럼 느껴 학습 흐름 깨짐. 새 문제 도입은 새 배정으로. 재응시 코드 작성 시 "무엇을 바꿔야 하나" 보다 "무엇을 유지해야 하나" 를 먼저 검토.
+- **direction/format 이 렌더 로직에 영향 주는 필드 (예문·힌트·정답 leak 방지 등) 이면 스냅샷 저장 대상** — 단순 답안(input) 만 저장하면 재응시 시 재현 불가. userCompleted.answers 는 이미 direction/format 필드 저장 중이니 재응시가 이를 활용하면 됨.
+
+### 파일 크기 / SW 캐시 (2026-08-14)
+- `public/js/app.js`: +~15줄 (prevFormatMap 구축 + answers map 분기)
+- SW 캐시: `kunsori-v710` → `kunsori-v711`
+
 **다음 세션 후보 (변동 없음)**:
 1. 문장시험 운영 관찰 (변동 없음)
 2. iOS Safari Web Speech 지원 확인
-3. 옛 응시 학생 안내 — 이번 재시도는 전체, 그 다음부터 필터 (학원장 알림)
+3. 옛 응시 학생 안내 — 이번 재시도는 전체·랜덤, 그 다음부터 필터+형식 보존
 4. Phase 5 출시 준비
