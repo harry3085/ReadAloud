@@ -16527,44 +16527,45 @@ window.tpPrintNow = () => {
 // 다른 행 ID 가 같은 페이지에 동시에 존재하지 않도록 분리
 let _tpLastPrefix = 'tp';
 // 시험 옵션 요약 라인 — 펼침 카드 상단에 표시 (학원장이 출제 옵션 즉시 확인 가능)
+// 컴팩트 한 줄: 배경색 배지 없이 · 구분자로만 나열, 강조는 색상만
 function _tpBuildOptionsLine(t) {
   const tMode = (t.testMode || t.mode || '').toLowerCase();
   const passScore = t.passScore ?? 80;
   const timeLimit = t.timeLimitSec;
-  const chips = [];
-  const chip = (label, color) => `<span style="display:inline-block;padding:2px 8px;background:${color||'#f0f9ff'};color:${color?'white':'#0369a1'};border-radius:10px;font-size:11px;font-weight:600;margin-right:4px;">${label}</span>`;
+  const items = [];
+  const it = (label, color) => color ? `<span style="color:${color};font-weight:600;">${label}</span>` : label;
 
   if (tMode === 'vocab' && t.vocabOptions) {
     const o = t.vocabOptions;
     if (o.format === 'speaking') {
-      chips.push(chip('🎤 말하기'));
-      if (o.speakingStrictness) chips.push(chip(`엄격도: ${o.speakingStrictness === 'lenient' ? '관대' : o.speakingStrictness === 'strict' ? '엄격' : '보통'}`));
+      items.push(it('🎤 말하기', '#dc2626'));
+      if (o.speakingStrictness) items.push(`엄격도 ${o.speakingStrictness === 'lenient' ? '관대' : o.speakingStrictness === 'strict' ? '엄격' : '보통'}`);
     } else {
-      if (typeof o.mcqRatio === 'number') chips.push(chip(`객관식 ${o.mcqRatio}% / 주관식 ${100 - o.mcqRatio}%`));
-      if (typeof o.en2koRatio === 'number') chips.push(chip(`영→한 ${o.en2koRatio}% / 한→영 ${100 - o.en2koRatio}%`));
-      if (o.format === 'mixed_mcq_first') chips.push(chip('객→주 순'));
-      else if (o.format === 'mixed_short_first') chips.push(chip('주→객 순'));
+      if (typeof o.mcqRatio === 'number') items.push(`객 ${o.mcqRatio}% / 주 ${100 - o.mcqRatio}%`);
+      if (typeof o.en2koRatio === 'number') items.push(`영→한 ${o.en2koRatio}% / 한→영 ${100 - o.en2koRatio}%`);
+      if (o.format === 'mixed_mcq_first') items.push('객→주 순');
+      else if (o.format === 'mixed_short_first') items.push('주→객 순');
     }
-    if (o.retryWrongOnly) chips.push(chip('틀린문제만 재응시', '#7c3aed'));
-    if (o.requirePerfect) chips.push(chip('100점까지', '#dc2626'));
-    if (o.shuffleQ === false) chips.push(chip('순서 고정'));
-    if (o.shuffleChoices === false) chips.push(chip('선택지 고정'));
+    if (o.retryWrongOnly) items.push(it('틀린문제만 재응시', '#7c3aed'));
+    if (o.requirePerfect) items.push(it('100점까지', '#dc2626'));
+    if (o.shuffleQ === false) items.push('순서 고정');
+    if (o.shuffleChoices === false) items.push('선택지 고정');
   } else if (tMode === 'sentence' && t.sentenceOptions) {
     const o = t.sentenceOptions;
-    if (typeof o.matchThreshold === 'number') chips.push(chip(`매칭 임계 ${o.matchThreshold}%`));
-    if (o.allowHint) chips.push(chip('힌트 허용'));
-    if (o.shuffleQ === false) chips.push(chip('순서 고정'));
+    if (typeof o.matchThreshold === 'number') items.push(`매칭 임계 ${o.matchThreshold}%`);
+    if (o.allowHint) items.push('힌트 허용');
+    if (o.shuffleQ === false) items.push('순서 고정');
   } else if (tMode === 'recording') {
     const q0 = t.questions?.[0] || {};
-    if (q0.minDurationSec) chips.push(chip(`최소 ${q0.minDurationSec}초`));
-    if (q0.maxDurationSec) chips.push(chip(`최대 ${q0.maxDurationSec}초`));
-    if (q0.recordingCount) chips.push(chip(`${q0.recordingCount}회 응시`));
+    if (q0.minDurationSec) items.push(`최소 ${q0.minDurationSec}초`);
+    if (q0.maxDurationSec) items.push(`최대 ${q0.maxDurationSec}초`);
+    if (q0.recordingCount) items.push(`${q0.recordingCount}회 응시`);
   }
-  chips.push(chip(`통과 ${passScore}점`, '#059669'));
-  if (timeLimit) chips.push(chip(`⏱ ${timeLimit}초/문`));
+  items.push(it(`통과 ${passScore}점`, '#059669'));
+  if (timeLimit) items.push(`⏱ ${timeLimit}초/문`);
 
-  return `<div style="padding:8px 12px 6px;font-size:11px;color:var(--gray);border-bottom:1px dashed #e5e7eb;margin-bottom:8px;">
-    <span style="font-weight:700;color:var(--text);margin-right:6px;">출제 옵션</span>${chips.join('')}
+  return `<div style="padding:3px 12px;font-size:11px;color:var(--gray);border-bottom:1px dashed #e5e7eb;line-height:1.5;">
+    <span style="font-weight:700;color:var(--text);margin-right:6px;">출제 옵션</span>${items.join(' · ')}
   </div>`;
 }
 
@@ -16650,7 +16651,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
     // + 출제 옵션 요약 라인 (2026-08-19 학원장 요청 — 시험 옵션 어디서 확인?)
     content.innerHTML = `
       ${_tpBuildOptionsLine(t)}
-      <div style="padding:8px 4px;">
+      <div style="padding:4px 4px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:5px;padding:0 4px;">
           ${studentList.map(s => {
             const c = completed.get(s.uid);
