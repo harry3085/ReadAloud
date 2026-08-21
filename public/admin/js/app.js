@@ -2617,6 +2617,21 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
       _billingsByMonth[_billingMonth] = _billings;  // reference 저장 — in-place mutation 자동 반영
     }
   }
+
+  // 학생 현재 반 매핑 — billing.groupName 은 생성 시점 스냅샷이라 반 이동 시 stale.
+  // 렌더 시 users doc 의 최신 group 으로 덮어씀 (2026-08-20 학원장 보고).
+  try {
+    if (!Array.isArray(allStudents) || allStudents.length === 0) {
+      const sSnap = await getDocs(query(collection(db,'users'), where('academyId','==',academyId), where('role','==','student')));
+      allStudents = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    const uidToGroup = new Map(allStudents.map(s => [s.id, s.group || '']));
+    _billings.forEach(b => {
+      const cur = uidToGroup.get(b.studentUid);
+      if (cur !== undefined) b.groupName = cur;   // 최신 반으로 덮어쓰기 (in-memory)
+    });
+  } catch(e) { console.warn('[billing] 학생 반 매핑 실패, billing 스냅샷 사용:', e); }
+
   _billings.sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'ko'));
 
   // 반 목록 (필터용)
