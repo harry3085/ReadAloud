@@ -5874,9 +5874,81 @@ function _adminRecBuildDetail(recordings, fullText, opts){
       </div>`;
   }).join('');
 }
+// vocab-practice (단어 학습·따라 읽기) 전용 상세 — 정답/오답 개념 X, 정확도 % 로 학습 진도 표시
+function _adminVpPracticeBuildDetail(comp) {
+  const wa = Array.isArray(comp?.wordAccuracies) ? comp.wordAccuracies
+           : Array.isArray(comp?.extra?.wordAccuracies) ? comp.extra.wordAccuracies
+           : [];
+  if (!wa.length) return '<div style="color:var(--gray);text-align:center;padding:20px;font-size:12px;">학습 상세 데이터 없음</div>';
+  const total = wa.length;
+  const avg = Math.round(wa.reduce((sum, w) => sum + (w.best || 0), 0) / total);
+  const greatN = wa.filter(w => (w.best||0) >= 70).length;
+  const goodN  = wa.filter(w => (w.best||0) >= 45 && (w.best||0) < 70).length;
+  const notBadN= wa.filter(w => (w.best||0) >= 25 && (w.best||0) < 45).length;
+  const lowN   = wa.filter(w => (w.best||0) < 50).length;
+  const stars  = comp?.correct ?? comp?.extra?.totalStars ?? 0;
+  const totalAttempts = wa.reduce((sum, w) => sum + (w.attempts || 0), 0);
+  const avgAttempts = total ? (totalAttempts / total).toFixed(1) : 0;
+
+  const summary = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">
+      <div style="background:#f0f9ff;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#0891b2;">${avg}%</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">평균 정확도</div>
+      </div>
+      <div style="background:#fef3c7;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#f59e0b;">✨ ${stars}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">별 획득</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#555;">${total}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">전체 단어</div>
+      </div>
+      <div style="background:#fef2f2;border-radius:8px;padding:10px 4px;text-align:center;" title="정확도 50% 이하 (참고)">
+        <div style="font-size:20px;font-weight:800;color:#dc2626;">${lowN}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">50% 이하</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;font-size:11px;">
+      <span style="background:#dcfce7;color:#059669;padding:3px 10px;border-radius:12px;font-weight:700;">🌟 Great ${greatN}</span>
+      <span style="background:#cffafe;color:#0891b2;padding:3px 10px;border-radius:12px;font-weight:700;">👍 Good ${goodN}</span>
+      <span style="background:#fef3c7;color:#f59e0b;padding:3px 10px;border-radius:12px;font-weight:700;">💪 Not Bad ${notBadN}</span>
+      <span style="background:#f3f4f6;color:#6b7280;padding:3px 10px;border-radius:12px;font-weight:600;">평균 시도 ${avgAttempts}회/단어</span>
+    </div>`;
+
+  const rows = wa.map((w, i) => {
+    const acc = w.best || 0;
+    const attempts = w.attempts || 0;
+    let tier, tierColor, tierBg;
+    if (acc >= 70)      { tier = '🌟 Great'; tierColor = '#059669'; tierBg = '#f0fdf4'; }
+    else if (acc >= 45) { tier = '👍 Good';  tierColor = '#0891b2'; tierBg = '#f0f9ff'; }
+    else if (acc >= 25) { tier = '💪 Not Bad'; tierColor = '#f59e0b'; tierBg = '#fefce8'; }
+    else                { tier = '🤔 연습 필요'; tierColor = '#dc2626'; tierBg = '#fef2f2'; }
+    return `<div style="background:${tierBg};border-left:3px solid ${tierColor};border-radius:6px;padding:8px 12px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="min-width:0;flex:1;">
+        <div style="font-size:10px;color:var(--gray);">단어 ${i+1}</div>
+        <div style="font-weight:700;color:var(--text);font-size:14px;word-break:break-word;">${esc(w.word||'')}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-size:15px;font-weight:800;color:${tierColor};">${acc}%</div>
+        <div style="font-size:10px;color:var(--gray);">${tier} · ${attempts}회 시도</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return summary + rows;
+}
+
 function _adminBuildDetail(mode, comp){
   const m=String(mode||'').toLowerCase();
-  if(m==='vocab')       return _adminVqBuildDetail(comp.questions, comp.answers);
+  if(m==='vocab') {
+    // vocab-practice (format='practice') 감지 → 학습 상세 (정답/오답 개념 X)
+    const isPractice = comp?.extra?.practiceMode === true
+      || Array.isArray(comp?.wordAccuracies)
+      || Array.isArray(comp?.extra?.wordAccuracies);
+    if (isPractice) return _adminVpPracticeBuildDetail(comp);
+    return _adminVqBuildDetail(comp.questions, comp.answers);
+  }
   if(m==='mcq')         return _adminMcqBuildDetail(comp.questions, comp.answers);
   if(m==='fill_blank')  return _adminFbBuildDetail(comp.questions, comp.answers, comp.detail);
   if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
@@ -5945,17 +6017,26 @@ window.showScoreDetail = async(scoreId, testId) => {
         ));
         const ids = aSnap.docs.map(d=>d.id);
         const idx = ids.indexOf(scoreId);
-        if(ids.length>1 && idx>=0) attemptLabel = `${ids.length}회 응시 중 ${idx+1}번째`;
-        else if(ids.length===1) attemptLabel = `1회 응시`;
+        // practice 는 "학습" 용어, 그 외는 "응시"
+        const unit = (mode === 'vocab' && (s.vocabFormat === 'practice' || comp?.extra?.practiceMode === true)) ? '학습' : '응시';
+        if(ids.length>1 && idx>=0) attemptLabel = `${ids.length}회 ${unit} 중 ${idx+1}번째`;
+        else if(ids.length===1) attemptLabel = `1회 ${unit}`;
       }catch(e){ console.warn('응시 순번 조회 실패(인덱스 빌드중?)', e); }
     }
 
     const bookName = s.bookName || genTest?.bookName || s.unitName || '-';
     const testName = s.testName || genTest?.name || '-';
     const isRecording = mode === 'recording';
+    // vocab-practice (단어 학습) 감지 — 통과/오답 개념 X, 학습 완료 개념만
+    const isPractice = mode === 'vocab' && (
+      s.vocabFormat === 'practice' ||
+      genTest?.vocabOptions?.format === 'practice' ||
+      comp?.extra?.practiceMode === true
+    );
     const passScore = s.passScore || genTest?.passScore || 80;
     // Phase B: 녹음숙제는 통과/불통 폐기 — 무조건 passed 로 간주 (상세 차단 X)
-    const passed = isRecording ? true : (s.passed || (s.score>=passScore));
+    // Practice: 학습 완료 개념. 항상 완료 처리.
+    const passed = (isRecording || isPractice) ? true : (s.passed || (s.score>=passScore));
     const pct = s.score || 0;
     const badge = pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
 
@@ -6048,42 +6129,62 @@ window.showScoreDetail = async(scoreId, testId) => {
                 ${attemptLabel ? `<span style="color:#7c3aed;font-weight:600;">· ${esc(attemptLabel)}</span>` : ''}
               </div>
             </div>
-            <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;flex-shrink:0;">${pct}점</span>
+            <span class="badge ${badge}" style="font-size:18px;padding:6px 14px;flex-shrink:0;">${pct}${isPractice ? '%' : '점'}</span>
           </div>
         </div>
 
         <div style="padding:16px 22px;overflow-y:auto;flex:1;">
           <div style="margin-bottom:16px;">
-            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${iconSvg('clipboard')} 시험 결과</div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-              <div style="background:#f0fafa;border-radius:8px;padding:12px 6px;text-align:center;">
-                <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
-                <div style="font-size:11px;color:var(--gray);margin-top:2px;">정답</div>
-              </div>
-              <div style="background:#fee2e2;border-radius:8px;padding:12px 6px;text-align:center;">
-                <div style="font-size:20px;font-weight:800;color:#e05050;">${s.wrong||0}</div>
-                <div style="font-size:11px;color:var(--gray);margin-top:2px;">오답</div>
-              </div>
-              <div style="background:#f8f9fa;border-radius:8px;padding:12px 6px;text-align:center;">
-                <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
-                <div style="font-size:11px;color:var(--gray);margin-top:2px;">전체</div>
-              </div>
-              ${isRecording
-                ? `<div style="background:#dbeafe;border-radius:8px;padding:12px 6px;text-align:center;">
-                    <div style="font-size:14px;font-weight:800;color:#1d4ed8;line-height:1.4;">📤<br>제출됨</div>
-                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">통과/불통 X</div>
-                  </div>`
-                : `<div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:8px;padding:12px 6px;text-align:center;">
-                    <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
-                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">기준 ${passScore}점</div>
-                  </div>`
-              }
-            </div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${iconSvg('clipboard')} ${isPractice ? '학습 결과' : '시험 결과'}</div>
+            ${isPractice
+              ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                  <div style="background:#f0f9ff;border-radius:8px;padding:12px 6px;text-align:center;" title="단어별 최고 정확도의 평균">
+                    <div style="font-size:20px;font-weight:800;color:#0891b2;">${s.score||0}%</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">평균 정확도</div>
+                  </div>
+                  <div style="background:#fef3c7;border-radius:8px;padding:12px 6px;text-align:center;" title="Great/Good/Not Bad 리액션에서 획득한 별 총합">
+                    <div style="font-size:20px;font-weight:800;color:#f59e0b;">✨ ${s.correct||0}</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">별 획득</div>
+                  </div>
+                  <div style="background:#f8f9fa;border-radius:8px;padding:12px 6px;text-align:center;">
+                    <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">전체 단어</div>
+                  </div>
+                  <div style="background:#d1fae5;border-radius:8px;padding:12px 6px;text-align:center;">
+                    <div style="font-size:14px;font-weight:800;color:#059669;line-height:1.4;">🎓<br>학습 완료</div>
+                    <div style="font-size:11px;color:var(--gray);margin-top:2px;">평가 X · 참고용</div>
+                  </div>
+                </div>`
+              : `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                <div style="background:#f0fafa;border-radius:8px;padding:12px 6px;text-align:center;">
+                  <div style="font-size:20px;font-weight:800;color:var(--teal);">${s.correct||0}</div>
+                  <div style="font-size:11px;color:var(--gray);margin-top:2px;">정답</div>
+                </div>
+                <div style="background:#fee2e2;border-radius:8px;padding:12px 6px;text-align:center;">
+                  <div style="font-size:20px;font-weight:800;color:#e05050;">${s.wrong||0}</div>
+                  <div style="font-size:11px;color:var(--gray);margin-top:2px;">오답</div>
+                </div>
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px 6px;text-align:center;">
+                  <div style="font-size:20px;font-weight:800;color:#555;">${s.total||0}</div>
+                  <div style="font-size:11px;color:var(--gray);margin-top:2px;">전체</div>
+                </div>
+                ${isRecording
+                  ? `<div style="background:#dbeafe;border-radius:8px;padding:12px 6px;text-align:center;">
+                      <div style="font-size:14px;font-weight:800;color:#1d4ed8;line-height:1.4;">📤<br>제출됨</div>
+                      <div style="font-size:11px;color:var(--gray);margin-top:2px;">통과/불통 X</div>
+                    </div>`
+                  : `<div style="background:${passed?'#d1fae5':'#fef9c3'};border-radius:8px;padding:12px 6px;text-align:center;">
+                      <div style="font-size:14px;font-weight:800;color:${passed?'#059669':'#b45309'};line-height:1.4;">${passed?'✅':'⚠️'}<br>${passed?'통과':'미통과'}</div>
+                      <div style="font-size:11px;color:var(--gray);margin-top:2px;">기준 ${passScore}점</div>
+                    </div>`
+                }
+              </div>`
+            }
           </div>
 
           <div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <div style="font-weight:700;font-size:13px;">${iconSvg('pen')} 문제별 상세</div>
+              <div style="font-weight:700;font-size:13px;">${iconSvg('pen')} ${isPractice ? '단어별 학습 상세' : '문제별 상세'}</div>
               ${dateStr?`<div style="font-size:11px;color:#bbb;">${esc(dateStr)}</div>`:''}
             </div>
             <div style="word-break:break-word;">
