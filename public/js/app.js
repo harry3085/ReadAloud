@@ -8254,12 +8254,19 @@ function _vpRenderResult() {
       </div>
       <div style="display:flex;gap:10px;width:100%;max-width:340px;padding:28px 0 16px;">
         <button onclick="goVocab()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
-        <button onclick="startVocab('${esc(s.test.id)}','${esc(s.test.name||'').replace(/'/g,"\\'")}')" style="flex:1;padding:14px;background:#0891b2;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔁 다시 학습</button>
+        <button onclick="vpRestart()" style="flex:1;padding:14px;background:#0891b2;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔁 다시 학습</button>
       </div>
     </div>
     <style>@keyframes vpBounce{0%{transform:translateY(0) scale(1);} 100%{transform:translateY(-10px) scale(1.05);}}</style>`;
   screen.dataset.stage = 'result';
 }
+
+// 결과 화면 "다시 학습" — 상태에서 test 정보 읽어 startVocab (인라인 onclick 따옴표 안전)
+window.vpRestart = () => {
+  const t = _vpState && _vpState.test;
+  if (!t || !t.id) { showToast('시험 정보 없음'); return; }
+  startVocab(t.id, t.name || '');
+};
 
 window.quitVocabPractice = async () => {
   const s = _vpState;
