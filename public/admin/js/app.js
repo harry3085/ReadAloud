@@ -15616,6 +15616,7 @@ window.tpOpenPublishModal = async () => {
 };
 
 // 단어시험 형식 변경 시 — 말하기·연습 모드 옵션 토글 + 방향·비율 옵션 무력화
+// practice(단어 학습): 문제섞기만 활성, 그 외 옵션 (보기섞기·틀린문제만·100점까지) 비활성
 window._tpVocabFormatChanged = () => {
   const fmt = document.getElementById('tpVocabFormat')?.value;
   const isSpeaking = fmt === 'speaking';
@@ -15624,12 +15625,27 @@ window._tpVocabFormatChanged = () => {
   const speakOpts = document.getElementById('tpSpeakingOpts');
   const ratioRow = document.getElementById('tpVocabRatioRow');
   if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
-  // 말하기·연습 → 객관식비율·영→한비율 슬라이더 비활성화 (연습·말하기는 방향·비율 무관)
+  // 말하기·연습 → 객관식비율·영→한비율 슬라이더 비활성화
   if (ratioRow) {
     ratioRow.style.opacity = disableRatio ? '0.4' : '1';
     ratioRow.style.pointerEvents = disableRatio ? 'none' : 'auto';
     ratioRow.querySelectorAll('input').forEach(el => { el.disabled = disableRatio; });
   }
+  // practice — 보기섞기·틀린문제만·100점까지 비활성 (평가 아닌 학습이라 무관)
+  const disableForPractice = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = isPractice;
+    const lbl = el.closest('label');
+    if (lbl) {
+      lbl.style.opacity = isPractice ? '0.4' : '1';
+      lbl.style.pointerEvents = isPractice ? 'none' : 'auto';
+    }
+    if (isPractice) el.checked = false;
+  };
+  disableForPractice('tpVocabShuffleChoices');
+  disableForPractice('tpVocabRetryWrongOnly');
+  disableForPractice('tpVocabRequirePerfect');
 };
 
 // Fisher-Yates 셔플 (편향 없음). `sort(() => Math.random() - 0.5)` 는 V8 안정정렬과

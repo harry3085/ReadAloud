@@ -7720,9 +7720,13 @@ let _vpToneIdx = 0;
 
 async function _startVocabPractice(test, questions) {
   _screenPrepare('vocabPractice', '#vpProgressBar');
+  // 문제섞기 옵션 반영 — vocabOptions.shuffleQ !== false 면 셔플 (default true)
+  if (test?.vocabOptions?.shuffleQ !== false) {
+    questions = _rngShuffle(questions);
+  }
   _vpState = {
     test,
-    questions,   // vocab questions from genTests
+    questions,   // vocab questions from genTests (셔플 반영됨)
     currentIdx: 0,
     attempt: 0,
     stars: 0,
