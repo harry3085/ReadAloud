@@ -15399,6 +15399,7 @@ window.tpOpenPublishModal = async () => {
                     <option value="mixed" selected>혼합 (랜덤)</option>
                     <option value="mixed_mcq_first">혼합 (객→주)</option>
                     <option value="mixed_short_first">혼합 (주→객)</option>
+                    <option value="practice">단어 학습 (따라 읽기)</option>
                     <option value="speaking">말하기 (음성 인식)</option>
                   </select>
                 </label>
@@ -15505,18 +15506,20 @@ window.tpOpenPublishModal = async () => {
   });
 };
 
-// 단어시험 형식 변경 시 — 말하기 모드 옵션 토글 + 방향·비율 옵션 무력화
+// 단어시험 형식 변경 시 — 말하기·연습 모드 옵션 토글 + 방향·비율 옵션 무력화
 window._tpVocabFormatChanged = () => {
   const fmt = document.getElementById('tpVocabFormat')?.value;
   const isSpeaking = fmt === 'speaking';
+  const isPractice = fmt === 'practice';
+  const disableRatio = isSpeaking || isPractice;
   const speakOpts = document.getElementById('tpSpeakingOpts');
   const ratioRow = document.getElementById('tpVocabRatioRow');
   if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
-  // 말하기 → 객관식비율·영→한비율 슬라이더 비활성화 (한글→영어 발음 고정)
+  // 말하기·연습 → 객관식비율·영→한비율 슬라이더 비활성화 (연습·말하기는 방향·비율 무관)
   if (ratioRow) {
-    ratioRow.style.opacity = isSpeaking ? '0.4' : '1';
-    ratioRow.style.pointerEvents = isSpeaking ? 'none' : 'auto';
-    ratioRow.querySelectorAll('input').forEach(el => { el.disabled = isSpeaking; });
+    ratioRow.style.opacity = disableRatio ? '0.4' : '1';
+    ratioRow.style.pointerEvents = disableRatio ? 'none' : 'auto';
+    ratioRow.querySelectorAll('input').forEach(el => { el.disabled = disableRatio; });
   }
 };
 
@@ -16555,6 +16558,8 @@ function _tpBuildOptionsLine(t) {
     if (o.format === 'speaking') {
       items.push(it('🎤 말하기', '#dc2626'));
       if (o.speakingStrictness) items.push(`엄격도 ${o.speakingStrictness === 'lenient' ? '관대' : o.speakingStrictness === 'strict' ? '엄격' : '보통'}`);
+    } else if (o.format === 'practice') {
+      items.push(it('📖 단어 학습 (따라 읽기)', '#0891b2'));
     } else {
       if (typeof o.mcqRatio === 'number') items.push(`객 ${o.mcqRatio}% / 주 ${100 - o.mcqRatio}%`);
       if (typeof o.en2koRatio === 'number') items.push(`영→한 ${o.en2koRatio}% / 한→영 ${100 - o.en2koRatio}%`);
