@@ -7785,8 +7785,8 @@ function _vpRenderStep() {
 }
 
 // TTS 인디케이터 — 1a 호흡 리본 (디자인 handoff 2026-09-09)
-// 청록 팔레트 A (학습 화면 배경 #F0FDFF)
-const _VP_RIBBON_COLORS = { main: '#0891B2', mid: '#06B6D4', light: '#67E8F9' };
+// 코랄 팔레트 B (앱 통일)
+const _VP_RIBBON_COLORS = { main: '#E8714A', mid: '#F08A5F', light: '#F6C3AC' };
 let _vpRibbonInst = 0;
 
 function _vpBuildRibbonHtml({ main, mid, light } = _VP_RIBBON_COLORS) {
