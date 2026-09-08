@@ -7755,18 +7755,33 @@ function _vpRenderStep() {
   setTimeout(() => _vpSpeakAndListen(), 300);
 }
 
+// 이퀄라이저 / 마이크 애니메이션 show/hide
+function _vpShowEq(on) {
+  const el = document.getElementById('vpEqualizer');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+function _vpShowMicAnim(on) {
+  const el = document.getElementById('vpMicArea');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+
 // TTS 재생 후 자동으로 SR 시작 (TTS 소리가 마이크에 잡히는 것 방지 위해 onend 대기)
 function _vpSpeakAndListen() {
   const s = _vpState;
   const q = s.questions[s.currentIdx];
   if (!q || !q.word) return;
   const statusEl = document.getElementById('vpStatus');
-  if (statusEl) statusEl.textContent = '🔊 잘 들어보세요...';
+  if (statusEl) statusEl.textContent = '';
+  _vpShowMicAnim(false);
+  _vpShowEq(true);
 
   if (typeof window.speechSynthesis === 'undefined') {
+    _vpShowEq(false);
     _vpStartListen();
     return;
   }
+  let started = false;
+  const startOnce = () => { if (!started) { started = true; _vpShowEq(false); _vpStartListen(); } };
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(q.word);
@@ -7778,13 +7793,15 @@ function _vpSpeakAndListen() {
     u.volume = 1.0;
     const enVoices = (s.ttsVoices || []).filter(v => (v.lang || '').startsWith('en'));
     if (enVoices.length) u.voice = enVoices[_vpToneIdx % enVoices.length];
-    u.onend = () => setTimeout(() => _vpStartListen(), 350);
-    u.onerror = () => setTimeout(() => _vpStartListen(), 350);
+    // TTS 끝나면 즉시 SR 시작 (delay 최소화 — 100ms)
+    u.onend = () => setTimeout(startOnce, 100);
+    u.onerror = () => setTimeout(startOnce, 100);
     window.speechSynthesis.speak(u);
-    // safety net — 3초 안에 onend 안 오면 강제 진행
-    setTimeout(() => { if (!s.listening) _vpStartListen(); }, 3000);
+    // safety net — 2초 안에 onend 안 오면 강제 진행
+    setTimeout(startOnce, 2000);
   } catch(e) {
     console.warn('[vp] TTS:', e);
+    _vpShowEq(false);
     _vpStartListen();
   }
 }
@@ -7796,7 +7813,8 @@ function _vpStartListen() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
   const statusEl = document.getElementById('vpStatus');
-  if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 따라 읽어보세요</span>';
+  if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">따라 읽어보세요!</span>';
+  _vpShowMicAnim(true);
 
   const rec = new SR();
   rec.lang = 'en-US';
@@ -7863,6 +7881,19 @@ function _vpSim(a, b) {
   return Math.round((1 - dist / maxLen) * 100);
 }
 
+// 리액션 rotate — 카테고리별 다양한 이모지 (지루하지 않게)
+const _VP_EMOJIS = {
+  great:   ['🌟','🎉','✨','🏆','🚀','💯','🥳'],
+  good:    ['👍','😊','👏','✅','🌈','😎'],
+  notbad:  ['💪','🌱','🙂','☘️','🐣'],
+  tryagain:['🤔','😅','📚','🐌','🧐'],
+};
+let _vpEmojiIdx = 0;
+function _vpPickEmoji(cat) {
+  const list = _VP_EMOJIS[cat] || ['✨'];
+  return list[_vpEmojiIdx++ % list.length];
+}
+
 function _vpHandleResult(sim, heard) {
   const s = _vpState;
   s.attempt++;
@@ -7870,6 +7901,7 @@ function _vpHandleResult(sim, heard) {
   if (sim > wa.best) wa.best = sim;
   wa.attempts = s.attempt;
 
+  _vpShowMicAnim(false);   // 리액션 시 마이크 애니메이션 감춤
   const reactEmoji = document.getElementById('vpReactionEmoji');
   const reactText = document.getElementById('vpReactionText');
   const statusEl = document.getElementById('vpStatus');
@@ -7878,13 +7910,13 @@ function _vpHandleResult(sim, heard) {
 
   let emoji = '', label = '', color = '', starGain = 0, isGreat = false;
   if (sim >= _VP_THRESH.great) {
-    emoji = '🌟'; label = 'Great!!'; color = '#059669'; starGain = 3; isGreat = true;
+    emoji = _vpPickEmoji('great'); label = 'Great!!'; color = '#059669'; starGain = 3; isGreat = true;
   } else if (sim >= _VP_THRESH.good) {
-    emoji = '👍'; label = 'Good!!'; color = '#0891b2'; starGain = 2;
+    emoji = _vpPickEmoji('good'); label = 'Good!!'; color = '#0891b2'; starGain = 2;
   } else if (sim >= _VP_THRESH.notbad) {
-    emoji = '💪'; label = 'Not Bad!!'; color = '#f59e0b'; starGain = 1;
+    emoji = _vpPickEmoji('notbad'); label = 'Not Bad!!'; color = '#f59e0b'; starGain = 1;
   } else {
-    emoji = '🤔'; label = 'Try Again!'; color = '#94a3b8'; starGain = 0;
+    emoji = _vpPickEmoji('tryagain'); label = 'Try Again!'; color = '#94a3b8'; starGain = 0;
   }
 
   if (reactEmoji) {
@@ -7920,7 +7952,7 @@ function _vpHandleResult(sim, heard) {
   setTimeout(() => {
     if (canAdvance) _vpAdvance();
     else _vpSpeakAndListen();   // 같은 단어 자동 재재생 + 재청취
-  }, 1200);
+  }, 700);
 }
 
 function _vpAdvance() {
@@ -7985,37 +8017,38 @@ async function _vpFinish() {
   _vpRenderResult();
 }
 
+// 평균 정확도 기반 큰 리액션 이미지 (학생용 — 단어별 정확도 X)
+const _VP_RESULT_TIERS = [
+  { min: 80, emoji: '🏆', title: '완벽해요!',       msg: '정말 최고예요! 챔피언 등극! 🎊', color: '#059669', bg: '#dcfce7' },
+  { min: 60, emoji: '🌟', title: '정말 잘했어요!',   msg: '멋진 발음이에요! 계속 이렇게! ✨', color: '#0891b2', bg: '#cffafe' },
+  { min: 40, emoji: '💪', title: '좋아요!',         msg: '연습하니까 늘고 있어요! 👏',       color: '#f59e0b', bg: '#fef3c7' },
+  { min: 20, emoji: '🌱', title: '괜찮아요!',       msg: '한 번 더 하면 훨씬 좋아질거예요!',  color: '#fb923c', bg: '#fed7aa' },
+  { min: 0,  emoji: '📚', title: '계속 연습해요!',   msg: '천천히 따라 읽어봐요. 할 수 있어요!', color: '#94a3b8', bg: '#f1f5f9' },
+];
+
 function _vpRenderResult() {
   const s = _vpState;
   const total = s.questions.length;
   const avgAccuracy = total ? Math.round(s.wordAccuracies.reduce((sum, wa) => sum + (wa.best || 0), 0) / total) : 0;
+  const tier = _VP_RESULT_TIERS.find(t => avgAccuracy >= t.min) || _VP_RESULT_TIERS[_VP_RESULT_TIERS.length - 1];
   const screen = document.getElementById('vocabPractice');
   if (!screen) return;
   _screenSnapshotOnce('vocabPractice');
-  const wordListHtml = s.wordAccuracies.map((wa, i) => {
-    const color = wa.best >= _VP_THRESH.great ? '#059669'
-                : wa.best >= _VP_THRESH.good ? '#0891b2'
-                : wa.best >= _VP_THRESH.notbad ? '#f59e0b' : '#94a3b8';
-    return `<div style="display:flex;justify-content:space-between;padding:6px 10px;background:#f9fafb;border-radius:6px;margin-bottom:4px;">
-      <span style="font-weight:600;">${esc(wa.word)}</span>
-      <span style="color:${color};font-weight:700;">${wa.best}% · ${wa.attempts}회</span>
-    </div>`;
-  }).join('');
   screen.innerHTML = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px;overflow-y:auto;">
-      <div style="font-size:64px;margin-bottom:8px;">🎉</div>
-      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">학습 완료!</div>
-      <div style="font-size:44px;font-weight:900;color:#f59e0b;margin:12px 0;">✨ ${s.stars}</div>
-      <div style="font-size:14px;color:var(--gray);margin-bottom:16px;">평균 정확도 ${avgAccuracy}%</div>
-      <div style="width:100%;max-width:420px;margin-bottom:16px;">
-        <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:8px;padding:0 4px;">단어별 결과</div>
-        ${wordListHtml}
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;overflow-y:auto;">
+      <div style="background:${tier.bg};border-radius:32px;padding:40px 30px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.08);max-width:360px;width:100%;">
+        <div style="font-size:120px;line-height:1;margin-bottom:16px;animation:vpBounce 1s ease-in-out infinite alternate;">${tier.emoji}</div>
+        <div style="font-size:28px;font-weight:900;color:${tier.color};margin-bottom:8px;">${tier.title}</div>
+        <div style="font-size:14px;color:var(--text);line-height:1.5;margin-bottom:20px;">${tier.msg}</div>
+        <div style="font-size:36px;font-weight:900;color:#f59e0b;">✨ ${s.stars}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:4px;">별 ${s.stars}개 획득!</div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding-bottom:16px;">
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding:24px 0 16px;">
         <button onclick="goVocab()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
         <button onclick="startVocab('${esc(s.test.id)}','${esc(s.test.name||'').replace(/'/g,"\\'")}')" style="flex:1;padding:14px;background:#0891b2;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔁 다시 학습</button>
       </div>
-    </div>`;
+    </div>
+    <style>@keyframes vpBounce{0%{transform:translateY(0) scale(1);} 100%{transform:translateY(-8px) scale(1.05);}}</style>`;
   screen.dataset.stage = 'result';
 }
 
