@@ -7733,6 +7733,8 @@ async function _startVocabPractice(test, questions) {
     ttsVoices: [],
     gen: (_vpState?.gen || 0) + 1,   // 세대 ++
     stopped: false,
+    // 이번 학습 리액티브 유형 (세션 내 고정, 다음 학습 시 랜덤 재선택)
+    vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
   };
   // TTS 음성 로드 (비동기 준비)
   if (typeof window.speechSynthesis !== 'undefined') {
@@ -7784,25 +7786,28 @@ function _vpRenderStep() {
   setTimeout(() => { if (s.gen === g && !s.stopped) _vpSpeakAndListen(); }, 300);
 }
 
-// TTS 인디케이터 — 1a 호흡 리본 (디자인 handoff 2026-09-09)
+// TTS 인디케이터 — 5종 회전 (1a/1c/2a/2b/2c). 1b 숨 고리는 SR 마이크 전용.
 // 코랄 팔레트 B (앱 통일)
-const _VP_RIBBON_COLORS = { main: '#E8714A', mid: '#F08A5F', light: '#F6C3AC' };
-let _vpRibbonInst = 0;
+const _VP_COLORS = { main: '#E8714A', mid: '#F08A5F', light: '#F6C3AC', core: '#D8552C' };
+const _VP_VIZ_TYPES = ['ribbon', 'pill', 'band', 'blob', 'flow'];
+let _vpInst = 0;
 
-function _vpBuildRibbonHtml({ main, mid, light } = _VP_RIBBON_COLORS) {
-  const inst = ++_vpRibbonInst;
+// 1a 호흡 리본
+function _vpBuildRibbonHtml() {
+  const c = _VP_COLORS;
+  const inst = ++_vpInst;
   const gStroke = `vpRibbonStroke_${inst}`;
-  const gFill   = `vpRibbonFill_${inst}`;
+  const gFill = `vpRibbonFill_${inst}`;
   return `<svg viewBox="0 0 400 120" width="100%" height="120" preserveAspectRatio="none" style="display:block">
     <defs>
       <linearGradient id="${gStroke}" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="${light}" stop-opacity="0.15"/>
-        <stop offset="0.5" stop-color="${main}" stop-opacity="0.9"/>
-        <stop offset="1" stop-color="${light}" stop-opacity="0.15"/>
+        <stop offset="0" stop-color="${c.light}" stop-opacity="0.15"/>
+        <stop offset="0.5" stop-color="${c.main}" stop-opacity="0.9"/>
+        <stop offset="1" stop-color="${c.light}" stop-opacity="0.15"/>
       </linearGradient>
       <linearGradient id="${gFill}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${mid}" stop-opacity="0.28"/>
-        <stop offset="1" stop-color="${light}" stop-opacity="0"/>
+        <stop offset="0" stop-color="${c.mid}" stop-opacity="0.28"/>
+        <stop offset="1" stop-color="${c.light}" stop-opacity="0"/>
       </linearGradient>
     </defs>
     <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScroll 5.7s linear infinite">
@@ -7812,7 +7817,7 @@ function _vpBuildRibbonHtml({ main, mid, light } = _VP_RIBBON_COLORS) {
     </g>
     <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScrollBack 4.3s linear infinite">
       <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpBreatheB 2.3s cubic-bezier(.37,0,.63,1) infinite">
-        <path d="M0 60 Q50 32 100 60 T200 60 T300 60 T400 60 T500 60 T600 60 T700 60 T800 60" fill="none" stroke="${mid}" stroke-opacity="0.34" stroke-width="3" stroke-linecap="round"/>
+        <path d="M0 60 Q50 32 100 60 T200 60 T300 60 T400 60 T500 60 T600 60 T700 60 T800 60" fill="none" stroke="${c.mid}" stroke-opacity="0.34" stroke-width="3" stroke-linecap="round"/>
       </g>
     </g>
     <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScroll 3.1s linear infinite">
@@ -7823,19 +7828,115 @@ function _vpBuildRibbonHtml({ main, mid, light } = _VP_RIBBON_COLORS) {
   </svg>`;
 }
 
-// 슬롯 + 엔벨로프 IN/OUT (라이프사이클 handoff 스펙 그대로)
+// 1c 물방울 기둥 — 5개 rect (rx 6), 가운데 강조
+function _vpBuildPillHtml() {
+  const c = _VP_COLORS;
+  const inst = ++_vpInst;
+  const g = `vpPillGrad_${inst}`;
+  return `<svg viewBox="0 0 200 120" width="200" height="120" style="display:block">
+    <defs>
+      <linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${c.light}"/>
+        <stop offset="1" stop-color="${c.main}"/>
+      </linearGradient>
+    </defs>
+    <g fill="url(#${g})">
+      <rect x="14" y="24" width="12" height="72" rx="6" fill-opacity="0.34" style="transform-box:fill-box;transform-origin:center;animation:vpPillC 2.6s cubic-bezier(.37,0,.63,1) infinite"/>
+      <rect x="54" y="20" width="12" height="80" rx="6" fill-opacity="0.52" style="transform-box:fill-box;transform-origin:center;animation:vpPillB 1.9s cubic-bezier(.37,0,.63,1) infinite"/>
+      <rect x="94" y="16" width="12" height="88" rx="6" fill-opacity="0.82" style="transform-box:fill-box;transform-origin:center;animation:vpPillA 1.5s cubic-bezier(.37,0,.63,1) infinite"/>
+      <rect x="134" y="20" width="12" height="80" rx="6" fill-opacity="0.52" style="transform-box:fill-box;transform-origin:center;animation:vpPillB 2.1s cubic-bezier(.37,0,.63,1) infinite"/>
+      <rect x="174" y="24" width="12" height="72" rx="6" fill-opacity="0.34" style="transform-box:fill-box;transform-origin:center;animation:vpPillC 1.7s cubic-bezier(.37,0,.63,1) infinite"/>
+    </g>
+  </svg>`;
+}
+
+// 2a 숨 밴드 — 3겹 알약 rect
+function _vpBuildBandHtml() {
+  const c = _VP_COLORS;
+  const inst = ++_vpInst;
+  const g1 = `vpMistGrad_${inst}`;
+  const g2 = `vpMistGrad2_${inst}`;
+  return `<svg viewBox="0 0 320 120" width="320" height="120" style="display:block">
+    <defs>
+      <linearGradient id="${g1}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${c.main}" stop-opacity="0"/>
+        <stop offset="0.5" stop-color="${c.main}" stop-opacity="1"/>
+        <stop offset="1" stop-color="${c.main}" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="${g2}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${c.main}" stop-opacity="0"/>
+        <stop offset="0.5" stop-color="${c.main}" stop-opacity="1"/>
+        <stop offset="1" stop-color="${c.main}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <g fill="url(#${g2})">
+      <rect x="10" y="40" width="300" height="16" rx="8" fill-opacity="0.8" style="transform-box:fill-box;transform-origin:center;animation:vpMistC 3.1s cubic-bezier(.37,0,.63,1) infinite"/>
+      <rect x="10" y="80" width="300" height="12" rx="6" fill-opacity="0.7" style="transform-box:fill-box;transform-origin:center;animation:vpMistB 2.3s cubic-bezier(.37,0,.63,1) infinite"/>
+    </g>
+    <rect x="10" y="58" width="300" height="20" rx="10" fill="url(#${g1})" fill-opacity="1" style="transform-box:fill-box;transform-origin:center;animation:vpMistA 1.9s cubic-bezier(.37,0,.63,1) infinite"/>
+  </svg>`;
+}
+
+// 2b 유동 방울 — 3개 ellipse 드리프트
+function _vpBuildBlobHtml() {
+  const c = _VP_COLORS;
+  const inst = ++_vpInst;
+  const g1 = `vpBlobG1_${inst}`, g2 = `vpBlobG2_${inst}`, g3 = `vpBlobG3_${inst}`;
+  return `<svg viewBox="0 0 240 120" width="240" height="120" style="display:block">
+    <defs>
+      <radialGradient id="${g1}" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="${c.core}" stop-opacity="1"/>
+        <stop offset="0.55" stop-color="${c.main}" stop-opacity="0.9"/>
+        <stop offset="1" stop-color="${c.main}" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="${g2}" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="${c.main}" stop-opacity="0.95"/>
+        <stop offset="0.6" stop-color="${c.main}" stop-opacity="0.6"/>
+        <stop offset="1" stop-color="${c.main}" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="${g3}" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="${c.mid}" stop-opacity="0.9"/>
+        <stop offset="0.6" stop-color="${c.mid}" stop-opacity="0.5"/>
+        <stop offset="1" stop-color="${c.mid}" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <ellipse cx="92" cy="62" rx="46" ry="40" fill="url(#${g3})" style="transform-box:fill-box;transform-origin:center;animation:vpBlobB 3.3s cubic-bezier(.37,0,.63,1) infinite"/>
+    <ellipse cx="148" cy="58" rx="42" ry="38" fill="url(#${g2})" style="transform-box:fill-box;transform-origin:center;animation:vpBlobC 2.7s cubic-bezier(.37,0,.63,1) infinite"/>
+    <ellipse cx="120" cy="60" rx="34" ry="32" fill="url(#${g1})" style="transform-box:fill-box;transform-origin:center;animation:vpBlobA 2.1s cubic-bezier(.37,0,.63,1) infinite"/>
+  </svg>`;
+}
+
+// 2c 흐르는 점 — 8개 circle 0.14s 위상차
+function _vpBuildFlowHtml() {
+  const c = _VP_COLORS;
+  let dots = '';
+  for (let i = 0; i < 8; i++) {
+    const cx = 20 + i * 30;
+    const delay = (i * 0.14).toFixed(2);
+    dots += `<circle cx="${cx}" cy="60" r="8" style="transform-box:fill-box;transform-origin:center;animation:vpFlowDot 1.8s cubic-bezier(.37,0,.63,1) ${delay}s infinite"/>`;
+  }
+  return `<svg viewBox="0 0 260 120" width="260" height="120" style="display:block"><g fill="${c.main}">${dots}</g></svg>`;
+}
+
+// 슬롯 + 엔벨로프 IN/OUT — 세션 유형 사용
 function _vpShowViz(on) {
   const slot = document.getElementById('vpVizSlot');
   const env = document.getElementById('vpVizEnv');
   if (!slot || !env) return;
   if (on) {
     slot.style.display = '';
-    env.innerHTML = _vpBuildRibbonHtml(_VP_RIBBON_COLORS);
-    // 다음 프레임에 is-on 부여 → IN 트랜지션 발화
+    const type = _vpState.vizType || 'ribbon';
+    let html;
+    if (type === 'ribbon')      html = _vpBuildRibbonHtml();
+    else if (type === 'pill')   html = _vpBuildPillHtml();
+    else if (type === 'band')   html = _vpBuildBandHtml();
+    else if (type === 'blob')   html = _vpBuildBlobHtml();
+    else if (type === 'flow')   html = _vpBuildFlowHtml();
+    else                         html = _vpBuildRibbonHtml();
+    env.innerHTML = html;
     requestAnimationFrame(() => { env.classList.add('is-on'); });
   } else {
     env.classList.remove('is-on');
-    // OUT 완료 후 DOM 제거 (라이프사이클 320ms + 여유)
     setTimeout(() => {
       if (!env.classList.contains('is-on')) {
         env.innerHTML = '';

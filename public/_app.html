@@ -580,17 +580,32 @@
 
   <!-- 단어 학습 (따라 읽기) — 자동 흐름 -->
   <style>
-    /* 마이크 애니메이션 (SR 진행 중) */
-    @keyframes vpMicPulse { 0%{transform:scale(1);opacity:1;} 100%{transform:scale(2.4);opacity:0;} }
-    @keyframes vpMicWiggle { 0%,100%{transform:rotate(-8deg);} 50%{transform:rotate(8deg);} }
-    .vp-mic-ring{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border:3px solid #dc2626;border-radius:50%;animation:vpMicPulse 1.2s ease-out infinite;}
-
-    /* TTS 인디케이터 1a 호흡 리본 (iOS Siri 계열, 디자인 handoff 2026-09-09) */
+    /* TTS 인디케이터 keyframes (디자인 handoff 2026-09-09 · 5종 회전 + SR용 1b) */
+    /* 1a 호흡 리본 */
     @keyframes vpScroll { from{transform:translateX(0);} to{transform:translateX(-400px);} }
     @keyframes vpScrollBack { from{transform:translateX(-400px);} to{transform:translateX(0);} }
     @keyframes vpBreatheA { 0%,100%{transform:scaleY(0.5);} 48%{transform:scaleY(1);} }
     @keyframes vpBreatheB { 0%,100%{transform:scaleY(0.82);} 42%{transform:scaleY(0.34);} }
     @keyframes vpBreatheC { 0%,100%{transform:scaleY(0.62);} 56%{transform:scaleY(1.04);} }
+    /* 1b 숨 고리 — SR 전용 (마이크 감쌈) */
+    @keyframes vpRing { 0%{transform:scale(0.34);opacity:0;} 16%{opacity:0.4;} 100%{transform:scale(2.55);opacity:0;} }
+    @keyframes vpCore { 0%,100%{transform:scale(0.92);} 50%{transform:scale(1.14);} }
+    @keyframes vpHalo { 0%,100%{transform:scale(0.88);opacity:0.2;} 50%{transform:scale(1.18);opacity:0.42;} }
+    /* 1c 물방울 기둥 */
+    @keyframes vpPillA { 0%,100%{transform:scaleY(0.3);} 50%{transform:scaleY(1);} }
+    @keyframes vpPillB { 0%,100%{transform:scaleY(0.62);} 44%{transform:scaleY(0.22);} }
+    @keyframes vpPillC { 0%,100%{transform:scaleY(0.4);} 58%{transform:scaleY(0.86);} }
+    /* 2a 숨 밴드 */
+    @keyframes vpMistA { 0%,100%{transform:scaleX(0.72);opacity:0.9;} 46%{transform:scaleX(1);opacity:1;} }
+    @keyframes vpMistB { 0%,100%{transform:scaleX(0.94);opacity:1;} 40%{transform:scaleX(0.58);opacity:0.85;} }
+    @keyframes vpMistC { 0%,100%{transform:scaleX(0.66);opacity:0.88;} 62%{transform:scaleX(1.02);opacity:1;} }
+    /* 2b 유동 방울 */
+    @keyframes vpBlobA { 0%,100%{transform:translate(0px,0px) scale(0.9);} 50%{transform:translate(7px,-5px) scale(1.14);} }
+    @keyframes vpBlobB { 0%,100%{transform:translate(0px,0px) scale(1.06);} 44%{transform:translate(-8px,6px) scale(0.82);} }
+    @keyframes vpBlobC { 0%,100%{transform:translate(0px,2px) scale(0.95);} 58%{transform:translate(5px,-7px) scale(1.08);} }
+    /* 2c 흐르는 점 */
+    @keyframes vpFlowDot { 0%,100%{transform:scale(0.45);opacity:0.25;} 40%{transform:scale(1.15);opacity:0.95;} }
+
     /* 슬롯 + 엔벨로프 IN 200 / OUT 320 */
     .vp-slot { height:160px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .vp-env  { width:100%; display:flex; justify-content:center;
@@ -627,11 +642,29 @@
 
     <!-- 액션 슬롯 (마이크 or 리액션, 둘 중 하나만) -->
     <div style="margin:0 16px;flex:1;min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px 0;">
-      <!-- 마이크 애니메이션 (SR 진행 중) -->
-      <div id="vpMicArea" style="display:none;position:relative;width:80px;height:80px;">
-        <div class="vp-mic-ring"></div>
-        <div class="vp-mic-ring" style="animation-delay:0.4s;"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:44px;animation:vpMicWiggle 0.5s ease-in-out infinite;">🎤</div>
+      <!-- 마이크 애니메이션 (SR 진행 중) — 1b 숨 고리 + 마이크 아이콘 (똑바로, 중앙) -->
+      <div id="vpMicArea" style="display:none;position:relative;width:240px;height:120px;">
+        <svg viewBox="0 0 240 120" width="240" height="120" style="display:block;position:absolute;top:0;left:0;">
+          <defs>
+            <radialGradient id="vpMicHaloGrad" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0" stop-color="#F6C3AC" stop-opacity="0.55"/>
+              <stop offset="1" stop-color="#F6C3AC" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <circle cx="120" cy="60" r="44" fill="url(#vpMicHaloGrad)" style="transform-box:fill-box;transform-origin:center;animation:vpHalo 3.4s cubic-bezier(.37,0,.63,1) infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#E8714A" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#F08A5F" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) 0.8s infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#F6C3AC" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) 1.6s infinite"/>
+        </svg>
+        <!-- 마이크 아이콘 SVG — 똑바로 세움, 링 중앙 정확 배치 -->
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:vpCore 2.1s cubic-bezier(.37,0,.63,1) infinite;">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#E8714A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M5 10a7 7 0 0 0 14 0"/>
+            <line x1="12" y1="17" x2="12" y2="22"/>
+            <line x1="8" y1="22" x2="16" y2="22"/>
+          </svg>
+        </div>
       </div>
       <!-- 리액션 (SR 결과 후) — 마이크와 같은 슬롯, 동시 표시 X -->
       <div id="vpReactArea" style="display:none;">
