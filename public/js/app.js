@@ -7778,7 +7778,7 @@ const _VP_VIZ_PALETTES = [
   ['#0891b2','#f59e0b','#7c3aed','#059669'],   // rainbow
   ['#ec4899','#f472b6','#f9a8d4','#fbcfe8'],   // pink
 ];
-const _VP_VIZ_TYPES = ['wave','bars','circles','dots'];
+const _VP_VIZ_TYPES = ['wave','bars','circles','dots','spikes','area','ring','zigzag'];
 let _vpVizIdx = 0;
 
 function _vpBuildWaveHtml(palette) {
@@ -7828,6 +7828,65 @@ function _vpBuildDotsHtml(palette) {
   }).join('');
   return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${dots}</div>`;
 }
+function _vpBuildSpikesHtml(palette) {
+  // 40개 얇은 스파이크 — 가운데 큰 envelope
+  const N = 40, center = (N - 1) / 2;
+  let spikes = '';
+  for (let i = 0; i < N; i++) {
+    const bell = Math.exp(-Math.pow((i - center) / (N * 0.22), 2));
+    const h = Math.round(20 + bell * 130);   // 20~150px
+    const color = palette[i % palette.length];
+    const delay = (Math.abs(i - center) * 0.015 + Math.random() * 0.1).toFixed(3);
+    const dur = (0.35 + Math.random() * 0.3).toFixed(2);
+    spikes += `<span class="vp-spike" style="color:${color};height:${h}px;animation-delay:${delay}s;animation-duration:${dur}s;"></span>`;
+  }
+  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${spikes}</div>`;
+}
+function _vpBuildAreaHtml(palette) {
+  // 그라디언트 영역 채운 파형 (envelope) — 3겹 겹침
+  const gradId = 'vpAreaGrad_' + Math.floor(Math.random() * 100000);
+  const anims = ['vpWaveA','vpWaveB','vpWaveC'];
+  let defs = `<defs>
+    <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${palette[0]}" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="${palette[0]}" stop-opacity="0.15"/>
+    </linearGradient>
+    <linearGradient id="${gradId}b" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${palette[1]||palette[0]}" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="${palette[1]||palette[0]}" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>`;
+  const anim1 = anims[Math.floor(Math.random() * anims.length)];
+  const anim2 = anims[Math.floor(Math.random() * anims.length)];
+  const dur1 = (1.0 + Math.random() * 0.6).toFixed(2);
+  const dur2 = (0.9 + Math.random() * 0.7).toFixed(2);
+  // path 는 waveA/B/C 애니메이션 사용 (envelope 파동), 아래는 채움
+  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">
+    ${defs}
+    <path fill="url(#${gradId})" style="animation:${anim1} ${dur1}s ease-in-out infinite;" d="M0,80 Q75,50 150,80 T300,80 L300,160 L0,160 Z"/>
+    <path fill="url(#${gradId}b)" style="animation:${anim2} ${dur2}s ease-in-out infinite;animation-delay:0.15s;" d="M0,80 Q75,50 150,80 T300,80 L300,160 L0,160 Z"/>
+  </svg>`;
+}
+function _vpBuildRingHtml(palette) {
+  // 큰 네온 링 pulse + 안쪽 작은 점
+  const color = palette[0];
+  return `<div style="position:relative;height:160px;">
+    <div class="vp-neon-ring" style="color:${color};"></div>
+    <div class="vp-neon-ring" style="color:${palette[1]||color};animation-delay:0.4s;width:80px;height:80px;margin:-40px 0 0 -40px;"></div>
+    <div style="position:absolute;top:50%;left:50%;width:20px;height:20px;margin:-10px 0 0 -10px;background:${color};border-radius:50%;box-shadow:0 0 20px ${color};animation:vpBar 0.6s ease-in-out infinite;"></div>
+  </div>`;
+}
+function _vpBuildZigzagHtml(palette) {
+  // 지그재그 각진 파형 — 3겹 색 다르게
+  const dur1 = (0.9 + Math.random() * 0.6).toFixed(2);
+  const dur2 = (0.8 + Math.random() * 0.6).toFixed(2);
+  const dur3 = (0.7 + Math.random() * 0.6).toFixed(2);
+  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">
+    <path class="vp-wave-path" style="color:${palette[0]};stroke:${palette[0]};stroke-width:3;opacity:0.9;animation:vpZigA ${dur1}s ease-in-out infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
+    <path class="vp-wave-path" style="color:${palette[1]||palette[0]};stroke:${palette[1]||palette[0]};stroke-width:2.5;opacity:0.65;animation:vpZigA ${dur2}s ease-in-out 0.2s infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
+    <path class="vp-wave-path" style="color:${palette[2]||palette[0]};stroke:${palette[2]||palette[0]};stroke-width:2;opacity:0.5;animation:vpZigA ${dur3}s ease-in-out 0.4s infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
+  </svg>`;
+}
 
 function _vpShowViz(on) {
   const el = document.getElementById('vpVizArea');
@@ -7841,7 +7900,12 @@ function _vpShowViz(on) {
   if (type === 'wave')    el.innerHTML = _vpBuildWaveHtml(palette);
   else if (type === 'bars')    el.innerHTML = _vpBuildBarsHtml(palette);
   else if (type === 'circles') el.innerHTML = _vpBuildCirclesHtml(palette);
-  else                          el.innerHTML = _vpBuildDotsHtml(palette);
+  else if (type === 'dots')    el.innerHTML = _vpBuildDotsHtml(palette);
+  else if (type === 'spikes')  el.innerHTML = _vpBuildSpikesHtml(palette);
+  else if (type === 'area')    el.innerHTML = _vpBuildAreaHtml(palette);
+  else if (type === 'ring')    el.innerHTML = _vpBuildRingHtml(palette);
+  else if (type === 'zigzag')  el.innerHTML = _vpBuildZigzagHtml(palette);
+  else                          el.innerHTML = _vpBuildWaveHtml(palette);
 }
 // 옛 이름 호환
 const _vpShowWave = _vpShowViz;
