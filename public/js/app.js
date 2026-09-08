@@ -1048,7 +1048,7 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   // 단어시험 + vocabOptions.format='practice' 이면 📖 단어 학습 배지 표시 (연습·평가 X)
   const isPractice = type === 'vocab' && t.vocabOptions?.format === 'practice';
   const practiceBadge = isPractice
-    ? `<span style="font-size:11px;background:#cffafe;color:#0e7490;padding:2px 8px;border-radius:20px;font-weight:700;">📖 학습</span>`
+    ? `<span style="font-size:12px;background:#0891b2;color:white;padding:3px 10px;border-radius:20px;font-weight:800;box-shadow:0 2px 6px rgba(8,145,178,0.35);">📖 학습</span>`
     : '';
   // mcq + 첫 question.subType='grammar' 이면 📐 문법 배지 표시
   const isGrammar = type === 'mcq' && Array.isArray(t.questions) && t.questions[0]?.subType === 'grammar';
@@ -1064,8 +1064,8 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
           ${practiceBadge}
           ${grammarBadge}
           ${isCompleted
-            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ 완료${completedScore!=null?' '+completedScore+'점':''}</span>${retakeBadge}`
-            : `${latestBadge}<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}
+            ? `<span style="font-size:11px;background:#d1fae5;color:#059669;padding:2px 8px;border-radius:20px;font-weight:700;">✓ ${isPractice ? '학습 완료' : ('완료' + (completedScore!=null?' '+completedScore+'점':''))}</span>${retakeBadge}`
+            : `${latestBadge}${isPractice ? '' : `<span style="font-size:11px;background:${ui.pendingBg};color:${ui.pendingColor};padding:2px 8px;border-radius:20px;">통과 ${passScore}점</span>`}`}
         </div>
         <div class="unit-count">${ui.subtitleEmoji} ${esc(t.bookName||ui.subtitleDefault)} · ${qCount}문제</div>
         <div style="font-size:11px;color:#bbb;margin-top:2px;">출제일: ${esc(t.date||'')}</div>
@@ -7733,6 +7733,8 @@ async function _startVocabPractice(test, questions) {
     ttsVoices: [],
     gen: (_vpState?.gen || 0) + 1,   // 세대 ++
     stopped: false,
+    silentStreak: 0,
+    micMeter: null,
     // 이번 학습 리액티브 유형 (세션 내 고정, 다음 학습 시 랜덤 재선택)
     vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
   };
@@ -8031,8 +8033,12 @@ function _vpStartListen() {
   const target = q.word || '';
   let resolved = false;
 
+  // 마이크 목소리 반응 미터 시작 (getUserMedia 별도 stream — SR 과 병행)
+  _vpStartMicMeter();
+
   rec.onresult = (event) => {
     resolved = true;
+    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
@@ -8047,18 +8053,21 @@ function _vpStartListen() {
   rec.onerror = (e) => {
     resolved = true;
     s.listening = false;
+    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error);
     _vpHandleResult(0, '');
   };
   rec.onend = () => {
     s.listening = false;
+    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     if (!resolved) _vpHandleResult(0, '');
   };
   try { rec.start(); } catch(e) {
     console.warn(e);
     s.listening = false;
+    _vpStopMicMeter();
     setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
   }
 }
@@ -8105,6 +8114,11 @@ function _vpHandleResult(sim, heard) {
   const wa = s.wordAccuracies[s.currentIdx];
   if (sim > wa.best) wa.best = sim;
   wa.attempts = s.attempt;
+
+  // 무음 감지 streak — 3턴 연속 무음이면 마이크 이상 안내
+  const isSilent = sim === 0 && !heard;
+  if (isSilent) s.silentStreak = (s.silentStreak || 0) + 1;
+  else s.silentStreak = 0;
 
   _vpShowMicAnim(false);
   _vpShowReact(true);   // 리액션 슬롯 활성 (마이크 자동 감춤)
@@ -8156,10 +8170,20 @@ function _vpHandleResult(sim, heard) {
   }
 
   const g = s.gen;
-  setTimeout(() => {
+  setTimeout(async () => {
     if (s.stopped || s.gen !== g) return;
+    // 3턴 연속 무음 → 마이크 이상 안내 (확인 눌러야 진행)
+    if (s.silentStreak >= 3) {
+      s.silentStreak = 0;   // 안내 후 리셋
+      await _vpShowMicAlert();
+      if (s.stopped || s.gen !== g) return;
+      // 확인 후 같은 단어부터 재개
+      s.attempt = Math.max(0, s.attempt - 1);   // 방금 무음 카운트 취소
+      _vpSpeakAndListen();
+      return;
+    }
     if (canAdvance) _vpAdvance();
-    else _vpSpeakAndListen();   // 같은 단어 자동 재재생 + 재청취
+    else _vpSpeakAndListen();
   }, 700);
 }
 
@@ -8268,12 +8292,80 @@ window.vpRestart = () => {
   startVocab(t.id, t.name || '');
 };
 
+// 마이크 목소리 반응 — getUserMedia AnalyserNode → --mic-vol CSS 변수 갱신
+async function _vpStartMicMeter() {
+  const s = _vpState;
+  if (s.micMeter) return;   // 이미 실행 중
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { try { stream.getTracks().forEach(t => t.stop()); } catch(_){} return; }
+    const ctx = new AC();
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.5;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const meter = { stream, ctx, analyser, data, raf: null, stopped: false };
+    s.micMeter = meter;
+    const el = document.getElementById('vpMicArea');
+    const loop = () => {
+      if (meter.stopped) return;
+      analyser.getByteFrequencyData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      const avg = sum / data.length / 255;   // 0..1
+      // 목소리 감지: 0.02 이상이면 실제 발화 (streak 리셋 힌트용)
+      if (avg > 0.04) meter.heardVoice = true;
+      if (el) el.style.setProperty('--mic-vol', String(Math.min(1, avg * 1.6 + 0.1)));
+      meter.raf = requestAnimationFrame(loop);
+    };
+    loop();
+  } catch(e) {
+    console.warn('[vp] mic meter unavailable:', e.message);
+    // 실패 시 목소리 반응 없이도 SR 진행 (기본 pulse 유지)
+  }
+}
+function _vpStopMicMeter() {
+  const m = _vpState.micMeter;
+  if (!m) return;
+  m.stopped = true;
+  if (m.raf) cancelAnimationFrame(m.raf);
+  try { m.stream.getTracks().forEach(t => t.stop()); } catch(_){}
+  try { m.ctx.close(); } catch(_){}
+  _vpState.micMeter = null;
+  const el = document.getElementById('vpMicArea');
+  if (el) el.style.setProperty('--mic-vol', '0.3');
+}
+
+// 마이크 이상 안내 모달 (3턴 연속 무음 시)
+function _vpShowMicAlert() {
+  return new Promise(resolve => {
+    window._vpMicAlertResolve = resolve;
+    showModal(`<div style="padding:24px 22px;text-align:center;max-width:340px;">
+      <div style="font-size:56px;margin-bottom:14px;">🎤</div>
+      <div style="font-size:19px;font-weight:800;color:#dc2626;margin-bottom:12px;">마이크가 작동하지 않나요?</div>
+      <div style="font-size:14px;color:var(--text);line-height:1.7;text-align:left;background:#fef2f2;padding:14px 16px;border-radius:12px;border:1px solid #fecaca;margin-bottom:20px;">
+        말소리가 감지되지 않고 있어요. 아래를 확인해주세요:
+        <ul style="padding-left:20px;margin-top:8px;color:var(--text);">
+          <li>브라우저 마이크 <b>권한 허용</b></li>
+          <li>다른 앱 (통화·녹음) 이 마이크 사용 중인지</li>
+          <li>이어폰·볼륨 상태</li>
+        </ul>
+      </div>
+      <button onclick="closeModal();window._vpMicAlertResolve && window._vpMicAlertResolve();" style="width:100%;padding:14px;background:#0891b2;color:white;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;">확인 후 계속</button>
+    </div>`);
+  });
+}
+
 window.quitVocabPractice = async () => {
   const s = _vpState;
   // 즉시 중단 — 확인 모달 동안 소리·마이크 X (옛 setTimeout 콜백도 gen 증가로 무효화)
   s.gen++;
   if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
   s.listening = false;
+  _vpStopMicMeter();
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
   _vpShowWave(false); _vpShowMicAnim(false); _vpShowReact(false);
 
