@@ -582,12 +582,21 @@
   <style>
     @keyframes vpMicPulse { 0%{transform:scale(1);opacity:1;} 100%{transform:scale(2.4);opacity:0;} }
     @keyframes vpMicWiggle { 0%,100%{transform:rotate(-8deg);} 50%{transform:rotate(8deg);} }
-    @keyframes vpWave1 { 0%,100%{d:path("M0,40 Q75,10 150,40 T300,40");} 50%{d:path("M0,40 Q75,70 150,40 T300,40");} }
-    @keyframes vpWave2 { 0%,100%{d:path("M0,40 Q75,60 150,40 T300,40");} 50%{d:path("M0,40 Q75,15 150,40 T300,40");} }
-    @keyframes vpWave3 { 0%,100%{d:path("M0,40 Q100,20 200,40 T300,40");} 50%{d:path("M0,40 Q100,60 200,40 T300,40");} }
-    @keyframes vpWave4 { 0%,100%{d:path("M0,40 Q50,55 150,40 T300,40");} 50%{d:path("M0,40 Q50,25 150,40 T300,40");} }
+    /* 파동형 — 가운데 크고 양끝 작음 (envelope 반영) */
+    @keyframes vpWaveA { 0%,100%{d:path("M0,80 Q40,78 80,68 T160,20 T240,68 Q280,78 300,80");} 50%{d:path("M0,80 Q40,82 80,92 T160,140 T240,92 Q280,82 300,80");} }
+    @keyframes vpWaveB { 0%,100%{d:path("M0,80 Q40,82 80,92 T160,150 T240,92 Q280,82 300,80");} 50%{d:path("M0,80 Q40,78 80,68 T160,10 T240,68 Q280,78 300,80");} }
+    @keyframes vpWaveC { 0%,100%{d:path("M0,80 Q50,80 100,65 T180,30 T260,65 Q290,80 300,80");} 50%{d:path("M0,80 Q50,80 100,95 T180,130 T260,95 Q290,80 300,80");} }
+    /* 레벨메타 — 세로 바 상하 */
+    @keyframes vpBar { 0%,100%{transform:scaleY(0.2);} 50%{transform:scaleY(1);} }
+    .vp-bar{display:inline-block;width:10px;background:currentColor;border-radius:5px;margin:0 3px;transform-origin:center;animation:vpBar 0.7s ease-in-out infinite;box-shadow:0 0 6px currentColor;}
+    /* 원 pulse — 동심원 */
+    @keyframes vpCirc { 0%{transform:scale(0.2);opacity:1;} 100%{transform:scale(2);opacity:0;} }
+    .vp-circ{position:absolute;top:50%;left:50%;width:80px;height:80px;margin:-40px 0 0 -40px;border:3px solid currentColor;border-radius:50%;animation:vpCirc 1.4s ease-out infinite;box-shadow:0 0 8px currentColor;}
+    /* 점 이동 — 사인파 */
+    @keyframes vpDot { 0%,100%{transform:translateY(0);} 50%{transform:translateY(var(--dy,-40px));} }
+    .vp-dot{display:inline-block;width:12px;height:12px;background:currentColor;border-radius:50%;margin:0 4px;box-shadow:0 0 6px currentColor;animation:vpDot 0.8s ease-in-out infinite;}
     .vp-mic-ring{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border:3px solid #dc2626;border-radius:50%;animation:vpMicPulse 1.2s ease-out infinite;}
-    .vp-wave-path{fill:none;stroke-width:2.5;stroke-linecap:round;filter:drop-shadow(0 0 3px currentColor);}
+    .vp-wave-path{fill:none;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 0 4px currentColor);}
   </style>
   <div id="vocabPractice" class="screen" style="background:#F0FDFF;">
     <div class="quiz-header">
@@ -608,16 +617,8 @@
       <div id="vpMeaning" style="font-size:18px;color:#0891b2;font-weight:600;"></div>
     </div>
 
-    <!-- 파동 오디오 리액티브 (TTS 재생 중, 카드 밖) -->
-    <div id="vpWaveArea" style="height:80px;margin:8px 20px 0;display:none;">
-      <svg id="vpWaveSvg" viewBox="0 0 300 80" width="100%" height="80" preserveAspectRatio="none">
-        <!-- 4개 파동 path — JS 가 색·애니메이션 랜덤 세팅 -->
-        <path class="vp-wave-path" id="vpWave0" d="M0,40 Q75,10 150,40 T300,40"/>
-        <path class="vp-wave-path" id="vpWave1" d="M0,40 Q75,60 150,40 T300,40"/>
-        <path class="vp-wave-path" id="vpWave2" d="M0,40 Q100,20 200,40 T300,40"/>
-        <path class="vp-wave-path" id="vpWave3" d="M0,40 Q50,55 150,40 T300,40"/>
-      </svg>
-    </div>
+    <!-- 오디오 리액티브 (TTS 재생 중, 카드 밖) — 매 단어마다 다른 유형 (파동/바/원/점) -->
+    <div id="vpVizArea" style="height:160px;margin:8px 20px 0;display:none;position:relative;"></div>
 
     <!-- 액션 슬롯 (마이크 or 리액션, 둘 중 하나만) -->
     <div style="margin:0 16px;flex:1;min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px 0;">

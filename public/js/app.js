@@ -7715,6 +7715,9 @@ async function _startVocabPractice(test, questions) {
     ttsVoices: [],
     gen: (_vpState?.gen || 0) + 1,   // 세대 ++
     stopped: false,
+    // 이번 학습 리액티브 유형·팔레트 (세션 내 고정)
+    vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
+    vizPalette: _VP_VIZ_PALETTES[Math.floor(Math.random() * _VP_VIZ_PALETTES.length)],
   };
   // TTS 음성 로드 (비동기 준비)
   if (typeof window.speechSynthesis !== 'undefined') {
@@ -7766,30 +7769,82 @@ function _vpRenderStep() {
   setTimeout(() => { if (s.gen === g && !s.stopped) _vpSpeakAndListen(); }, 300);
 }
 
-// 파동(TTS 재생 중) — 카드 밖, 색·애니메이션 랜덤 rotate
-const _VP_WAVE_PALETTES = [
-  ['#0891b2','#06b6d4','#67e8f9','#a5f3fc'],  // cyan
-  ['#7c3aed','#a78bfa','#c4b5fd','#ddd6fe'],  // purple
-  ['#059669','#10b981','#6ee7b7','#a7f3d0'],  // emerald
-  ['#dc2626','#f97316','#fb923c','#fdba74'],  // red-orange
-  ['#0891b2','#f59e0b','#7c3aed','#059669'],  // rainbow
+// 오디오 리액티브 (TTS 재생 중) — 4 유형 rotate + 색 팔레트 랜덤
+const _VP_VIZ_PALETTES = [
+  ['#0891b2','#06b6d4','#67e8f9','#a5f3fc'],   // cyan
+  ['#7c3aed','#a78bfa','#c4b5fd','#ddd6fe'],   // purple
+  ['#059669','#10b981','#6ee7b7','#a7f3d0'],   // emerald
+  ['#dc2626','#f97316','#fb923c','#fdba74'],   // red-orange
+  ['#0891b2','#f59e0b','#7c3aed','#059669'],   // rainbow
+  ['#ec4899','#f472b6','#f9a8d4','#fbcfe8'],   // pink
 ];
-function _vpShowWave(on) {
-  const el = document.getElementById('vpWaveArea');
+const _VP_VIZ_TYPES = ['wave','bars','circles','dots'];
+let _vpVizIdx = 0;
+
+function _vpBuildWaveHtml(palette) {
+  const anims = ['vpWaveA','vpWaveB','vpWaveC'];
+  let paths = '';
+  for (let i = 0; i < 4; i++) {
+    const color = palette[i % palette.length];
+    const anim = anims[Math.floor(Math.random() * anims.length)];
+    const dur = (0.9 + Math.random() * 0.8).toFixed(2);
+    const delay = (Math.random() * 0.5).toFixed(2);
+    const opacity = (0.9 - i * 0.15).toFixed(2);
+    paths += `<path class="vp-wave-path" style="color:${color};stroke:${color};opacity:${opacity};animation:${anim} ${dur}s ease-in-out ${delay}s infinite;" d="M0,80 Q75,50 150,80 T300,80"/>`;
+  }
+  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">${paths}</svg>`;
+}
+function _vpBuildBarsHtml(palette) {
+  // 가운데 큰 envelope — 9개 바
+  const heights = [30, 60, 100, 130, 150, 130, 100, 60, 30];
+  const bars = heights.map((h, i) => {
+    const color = palette[i % palette.length];
+    const delay = (Math.abs(i - 4) * 0.08 + Math.random() * 0.1).toFixed(2);
+    const dur = (0.5 + Math.random() * 0.4).toFixed(2);
+    return `<span class="vp-bar" style="color:${color};height:${h}px;animation-delay:${delay}s;animation-duration:${dur}s;"></span>`;
+  }).join('');
+  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${bars}</div>`;
+}
+function _vpBuildCirclesHtml(palette) {
+  // 3개 동심원 pulse
+  let html = '';
+  for (let i = 0; i < 3; i++) {
+    const color = palette[i % palette.length];
+    const delay = (i * 0.4).toFixed(2);
+    html += `<div class="vp-circ" style="color:${color};animation-delay:${delay}s;"></div>`;
+  }
+  // 중심 큰 원
+  const centerColor = palette[0];
+  html += `<div style="position:absolute;top:50%;left:50%;width:40px;height:40px;margin:-20px 0 0 -20px;background:${centerColor};border-radius:50%;box-shadow:0 0 20px ${centerColor};animation:vpBar 0.6s ease-in-out infinite;"></div>`;
+  return `<div style="position:relative;height:160px;">${html}</div>`;
+}
+function _vpBuildDotsHtml(palette) {
+  // 13개 점 — 가운데 크게 흔들림 (envelope)
+  const dyMap = [12, 20, 30, 42, 55, 68, 75, 68, 55, 42, 30, 20, 12];
+  const dots = dyMap.map((dy, i) => {
+    const color = palette[i % palette.length];
+    const delay = (i * 0.05).toFixed(2);
+    return `<span class="vp-dot" style="color:${color};--dy:-${dy}px;animation-delay:${delay}s;"></span>`;
+  }).join('');
+  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${dots}</div>`;
+}
+
+function _vpShowViz(on) {
+  const el = document.getElementById('vpVizArea');
   if (!el) return;
   el.style.display = on ? 'block' : 'none';
-  if (!on) return;
-  // 파동 랜덤화 — 색 팔레트 rotate + 각 path 애니메이션 duration/delay 랜덤
-  const palette = _VP_WAVE_PALETTES[Math.floor(Math.random() * _VP_WAVE_PALETTES.length)];
-  const anims = ['vpWave1','vpWave2','vpWave3','vpWave4'];
-  for (let i = 0; i < 4; i++) {
-    const p = document.getElementById('vpWave' + i);
-    if (!p) continue;
-    p.style.stroke = palette[i % palette.length];
-    p.style.opacity = 0.85 - i * 0.15;
-    p.style.animation = `${anims[Math.floor(Math.random()*anims.length)]} ${(0.8 + Math.random()*0.9).toFixed(2)}s ease-in-out ${(Math.random()*0.4).toFixed(2)}s infinite`;
-  }
+  if (!on) { el.innerHTML = ''; return; }
+  // 유형·팔레트는 세션 진입 시 결정된 값 사용 (한 학습 내 동일)
+  const s = _vpState;
+  const type = s.vizType || 'wave';
+  const palette = s.vizPalette || _VP_VIZ_PALETTES[0];
+  if (type === 'wave')    el.innerHTML = _vpBuildWaveHtml(palette);
+  else if (type === 'bars')    el.innerHTML = _vpBuildBarsHtml(palette);
+  else if (type === 'circles') el.innerHTML = _vpBuildCirclesHtml(palette);
+  else                          el.innerHTML = _vpBuildDotsHtml(palette);
 }
+// 옛 이름 호환
+const _vpShowWave = _vpShowViz;
 // 액션 슬롯 — 마이크 or 리액션, 둘 중 하나만 (동시 표시 X)
 function _vpShowMicAnim(on) {
   const el = document.getElementById('vpMicArea');
