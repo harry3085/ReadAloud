@@ -642,8 +642,8 @@
 
     <!-- 액션 슬롯 (마이크 or 리액션, 둘 중 하나만) -->
     <div style="margin:0 16px;flex:1;min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px 0;">
-      <!-- 마이크 애니메이션 (SR 진행 중) — 1b 숨 고리 + 마이크 아이콘 + 목소리 반응 원 -->
-      <div id="vpMicArea" style="display:none;position:relative;width:240px;height:120px;--mic-vol:0.3;">
+      <!-- 마이크 애니메이션 (SR 진행 중) — 1b 숨 고리 + 마이크 아이콘 (똑바로, 중앙) -->
+      <div id="vpMicArea" style="display:none;position:relative;width:240px;height:120px;">
         <svg viewBox="0 0 240 120" width="240" height="120" style="display:block;position:absolute;top:0;left:0;">
           <defs>
             <radialGradient id="vpMicHaloGrad" cx="0.5" cy="0.5" r="0.5">
@@ -652,10 +652,9 @@
             </radialGradient>
           </defs>
           <circle cx="120" cy="60" r="44" fill="url(#vpMicHaloGrad)" style="transform-box:fill-box;transform-origin:center;animation:vpHalo 3.4s cubic-bezier(.37,0,.63,1) infinite"/>
-          <!-- 목소리 반응 원 (getUserMedia AnalyserNode 로 --mic-vol 갱신) -->
-          <circle id="vpMicVoiceRing" cx="120" cy="60" r="26" fill="#E8714A" fill-opacity="0.18" stroke="#E8714A" stroke-width="2" stroke-opacity="0.6" style="transform-box:fill-box;transform-origin:center;transform:scale(calc(0.7 + var(--mic-vol,0.3) * 1.6));transition:transform 80ms linear;"/>
-          <circle cx="120" cy="60" r="30" fill="none" stroke="#E8714A" stroke-width="2" stroke-opacity="0.35" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) infinite"/>
-          <circle cx="120" cy="60" r="30" fill="none" stroke="#F08A5F" stroke-width="2" stroke-opacity="0.35" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) 0.8s infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#E8714A" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#F08A5F" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) 0.8s infinite"/>
+          <circle cx="120" cy="60" r="30" fill="none" stroke="#F6C3AC" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:vpRing 2.4s cubic-bezier(.22,.61,.36,1) 1.6s infinite"/>
         </svg>
         <!-- 마이크 아이콘 SVG — 똑바로 세움, 링 중앙 정확 배치 -->
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:vpCore 2.1s cubic-bezier(.37,0,.63,1) infinite;">

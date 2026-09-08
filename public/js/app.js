@@ -7734,7 +7734,6 @@ async function _startVocabPractice(test, questions) {
     gen: (_vpState?.gen || 0) + 1,   // 세대 ++
     stopped: false,
     silentStreak: 0,
-    micMeter: null,
     // 이번 학습 리액티브 유형 (세션 내 고정, 다음 학습 시 랜덤 재선택)
     vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
   };
@@ -8033,12 +8032,8 @@ function _vpStartListen() {
   const target = q.word || '';
   let resolved = false;
 
-  // 마이크 목소리 반응 미터 시작 (getUserMedia 별도 stream — SR 과 병행)
-  _vpStartMicMeter();
-
   rec.onresult = (event) => {
     resolved = true;
-    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
@@ -8053,21 +8048,18 @@ function _vpStartListen() {
   rec.onerror = (e) => {
     resolved = true;
     s.listening = false;
-    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error);
     _vpHandleResult(0, '');
   };
   rec.onend = () => {
     s.listening = false;
-    _vpStopMicMeter();
     if (s.stopped || s.gen !== g) return;
     if (!resolved) _vpHandleResult(0, '');
   };
   try { rec.start(); } catch(e) {
     console.warn(e);
     s.listening = false;
-    _vpStopMicMeter();
     setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
   }
 }
@@ -8292,53 +8284,6 @@ window.vpRestart = () => {
   startVocab(t.id, t.name || '');
 };
 
-// 마이크 목소리 반응 — getUserMedia AnalyserNode → --mic-vol CSS 변수 갱신
-async function _vpStartMicMeter() {
-  const s = _vpState;
-  if (s.micMeter) return;   // 이미 실행 중
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) { try { stream.getTracks().forEach(t => t.stop()); } catch(_){} return; }
-    const ctx = new AC();
-    const src = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.5;
-    src.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const meter = { stream, ctx, analyser, data, raf: null, stopped: false };
-    s.micMeter = meter;
-    const el = document.getElementById('vpMicArea');
-    const loop = () => {
-      if (meter.stopped) return;
-      analyser.getByteFrequencyData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) sum += data[i];
-      const avg = sum / data.length / 255;   // 0..1
-      // 목소리 감지: 0.02 이상이면 실제 발화 (streak 리셋 힌트용)
-      if (avg > 0.04) meter.heardVoice = true;
-      if (el) el.style.setProperty('--mic-vol', String(Math.min(1, avg * 1.6 + 0.1)));
-      meter.raf = requestAnimationFrame(loop);
-    };
-    loop();
-  } catch(e) {
-    console.warn('[vp] mic meter unavailable:', e.message);
-    // 실패 시 목소리 반응 없이도 SR 진행 (기본 pulse 유지)
-  }
-}
-function _vpStopMicMeter() {
-  const m = _vpState.micMeter;
-  if (!m) return;
-  m.stopped = true;
-  if (m.raf) cancelAnimationFrame(m.raf);
-  try { m.stream.getTracks().forEach(t => t.stop()); } catch(_){}
-  try { m.ctx.close(); } catch(_){}
-  _vpState.micMeter = null;
-  const el = document.getElementById('vpMicArea');
-  if (el) el.style.setProperty('--mic-vol', '0.3');
-}
-
 // 마이크 이상 안내 모달 (3턴 연속 무음 시)
 function _vpShowMicAlert() {
   return new Promise(resolve => {
@@ -8365,7 +8310,6 @@ window.quitVocabPractice = async () => {
   s.gen++;
   if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
   s.listening = false;
-  _vpStopMicMeter();
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
   _vpShowWave(false); _vpShowMicAnim(false); _vpShowReact(false);
 
