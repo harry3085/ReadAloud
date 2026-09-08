@@ -4475,6 +4475,9 @@ window.show=id=>{
   // 시험 화면 진입 시 dataset.stage 리셋 (이전 결과 보기 마커 제거)
   const newScreen = document.getElementById(id);
   if (newScreen && _isInExam(id)) newScreen.dataset.stage = '';
+  // 시험 진입 → wake lock 획득 (절전·화면 어두워짐 방지) / 이탈 → 해제
+  if (_isInExam(id)) _acquireWakeLock();
+  else _releaseWakeLock();
   _originalShow(id);
   // 시험 화면 벗어났는데 SW reload 대기 중이면 적용
   if (_pendingReload && !_isInExam(id)) _trySwReload();
@@ -7679,6 +7682,8 @@ let _vpState = {
   stars: 0, wordAccuracies: [],   // [{word, best, attempts}]
   rec: null, listening: false, submitting: false,
   ttsVoices: [],
+  gen: 0,      // 세대 카운터 — quit·재시작 시 ++. 옛 setTimeout 콜백 skip 용
+  stopped: false,
 };
 
 // 관대한 임계 (단어 1개 인식률 감안)
@@ -7708,6 +7713,8 @@ async function _startVocabPractice(test, questions) {
     listening: false,
     submitting: false,
     ttsVoices: [],
+    gen: (_vpState?.gen || 0) + 1,   // 세대 ++
+    stopped: false,
   };
   // TTS 음성 로드 (비동기 준비)
   if (typeof window.speechSynthesis !== 'undefined') {
@@ -7724,6 +7731,7 @@ async function _startVocabPractice(test, questions) {
 
 function _vpRenderStep() {
   const s = _vpState;
+  if (s.stopped) return;
   const q = s.questions[s.currentIdx];
   if (!q) return;
   const barEl = document.getElementById('vpProgressBar');
@@ -7745,6 +7753,8 @@ function _vpRenderStep() {
   if (reactEmoji) { reactEmoji.textContent = ''; reactEmoji.style.transform = 'scale(1)'; }
   if (reactText) { reactText.textContent = ''; reactText.style.color = ''; }
   if (statusEl) statusEl.textContent = '';
+  _vpShowMicAnim(false);
+  _vpShowReact(false);
 
   // 이전 SR/TTS 정리
   if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
@@ -7752,36 +7762,71 @@ function _vpRenderStep() {
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
 
   // 새 단어 진입 시 자동 TTS 재생 → 끝나면 자동 SR 시작
-  setTimeout(() => _vpSpeakAndListen(), 300);
+  const g = s.gen;
+  setTimeout(() => { if (s.gen === g && !s.stopped) _vpSpeakAndListen(); }, 300);
 }
 
-// 이퀄라이저 / 마이크 애니메이션 show/hide
-function _vpShowEq(on) {
-  const el = document.getElementById('vpEqualizer');
-  if (el) el.style.display = on ? 'block' : 'none';
+// 파동(TTS 재생 중) — 카드 밖, 색·애니메이션 랜덤 rotate
+const _VP_WAVE_PALETTES = [
+  ['#0891b2','#06b6d4','#67e8f9','#a5f3fc'],  // cyan
+  ['#7c3aed','#a78bfa','#c4b5fd','#ddd6fe'],  // purple
+  ['#059669','#10b981','#6ee7b7','#a7f3d0'],  // emerald
+  ['#dc2626','#f97316','#fb923c','#fdba74'],  // red-orange
+  ['#0891b2','#f59e0b','#7c3aed','#059669'],  // rainbow
+];
+function _vpShowWave(on) {
+  const el = document.getElementById('vpWaveArea');
+  if (!el) return;
+  el.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  // 파동 랜덤화 — 색 팔레트 rotate + 각 path 애니메이션 duration/delay 랜덤
+  const palette = _VP_WAVE_PALETTES[Math.floor(Math.random() * _VP_WAVE_PALETTES.length)];
+  const anims = ['vpWave1','vpWave2','vpWave3','vpWave4'];
+  for (let i = 0; i < 4; i++) {
+    const p = document.getElementById('vpWave' + i);
+    if (!p) continue;
+    p.style.stroke = palette[i % palette.length];
+    p.style.opacity = 0.85 - i * 0.15;
+    p.style.animation = `${anims[Math.floor(Math.random()*anims.length)]} ${(0.8 + Math.random()*0.9).toFixed(2)}s ease-in-out ${(Math.random()*0.4).toFixed(2)}s infinite`;
+  }
 }
+// 액션 슬롯 — 마이크 or 리액션, 둘 중 하나만 (동시 표시 X)
 function _vpShowMicAnim(on) {
   const el = document.getElementById('vpMicArea');
   if (el) el.style.display = on ? 'block' : 'none';
+  if (on) _vpShowReact(false);   // 마이크 켜면 리액션 감춤
+}
+function _vpShowReact(on) {
+  const el = document.getElementById('vpReactArea');
+  if (el) el.style.display = on ? 'block' : 'none';
+  if (on) _vpShowMicAnim(false);   // 리액션 켜면 마이크 감춤 (사실상 상호배타)
 }
 
 // TTS 재생 후 자동으로 SR 시작 (TTS 소리가 마이크에 잡히는 것 방지 위해 onend 대기)
 function _vpSpeakAndListen() {
   const s = _vpState;
+  if (s.stopped) return;
   const q = s.questions[s.currentIdx];
   if (!q || !q.word) return;
+  const g = s.gen;
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.textContent = '';
   _vpShowMicAnim(false);
-  _vpShowEq(true);
+  _vpShowReact(false);
+  _vpShowWave(true);
 
   if (typeof window.speechSynthesis === 'undefined') {
-    _vpShowEq(false);
+    _vpShowWave(false);
     _vpStartListen();
     return;
   }
   let started = false;
-  const startOnce = () => { if (!started) { started = true; _vpShowEq(false); _vpStartListen(); } };
+  const startOnce = () => {
+    if (started || s.stopped || s.gen !== g) return;
+    started = true;
+    _vpShowWave(false);
+    _vpStartListen();
+  };
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(q.word);
@@ -7801,7 +7846,7 @@ function _vpSpeakAndListen() {
     setTimeout(startOnce, 2000);
   } catch(e) {
     console.warn('[vp] TTS:', e);
-    _vpShowEq(false);
+    _vpShowWave(false);
     _vpStartListen();
   }
 }
@@ -7809,9 +7854,10 @@ function _vpSpeakAndListen() {
 // 자동 SR 시작 — TTS 끝난 뒤 호출
 function _vpStartListen() {
   const s = _vpState;
-  if (s.listening) return;
+  if (s.stopped || s.listening) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
+  const g = s.gen;
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">따라 읽어보세요!</span>';
   _vpShowMicAnim(true);
@@ -7830,6 +7876,7 @@ function _vpStartListen() {
 
   rec.onresult = (event) => {
     resolved = true;
+    if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
     let bestSim = 0, bestHeard = '';
@@ -7843,19 +7890,19 @@ function _vpStartListen() {
   rec.onerror = (e) => {
     resolved = true;
     s.listening = false;
+    if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error);
-    // no-speech / audio-capture 등 — 인식 실패로 처리 (0점 취급)
     _vpHandleResult(0, '');
   };
   rec.onend = () => {
     s.listening = false;
-    if (!resolved) _vpHandleResult(0, '');   // 무음 종료 = 0점
+    if (s.stopped || s.gen !== g) return;
+    if (!resolved) _vpHandleResult(0, '');
   };
   try { rec.start(); } catch(e) {
     console.warn(e);
     s.listening = false;
-    // 시작 실패 시 잠시 후 재시도
-    setTimeout(() => _vpStartListen(), 500);
+    setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
   }
 }
 
@@ -7896,12 +7943,14 @@ function _vpPickEmoji(cat) {
 
 function _vpHandleResult(sim, heard) {
   const s = _vpState;
+  if (s.stopped) return;
   s.attempt++;
   const wa = s.wordAccuracies[s.currentIdx];
   if (sim > wa.best) wa.best = sim;
   wa.attempts = s.attempt;
 
-  _vpShowMicAnim(false);   // 리액션 시 마이크 애니메이션 감춤
+  _vpShowMicAnim(false);
+  _vpShowReact(true);   // 리액션 슬롯 활성 (마이크 자동 감춤)
   const reactEmoji = document.getElementById('vpReactionEmoji');
   const reactText = document.getElementById('vpReactionText');
   const statusEl = document.getElementById('vpStatus');
@@ -7949,7 +7998,9 @@ function _vpHandleResult(sim, heard) {
     else attemptEl.textContent = `${s.attempt}/${Math.max(_VP_MIN_ATTEMPT, s.attempt + 1)}`;
   }
 
+  const g = s.gen;
   setTimeout(() => {
+    if (s.stopped || s.gen !== g) return;
     if (canAdvance) _vpAdvance();
     else _vpSpeakAndListen();   // 같은 단어 자동 재재생 + 재청취
   }, 700);
@@ -7957,6 +8008,7 @@ function _vpHandleResult(sim, heard) {
 
 function _vpAdvance() {
   const s = _vpState;
+  if (s.stopped) return;
   s.attempt = 0;
   if (s.currentIdx < s.questions.length - 1) {
     s.currentIdx++;
@@ -8034,29 +8086,41 @@ function _vpRenderResult() {
   const screen = document.getElementById('vocabPractice');
   if (!screen) return;
   _screenSnapshotOnce('vocabPractice');
+  // 학생 화면 — 학습 완료 + tier 리액션만 (통과·점수·별·정확도 수치 X)
   screen.innerHTML = `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;overflow-y:auto;">
-      <div style="background:${tier.bg};border-radius:32px;padding:40px 30px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.08);max-width:360px;width:100%;">
-        <div style="font-size:120px;line-height:1;margin-bottom:16px;animation:vpBounce 1s ease-in-out infinite alternate;">${tier.emoji}</div>
-        <div style="font-size:28px;font-weight:900;color:${tier.color};margin-bottom:8px;">${tier.title}</div>
-        <div style="font-size:14px;color:var(--text);line-height:1.5;margin-bottom:20px;">${tier.msg}</div>
-        <div style="font-size:36px;font-weight:900;color:#f59e0b;">✨ ${s.stars}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">별 ${s.stars}개 획득!</div>
+      <div style="font-size:18px;font-weight:700;color:var(--gray);margin-bottom:16px;">🎓 학습 완료!</div>
+      <div style="background:${tier.bg};border-radius:32px;padding:44px 30px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.08);max-width:360px;width:100%;">
+        <div style="font-size:140px;line-height:1;margin-bottom:16px;animation:vpBounce 1s ease-in-out infinite alternate;">${tier.emoji}</div>
+        <div style="font-size:30px;font-weight:900;color:${tier.color};margin-bottom:10px;">${tier.title}</div>
+        <div style="font-size:15px;color:var(--text);line-height:1.5;">${tier.msg}</div>
       </div>
-      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding:24px 0 16px;">
+      <div style="display:flex;gap:10px;width:100%;max-width:340px;padding:28px 0 16px;">
         <button onclick="goVocab()" style="flex:1;padding:14px;background:white;border:1px solid var(--border);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;color:var(--text);">시험 목록</button>
         <button onclick="startVocab('${esc(s.test.id)}','${esc(s.test.name||'').replace(/'/g,"\\'")}')" style="flex:1;padding:14px;background:#0891b2;border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;">🔁 다시 학습</button>
       </div>
     </div>
-    <style>@keyframes vpBounce{0%{transform:translateY(0) scale(1);} 100%{transform:translateY(-8px) scale(1.05);}}</style>`;
+    <style>@keyframes vpBounce{0%{transform:translateY(0) scale(1);} 100%{transform:translateY(-10px) scale(1.05);}}</style>`;
   screen.dataset.stage = 'result';
 }
 
 window.quitVocabPractice = async () => {
-  if (!(await showConfirm('학습을 중단할까요?', ''))) return;
   const s = _vpState;
-  if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
+  // 즉시 중단 — 확인 모달 동안 소리·마이크 X (옛 setTimeout 콜백도 gen 증가로 무효화)
+  s.gen++;
+  if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
+  s.listening = false;
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
+  _vpShowWave(false); _vpShowMicAnim(false); _vpShowReact(false);
+
+  const proceed = await showConfirm('학습을 중단할까요?', '');
+  if (!proceed) {
+    // 재개 — 같은 단어부터 다시 (gen 이미 증가라 새 세대로 시작)
+    s.attempt = 0;
+    _vpRenderStep();
+    return;
+  }
+  s.stopped = true;
   goHome();
 };
 
