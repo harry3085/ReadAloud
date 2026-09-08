@@ -6162,7 +6162,6 @@ window.vqViewPreviousResult = async (testId, testName) => {
         wordAccuracies: wa,
         rec: null, listening: false, submitting: false,
         ttsVoices: [], gen: (_vpState?.gen || 0) + 1, stopped: true,   // stopped=true → 재청취 X
-        vizType: 'wave', vizPalette: _VP_VIZ_PALETTES[0],
       };
       _screenPrepare('vocabPractice', '#vpProgressBar');
       show('vocabPractice');
@@ -7734,9 +7733,6 @@ async function _startVocabPractice(test, questions) {
     ttsVoices: [],
     gen: (_vpState?.gen || 0) + 1,   // 세대 ++
     stopped: false,
-    // 이번 학습 리액티브 유형·팔레트 (세션 내 고정)
-    vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
-    vizPalette: _VP_VIZ_PALETTES[Math.floor(Math.random() * _VP_VIZ_PALETTES.length)],
   };
   // TTS 음성 로드 (비동기 준비)
   if (typeof window.speechSynthesis !== 'undefined') {
@@ -7788,143 +7784,65 @@ function _vpRenderStep() {
   setTimeout(() => { if (s.gen === g && !s.stopped) _vpSpeakAndListen(); }, 300);
 }
 
-// 오디오 리액티브 (TTS 재생 중) — 4 유형 rotate + 색 팔레트 랜덤
-const _VP_VIZ_PALETTES = [
-  ['#0891b2','#06b6d4','#67e8f9','#a5f3fc'],   // cyan
-  ['#7c3aed','#a78bfa','#c4b5fd','#ddd6fe'],   // purple
-  ['#059669','#10b981','#6ee7b7','#a7f3d0'],   // emerald
-  ['#dc2626','#f97316','#fb923c','#fdba74'],   // red-orange
-  ['#0891b2','#f59e0b','#7c3aed','#059669'],   // rainbow
-  ['#ec4899','#f472b6','#f9a8d4','#fbcfe8'],   // pink
-];
-const _VP_VIZ_TYPES = ['wave','bars','circles','dots','spikes','area','ring','zigzag'];
-let _vpVizIdx = 0;
+// TTS 인디케이터 — 1a 호흡 리본 (디자인 handoff 2026-09-09)
+// 청록 팔레트 A (학습 화면 배경 #F0FDFF)
+const _VP_RIBBON_COLORS = { main: '#0891B2', mid: '#06B6D4', light: '#67E8F9' };
+let _vpRibbonInst = 0;
 
-function _vpBuildWaveHtml(palette) {
-  const anims = ['vpWaveA','vpWaveB','vpWaveC'];
-  let paths = '';
-  for (let i = 0; i < 4; i++) {
-    const color = palette[i % palette.length];
-    const anim = anims[Math.floor(Math.random() * anims.length)];
-    const dur = (0.9 + Math.random() * 0.8).toFixed(2);
-    const delay = (Math.random() * 0.5).toFixed(2);
-    const opacity = (0.9 - i * 0.15).toFixed(2);
-    paths += `<path class="vp-wave-path" style="color:${color};stroke:${color};opacity:${opacity};animation:${anim} ${dur}s ease-in-out ${delay}s infinite;" d="M0,80 Q75,50 150,80 T300,80"/>`;
-  }
-  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">${paths}</svg>`;
-}
-function _vpBuildBarsHtml(palette) {
-  // 가운데 큰 envelope — 9개 바
-  const heights = [30, 60, 100, 130, 150, 130, 100, 60, 30];
-  const bars = heights.map((h, i) => {
-    const color = palette[i % palette.length];
-    const delay = (Math.abs(i - 4) * 0.08 + Math.random() * 0.1).toFixed(2);
-    const dur = (0.5 + Math.random() * 0.4).toFixed(2);
-    return `<span class="vp-bar" style="color:${color};height:${h}px;animation-delay:${delay}s;animation-duration:${dur}s;"></span>`;
-  }).join('');
-  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${bars}</div>`;
-}
-function _vpBuildCirclesHtml(palette) {
-  // 3개 동심원 pulse
-  let html = '';
-  for (let i = 0; i < 3; i++) {
-    const color = palette[i % palette.length];
-    const delay = (i * 0.4).toFixed(2);
-    html += `<div class="vp-circ" style="color:${color};animation-delay:${delay}s;"></div>`;
-  }
-  // 중심 큰 원
-  const centerColor = palette[0];
-  html += `<div style="position:absolute;top:50%;left:50%;width:40px;height:40px;margin:-20px 0 0 -20px;background:${centerColor};border-radius:50%;box-shadow:0 0 20px ${centerColor};animation:vpBar 0.6s ease-in-out infinite;"></div>`;
-  return `<div style="position:relative;height:160px;">${html}</div>`;
-}
-function _vpBuildDotsHtml(palette) {
-  // 13개 점 — 가운데 크게 흔들림 (envelope)
-  const dyMap = [12, 20, 30, 42, 55, 68, 75, 68, 55, 42, 30, 20, 12];
-  const dots = dyMap.map((dy, i) => {
-    const color = palette[i % palette.length];
-    const delay = (i * 0.05).toFixed(2);
-    return `<span class="vp-dot" style="color:${color};--dy:-${dy}px;animation-delay:${delay}s;"></span>`;
-  }).join('');
-  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${dots}</div>`;
-}
-function _vpBuildSpikesHtml(palette) {
-  // 40개 얇은 스파이크 — 가운데 큰 envelope
-  const N = 40, center = (N - 1) / 2;
-  let spikes = '';
-  for (let i = 0; i < N; i++) {
-    const bell = Math.exp(-Math.pow((i - center) / (N * 0.22), 2));
-    const h = Math.round(20 + bell * 130);   // 20~150px
-    const color = palette[i % palette.length];
-    const delay = (Math.abs(i - center) * 0.015 + Math.random() * 0.1).toFixed(3);
-    const dur = (0.35 + Math.random() * 0.3).toFixed(2);
-    spikes += `<span class="vp-spike" style="color:${color};height:${h}px;animation-delay:${delay}s;animation-duration:${dur}s;"></span>`;
-  }
-  return `<div style="display:flex;justify-content:center;align-items:center;height:160px;">${spikes}</div>`;
-}
-function _vpBuildAreaHtml(palette) {
-  // 그라디언트 영역 채운 파형 (envelope) — 3겹 겹침
-  const gradId = 'vpAreaGrad_' + Math.floor(Math.random() * 100000);
-  const anims = ['vpWaveA','vpWaveB','vpWaveC'];
-  let defs = `<defs>
-    <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${palette[0]}" stop-opacity="0.85"/>
-      <stop offset="100%" stop-color="${palette[0]}" stop-opacity="0.15"/>
-    </linearGradient>
-    <linearGradient id="${gradId}b" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${palette[1]||palette[0]}" stop-opacity="0.7"/>
-      <stop offset="100%" stop-color="${palette[1]||palette[0]}" stop-opacity="0.1"/>
-    </linearGradient>
-  </defs>`;
-  const anim1 = anims[Math.floor(Math.random() * anims.length)];
-  const anim2 = anims[Math.floor(Math.random() * anims.length)];
-  const dur1 = (1.0 + Math.random() * 0.6).toFixed(2);
-  const dur2 = (0.9 + Math.random() * 0.7).toFixed(2);
-  // path 는 waveA/B/C 애니메이션 사용 (envelope 파동), 아래는 채움
-  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">
-    ${defs}
-    <path fill="url(#${gradId})" style="animation:${anim1} ${dur1}s ease-in-out infinite;" d="M0,80 Q75,50 150,80 T300,80 L300,160 L0,160 Z"/>
-    <path fill="url(#${gradId}b)" style="animation:${anim2} ${dur2}s ease-in-out infinite;animation-delay:0.15s;" d="M0,80 Q75,50 150,80 T300,80 L300,160 L0,160 Z"/>
-  </svg>`;
-}
-function _vpBuildRingHtml(palette) {
-  // 큰 네온 링 pulse + 안쪽 작은 점
-  const color = palette[0];
-  return `<div style="position:relative;height:160px;">
-    <div class="vp-neon-ring" style="color:${color};"></div>
-    <div class="vp-neon-ring" style="color:${palette[1]||color};animation-delay:0.4s;width:80px;height:80px;margin:-40px 0 0 -40px;"></div>
-    <div style="position:absolute;top:50%;left:50%;width:20px;height:20px;margin:-10px 0 0 -10px;background:${color};border-radius:50%;box-shadow:0 0 20px ${color};animation:vpBar 0.6s ease-in-out infinite;"></div>
-  </div>`;
-}
-function _vpBuildZigzagHtml(palette) {
-  // 지그재그 각진 파형 — 3겹 색 다르게
-  const dur1 = (0.9 + Math.random() * 0.6).toFixed(2);
-  const dur2 = (0.8 + Math.random() * 0.6).toFixed(2);
-  const dur3 = (0.7 + Math.random() * 0.6).toFixed(2);
-  return `<svg viewBox="0 0 300 160" width="100%" height="160" preserveAspectRatio="none">
-    <path class="vp-wave-path" style="color:${palette[0]};stroke:${palette[0]};stroke-width:3;opacity:0.9;animation:vpZigA ${dur1}s ease-in-out infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
-    <path class="vp-wave-path" style="color:${palette[1]||palette[0]};stroke:${palette[1]||palette[0]};stroke-width:2.5;opacity:0.65;animation:vpZigA ${dur2}s ease-in-out 0.2s infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
-    <path class="vp-wave-path" style="color:${palette[2]||palette[0]};stroke:${palette[2]||palette[0]};stroke-width:2;opacity:0.5;animation:vpZigA ${dur3}s ease-in-out 0.4s infinite;" d="M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80"/>
+function _vpBuildRibbonHtml({ main, mid, light } = _VP_RIBBON_COLORS) {
+  const inst = ++_vpRibbonInst;
+  const gStroke = `vpRibbonStroke_${inst}`;
+  const gFill   = `vpRibbonFill_${inst}`;
+  return `<svg viewBox="0 0 400 120" width="100%" height="120" preserveAspectRatio="none" style="display:block">
+    <defs>
+      <linearGradient id="${gStroke}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${light}" stop-opacity="0.15"/>
+        <stop offset="0.5" stop-color="${main}" stop-opacity="0.9"/>
+        <stop offset="1" stop-color="${light}" stop-opacity="0.15"/>
+      </linearGradient>
+      <linearGradient id="${gFill}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${mid}" stop-opacity="0.28"/>
+        <stop offset="1" stop-color="${light}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScroll 5.7s linear infinite">
+      <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpBreatheC 2.9s cubic-bezier(.37,0,.63,1) infinite">
+        <path d="M0 60 Q50 24 100 60 T200 60 T300 60 T400 60 T500 60 T600 60 T700 60 T800 60 L800 120 L0 120 Z" fill="url(#${gFill})"/>
+      </g>
+    </g>
+    <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScrollBack 4.3s linear infinite">
+      <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpBreatheB 2.3s cubic-bezier(.37,0,.63,1) infinite">
+        <path d="M0 60 Q50 32 100 60 T200 60 T300 60 T400 60 T500 60 T600 60 T700 60 T800 60" fill="none" stroke="${mid}" stroke-opacity="0.34" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </g>
+    <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpScroll 3.1s linear infinite">
+      <g style="transform-box:view-box;transform-origin:200px 60px;animation:vpBreatheA 1.9s cubic-bezier(.37,0,.63,1) infinite">
+        <path d="M0 60 Q50 20 100 60 T200 60 T300 60 T400 60 T500 60 T600 60 T700 60 T800 60" fill="none" stroke="url(#${gStroke})" stroke-width="4" stroke-linecap="round"/>
+      </g>
+    </g>
   </svg>`;
 }
 
+// 슬롯 + 엔벨로프 IN/OUT (라이프사이클 handoff 스펙 그대로)
 function _vpShowViz(on) {
-  const el = document.getElementById('vpVizArea');
-  if (!el) return;
-  el.style.display = on ? 'block' : 'none';
-  if (!on) { el.innerHTML = ''; return; }
-  // 유형·팔레트는 세션 진입 시 결정된 값 사용 (한 학습 내 동일)
-  const s = _vpState;
-  const type = s.vizType || 'wave';
-  const palette = s.vizPalette || _VP_VIZ_PALETTES[0];
-  if (type === 'wave')    el.innerHTML = _vpBuildWaveHtml(palette);
-  else if (type === 'bars')    el.innerHTML = _vpBuildBarsHtml(palette);
-  else if (type === 'circles') el.innerHTML = _vpBuildCirclesHtml(palette);
-  else if (type === 'dots')    el.innerHTML = _vpBuildDotsHtml(palette);
-  else if (type === 'spikes')  el.innerHTML = _vpBuildSpikesHtml(palette);
-  else if (type === 'area')    el.innerHTML = _vpBuildAreaHtml(palette);
-  else if (type === 'ring')    el.innerHTML = _vpBuildRingHtml(palette);
-  else if (type === 'zigzag')  el.innerHTML = _vpBuildZigzagHtml(palette);
-  else                          el.innerHTML = _vpBuildWaveHtml(palette);
+  const slot = document.getElementById('vpVizSlot');
+  const env = document.getElementById('vpVizEnv');
+  if (!slot || !env) return;
+  if (on) {
+    slot.style.display = '';
+    env.innerHTML = _vpBuildRibbonHtml(_VP_RIBBON_COLORS);
+    // 다음 프레임에 is-on 부여 → IN 트랜지션 발화
+    requestAnimationFrame(() => { env.classList.add('is-on'); });
+  } else {
+    env.classList.remove('is-on');
+    // OUT 완료 후 DOM 제거 (라이프사이클 320ms + 여유)
+    setTimeout(() => {
+      if (!env.classList.contains('is-on')) {
+        env.innerHTML = '';
+        slot.style.display = 'none';
+      }
+    }, 340);
+  }
 }
 // 옛 이름 호환
 const _vpShowWave = _vpShowViz;

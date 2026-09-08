@@ -578,33 +578,30 @@
     </div>
   </div>
 
-  <!-- 단어 학습 (따라 읽기) — 자동 흐름 (버튼 없음) -->
+  <!-- 단어 학습 (따라 읽기) — 자동 흐름 -->
   <style>
+    /* 마이크 애니메이션 (SR 진행 중) */
     @keyframes vpMicPulse { 0%{transform:scale(1);opacity:1;} 100%{transform:scale(2.4);opacity:0;} }
     @keyframes vpMicWiggle { 0%,100%{transform:rotate(-8deg);} 50%{transform:rotate(8deg);} }
-    /* 파동형 — 가운데 크고 양끝 작음 (envelope 반영) */
-    @keyframes vpWaveA { 0%,100%{d:path("M0,80 Q40,78 80,68 T160,20 T240,68 Q280,78 300,80");} 50%{d:path("M0,80 Q40,82 80,92 T160,140 T240,92 Q280,82 300,80");} }
-    @keyframes vpWaveB { 0%,100%{d:path("M0,80 Q40,82 80,92 T160,150 T240,92 Q280,82 300,80");} 50%{d:path("M0,80 Q40,78 80,68 T160,10 T240,68 Q280,78 300,80");} }
-    @keyframes vpWaveC { 0%,100%{d:path("M0,80 Q50,80 100,65 T180,30 T260,65 Q290,80 300,80");} 50%{d:path("M0,80 Q50,80 100,95 T180,130 T260,95 Q290,80 300,80");} }
-    /* 레벨메타 — 세로 바 상하 */
-    @keyframes vpBar { 0%,100%{transform:scaleY(0.2);} 50%{transform:scaleY(1);} }
-    .vp-bar{display:inline-block;width:10px;background:currentColor;border-radius:5px;margin:0 3px;transform-origin:center;animation:vpBar 0.7s ease-in-out infinite;box-shadow:0 0 6px currentColor;}
-    /* 원 pulse — 동심원 */
-    @keyframes vpCirc { 0%{transform:scale(0.2);opacity:1;} 100%{transform:scale(2);opacity:0;} }
-    .vp-circ{position:absolute;top:50%;left:50%;width:80px;height:80px;margin:-40px 0 0 -40px;border:3px solid currentColor;border-radius:50%;animation:vpCirc 1.4s ease-out infinite;box-shadow:0 0 8px currentColor;}
-    /* 점 이동 — 사인파 */
-    @keyframes vpDot { 0%,100%{transform:translateY(0);} 50%{transform:translateY(var(--dy,-40px));} }
-    .vp-dot{display:inline-block;width:12px;height:12px;background:currentColor;border-radius:50%;margin:0 4px;box-shadow:0 0 6px currentColor;animation:vpDot 0.8s ease-in-out infinite;}
-    /* 스파이크 — 얇은 세로 라인 */
-    @keyframes vpSpike { 0%,100%{transform:scaleY(0.15);} 50%{transform:scaleY(1);} }
-    .vp-spike{display:inline-block;width:3px;background:currentColor;margin:0 1px;transform-origin:center;animation:vpSpike 0.45s ease-in-out infinite;box-shadow:0 0 4px currentColor;}
-    /* 네온 링 — 큰 원 pulse */
-    @keyframes vpRing { 0%,100%{transform:scale(0.85);opacity:0.9;} 50%{transform:scale(1.15);opacity:1;} }
-    .vp-neon-ring{position:absolute;top:50%;left:50%;width:130px;height:130px;margin:-65px 0 0 -65px;border:4px solid currentColor;border-radius:50%;box-shadow:0 0 24px currentColor,inset 0 0 16px currentColor;animation:vpRing 1.1s ease-in-out infinite;}
-    /* 지그재그 — 각진 파형 */
-    @keyframes vpZigA { 0%,100%{d:path("M0,80 L30,60 L60,100 L90,40 L120,120 L150,20 L180,140 L210,20 L240,120 L270,40 L300,80");} 50%{d:path("M0,80 L30,100 L60,60 L90,120 L120,40 L150,140 L180,20 L210,140 L240,40 L270,120 L300,80");} }
     .vp-mic-ring{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border:3px solid #dc2626;border-radius:50%;animation:vpMicPulse 1.2s ease-out infinite;}
-    .vp-wave-path{fill:none;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 0 4px currentColor);}
+
+    /* TTS 인디케이터 1a 호흡 리본 (iOS Siri 계열, 디자인 handoff 2026-09-09) */
+    @keyframes vpScroll { from{transform:translateX(0);} to{transform:translateX(-400px);} }
+    @keyframes vpScrollBack { from{transform:translateX(-400px);} to{transform:translateX(0);} }
+    @keyframes vpBreatheA { 0%,100%{transform:scaleY(0.5);} 48%{transform:scaleY(1);} }
+    @keyframes vpBreatheB { 0%,100%{transform:scaleY(0.82);} 42%{transform:scaleY(0.34);} }
+    @keyframes vpBreatheC { 0%,100%{transform:scaleY(0.62);} 56%{transform:scaleY(1.04);} }
+    /* 슬롯 + 엔벨로프 IN 200 / OUT 320 */
+    .vp-slot { height:160px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .vp-env  { width:100%; display:flex; justify-content:center;
+               opacity:0; transform:scaleY(.86);
+               transition:opacity 320ms cubic-bezier(.4,0,.65,.35), transform 320ms cubic-bezier(.4,0,.65,.35); }
+    .vp-env.is-on { opacity:1; transform:scaleY(1);
+               transition:opacity 200ms cubic-bezier(.22,.61,.36,1), transform 200ms cubic-bezier(.22,.61,.36,1); }
+    @media (prefers-reduced-motion: reduce) {
+      .vp-slot * { animation:none !important; }
+      .vp-env { opacity:1; transform:none; transition:none; }
+    }
   </style>
   <div id="vocabPractice" class="screen" style="background:#F0FDFF;">
     <div class="quiz-header">
@@ -625,8 +622,8 @@
       <div id="vpMeaning" style="font-size:18px;color:#0891b2;font-weight:600;"></div>
     </div>
 
-    <!-- 오디오 리액티브 (TTS 재생 중, 카드 밖) — 매 단어마다 다른 유형 (파동/바/원/점) -->
-    <div id="vpVizArea" style="height:160px;margin:8px 20px 0;display:none;position:relative;"></div>
+    <!-- TTS 인디케이터 (호흡 리본) — 카드 밖, IN/OUT 엔벨로프 -->
+    <div id="vpVizSlot" class="vp-slot" style="margin:8px 20px 0;display:none;"><div id="vpVizEnv" class="vp-env"></div></div>
 
     <!-- 액션 슬롯 (마이크 or 리액션, 둘 중 하나만) -->
     <div style="margin:0 16px;flex:1;min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px 0;">
