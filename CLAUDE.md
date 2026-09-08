@@ -4432,8 +4432,165 @@ fe1df08 + 98b97f3 커밋 시 SW bump 잊음. 학원장 강력 새로고침해도
 - `public/admin/js/app.js`: +~40줄 (_tpBuildOptionsLine + 삽입)
 - SW 캐시: `kunsori-v711` → `kunsori-v712`
 
-**다음 세션 후보 (변동 없음)**:
-1. 문장시험 운영 관찰 (변동 없음)
-2. iOS Safari Web Speech 지원 확인
-3. 옛 응시 학생 안내 — 이번 재시도는 전체·랜덤, 그 다음부터 필터+형식 보존
-4. Phase 5 출시 준비
+---
+
+## 2026-09-07: 학생 마이크 이슈 진단 (오지완·남궁찬·서준호 9/4 케이스)
+
+학원장 보고 — 9/4 토요일 3명이 녹음숙제에서 "레벨 미터 안 움직임 → 저장 안 됨" 보고.
+진단 스크립트 3종 (`check-students-recording-2026-09-04.js` / `check-students-scores-recent.js`
+/ `check-3students-deviceinfo.js`) 로 전수 조사.
+
+### 결과
+- **오지완**: 9/5 21:58 완료 (85점). 1회차 말소리 **0%** 확실히 재현. 2·3회차 정상.
+  → 첫 시도 마이크 안 잡힘 → 재시도로 복구.
+- **남궁찬·서준호**: 9/4 시도 흔적 0. Firestore userCompleted / scores 어느 쪽도 없음.
+  → 저장 실패 X, **애초에 회차 저장 시도가 없었음** (레벨 미터 안 움직임 확인 후 앱 나감).
+- **디바이스**: 3명 다 Android + 정상 브라우저 (Chrome / 삼성 인터넷), 카톡 인앱 아님.
+
+### 결론
+- 마이크 레벨 미터 = Web Audio API AnalyserNode 로컬 처리, **인터넷 무관**
+- 원인 후보: 권한 거부 / 다른 앱 마이크 점유 / BT 이어폰 라우팅 / PWA 상태
+- 진단 강화 옵션 (게인 <5% 지속 시 자동 로그) 은 반복 보고 시 재검토로 유예
+
+### 산출물
+- 게시판용 안내문 작성 (안드/iOS 구분 + 공통 순서 + 브라우저 vs 앱 설치 분기)
+
+---
+
+## 2026-09-08~09: 단어 학습 (vocab-practice) 신규 유형 대작업
+
+SW v713 → v729 (~20 commit). 학원장 아이디어 → Phase 1-4 완성 →
+학원장 실시간 피드백 다수 반영 → 디자인 handoff 기반 리액티브 재설계.
+
+### 개요 — 새 시험 유형이 아닌 "학습 유형"
+학생이 단어를 보고 TTS 가 읽어주면 따라 말하기. **평가 아닌 학습** — 점수·통과
+개념 없음, 재미 리액션 위주. 재사용성 높이려 `testMode='vocab'` 유지하고
+**`vocabOptions.format='practice'`** 로 분기.
+
+### 데이터 모델
+- `genTests.testMode='vocab'` + `vocabOptions.format='practice'` (기존 vocab 배정 인프라 재사용)
+- `userCompleted.extra.practiceMode=true` + `wordAccuracies:[{word,best,attempts}]`
+- `scores.mode='vocab'` + `vocabFormat='practice'` (진도체크·리포트 집계용)
+
+### Phase 1 — 학원장 배정 (commit 최초 세션)
+- 배정 모달 형식 select 에 `단어 학습 (따라 읽기)` 옵션 추가 (말하기 위 순서)
+- 선택 시 방향·비율 슬라이더 자동 비활성 + (v729) **보기섞기·틀린문제만·100점까지도 자동 비활성**
+- 문제섞기만 활성 (평가 옵션 무관)
+- 옵션 요약 라인 배지: `📖 단어 학습 (따라 읽기)`
+
+### Phase 2 — 학생 홈 진입
+- 단어시험 카드 안 시험 목록에 학습 시험 포함
+- 카드 배지: `📖 학습` (v725 이후 진한 청록 + white bold 강조로 시험과 시각 구분)
+- 완료 시 카드 라벨: `✓ 학습 완료` (점수 표시 X)
+- pending 시 `통과 N점` 배지도 숨김 (통과 개념 없음)
+- startVocab 이 format='practice' 감지 → `_startVocabPractice` 라우팅
+- **문제섞기** — v729 fix, `vocabOptions.shuffleQ !== false` 시 `_rngShuffle` 호출
+
+### Phase 3 — 학생 학습 화면 (자동 흐름)
+- HTML `vocabPractice` — 큰 단어 카드 + TTS 인디케이터 + 마이크·리액션 슬롯
+- **자동 흐름 (버튼 X)**:
+  1. 단어 표시 → TTS 인디케이터 표시 → TTS 재생 (톤 rotate)
+  2. TTS `onend` → 100ms delay → SR 자동 시작 (`따라 읽어보세요!` 상태 + 마이크 애니메이션)
+  3. SR onresult → 리액션 표시 → 700ms → 다음 시도 or 다음 단어
+- **최소 2회 · 최대 3회** — 2회 후 Great (≥70%) 조기 종료, 3회 무조건 다음
+- **관대 채점** (Levenshtein 유사도, maxAlternatives=5 중 최고):
+  · 🌟 Great ≥70% (별 3, 조기 종료)
+  · 👍 Good ≥45% (별 2)
+  · 💪 Not Bad ≥25% (별 1)
+  · 🤔 Try Again <25% (별 0, 재시도)
+- **리액션 이모지 rotate** — 카테고리별 5~7개 (Great: 🌟🎉✨🏆🚀💯🥳 등)
+- **정확도 % · 들린 단어 숨김** — 학생 화면은 리액션 이모지·라벨만 (원장 화면에만 수치)
+- **_vpState.gen 세대 카운터** + `stopped` flag — quit 시 즉시 gen++, 모든 setTimeout 콜백 skip
+
+### Phase 4 — 학원장 결과 조회 (기존 진도체크 재사용 + 학습 전용 상세)
+- **학습 완료 카드**: 진도체크 카드에 자동 표시 (진도체크 UI 그대로)
+- **학습 상세 모달** (v728 재구성):
+  · 헤더 배지 `99%` (기존 `99점` 대비)
+  · 응시 라벨 `N회 학습` (기존 `N회 응시` 대비)
+  · 통계 4카드: 평균 정확도 · 별 획득 ✨ · 전체 단어 · `🎓 학습 완료`
+  · 리액션 분포 배지: 🌟 Great N · 👍 Good N · 💪 Not Bad N · 평균 시도 N.N회
+  · 단어별 카드: 단어명 + 정확도 % + tier + 시도 횟수 (border-left tier 색)
+- **저장 최고점 항상 표시** (v727) — 이번 응시가 최고점 아니어도 스냅샷 있으면 표시
+  + 안내 배지 `ℹ 저장된 최고점 상세 · 이번 N점은 최고점 아님. 아래는 최고점 M점`
+
+### TTS 오디오 리액티브 — 5단계 진화
+
+**v714~720 (실패 흐름)** — 8종 rotate + neon glow / rainbow 색 → 학원장 "촌스럽다·부자연"
+
+**v721 (디자인 handoff)** — `D:\VivaldiProject\design_handoff_tts_indicator` 6종 시안
+확인. 디자이너 권장 **1a 호흡 리본** 단일 채택. 이전 8종/6팔레트 전부 폐기 (~250줄 순감).
+- 3겹 사인파 (viewBox 400×120, path 3 + g 6)
+- 흐름 vpScroll 3.1/4.3(역)/5.7s linear + 호흡 vpBreatheA/B/C 1.9/2.3/2.9s (서로 배수 X)
+- 슬롯 + 엔벨로프 IN 200ms / OUT 320ms + `is-on` 클래스
+- `@media prefers-reduced-motion: reduce` 대응
+- 팔레트 A 청록 → **v722 팔레트 B 코랄** 로 앱 통일
+
+**v723 (5종 회전)** — 학원장 "여러가지 사용"
+- TTS 5종 rotate (`ribbon/pill/band/blob/flow` — 1b 는 SR 전용으로 분리)
+- 세션 진입 시 `_vpState.vizType` 랜덤 선택 → 세션 내 고정
+- **1b 숨 고리 → SR 마이크 애니메이션** — 3겹 링 pulse + 헤일로 + 마이크 SVG 아이콘
+  수직 stick 형태 (wiggle 제거, 정중앙 배치)
+
+### 3턴 무음 감지 + 마이크 이상 모달
+
+**v725~727 (2회 iteration)** — 학원장 "말 안 해도 시험 완료됨"
+- `_vpState.silentStreak` — sim===0 && !heard 시 ++, 발화 시 0
+- 3턴 도달 → `_vpShowMicAlert()` 모달 (권한/타 앱/이어폰 확인)
+- **v725 회귀** — 존재하지 않는 `showModal` 사용 → 모달 안 뜨고 await 무한 대기
+- **v727 fix** — 검증된 `showConfirm(title, sub)` 로 교체 → [확인] 클릭 시 재개
+
+### 목소리 반응 링 — 시도 후 revert (v725→v726)
+
+학원장 "녹음숙제처럼 마이크 링이 목소리에 반응했으면"
+- 시도: `getUserMedia` 별도 스트림 + AnalyserNode → `--mic-vol` CSS 변수
+- **iOS Safari 단일 오디오 세션 정책 위험** — SR + getUserMedia dual access 시 SR 조용히 실패
+- 녹음숙제는 단일 stream (MediaRecorder + AnalyserNode 공유) 이라 안전. Practice 는 SR 사용이라 dual access 필요 → 위험
+- 학원장 판단 → 폐기, fake pulse 유지 (안전)
+
+### 다시 학습 버튼 fix (v724)
+- 옛: `onclick="startVocab('${esc(id)}','${esc(name)}')"` — 시험명 `'`/`"` 시 esc 로 &#39; → HTML 파서 디코딩 → JS 문자열 깨짐
+- fix: `window.vpRestart()` 헬퍼 신규 — `_vpState.test` 에서 id/name 읽음
+- **작업규칙 2026-05-30 재확인** — 인라인 onclick 인자에 esc 된 사용자 문자열 금지
+
+### 완료된 학습 재진입 시 시험 채점 결과 화면 뜨던 버그 (v720)
+- `vqViewPreviousResult` 가 practice 감지 없이 무조건 `_vqRenderResult` (시험 채점)
+- fix: practice format 분기 → `_vpState` 복원 (stopped=true) → `_vpRenderResult` (학생용 tier 리액션)
+
+### 작업 규칙 추가 (2026-09-08~09)
+
+신규:
+- **응시 시점 AI 호출 0 = 학습 유형 필수** — vocab-practice 처럼 학생이 여러 번
+  반복하는 학습 흐름은 서버 호출 지연·비용 부담. Web Speech + TTS 로컬 처리만.
+  응시 시점 서버 호출 = 시험(vocab speaking, sentence) 정책과 정반대.
+- **평가 vs 학습 개념 데이터 모델 분리** — testMode 는 재사용해도 vocabOptions.format
+  으로 명확히 분기. `extra.practiceMode` 플래그로 학원장 상세 렌더 분기. 학습 모드는
+  정답/오답 개념 X — 정확도 %·리액션 tier 로만 표시.
+- **관대한 채점은 학습 UX 핵심** — 발음 미흡 학생 낙담 방지. Levenshtein + 관대 임계
+  (Great 70 / Good 45 / Not Bad 25) + 이모지 rotate 다양성 + 별 누적.
+- **디자인 handoff 는 그대로 옮기지 말고 앱 톤에 맞춰 소화** — 시안 6종 중 1-2 종만
+  채택. 코랄 팔레트 강제. 네온 glow·filter blur·고채도 색 등 금지 사항 준수.
+- **iOS Safari 단일 오디오 세션 = SR + getUserMedia dual access 위험** — 녹음숙제는
+  단일 stream (MediaRecorder + AnalyserNode 공유) 이라 안전. SR 사용 화면에서 마이크
+  미터 추가는 iOS SR 이 조용히 실패 가능. 위험이 크면 fake pulse 로 폴백.
+- **인라인 onclick 인자에 사용자 문자열 금지 (재확인)** — esc 된 `'`/`"` 가 HTML 파서
+  에서 디코딩되어 JS 문자열 깨짐. `_vpState` 참조 헬퍼 (`vpRestart` 등) 로 우회.
+- **_vpState.gen 세대 카운터 패턴** — 자동 흐름의 quit·재시작 시 옛 setTimeout 콜백이
+  살아있으면 소리·SR 이 계속 진행. 모든 콜백 진입부 `if (s.gen !== g) return;` 체크
+  로 세대 밀림 감지 → 즉시 skip.
+- **모달 헬퍼 존재 여부 확인 필수** — 학생앱은 `showConfirm(title, sub)` 있고
+  `showModal` 없음. 학원장앱과 다름. 학생앱 코드에서 학원장 API 쓰면 조용히 실패.
+
+### 파일 크기 / SW 캐시 (2026-09-09 종료)
+- `public/js/app.js`: +~500줄 (vocab-practice 전체 흐름 + TTS 리액티브 5종 빌더 +
+  SR 마이크 애니메이션 + 3턴 무음·모달 + vqViewPreviousResult 분기)
+- `public/admin/js/app.js`: +~150줄 (배정 옵션 분기 + `_adminVpPracticeBuildDetail` +
+  showScoreDetail 학습 용어 분기 + 최고점 스냅샷 항상 표시)
+- `public/_app.html`: +~90줄 (vocabPractice 화면 + TTS 슬롯/엔벨로프 + SR 마이크 SVG +
+  8종 → 5종 정리)
+- SW 캐시: `kunsori-v712` → `kunsori-v729`
+
+**다음 세션 후보 (운영 관찰 후)**:
+1. **단어 학습 운영 관찰 — 학생 실사용 후 관대 채점 튜닝** (Great 임계·리액션 이모지·톤)
+2. 학생 마이크 진단 강화 (반복 보고 시 트리거 — 게인 <5% 지속 자동 로그)
+3. iOS Safari Web Speech 지원 확인 (문장시험·단어 학습 공통)
+4. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
