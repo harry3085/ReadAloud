@@ -6150,6 +6150,25 @@ window.vqViewPreviousResult = async (testId, testName) => {
     }
     const test = { id: testId, ...testSnap.data() };
     const comp = compSnap.data();
+    // 단어 학습(연습) 은 시험 채점 결과 X → 학생용 학습 완료 화면만 (원장은 진도체크에서 세부 확인)
+    if (test.vocabOptions?.format === 'practice') {
+      const questions = (test.questions || []).filter(q => q.type === 'vocab');
+      const wa = Array.isArray(comp.wordAccuracies) ? comp.wordAccuracies
+               : (Array.isArray(comp.extra?.wordAccuracies) ? comp.extra.wordAccuracies
+               : questions.map(q => ({ word: q.word || '', best: 0, attempts: 0 })));
+      _vpState = {
+        test, questions, currentIdx: 0, attempt: 0,
+        stars: comp.correct || comp.extra?.totalStars || 0,
+        wordAccuracies: wa,
+        rec: null, listening: false, submitting: false,
+        ttsVoices: [], gen: (_vpState?.gen || 0) + 1, stopped: true,   // stopped=true → 재청취 X
+        vizType: 'wave', vizPalette: _VP_VIZ_PALETTES[0],
+      };
+      _screenPrepare('vocabPractice', '#vpProgressBar');
+      show('vocabPractice');
+      _vpRenderResult();
+      return;
+    }
     // 응시 당시 스냅샷 우선 사용 (셔플 순서 보존). 구기록은 test.questions 로 폴백
     const questions = (Array.isArray(comp.questions) && comp.questions.length)
       ? comp.questions
