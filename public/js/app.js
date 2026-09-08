@@ -8284,24 +8284,16 @@ window.vpRestart = () => {
   startVocab(t.id, t.name || '');
 };
 
-// 마이크 이상 안내 모달 (3턴 연속 무음 시)
-function _vpShowMicAlert() {
-  return new Promise(resolve => {
-    window._vpMicAlertResolve = resolve;
-    showModal(`<div style="padding:24px 22px;text-align:center;max-width:340px;">
-      <div style="font-size:56px;margin-bottom:14px;">🎤</div>
-      <div style="font-size:19px;font-weight:800;color:#dc2626;margin-bottom:12px;">마이크가 작동하지 않나요?</div>
-      <div style="font-size:14px;color:var(--text);line-height:1.7;text-align:left;background:#fef2f2;padding:14px 16px;border-radius:12px;border:1px solid #fecaca;margin-bottom:20px;">
-        말소리가 감지되지 않고 있어요. 아래를 확인해주세요:
-        <ul style="padding-left:20px;margin-top:8px;color:var(--text);">
-          <li>브라우저 마이크 <b>권한 허용</b></li>
-          <li>다른 앱 (통화·녹음) 이 마이크 사용 중인지</li>
-          <li>이어폰·볼륨 상태</li>
-        </ul>
-      </div>
-      <button onclick="closeModal();window._vpMicAlertResolve && window._vpMicAlertResolve();" style="width:100%;padding:14px;background:#0891b2;color:white;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;">확인 후 계속</button>
-    </div>`);
-  });
+// 마이크 이상 안내 모달 (3턴 연속 무음 시) — showConfirm 사용 (검증된 학생앱 표준)
+async function _vpShowMicAlert() {
+  return showConfirm(
+    '🎤 마이크 확인이 필요해요',
+    '말소리가 감지되지 않고 있어요.\n\n' +
+    '• 브라우저 마이크 권한 허용 상태\n' +
+    '• 다른 앱(통화·녹음) 사용 여부\n' +
+    '• 이어폰·볼륨 확인\n\n' +
+    '[확인] 을 눌러 계속하세요.'
+  );
 }
 
 window.quitVocabPractice = async () => {

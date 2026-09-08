@@ -5979,6 +5979,14 @@ window.showScoreDetail = async(scoreId, testId) => {
     } else if(isRecording && hasDetail) {
       // Phase B: 녹음숙제는 통과/불통 분기 폐기 — recordings 있으면 무조건 상세 표시
       detailHtml = _adminBuildDetail(mode, comp);
+    } else if(hasDetail) {
+      // 이번 응시가 저장 최고점 아니어도 저장된 최고점 스냅샷 표시 (학원장 학습 진도 판단용, 2026-09-09)
+      const bestScore = comp.score ?? 0;
+      const bestDate = comp.date || '';
+      const noticeBg = '#fef3c7', noticeBorder = '#fcd34d', noticeColor = '#78350f';
+      detailHtml = `<div style="padding:10px 14px;background:${noticeBg};color:${noticeColor};border:1px solid ${noticeBorder};border-radius:8px;margin-bottom:12px;font-size:12px;line-height:1.5;">
+        <span style="font-weight:700;">ℹ 저장된 최고점 상세</span> · 이번 응시 <b>${s.score||0}점</b>은 최고점 아님. 아래는 최고점 <b>${bestScore}점</b>${bestDate?' ('+esc(bestDate)+')':''} 기록.
+      </div>` + _adminBuildDetail(mode, comp);
     } else if(!genTest){
       // testId 있는데 genTests 없음 = 학원장이 시험 삭제 (scores 는 이력 보존, 상세는 cascade 제거)
       // testId 빈값 = 진짜 옛 레거시 데이터
