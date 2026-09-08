@@ -7683,7 +7683,8 @@ let _vpState = {
 
 // 관대한 임계 (단어 1개 인식률 감안)
 const _VP_THRESH = { great: 70, good: 45, notbad: 25 };
-const _VP_MAX_ATTEMPT = 3;
+const _VP_MIN_ATTEMPT = 2;   // 최소 2회는 무조건 읽음
+const _VP_MAX_ATTEMPT = 3;   // 최대 3회. 2회 후 Great 나오면 조기 종료
 
 // TTS 톤 다양화 — rate·pitch·voice 조합 rotate (지루하지 않게)
 const _VP_TONES = [
@@ -7733,34 +7734,39 @@ function _vpRenderStep() {
   const starsEl = document.getElementById('vpStars');
   const reactEmoji = document.getElementById('vpReactionEmoji');
   const reactText = document.getElementById('vpReactionText');
-  const heardEl = document.getElementById('vpHeard');
-  const micBtn = document.getElementById('vpMicBtn');
+  const statusEl = document.getElementById('vpStatus');
 
   if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
   if (txtEl) txtEl.textContent = (s.currentIdx + 1) + '/' + s.questions.length;
   if (wordEl) wordEl.textContent = q.word || '';
   if (meanEl) meanEl.textContent = q.meaning || '';
-  if (attemptEl) attemptEl.textContent = `시도 ${s.attempt + 1}/${_VP_MAX_ATTEMPT}`;
+  if (attemptEl) attemptEl.textContent = `${s.attempt + 1}/${_VP_MIN_ATTEMPT}`;
   if (starsEl) starsEl.textContent = `✨ ${s.stars}`;
-  if (reactEmoji) reactEmoji.textContent = '';
+  if (reactEmoji) { reactEmoji.textContent = ''; reactEmoji.style.transform = 'scale(1)'; }
   if (reactText) { reactText.textContent = ''; reactText.style.color = ''; }
-  if (heardEl) heardEl.textContent = '';
-  if (micBtn) { micBtn.disabled = false; micBtn.textContent = '🎤 마이크 눌러 따라 말하기'; micBtn.style.background = '#0891b2'; }
+  if (statusEl) statusEl.textContent = '';
 
   // 이전 SR/TTS 정리
   if (s.rec) { try { s.rec.abort(); } catch(_){} s.rec = null; }
   s.listening = false;
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
 
-  // 새 단어 진입 시 자동 TTS 재생 (다양한 톤)
-  setTimeout(() => _vpSpeakWord(), 300);
+  // 새 단어 진입 시 자동 TTS 재생 → 끝나면 자동 SR 시작
+  setTimeout(() => _vpSpeakAndListen(), 300);
 }
 
-window.vpSpeakWord = () => {
+// TTS 재생 후 자동으로 SR 시작 (TTS 소리가 마이크에 잡히는 것 방지 위해 onend 대기)
+function _vpSpeakAndListen() {
   const s = _vpState;
   const q = s.questions[s.currentIdx];
   if (!q || !q.word) return;
-  if (typeof window.speechSynthesis === 'undefined') return;
+  const statusEl = document.getElementById('vpStatus');
+  if (statusEl) statusEl.textContent = '🔊 잘 들어보세요...';
+
+  if (typeof window.speechSynthesis === 'undefined') {
+    _vpStartListen();
+    return;
+  }
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(q.word);
@@ -7770,12 +7776,70 @@ window.vpSpeakWord = () => {
     u.rate = tone.rate;
     u.pitch = tone.pitch;
     u.volume = 1.0;
-    // 음성 rotate — 사용 가능한 en-* voice 중 순회
     const enVoices = (s.ttsVoices || []).filter(v => (v.lang || '').startsWith('en'));
     if (enVoices.length) u.voice = enVoices[_vpToneIdx % enVoices.length];
+    u.onend = () => setTimeout(() => _vpStartListen(), 350);
+    u.onerror = () => setTimeout(() => _vpStartListen(), 350);
     window.speechSynthesis.speak(u);
-  } catch(e) { console.warn('[vp] TTS:', e); }
-};
+    // safety net — 3초 안에 onend 안 오면 강제 진행
+    setTimeout(() => { if (!s.listening) _vpStartListen(); }, 3000);
+  } catch(e) {
+    console.warn('[vp] TTS:', e);
+    _vpStartListen();
+  }
+}
+
+// 자동 SR 시작 — TTS 끝난 뒤 호출
+function _vpStartListen() {
+  const s = _vpState;
+  if (s.listening) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
+  const statusEl = document.getElementById('vpStatus');
+  if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 따라 읽어보세요</span>';
+
+  const rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 5;
+  s.rec = rec;
+  s.listening = true;
+
+  const q = s.questions[s.currentIdx];
+  const target = q.word || '';
+  let resolved = false;
+
+  rec.onresult = (event) => {
+    resolved = true;
+    const r = event.results[event.results.length - 1];
+    if (!r || !r.isFinal) return;
+    let bestSim = 0, bestHeard = '';
+    for (let i = 0; i < r.length; i++) {
+      const t = (r[i].transcript || '').trim();
+      const sim = _vpSim(t, target);
+      if (sim > bestSim) { bestSim = sim; bestHeard = t; }
+    }
+    _vpHandleResult(bestSim, bestHeard);
+  };
+  rec.onerror = (e) => {
+    resolved = true;
+    s.listening = false;
+    console.warn('[vp] SR error:', e.error);
+    // no-speech / audio-capture 등 — 인식 실패로 처리 (0점 취급)
+    _vpHandleResult(0, '');
+  };
+  rec.onend = () => {
+    s.listening = false;
+    if (!resolved) _vpHandleResult(0, '');   // 무음 종료 = 0점
+  };
+  try { rec.start(); } catch(e) {
+    console.warn(e);
+    s.listening = false;
+    // 시작 실패 시 잠시 후 재시도
+    setTimeout(() => _vpStartListen(), 500);
+  }
+}
 
 // Levenshtein 유사도 (0-100) — 단어 1개 매칭용
 function _vpSim(a, b) {
@@ -7799,53 +7863,6 @@ function _vpSim(a, b) {
   return Math.round((1 - dist / maxLen) * 100);
 }
 
-window.vpToggleMic = () => {
-  const s = _vpState;
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
-  const btn = document.getElementById('vpMicBtn');
-  if (s.listening) {
-    if (s.rec) { try { s.rec.stop(); } catch(_){} }
-    s.listening = false;
-    if (btn) { btn.textContent = '🎤 마이크 눌러 따라 말하기'; btn.style.background = '#0891b2'; }
-    return;
-  }
-  const rec = new SR();
-  rec.lang = 'en-US';
-  rec.continuous = false;
-  rec.interimResults = false;
-  rec.maxAlternatives = 5;
-  s.rec = rec;
-  s.listening = true;
-  if (btn) { btn.textContent = '⏸ 듣는 중...'; btn.style.background = '#dc2626'; }
-
-  const q = s.questions[s.currentIdx];
-  const target = q.word || '';
-
-  rec.onresult = (event) => {
-    const r = event.results[event.results.length - 1];
-    if (!r || !r.isFinal) return;
-    // alternatives 중 정답과 가장 유사한 것 선택
-    let bestSim = 0, bestHeard = '';
-    for (let i = 0; i < r.length; i++) {
-      const t = (r[i].transcript || '').trim();
-      const sim = _vpSim(t, target);
-      if (sim > bestSim) { bestSim = sim; bestHeard = t; }
-    }
-    _vpHandleResult(bestSim, bestHeard);
-  };
-  rec.onerror = (e) => {
-    console.warn('[vp] SR error:', e.error);
-    s.listening = false;
-    if (btn) { btn.textContent = '🎤 다시 시도하기'; btn.style.background = '#0891b2'; }
-  };
-  rec.onend = () => {
-    s.listening = false;
-    if (btn && !s.submitting) { btn.textContent = '🎤 마이크 눌러 따라 말하기'; btn.style.background = '#0891b2'; }
-  };
-  try { rec.start(); } catch(e) { console.warn(e); showToast('마이크 시작 실패: ' + e.message); }
-};
-
 function _vpHandleResult(sim, heard) {
   const s = _vpState;
   s.attempt++;
@@ -7855,14 +7872,13 @@ function _vpHandleResult(sim, heard) {
 
   const reactEmoji = document.getElementById('vpReactionEmoji');
   const reactText = document.getElementById('vpReactionText');
-  const heardEl = document.getElementById('vpHeard');
+  const statusEl = document.getElementById('vpStatus');
   const attemptEl = document.getElementById('vpAttempt');
   const starsEl = document.getElementById('vpStars');
-  const micBtn = document.getElementById('vpMicBtn');
 
-  let emoji = '', label = '', color = '', starGain = 0, earlyExit = false;
+  let emoji = '', label = '', color = '', starGain = 0, isGreat = false;
   if (sim >= _VP_THRESH.great) {
-    emoji = '🌟'; label = 'Great!!'; color = '#059669'; starGain = 3; earlyExit = true;
+    emoji = '🌟'; label = 'Great!!'; color = '#059669'; starGain = 3; isGreat = true;
   } else if (sim >= _VP_THRESH.good) {
     emoji = '👍'; label = 'Good!!'; color = '#0891b2'; starGain = 2;
   } else if (sim >= _VP_THRESH.notbad) {
@@ -7877,9 +7893,9 @@ function _vpHandleResult(sim, heard) {
     setTimeout(() => { reactEmoji.style.transform = 'scale(1.3)'; }, 30);
     setTimeout(() => { reactEmoji.style.transform = 'scale(1)'; }, 300);
   }
-  if (reactText) { reactText.textContent = `${label} (${sim}%)`; reactText.style.color = color; }
-  if (heardEl) heardEl.textContent = heard ? `"${heard}"` : '';
-  if (attemptEl) attemptEl.textContent = `시도 ${s.attempt}/${_VP_MAX_ATTEMPT}`;
+  // 라벨만 표시 — 정확도 % · 들린 단어 숨김
+  if (reactText) { reactText.textContent = label; reactText.style.color = color; }
+  if (statusEl) statusEl.textContent = '';
 
   // 별 누적 — 매 단어별 최고 리액션만 카운트 (첫 정답 시)
   if (starGain > 0 && !wa._starred) {
@@ -7888,17 +7904,23 @@ function _vpHandleResult(sim, heard) {
     if (starsEl) starsEl.textContent = `✨ ${s.stars}`;
   }
 
-  const canAdvance = earlyExit || s.attempt >= _VP_MAX_ATTEMPT;
-  if (micBtn) micBtn.disabled = true;
+  // 진행 규칙 — 최소 2회, 최대 3회, 2회 이상 & Great 시 조기 종료
+  // attempt 1: 항상 다음 시도 (아직 최소 미달)
+  // attempt 2: Great 이면 조기 종료, 아니면 3회로
+  // attempt 3: 무조건 다음 단어
+  let canAdvance = false;
+  if (s.attempt >= _VP_MAX_ATTEMPT) canAdvance = true;
+  else if (s.attempt >= _VP_MIN_ATTEMPT && isGreat) canAdvance = true;
+
+  if (attemptEl) {
+    if (canAdvance) attemptEl.textContent = `${s.attempt}/${s.attempt}`;
+    else attemptEl.textContent = `${s.attempt}/${Math.max(_VP_MIN_ATTEMPT, s.attempt + 1)}`;
+  }
 
   setTimeout(() => {
     if (canAdvance) _vpAdvance();
-    else {
-      // 재시도 유도 — 같은 단어 자동 재재생
-      _vpSpeakWord();
-      if (micBtn) { micBtn.disabled = false; micBtn.textContent = '🎤 마이크 눌러 다시 시도'; }
-    }
-  }, sim < _VP_THRESH.notbad ? 1500 : 1200);
+    else _vpSpeakAndListen();   // 같은 단어 자동 재재생 + 재청취
+  }, 1200);
 }
 
 function _vpAdvance() {
