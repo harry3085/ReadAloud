@@ -7656,9 +7656,55 @@ window.quitSentence = async () => {
   goHome();
 };
 
-// MVP: 이전 결과 보기 = 재응시 (별도 리뷰 화면 없음, 재응시 흐름 재사용)
-window.stqViewPreviousResult = (testId, testName) => {
-  startSentence(testId, testName);
+// 이전 결과 보기
+//  - 청크방식 (학습): 저장된 정확도 데이터 복원 → _vpRenderResult (학습 완료 화면, 점수 X)
+//  - 매칭식 (시험): 별도 리뷰 화면 없음, 재응시 흐름 재사용 (기존 동작)
+window.stqViewPreviousResult = async (testId, testName) => {
+  try {
+    const [testSnap, compSnap] = await Promise.all([
+      getDoc(doc(db,'genTests',testId)),
+      getDoc(doc(db,'genTests',testId,'userCompleted',currentUser.uid)),
+    ]);
+    if (!testSnap.exists() || !compSnap.exists()) {
+      startSentence(testId, testName);
+      return;
+    }
+    const test = { id: testId, ...testSnap.data() };
+    const comp = compSnap.data();
+    const isChunk = test.sentenceOptions?.mode === 'chunk-practice'
+                 || comp.sentenceMode === 'chunk-practice'
+                 || comp.extra?.sentenceMode === 'chunk-practice'
+                 || Array.isArray(comp.sentenceAccuracies)
+                 || Array.isArray(comp.extra?.sentenceAccuracies);
+    if (!isChunk) {
+      // 매칭식: 기존대로 재응시 흐름
+      startSentence(testId, testName);
+      return;
+    }
+    // 청크방식 학습 결과 복원 → vocab-practice 결과 화면과 동일 렌더
+    const wa = Array.isArray(comp.wordAccuracies) ? comp.wordAccuracies
+             : (Array.isArray(comp.extra?.wordAccuracies) ? comp.extra.wordAccuracies : []);
+    const questions = Array.isArray(comp.questions) && comp.questions.length
+      ? comp.questions
+      : (wa.length ? wa.map(w => ({ word: w.word })) : []);
+    _vpState = {
+      test,
+      questions,
+      currentIdx: 0,
+      attempt: 0,
+      stars: comp.correct || comp.extra?.totalStars || 0,
+      wordAccuracies: wa.length ? wa : questions.map(q => ({ word: q.word||'', best: 0, attempts: 0 })),
+      rec: null, listening: false, submitting: false,
+      ttsVoices: [], gen: (_vpState?.gen || 0) + 1, stopped: true,   // stopped=true → TTS·SR 안 걸림
+      _sentenceMode: 'chunk-practice',
+    };
+    _screenPrepare('vocabPractice', '#vpProgressBar');
+    show('vocabPractice');
+    _vpRenderResult();
+  } catch (e) {
+    console.warn('[stq] view previous result failed:', e);
+    startSentence(testId, testName);
+  }
 };
 
 // 발화 지우기 — SR 이상 동작·재발음 시 사용
