@@ -27,7 +27,7 @@ function loadCodeDefaults() {
   return out;
 }
 
-const ALL_TYPES = ['mcq', 'mcq_grammar', 'vocab', 'subjective', 'subjective_verbatim', 'fill_blank', 'unscramble', 'recording'];
+const ALL_TYPES = ['mcq', 'mcq_grammar', 'vocab', 'subjective', 'subjective_verbatim', 'fill_blank', 'unscramble', 'sentence', 'recording'];
 
 (async () => {
   const apply = process.argv.includes('--apply');

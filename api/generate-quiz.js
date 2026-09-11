@@ -667,7 +667,7 @@ module.exports = async function handler(req, res) {
     // 2026-07-22: 학원장 요청 신 시험 유형 sentence.
     // pages 본문에서 N 문장 verbatim 추출 + 각 한글번역. 길이 3단계 필터.
     if (mode === 'sentence-from-book') {
-      return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, apiKey, res });
+      return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, customSystemPrompt, apiKey, res });
     }
 
     // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
@@ -1014,19 +1014,16 @@ Only return fewer if the source truly does not contain more qualifying sentences
 Output ONLY a valid JSON object (no markdown, no prose):
 {
   "sentences": [
-    {
-      "en": "The boy picked up the red ball.",
-      "ko": "그 소년이 빨간 공을 주웠다.",
-      "wordCount": 7,
-      "sourcePageId": "page-id-from-input"
-    },
-    ...
+    { "en": "The boy picked up the red ball.", "ko": "그 소년이 빨간 공을 주웠다.", "wordCount": 7, "sourcePageId": "page-id-from-input" }
   ]
 }`;
 
+// SYSTEM_PROMPTS 에 등록 — 편집 UI (학원장·super) 노출 + getEffectivePrompt / customSystemPrompt 지원
+SYSTEM_PROMPTS.sentence = SENTENCE_FROM_BOOK_PROMPT;
+
 // 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
 // subMode: 'polished' (default, 필터·다듬음) | 'verbatim' (청크 방식, 최소 필터·원문 그대로)
-async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, apiKey, res }) {
+async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, customSystemPrompt, apiKey, res }) {
   if (!Array.isArray(pages) || pages.length === 0) {
     return res.status(400).json({ error: 'pages array is required' });
   }
@@ -1058,6 +1055,11 @@ ${normalizedPages.map((p, i) => `[Passage ${i + 1}] id: ${p.id}\nTitle: ${p.titl
 
 Output ONLY the JSON object with the "sentences" array.`;
 
+  // 프롬프트 해석 — customSystemPrompt(학원 커스텀) > getEffectivePrompt(글로벌 default) > SYSTEM_PROMPTS 코드 fallback
+  const systemPrompt = (typeof customSystemPrompt === 'string' && customSystemPrompt.trim().length >= 20)
+    ? customSystemPrompt.trim()
+    : (await getEffectivePrompt('sentence'));
+
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const isTransient = (status) => status === 503 || status === 429;
 
@@ -1066,7 +1068,7 @@ Output ONLY the JSON object with the "sentences" array.`;
   for (const model of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const result = await callGemini(model, apiKey, SENTENCE_FROM_BOOK_PROMPT, userPrompt);
+        const result = await callGemini(model, apiKey, systemPrompt, userPrompt);
         if (result.ok) { usedModel = model; rawText = result.text; break outer; }
         lastError = result.error; lastStatus = result.status || null;
         if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {

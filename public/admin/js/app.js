@@ -12165,6 +12165,7 @@ async function _qgCallSentence(opts) {
         count: opts.count,
         sentenceLength,
         subMode,
+        customSystemPrompt: _qgGetCustomPrompt('sentence') || undefined,
       }),
     });
     const data = await res.json();
@@ -17168,7 +17169,7 @@ window._renderTestAssignDetail = _renderTestAssignDetail;
 // subjective_verbatim 은 subjective 의 sentenceMode='verbatim' 과 연결 (별도 프롬프트 키).
 // 순서 (학원장 편집 모달 탭): 단어 → 빈칸 → 언스크램블 → 객관식 본문이해 → 객관식 문법 →
 //   해석 변형 → 해석 유지 → 녹음숙제 (2026-05-24 학원장 요청)
-const _qgAiPromptTypes = ['word', 'fill_blank', 'unscramble', 'mcq', 'mcq_grammar', 'subjective', 'subjective_verbatim', 'recording'];
+const _qgAiPromptTypes = ['word', 'fill_blank', 'unscramble', 'mcq', 'mcq_grammar', 'subjective', 'subjective_verbatim', 'sentence', 'recording'];
 // UI 타입 → API 타입 변환 (/api/generate-quiz GET/POST 에 전달)
 const _qgUiToApiType = { word: 'vocab' };
 function _qgApiTypeOf(uiType) { return _qgUiToApiType[uiType] || uiType; }
@@ -17308,6 +17309,7 @@ const _QG_PROMPT_ALIAS_LABELS = {
   mcq_grammar:         { icon: '📐', label: '객관식 (문법)' },
   subjective:          { icon: '✍️', label: '해석하기 (문장변형)' },
   subjective_verbatim: { icon: '📄', label: '해석하기 (문장유지)' },
+  sentence:            { icon: '💬', label: '문장시험 (본문 추출)' },
 };
 
 function _qgRenderPromptTabs() {
