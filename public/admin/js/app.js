@@ -14732,9 +14732,10 @@ function _tpRender() {
   const root = document.getElementById(cfg.rootId);
   if (!root) return;
 
-  // 재렌더 시 스크롤 위치 보존 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치 유지)
+  // 재렌더 시 스크롤 위치 보존 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치) + folders pane(Book 폴더 클릭)
   const prevScroll = document.getElementById('tpSetsScroll')?.scrollTop || 0;
   const prevTestsScroll = document.getElementById('tpTestsScroll')?.scrollTop || 0;
+  const prevFoldersScroll = document.getElementById('tpFoldersScroll')?.scrollTop || 0;
 
   const folders = _tpBuildFolders();
   // 활성 폴더 캐시에서 _tpSets 채우기 (lazy — 폴더 클릭 시 fetch)
@@ -14805,7 +14806,7 @@ function _tpRender() {
             <div style="font-weight:700;font-size:14px;">📁 Book 폴더</div>
             <div style="font-size:11px;color:var(--gray);">클릭하면 그 폴더의 문제세트가 좌측에 표시됩니다</div>
           </div>
-          <div style="flex:1;overflow-y:auto;">
+          <div id="tpFoldersScroll" style="flex:1;overflow-y:auto;">
             ${folders.length === 0
               ? '<div style="padding:16px;text-align:center;color:#bbb;font-size:11px;">Book 폴더가 없습니다</div>'
               : folders.map(f => _tpRenderFolderItem(f, f.key === _activeTestFolderKey)).join('')
@@ -14856,6 +14857,10 @@ function _tpRender() {
   if (prevTestsScroll > 0) {
     const newEl = document.getElementById('tpTestsScroll');
     if (newEl) newEl.scrollTop = prevTestsScroll;
+  }
+  if (prevFoldersScroll > 0) {
+    const newEl = document.getElementById('tpFoldersScroll');
+    if (newEl) newEl.scrollTop = prevFoldersScroll;
   }
 }
 
