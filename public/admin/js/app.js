@@ -15172,10 +15172,45 @@ window.tpSelectFolder = async (key) => {
   _tpRender();
 };
 
+// 체크 상태 변경 후 헤더 카운트·버튼 disabled·행 배경 surgical 갱신 (재렌더 X, 스크롤 유지)
+function _tpUpdateSelUI() {
+  const cfg = _TEST_TYPE_CONFIG[_activeTestType];
+  const root = document.getElementById(cfg?.rootId);
+  if (!root) return;
+  const size = _tpSelectedSets.size;
+  // 헤더 카운트 (span 은 특정 id 없어 첫 매칭으로 대체 X → 전체 재쿼리 대신 root 안에서 처리)
+  const countSpan = root.querySelector('#tpSetsPane [style*="color:var(--teal);font-weight:700"]');
+  if (countSpan) countSpan.textContent = size;
+  // 버튼 disabled 상태
+  const btns = root.querySelectorAll('#tpSetsPane .btn');
+  btns.forEach(btn => {
+    const label = btn.textContent.trim();
+    if (label === '해제') btn.disabled = (size === 0);
+    else if (label.includes('시험 출제') || label.includes('시험지 출력') || label.includes('삭제')) {
+      btn.disabled = (!cfg?.enabled || size === 0);
+      if (label.includes('삭제')) {
+        btn.style.opacity = (!cfg?.enabled || size === 0) ? '0.4' : '';
+        btn.style.cursor = (!cfg?.enabled || size === 0) ? 'not-allowed' : '';
+      }
+    }
+  });
+  // 각 행 배경·체크박스 상태
+  root.querySelectorAll('#tpSetsScroll > div[onclick^="qsViewDetail"]').forEach(row => {
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    const m = cb.getAttribute('onclick')?.match(/tpToggleSet\('([^']+)'\)/);
+    const id = m?.[1];
+    if (!id) return;
+    const checked = _tpSelectedSets.has(id);
+    cb.checked = checked;
+    row.style.background = checked ? '#fff8e6' : '';
+  });
+}
+
 window.tpToggleSet = (setId) => {
   if (_tpSelectedSets.has(setId)) _tpSelectedSets.delete(setId);
   else _tpSelectedSets.add(setId);
-  _tpRender();
+  _tpUpdateSelUI();
 };
 
 window.tpSelectAll = () => {
@@ -15185,12 +15220,12 @@ window.tpSelectAll = () => {
     ? _tpSets.filter(s => _tpFolderKeyOf(s) === _activeTestFolderKey)
     : _tpSets;
   filtered.forEach(s => _tpSelectedSets.add(s.id));
-  _tpRender();
+  _tpUpdateSelUI();
 };
 
 window.tpClearSel = () => {
   _tpSelectedSets.clear();
-  _tpRender();
+  _tpUpdateSelUI();
 };
 
 // 시험에서 특정 학생 제외 — excludedUids 추가 + userCompleted 삭제 + scores 매칭 삭제
