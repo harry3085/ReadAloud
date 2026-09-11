@@ -1087,16 +1087,17 @@ Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} ite
     return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
   }
 
-  // 단어수 범위 (배정 옵션 sentenceLength 강제)
+  // 단어수 범위 (배정 옵션 sentenceLength — 이상적 범위)
   const wordRange = { short: [5, 8], medium: [9, 13], long: [14, 20] }[lenKey];
   const [wcMin, wcMax] = wordRange;
 
   // Verbatim 검증 — 각 en 문장이 원본 본문에 존재해야 (공백·개행 정규화)
   const normText = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const bookNorm = normalizedPages.map(p => ({ id: p.id, title: p.title, textNorm: normText(p.text) }));
-  const sentencesOut = [];
+
+  // 1단계: verbatim·ko 검증 통과 후보 전량 수집 (단어수 무관)
+  const candidates = [];
   const seenEn = new Set();
-  let rejectedByWordCount = 0;
   for (const s of parsed.sentences) {
     if (!s || typeof s !== 'object') continue;
     const en = String(s.en || '').trim();
@@ -1105,23 +1106,34 @@ Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} ite
     if (en.length < 5 || en.length > 300) continue;
     // 한글 번역에 영문자 섞임 방지 (약자 등)
     if (/[a-zA-Z]/.test(ko.replace(/\d/g, ''))) continue;
-    // 단어수 범위 강제 — AI 가 범위 벗어난 문장 반환해도 폐기
-    const wordCount = en.split(/\s+/).filter(Boolean).length;
-    if (wordCount < wcMin || wordCount > wcMax) { rejectedByWordCount++; continue; }
     // Verbatim 검증
     const enNorm = normText(en);
     if (seenEn.has(enNorm)) continue;
     const matched = bookNorm.find(p => p.textNorm.includes(enNorm));
-    if (!matched) continue;  // 원문에 없음 = 폐기 (verbatim 실패)
+    if (!matched) continue;  // 원문에 없음 = 폐기
     seenEn.add(enNorm);
-    sentencesOut.push({
-      type: 'sentence',
-      en, ko, wordCount,
-      sourcePageId: matched.id,
-      sourcePageTitle: matched.title,
-      length: lenKey,
-    });
+    const wordCount = en.split(/\s+/).filter(Boolean).length;
+    candidates.push({ en, ko, wordCount, matched });
   }
+
+  // 2단계: 이상적 범위 우선, 부족하면 이웃 폭 점진 확장 (±1, ±2, ±3)
+  const dist = (wc) => wc < wcMin ? (wcMin - wc) : (wc > wcMax ? (wc - wcMax) : 0);
+  const inRange = candidates.filter(c => dist(c.wordCount) === 0);
+  const outRange = candidates
+    .filter(c => dist(c.wordCount) > 0)
+    .sort((a, b) => dist(a.wordCount) - dist(b.wordCount));  // 범위 가까운 것부터
+  const picked = inRange.slice();
+  for (const c of outRange) {
+    if (picked.length >= N) break;
+    picked.push(c);
+  }
+  const sentencesOut = picked.map(c => ({
+    type: 'sentence',
+    en: c.en, ko: c.ko, wordCount: c.wordCount,
+    sourcePageId: c.matched.id,
+    sourcePageTitle: c.matched.title,
+    length: lenKey,
+  }));
 
   if (sentencesOut.length === 0) {
     return res.status(502).json({ error: 'AI 응답에서 검증 통과 문장 0개 — 다시 시도해 주세요', model: usedModel, rawSnippet: rawText.slice(0, 300) });
