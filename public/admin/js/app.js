@@ -3931,21 +3931,31 @@ window.closeModal = function() {
 // 이번 달 청구서 자동 생성 (lazy) — active + tuitionPlan.amount > 0 학생 대상
 // 이미 생성된 학생은 skip (idempotent)
 // 반환: 새로 생성된 건수
+// 앱사용료 anchor 월 파싱 — appFeeAnchorMonth('YYYY-MM') > createdAt
+function _appFeeAnchor(student) {
+  const raw = String(student.appFeeAnchorMonth || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return { year: parseInt(m[1]), month: parseInt(m[2]) };
+  const _toDate = (t) => t?.toDate?.() || (t instanceof Date ? t : (typeof t === 'number' ? new Date(t) : null));
+  const reg = _toDate(student.createdAt);
+  if (!reg) return null;
+  return { year: reg.getFullYear(), month: reg.getMonth() + 1 };
+}
+
 // 앱사용료 자동 청구 조건 판정
 //   - lastChargedAt 있음: 12개월 경과 시 anniversary 월 재청구
-//   - lastChargedAt 없음: 학생 등록월 === 현재월 (엄격한 anniversary 매칭)
+//   - lastChargedAt 없음: anchor 월 === 현재월 (엄격 anniversary 매칭)
+//     anchor = appFeeAnchorMonth (학원장 편집) OR createdAt (앱 등록일)
 function _shouldChargeAppFee(student, ym) {
   const [cy, cm] = ym.split('-').map(Number);
   const _toDate = (t) => t?.toDate?.() || (t instanceof Date ? t : (typeof t === 'number' ? new Date(t) : null));
-  const reg = _toDate(student.createdAt);
-  if (!reg) return false;
-  const regMonth = reg.getMonth() + 1;
-  const regYear = reg.getFullYear();
+  const anchor = _appFeeAnchor(student);
+  if (!anchor) return false;
 
   const lastAt = _toDate(student.appFeeLastChargedAt);
   if (!lastAt) {
-    // 미청구 학생 — 등록월 === 현재월이면 청구 (신규 등록 첫 달 + 옛 학생 anniversary 도래)
-    return cm === regMonth;
+    // 미청구 학생 — anchor 월 === 현재월이면 청구
+    return cm === anchor.month;
   }
   const lastMonth = lastAt.getMonth() + 1;
   const lastYear = lastAt.getFullYear();
@@ -8037,18 +8047,24 @@ window.editStudent = async(id) => {
             매월 자동 청구서 생성 (해지 시 체크 해제 — 휴원/퇴원 처리 시 자동으로 해제됨)
           </label>
           <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
-            <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">📱 앱사용료 개별 금액 (선택)</div>
-            <div style="display:grid;grid-template-columns:1fr 140px;gap:12px;font-size:13px;">
+            <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">📱 앱사용료 개별 설정 (선택)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
               <div>
-                <div style="color:var(--gray);margin-bottom:5px;">이 학생 앱사용료 <span style="color:#bbb;font-weight:400;">(비우면 학원 기본값 사용)</span></div>
+                <div style="color:var(--gray);margin-bottom:5px;">이 학생 앱사용료 <span style="color:#bbb;font-weight:400;">(비우면 학원 기본값)</span></div>
                 <input id="euAppFeeAmount" type="number" value="${u.appFeeAmount ?? ''}" min="0" step="1000" placeholder="예: 25000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
               </div>
               <div>
-                <div style="color:var(--gray);margin-bottom:5px;">마지막 청구</div>
-                <div style="padding:8px 10px;font-size:12px;color:var(--gray);">${u.appFeeLastChargedAt?.toDate?.() ? u.appFeeLastChargedAt.toDate().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit'}) : '<span style="color:#bbb;">없음</span>'}</div>
+                <div style="color:var(--gray);margin-bottom:5px;">기준일 (YYYY-MM) <span style="color:#bbb;font-weight:400;">(비우면 앱 등록월)</span></div>
+                <input id="euAppFeeAnchor" type="month" value="${u.appFeeAnchorMonth || ''}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
               </div>
             </div>
-            <div style="font-size:11px;color:var(--gray);margin-top:6px;">등록월에 자동 첫 청구 → 매년 anniversary 월 자동 재청구 (학원 결제 설정에서 앱사용료 자동 청구 켜져 있을 때)</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--gray);">
+              마지막 청구: <b style="color:var(--text);">${u.appFeeLastChargedAt?.toDate?.() ? u.appFeeLastChargedAt.toDate().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit'}) : '<span style="color:#bbb;">없음</span>'}</b>
+            </div>
+            <div style="font-size:11px;color:var(--gray);margin-top:6px;line-height:1.5;">
+              💡 <b>기준일</b> = 앱사용료 anniversary 계산 기준월. 예: 학생이 실제 학원 다니기 시작한 달.<br>
+              앱 도입 이전부터 다닌 학생은 학원 시작월로 설정하면 매년 그 달에 자동 청구. 미설정 시 앱 등록월 기준.
+            </div>
           </div>
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
@@ -8211,6 +8227,8 @@ window.updateStudent = async(id) => {
   const tuitionActive = !!document.getElementById('euTuitionActive')?.checked;
   const appFeeRaw = document.getElementById('euAppFeeAmount')?.value;
   const appFeeAmountOverride = (appFeeRaw != null && appFeeRaw !== '') ? (parseInt(appFeeRaw) || 0) : null;
+  const appFeeAnchorRaw = (document.getElementById('euAppFeeAnchor')?.value || '').trim();
+  const appFeeAnchorMonth = /^\d{4}-\d{2}$/.test(appFeeAnchorRaw) ? appFeeAnchorRaw : null;
   // 기존 tuitionPlan.startMonth 보존 (없으면 이번 달)
   const existSnap = await getDoc(doc(db,'users',id));
   const existPlan = existSnap.data()?.tuitionPlan || {};
@@ -8230,6 +8248,8 @@ window.updateStudent = async(id) => {
     },
     // 앱사용료 개별 금액 — null 이면 필드 제거 (학원 default 사용)
     appFeeAmount: appFeeAmountOverride !== null ? appFeeAmountOverride : deleteField(),
+    // 앱사용료 anniversary 기준월 — null 이면 앱 등록일(createdAt) 기준
+    appFeeAnchorMonth: appFeeAnchorMonth !== null ? appFeeAnchorMonth : deleteField(),
   };
   try {
     await updateDoc(doc(db,'users',id), data);
