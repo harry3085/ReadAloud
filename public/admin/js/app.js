@@ -15693,6 +15693,13 @@ window.tpOpenPublishModal = async () => {
                   청크 갯수:
                   <input type="number" id="tpSentenceChunkCount" value="3" min="2" max="8" style="width:56px;padding:4px 6px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;">
                 </label>
+                <label id="tpSentenceTtsRateRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="TTS 읽어주기 속도 (0.7 느림 · 1.0 보통)">
+                  읽기 속도:
+                  <input type="range" id="tpSentenceTtsRate" min="60" max="105" step="5" value="85"
+                    oninput="document.getElementById('tpSentenceTtsRateVal').textContent=(this.value/100).toFixed(2)+'x';"
+                    style="width:90px;">
+                  <span id="tpSentenceTtsRateVal" style="font-size:11px;font-weight:700;min-width:36px;color:#134e4a;">0.85x</span>
+                </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
                   <input type="checkbox" id="tpSentenceShuffleQ" checked> 문제 순서 섞기
                 </label>
@@ -15736,10 +15743,12 @@ window._tpSentenceModeChanged = () => {
   const mode = document.getElementById('tpSentenceMode')?.value;
   const isChunk = mode === 'chunk-practice';
   const chunkRow = document.getElementById('tpSentenceChunkCountRow');
+  const ttsRow = document.getElementById('tpSentenceTtsRateRow');
   const hintRow = document.getElementById('tpSentenceAllowHintRow');
   const hintChk = document.getElementById('tpSentenceAllowHint');
   const hintEl = document.getElementById('tpSentenceModeHint');
   if (chunkRow) chunkRow.style.display = isChunk ? 'inline-flex' : 'none';
+  if (ttsRow) ttsRow.style.display = isChunk ? 'inline-flex' : 'none';
   if (hintRow) {
     hintRow.style.opacity = isChunk ? '0.4' : '1';
     hintRow.style.pointerEvents = isChunk ? 'none' : 'auto';
@@ -15889,6 +15898,7 @@ window.tpPublish = async () => {
     const _th = parseInt(document.getElementById('tpSentenceMatchThreshold')?.value);
     const _mode = document.getElementById('tpSentenceMode')?.value || 'match';
     const _cc = parseInt(document.getElementById('tpSentenceChunkCount')?.value);
+    const _tr = parseInt(document.getElementById('tpSentenceTtsRate')?.value);
     sentenceOptions = {
       mode: _mode,   // 'match' | 'chunk-practice'
       matchThreshold: isFinite(_th) ? Math.max(50, Math.min(100, _th)) : 80,
@@ -15897,6 +15907,8 @@ window.tpPublish = async () => {
     };
     if (_mode === 'chunk-practice') {
       sentenceOptions.chunkCount = isFinite(_cc) ? Math.max(2, Math.min(8, _cc)) : 3;
+      // TTS 속도 slider (60~105) → rate 값 (0.60~1.05), default 0.85
+      sentenceOptions.ttsRate = isFinite(_tr) ? Math.max(0.6, Math.min(1.1, _tr / 100)) : 0.85;
     }
   }
 
@@ -16845,6 +16857,7 @@ function _tpBuildOptionsLine(t) {
       items.push(it('🗣 청크 따라읽기', '#0891b2'));
       if (typeof o.chunkCount === 'number') items.push(`청크 ${o.chunkCount}개`);
       if (typeof o.matchThreshold === 'number') items.push(`정확도 ${o.matchThreshold}%`);
+      if (typeof o.ttsRate === 'number') items.push(`읽기 ${o.ttsRate.toFixed(2)}x`);
     } else {
       if (typeof o.matchThreshold === 'number') items.push(`매칭 임계 ${o.matchThreshold}%`);
       if (o.allowHint) items.push('힌트 허용');

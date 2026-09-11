@@ -7788,7 +7788,36 @@ function _vpRenderStep() {
     if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
     if (txtEl) txtEl.textContent = (s.currentIdx + 1) + '/' + s.questions.length;
   }
-  if (wordEl) wordEl.textContent = q.word || '';
+  // vpWord — 문장시험 chunk-practice 는 이전 청크 누적 + 현재 청크 강조(밑줄), 문장 길이 따라 글자 축소
+  if (wordEl) {
+    if (s._sentenceMode === 'chunk-practice' && !q._isFull && q._sIdx != null) {
+      // 같은 문장의 이전 청크 누적
+      const prevChunks = [];
+      for (let i = 0; i < s.currentIdx; i++) {
+        const it = s.questions[i];
+        if (it && it._sIdx === q._sIdx && !it._isFull) prevChunks.push(it.word);
+      }
+      const prevHtml = prevChunks.map(p => `<span style="color:#94a3b8;">${esc(p)}</span>`).join(' ');
+      const curHtml = `<span style="color:#0e7490;border-bottom:3px solid #0891b2;padding-bottom:2px;">${esc(q.word || '')}</span>`;
+      wordEl.innerHTML = prevHtml + (prevChunks.length ? ' ' : '') + curHtml;
+    } else {
+      wordEl.textContent = q.word || '';
+    }
+    // 문장·청크 폰트 크기 동적 조정 (기본 44px → 문장은 최대 32px)
+    if (s._sentenceMode === 'chunk-practice') {
+      const displayLen = (q._isFull ? (q.word||'') : ((wordEl.textContent||'')+q.word)).length;
+      let fs = 32;
+      if (displayLen > 80) fs = 22;
+      else if (displayLen > 60) fs = 24;
+      else if (displayLen > 40) fs = 27;
+      else if (displayLen > 20) fs = 30;
+      wordEl.style.fontSize = fs + 'px';
+      wordEl.style.lineHeight = '1.4';
+    } else {
+      wordEl.style.fontSize = '';
+      wordEl.style.lineHeight = '';
+    }
+  }
   if (meanEl) meanEl.textContent = q.meaning || '';
   if (attemptEl) {
     // sentence chunk-practice: 청크/전체 위치 표시
@@ -8009,29 +8038,49 @@ function _vpSpeakAndListen() {
     return;
   }
   let started = false;
+  // TTS 끝난 후 SR 시작 딜레이 — 문장 chunk-practice 는 여유 (읽고 발화 준비)
+  const postDelay = s._sentenceMode === 'chunk-practice' ? 900 : 100;
+  // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
+  let pollCount = 0;
+  const MAX_POLLS = 100;   // 20초 상한
   const startOnce = () => {
     if (started || s.stopped || s.gen !== g) return;
+    // TTS 아직 speaking 중이면 대기 (onend·safety net 무관하게 실제 종료 확인)
+    if (typeof window.speechSynthesis !== 'undefined' && window.speechSynthesis.speaking && pollCount < MAX_POLLS) {
+      pollCount++;
+      setTimeout(startOnce, 150);
+      return;
+    }
     started = true;
     _vpShowWave(false);
-    _vpStartListen();
+    // 학생이 읽고 발화 준비 시간 확보 후 SR 시작
+    setTimeout(() => {
+      if (s.stopped || s.gen !== g) return;
+      _vpStartListen();
+    }, postDelay);
   };
   try {
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(q.word);
-    u.lang = 'en-US';
-    const tone = _VP_TONES[_vpToneIdx % _VP_TONES.length];
-    _vpToneIdx++;
-    u.rate = tone.rate;
-    u.pitch = tone.pitch;
-    u.volume = 1.0;
-    const enVoices = (s.ttsVoices || []).filter(v => (v.lang || '').startsWith('en'));
-    if (enVoices.length) u.voice = enVoices[_vpToneIdx % enVoices.length];
-    // TTS 끝나면 즉시 SR 시작 (delay 최소화 — 100ms)
-    u.onend = () => setTimeout(startOnce, 100);
-    u.onerror = () => setTimeout(startOnce, 100);
-    window.speechSynthesis.speak(u);
-    // safety net — 2초 안에 onend 안 오면 강제 진행
-    setTimeout(startOnce, 2000);
+    // cancel() 완료 시간 확보 — 즉시 speak 하면 Chrome 첫 utterance 앞부분 잘림
+    setTimeout(() => {
+      if (s.stopped || s.gen !== g || started) return;
+      const u = new SpeechSynthesisUtterance(q.word);
+      u.lang = 'en-US';
+      const tone = _VP_TONES[_vpToneIdx % _VP_TONES.length];
+      _vpToneIdx++;
+      // sentence chunk-practice 는 커스텀 rate (배정 옵션), 그 외 tone rotate
+      u.rate = s.customTtsRate ? s.customTtsRate : tone.rate;
+      u.pitch = tone.pitch;
+      u.volume = 1.0;
+      const enVoices = (s.ttsVoices || []).filter(v => (v.lang || '').startsWith('en'));
+      if (enVoices.length) u.voice = enVoices[_vpToneIdx % enVoices.length];
+      u.onend = () => startOnce();
+      u.onerror = () => startOnce();
+      try { window.speechSynthesis.speak(u); }
+      catch(e) { console.warn('[vp] speak:', e); startOnce(); }
+    }, 80);
+    // safety net — onend 안 오는 브라우저 대비 (폴링이 실제 종료 검증)
+    setTimeout(startOnce, 15000);
   } catch(e) {
     console.warn('[vp] TTS:', e);
     _vpShowWave(false);
@@ -8416,6 +8465,8 @@ async function _startSentenceChunkPractice(test, sentences) {
     customThresh: { great: threshold, good: Math.max(20, threshold - 25), notbad: Math.max(10, threshold - 45) },
     customMin: 1,
     customMax: 2,
+    // TTS 속도 — 배정 옵션 (0.7~1.0), default 0.85 (문장은 여유롭게)
+    customTtsRate: Math.max(0.6, Math.min(1.1, opts.ttsRate || 0.85)),
   };
   if (typeof window.speechSynthesis !== 'undefined') {
     _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
