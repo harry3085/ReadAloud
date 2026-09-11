@@ -11499,7 +11499,10 @@ function _qgRenderOptions(type) {
   panel.innerHTML = optionsHtml + snapHtml;
   if (type === 'word') setTimeout(() => window._qgWordsnapUpdateStatus?.(), 0);
   if (type === 'unscramble') setTimeout(() => window._qgUnscrambleSnapUpdateStatus?.(), 0);
-  if (type === 'sentence') setTimeout(() => window._qgSentenceSnapUpdateStatus?.(), 0);
+  if (type === 'sentence') setTimeout(() => {
+    window._qgSentenceSnapUpdateStatus?.();
+    _qgSyncSentenceOpts();
+  }, 0);
 
   if (btn) {
     if (!cfg.enabled) {
@@ -11544,7 +11547,23 @@ window.qgPersistOpts = () => {
   } catch(e) {
     console.warn('qgPersistOpts:', e);
   }
+  // sentence: mode 변경 시 chunkCount 활성/비활성 재적용
+  if (_qgCurrentType === 'sentence') _qgSyncSentenceOpts();
 };
+
+// 문장시험 mode 에 따라 chunkCount 활성/비활성 (청크방식만 활성)
+function _qgSyncSentenceOpts() {
+  const modeEl = document.getElementById('qgOpt_mode');
+  const chunkEl = document.getElementById('qgOpt_chunkCount');
+  if (!modeEl || !chunkEl) return;
+  const isChunk = /청크/.test(String(modeEl.value || ''));
+  chunkEl.disabled = !isChunk;
+  const wrap = chunkEl.parentElement;
+  if (wrap) {
+    wrap.style.opacity = isChunk ? '' : '0.4';
+    wrap.title = isChunk ? '' : '청크방식 선택 시에만 사용';
+  }
+}
 
 function _qgCollectOpts(type) {
   const cfg = QG_TYPE_OPTIONS[type];
@@ -14338,6 +14357,18 @@ window.qsSaveEdits = async () => {
         if (!(q.instructionKo||'').trim()) { showAlert('입력 확인', '${i+1}번: 지시문이 비어있음'); return; }
       } else {
         if (!(q.sentence||'').trim()) { showAlert('입력 확인', '${i+1}번: 녹음 문장이 비어있음'); return; }
+      }
+    } else if (q.type === 'sentence') {
+      if (!(q.ko||'').trim()) { showAlert('입력 확인', `${i+1}번: 한글 문장이 비어있음`); return; }
+      if (!(q.en||'').trim()) { showAlert('입력 확인', `${i+1}번: 영어 문장이 비어있음`); return; }
+      // chunkedEn 있으면 en 원문과 대략 일치 확인 (선택 — 학원장이 편집 실수 시 안내)
+      const chunked = String(q.chunkedEn||'').trim();
+      if (chunked) {
+        const norm = s => String(s).replace(/\s+|\//g, '').toLowerCase();
+        if (norm(chunked) !== norm(q.en)) {
+          showAlert('입력 확인', `${i+1}번: 청크 학습용 문장이 영어 원문과 다릅니다 (구분자 '/' 만 허용, 단어 변경·누락 X)`);
+          return;
+        }
       }
     } else {
       // MCQ (기본)
