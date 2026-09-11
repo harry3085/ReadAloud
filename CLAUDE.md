@@ -4594,3 +4594,225 @@ SW v713 → v729 (~20 commit). 학원장 아이디어 → Phase 1-4 완성 →
 2. 학생 마이크 진단 강화 (반복 보고 시 트리거 — 게인 <5% 지속 자동 로그)
 3. iOS Safari Web Speech 지원 확인 (문장시험·단어 학습 공통)
 4. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
+
+---
+
+## 2026-09-11: 문장시험·결제·단어세트 종합 정비
+
+SW v729 → v758 (~30 commit). 학원장 보고·요청 다수 처리. 문장시험 청크 학습
+정착·프롬프트 편집 등록·앱사용료 도입·단어세트 학생앱 출제 선정까지 하루 총정리.
+
+### 1) 문장시험 청크 학습 안정화 (v730~734, v737)
+
+- **TTS 첫 utterance 잘림 fix** — `speechSynthesis.cancel()` 후 즉시 speak 하면
+  Chrome 이 첫 utterance 앞부분 렌더링 실패. 80ms delay + `speaking` 폴링
+  (150ms interval, 20초 상한) 으로 실제 종료까지 대기. safety net 15초.
+- **postDelay 900→100ms 통일** — speaking 폴링이 이미 종료 감지, 추가 안전 마진
+  불필요. 실측 대기 0.3초 수준.
+- **TTS engine warm-up** (v737) — Chrome 첫음절 약해짐 방지. volume 0 짧은
+  utterance 로 엔진 프리 워밍업. `_startVocabPractice` / `_startSentenceChunkPractice`
+  양쪽 `show()` 직후 fire-and-forget.
+- **청크 UI**: 이전 청크 회색 · 현재 청크 밑줄 강조 · font-size 4단계 tier
+  (32/30/27/24/22px).
+- **배정 옵션 TTS 재생 속도 슬라이더** 60~105% (default 85%). `customTtsRate`
+  로 학생앱 반영.
+
+### 2) 문장시험 프롬프트 편집 UI 등록 (v739)
+
+옛: `SENTENCE_FROM_BOOK_PROMPT` standalone const → 편집 UI 노출 안 됨.
+
+수정:
+- `SYSTEM_PROMPTS.sentence` 에 등록 (getEffectivePrompt / customSystemPrompt 체인)
+- `handleSentenceFromBook` 이 `customSystemPrompt` 받아 3단계 해석
+  (학원 커스텀 > 글로벌 default > 코드 fallback)
+- 학원장·super 편집 탭 8종 → 9종 (sentence 💬 추가, 녹음숙제 앞)
+- `push-aiprompt-to-firestore.js` ALL_TYPES 에 sentence 추가
+
+### 3) 문장 추출 개선 (v-none / api-only)
+
+- **단어수 범위 서버 검증** — 옛 검증은 문자수 (5~300) 만. 배정 옵션 sentenceLength
+  (short 5-8 / medium 9-13 / long 14-20) 강제하는 wordRange 필터 추가.
+- **이웃 폭 자동 확장** — 이상 범위 문장 부족 시 인접 범위 (short 4-10 등) 근접순
+  으로 보충. AI 응답 자체가 부족한 케이스 대응 — 프롬프트에 "최소 2xN 후보" 명시
+  + 필터 4번 완화 (proper noun·짧은 대화 허용).
+- **N 상한 강제** — `picked = inRange.slice(0, N)` 로 이상 범위 통과분도 상한 컷.
+
+### 4) 문장시험 청크 편집 & 배정 자동 고정 (v740~747)
+
+- **청크 편집 UI** (v740 → v741 회귀 fix):
+  · sentence question 에 optional `chunkedEn` 필드 (`/` 구분)
+  · AI Generator 결과 미리보기 카드 + 세트 [수정] 모달 양쪽 편집 input
+  · 학생앱: chunkedEn 청크 개수 === 배정 chunkCount 일 때만 세트 청크 사용,
+    다르면 `_spChunkSentence` 자동 재분할 (배정 개수 우선)
+  · v740 회귀: 편집 UI 를 read-only view 함수에 잘못 배치 + `${idx}` 참조 undefined
+    → sentence 문제 map 시 throw → 모달 안 열림. `_qsRenderEditQuestion` 로 이동
+- **청크방식 생성 시 청크 개수 옵션** (v742): AI Generator·붙여넣기 모두 저장 시점에
+  각 문장 서버·클라 규칙 기반 분할해 chunkedEn 자동 채움.
+- **B안 규칙 기반 분할** (v743): 균등 → 쉼표·접속사·전치사·관계사 앞 우선. 관사
+  (a/an/the) 로 끝나는 청크 회피 (-1 penalty). 최소 2단어/청크 강제.
+- **배정 모달 청크 개수 default = 세트 기준값** (v747) + `(세트: N)` 힌트.
+- **배정 mode 자동 고정** (v749): 세트 sentence 문제 중 chunkedEn 하나라도 있으면
+  청크 따라읽기 강제, 없으면 매칭식 강제. select 비활성 + `🔒 세트 기준` 라벨.
+- **회귀 두 개 fix** (v750):
+  · `_tpSentenceModeChanged()` 초기 호출 누락 → 청크 개수 row `display:none` 유지 →
+    학원장 못 봄/못 바꿈 → 세트 청크와 mismatch → 학생앱 재분할. showModal 후
+    setTimeout 으로 호출.
+  · 청크 검증이 문장부호까지 엄격 (norm 이 공백·`/` 만 제거) → `Nate the Great!` 원문에
+    문장부호 없는 청크 저장 실패. norm `[^\w']` 로 확장 (문장부호·대소문자·곱슬따옴표
+    무시, 단어 자체 변경·누락만 차단).
+
+### 5) 문장시험 영어-only 붙여넣기 + AI 자동 번역 (v749)
+
+- `_qgParseSentenceRows` 확장: `[한글TAB영어]` · `[영어만]` 두 형식 지원
+  (영어만 있는 줄은 `needsTranslation=true` 마킹)
+- 저장 시 needsTranslation 문장 배치 → 새 API mode `sentence-translate` 호출
+  · `SENTENCE_TRANSLATE_PROMPT` 신설 (en → 자연 spoken ko, 한글만 강제)
+  · 입력 순서 유지 + 한글 검증 (영문 섞임 방지)
+- 상태 라벨 `(N개 AI 번역 예정)` + 확인 모달 `AI 번역 호출: N문장` 명시
+
+### 6) 세트 목록·조회 정비 (v736, v738, v751, v752)
+
+- **Book 폴더 클릭 시 스크롤 리셋 방지** (v736): `_tpRender` 가 sets pane·tests
+  pane 스크롤은 보존하나 folders pane 은 id·보존 로직 없어 매번 최상단 리셋.
+  `tpFoldersScroll` id + prev/restore 추가.
+- **문제세트 체크 surgical** (v738): `tpToggleSet` / `tpSelectAll` / `tpClearSel`
+  이 매번 `_tpRender()` 재렌더 → 순간 스크롤 튐. `_tpUpdateSelUI()` 헬퍼 —
+  헤더 카운트·버튼 disabled·행 배경만 직접 갱신.
+- **sourceType 필터 클라 측 이동** (v751): 시험관리 문장시험 Book 조회 시 세트
+  안 뜨던 문제 — 세트가 옛 코드로 만들어져 sourceType 잘못 저장된 경우 걸러짐.
+  where 절 제거 + `s.sourceType || s.questions?.[0]?.type` 클라 필터로.
+- **학생별 진도체크 유형 교체** (v752): `_PROG_TYPES` fill_blank → sentence.
+  학생앱 홈에서 이미 교체된 상태 (2026-08-08).
+
+### 7) 결제관리 앱사용료 (v744~745)
+
+**요청**: 교재/시험비 항목을 교재/앱사용/시험 3분류로 확장 + 앱사용료 자동 청구.
+
+- **카테고리 확장** — `TYPE_OPTS` 에 `['app', '앱사용료']` 추가. `_BIGCAL_TYPE_LABELS`,
+  채널 라벨, 테이블 헤더, CSV 컬럼 일괄 `교재/앱사용/시험`.
+- **학원 default 설정** — 결제 설정 마법사 step 2 에 앱사용료 자동 청구 카드:
+  · `academies/{id}.paymentSettings.materialsChannel.appFeeEnabled` (default true)
+  · `.appFeeAmount` (default 25000, 편집 가능)
+- **학생별 override + 기준월**:
+  · `users/{uid}.appFeeAmount` (선택 필드, 비면 학원 default)
+  · `users/{uid}.appFeeAnchorMonth` (`YYYY-MM` 문자열) — 학원 시작월 기준 편집
+  · `users/{uid}.appFeeLastChargedAt` (Timestamp, 자동 청구 시 갱신)
+  · 학생 편집 모달에 [기준일] input type=month + 마지막 청구일 표시
+- **자동 청구 로직** (`_shouldChargeAppFee`):
+  · lastChargedAt 있음: 12개월 경과 시 anniversary 월 재청구
+  · lastChargedAt 없음: anchor 월 === 현재월일 때만 청구 (엄격 anniversary)
+  · anchor = `appFeeAnchorMonth > createdAt` 폴백
+- **삽입 흐름** — 결제관리 페이지 진입 시 `_ensureCurrentMonthBillings` 확장:
+  · 기존 billing 있으면 app 항목 append (없을 때만)
+  · 없으면 신규 billing (수강료 + 앱사용료 통합)
+  · 청구 후 `users.appFeeLastChargedAt = serverTimestamp()` 로 중복 방지
+
+**Rules 무변경** — admin users update rule 이 이미 커버.
+
+### 8) 학원장 학습 상세 shim (v753)
+
+**원인**: `_writeUserCompleted` (학생앱) 이 `extra` 를 **top-level 로 spread** 저장:
+```js
+Object.assign(data, { ..., ...(extra ? _clean(extra) : {}) });
+```
+→ Firestore doc: `comp.sentenceMode` / `comp.sentenceAccuracies` (top level)
+
+학원장 앱은 `comp.extra.sentenceMode` / `comp.extra.sentenceAccuracies` (extra 안)
+로 읽음 → 항상 undefined → 문장/단어 학습 상세 안 뜸.
+
+**fix** — `showScoreDetail` 에서 comp 획득 직후 shim: top-level 값을 `comp.extra.*`
+로 mirror. 옛 데이터·신규 데이터 모두 호환. 영향 범위 — 문장 청크 학습 상세,
+단어 학습 상세, 응시/학습 라벨, `_adminBuildDetail` 라우팅 검사.
+
+### 9) 문장시험 청크 학습 완료 카드 → 결과 화면 (v754)
+
+옛: `stqViewPreviousResult` 가 무조건 `startSentence` → 완료 카드 눌러도 바로
+재학습 시작 (TTS 즉시 재생 · 결과 화면 skip).
+
+수정 — 청크방식은 vocab-practice 와 동일 UX:
+- 저장된 userCompleted 확인 후 mode 감지
+- 청크방식 (학습): `_vpState` 복원 (`stopped=true`) → vocabPractice 화면 →
+  `_vpRenderResult` (🎓 학습 완료 + tier 이모지, 점수·정확도 수치 X)
+- 매칭식 (시험): 기존대로 `startSentence` 재응시 흐름 유지
+
+### 10) 단어시험 학생앱 출제 대상 선정 + UI 컴팩트 (v755~758)
+
+**요청**: 세트 [수정] 에서 단어별 체크 → 학생앱 시험 출제용 선정, 인쇄는 전체 유지.
+
+- **데이터 모델**: `q.appInclude` (default true — 미설정 = 포함)
+- **세트 [수정] 모달 vocab 카드 — 컴팩트 한 줄** (v756):
+  · `[번호] [영단어 input] [뜻 input] [☑ 📱 출제]` (오른쪽 정렬)
+  · 예문·예문번역 편집 input 제거 (**옵션 B** — 학원장 UI 만 정리)
+  · 헤더 툴바: `📱 학생앱 출제 대상: N/총` + [전체 포함] / [전체 제외] + 안내
+  · 해제 시 카드 반투명·회색
+- **세트 상세 view 카드** — 동일 컴팩트: `[번호] 영단어 뜻 [📱 출제/제외 배지]`
+  · 예문·번역 노출도 제거 (옵션 B)
+- **시험출제 모달 vocab 옵션 default 체크 3종** (v755·v757·v758):
+  · `📱 체크한 단어만` — 세트 필터 (default checked)
+  · `틀린문제만재응시` (default checked)
+  · `100점까지` (default checked, disabled 속성 제거)
+- **tpPublish 필터** — `📱 체크한 단어만` 켜져 있으면
+  `questions.filter(q => q?.type !== 'vocab' || q.appInclude !== false)`.
+  결과 0 이면 alert.
+
+**유지 (옵션 B)**:
+- 학생앱 vocab MCQ 영→한 예문 힌트 (`q.example` 있으면 표시)
+- AI 본문 생성 시 예문·번역 자동 채움 (프롬프트 그대로)
+- Wordsnap 초기화 코드 (`example:''`, `exampleKo:''`)
+- Firestore 옛 필드 그대로 (마이그레이션 불필요)
+
+**인쇄** — 필터 안 함, 세트 전체 단어 인쇄지에 포함.
+
+### 작업 규칙 추가 (2026-09-11)
+
+신규:
+- **Web Speech `continuous` 는 중복 유발** — utterance 마다 `results[i]` 계속 추가.
+  브라우저별 cumulative 응답 시 중복 누적. 단발성 STT 는 `continuous=false` 로.
+- **Chrome TTS cold-start = 첫 utterance 앞부분 렌더링 실패** — cancel() 후 즉시
+  speak 시 앞 ~100ms drop. cancel 후 delay + `speechSynthesis.speaking` 폴링 +
+  세션 시작 시 volume 0 warm-up utterance.
+- **`extra` spread 저장 시 admin 은 top-level 로 읽어야** — 학생앱 `_writeUserCompleted`
+  이 `...(extra ? _clean(extra) : {})` 로 top-level 저장. 학원장 코드가 `comp.extra.X`
+  기대하면 undefined. shim 으로 mirror 또는 저장 위치 통일 필수.
+- **완료 카드 클릭 = 결과 화면 (재시작 X)** — 학습/시험 유형에 따라 결과 렌더 함수
+  분기. auto-restart 하면 학생이 자기 결과 확인 못 하고 TTS 즉시 재생됨.
+- **옵션별 default 체크 상태는 일반적 워크플로 기준** — 학원장이 매번 켜야 하는 옵션은
+  default 체크. 옵션 도입 이후 사용 패턴 관찰 후 결정.
+- **문서 스토리지 옛 필드 정리 방식 = UI 만 제거 (옵션 B)** — Firestore 필드 삭제
+  마이그레이션 대신 UI/편집 경로만 제거. 옛 데이터에 남은 값은 유용한 곳에서만
+  계속 활용 (예: 학생앱 힌트). 하위호환 + 마이그레이션 비용 0.
+- **AI 프롬프트 편집 UI 등록 3단계** — (1) SYSTEM_PROMPTS 에 등록
+  (getEffectivePrompt 체인 지원) (2) 학원장·super 편집 탭 라벨/alias 추가
+  (3) push-aiprompt-to-firestore.js ALL_TYPES 에 추가. handler 는 customSystemPrompt
+  받아 3단계 해석 (학원 커스텀 > 글로벌 default > 코드 fallback).
+- **배정 시 UI 상태 select disabled = 초기 sync 호출 필수** — mode 자동 고정 등
+  select 를 disabled 로 설정하면 onchange 미발화. showModal 후 조건부 row 가시성
+  sync 함수 (`_tpSentenceModeChanged` 등) 명시적 호출 필수.
+
+### 파일 크기 / SW 캐시 (2026-09-11 종료)
+- `public/js/app.js`: +~120줄 (TTS warm-up + speaking 폴링 + chunkedEn 우선 + 학습
+  결과 화면 라우팅)
+- `public/admin/js/app.js`: +~350줄 (배정 mode 자동 고정 + chunkCount default +
+  청크 편집 UI + 앱사용료 결제 흐름 + appInclude 옵션 + vocab 컴팩트 UI + shim)
+- `public/super/js/app.js`: +2줄 (sentence 프롬프트 등록)
+- `api/generate-quiz.js`: +~200줄 (규칙 기반 분할 + sentence-translate mode +
+  단어수 서버 검증 + N 상한)
+- `scripts/admin/push-aiprompt-to-firestore.js`: +1 (ALL_TYPES sentence)
+- SW 캐시: `kunsori-v729` → `kunsori-v758`
+
+### 진행률 (2026-09-11)
+
+- **문장시험 청크 학습**: ~100% (TTS 안정화 + 청크 편집 + 배정 자동 고정 + 결과 화면 UX)
+- **문장시험 프롬프트 편집**: ~100% (3단계 해석 체인 등록)
+- **문장시험 붙여넣기**: ~100% (한글TAB영어 + 영어-only AI 번역)
+- **결제 앱사용료**: ~100% (카테고리 확장 + 자동 청구 anchor month + 학생 override)
+- **학원장 학습 상세 shim**: ~100% (문장/단어 학습 상세 정상 렌더)
+- **단어세트 학생앱 출제 선정**: ~100% (appInclude + 옵션 default 체크 + 컴팩트 UI)
+- **예문·번역 UI 정리 (옵션 B)**: ~100% (편집·상세 UI 제거, 학생 힌트 유지)
+
+**다음 세션 후보**:
+1. 앱사용료 자동 청구 학원장 운영 관찰 (기준월 설정 학원 지원, 실제 청구 흐름 확인)
+2. 문장시험 청크 학습 학생 실사용 관찰 (관대 채점·TTS 속도 튜닝)
+3. sentence 매칭식 결과 리뷰 화면 (현재 재응시 스텁)
+4. 옛 vocab 세트 예문 데이터 활용도 조사 (본문 AI 생성분 얼마나 있나 · 힌트 사용률)
+5. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
