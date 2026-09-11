@@ -14480,12 +14480,13 @@ window.qsSaveEdits = async () => {
     } else if (q.type === 'sentence') {
       if (!(q.ko||'').trim()) { showAlert('입력 확인', `${i+1}번: 한글 문장이 비어있음`); return; }
       if (!(q.en||'').trim()) { showAlert('입력 확인', `${i+1}번: 영어 문장이 비어있음`); return; }
-      // chunkedEn 있으면 en 원문과 대략 일치 확인 (선택 — 학원장이 편집 실수 시 안내)
+      // chunkedEn 있으면 en 원문과 대략 일치 확인 — 대소문자·문장부호·공백·'/' 무시, 단어만 비교
       const chunked = String(q.chunkedEn||'').trim();
       if (chunked) {
-        const norm = s => String(s).replace(/\s+|\//g, '').toLowerCase();
+        // 알파벳·숫자·apostrophe 만 남김 (곱슬따옴표 정규화 포함)
+        const norm = s => String(s || '').replace(/[‘’]/g, "'").replace(/[^\w']/gi, '').toLowerCase();
         if (norm(chunked) !== norm(q.en)) {
-          showAlert('입력 확인', `${i+1}번: 청크 학습용 문장이 영어 원문과 다릅니다 (구분자 '/' 만 허용, 단어 변경·누락 X)`);
+          showAlert('입력 확인', `${i+1}번: 청크 학습용 문장이 영어 원문의 단어와 다릅니다 (구분자 '/' 로 나누기만 허용, 단어 변경·누락 X)`);
           return;
         }
       }
@@ -16156,6 +16157,9 @@ window.tpOpenPublishModal = async () => {
     </div>
   `;
   showModal(html);
+  // 문장시험: 배정 mode 가 세트 기준으로 자동 고정된 상태에서
+  // 청크개수/힌트 등 조건부 row 가시성 sync (select disabled 라 onchange 미발화)
+  if (cfg.testMode === 'sentence') setTimeout(() => window._tpSentenceModeChanged?.(), 0);
   await pickerInit({
     boxEl: 'tpPickerBox',
     summaryEl: 'tpTargetSummary',
