@@ -12256,6 +12256,60 @@ window.qgSentenceSnapPaste = async () => {
 };
 
 // Excel 붙여넣기 직접 저장 (AI 호출 X — 입력값 그대로 세트로 저장)
+// 규칙 기반 청크 분할 (서버 _splitSentenceIntoChunks / 학생앱 _spChunkSentence 와 동일 알고리즘)
+// 쉼표·접속사·전치사·관계사 앞 우선, 관사로 끝나는 청크 회피, 최소 2단어 강제
+function _adminSplitSentenceIntoChunks(sentence, n) {
+  const tokens = String(sentence || '').trim().split(/\s+/).filter(Boolean);
+  const N = Math.max(2, Math.min(8, parseInt(n) || 3));
+  if (tokens.length < N) return '';
+  const CONJ = new Set(['and','but','or','so','because','while','yet','nor','if','though','although']);
+  const PREP = new Set(['in','on','at','with','for','to','from','by','of','about','into','onto','upon','over','under','through','between','among','against','without']);
+  const REL  = new Set(['who','whom','which','that','where','when','whose']);
+  const ART  = new Set(['a','an','the']);
+  const stripPunct = s => s.replace(/[^\w']/g, '').toLowerCase();
+  const priority = new Array(tokens.length - 1).fill(0);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (/,$/.test(tokens[i])) { priority[i] = 4; continue; }
+    const nw = stripPunct(tokens[i + 1]);
+    if (CONJ.has(nw)) priority[i] = 3;
+    else if (PREP.has(nw)) priority[i] = 2;
+    else if (REL.has(nw)) priority[i] = 1;
+    const cw = stripPunct(tokens[i]);
+    if (ART.has(cw) && priority[i] < 2) priority[i] = -1;
+  }
+  const idealChunk = tokens.length / N;
+  const minChunk = 2;
+  const window = Math.max(2, Math.floor(idealChunk / 2));
+  const bounds = [];
+  let prevB = -1;
+  for (let j = 1; j < N; j++) {
+    const idealAfter = Math.round(idealChunk * j) - 1;
+    const minK = prevB + minChunk;
+    const maxK = tokens.length - 1 - (N - j) * minChunk;
+    if (minK > maxK) {
+      const forced = Math.max(0, Math.min(tokens.length - 2, idealAfter));
+      bounds.push(forced); prevB = forced; continue;
+    }
+    const lo = Math.max(minK, idealAfter - window);
+    const hi = Math.min(maxK, idealAfter + window);
+    let bestIdx = -1, bestScore = -Infinity;
+    for (let k = lo; k <= hi; k++) {
+      const score = priority[k] * 100 - Math.abs(k - idealAfter);
+      if (score > bestScore) { bestScore = score; bestIdx = k; }
+    }
+    if (bestIdx < 0) bestIdx = Math.min(Math.max(minK, idealAfter), maxK);
+    bounds.push(bestIdx); prevB = bestIdx;
+  }
+  const chunks = [];
+  let start = 0;
+  for (const b of bounds) {
+    chunks.push(tokens.slice(start, b + 1).join(' '));
+    start = b + 1;
+  }
+  if (start < tokens.length) chunks.push(tokens.slice(start).join(' '));
+  return chunks.filter(Boolean).join(' / ');
+}
+
 window.qgRunSentenceSnap = async () => {
   const ta = document.getElementById('qgSentenceSnapInput');
   if (!ta) return;
@@ -12269,22 +12323,34 @@ window.qgRunSentenceSnap = async () => {
     return;
   }
   const errNote = errors.length ? `\n(오류 ${errors.length}줄 제외)` : '';
+  // 청크방식 옵션 확인 — 켜져 있으면 chunkedEn 자동 채움
+  const opts = _qgCollectOpts('sentence');
+  const isChunkMode = /청크/.test(String(opts.mode || ''));
+  const chunkCount = isChunkMode ? Math.max(2, Math.min(8, parseInt(opts.chunkCount) || 3)) : 0;
+  const chunkNote = isChunkMode ? `\n(청크방식: 각 문장 자동 ${chunkCount}청크 분할)` : '';
   const ok = await showConfirm(
     `${rows.length}쌍 문장 → 문장시험 세트 저장?`,
-    `직접 입력이라 AI 호출 없이 즉시 저장됩니다.${errNote}`
+    `직접 입력이라 AI 호출 없이 즉시 저장됩니다.${errNote}${chunkNote}`
   );
   if (!ok) return;
 
   // 문제 객체로 변환 (AI 응답과 동일 구조)
-  const questions = rows.map((r, i) => ({
-    type: 'sentence',
-    en: r.en,
-    ko: r.ko,
-    wordCount: r.en.split(/\s+/).filter(Boolean).length,
-    sourcePageId: '',
-    sourcePageTitle: '',
-    length: 'manual',
-  }));
+  const questions = rows.map((r, i) => {
+    const q = {
+      type: 'sentence',
+      en: r.en,
+      ko: r.ko,
+      wordCount: r.en.split(/\s+/).filter(Boolean).length,
+      sourcePageId: '',
+      sourcePageTitle: '',
+      length: 'manual',
+    };
+    if (isChunkMode) {
+      const chunked = _adminSplitSentenceIntoChunks(r.en, chunkCount);
+      if (chunked) q.chunkedEn = chunked;
+    }
+    return q;
+  });
   _qgGenerated = questions;
   _qgExcluded.clear();
 
