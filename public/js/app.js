@@ -7759,6 +7759,7 @@ async function _startVocabPractice(test, questions) {
     }
   }
   show('vocabPractice');
+  _vpWarmupTts();   // Chrome 첫음절 약해짐 방지 — 엔진 미리 워밍업
   _vpRenderStep();
 }
 
@@ -8477,7 +8478,22 @@ async function _startSentenceChunkPractice(test, sentences) {
     }
   }
   show('vocabPractice');
+  _vpWarmupTts();   // Chrome 첫음절 약해짐 방지 — 엔진 미리 워밍업
   _vpRenderStep();
+}
+
+// TTS engine warm-up — Chrome 은 세션 첫 발화 앞부분(첫음절) 약하게 렌더링
+// 무음 utterance 로 엔진 미리 깨워둠. fire-and-forget, 결과 대기 X
+function _vpWarmupTts() {
+  try {
+    if (typeof window.speechSynthesis === 'undefined') return;
+    // volume 0 · 짧은 텍스트로 엔진 로드 (실제 소리 안 남)
+    const u = new SpeechSynthesisUtterance('.');
+    u.lang = 'en-US';
+    u.volume = 0;
+    u.rate = 1.0;
+    window.speechSynthesis.speak(u);
+  } catch(_) {}
 }
 
 // 마이크 이상 안내 모달 (3턴 연속 무음 시) — showConfirm 사용 (검증된 학생앱 표준)
