@@ -7278,6 +7278,14 @@ window.startSentence = async (testId, testName) => {
     const test = { id: testId, ...snap.data() };
     let questions = (test.questions || []).filter(q => q.type === 'sentence' && q.ko && q.en);
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
+
+    // 2026-09-11 mode 분기 — 청크 따라읽기는 별도 흐름 (vocab-practice 화면 재활용)
+    if (test.sentenceOptions?.mode === 'chunk-practice') {
+      const ok = await _checkMicSupport({ needSpeech: true });
+      if (!ok) return;
+      return _startSentenceChunkPractice(test, questions);
+    }
+
     const opts = {
       matchThreshold: test.sentenceOptions?.matchThreshold ?? 80,
       shuffleQ: test.sentenceOptions?.shuffleQ !== false,
@@ -7769,11 +7777,29 @@ function _vpRenderStep() {
   const reactText = document.getElementById('vpReactionText');
   const statusEl = document.getElementById('vpStatus');
 
-  if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
-  if (txtEl) txtEl.textContent = (s.currentIdx + 1) + '/' + s.questions.length;
+  const minA = s.customMin || _VP_MIN_ATTEMPT;
+  // sentence chunk-practice 는 문장·청크 진행률로 표시 (전체 items 대신)
+  if (s._sentenceMode === 'chunk-practice' && s._sourceSentences?.length) {
+    const totalS = s._sourceSentences.length;
+    const curS = (q._sIdx ?? 0) + 1;
+    if (barEl) barEl.style.width = Math.round((curS / totalS) * 100) + '%';
+    if (txtEl) txtEl.textContent = curS + '/' + totalS;
+  } else {
+    if (barEl) barEl.style.width = Math.round(((s.currentIdx + 1) / s.questions.length) * 100) + '%';
+    if (txtEl) txtEl.textContent = (s.currentIdx + 1) + '/' + s.questions.length;
+  }
   if (wordEl) wordEl.textContent = q.word || '';
   if (meanEl) meanEl.textContent = q.meaning || '';
-  if (attemptEl) attemptEl.textContent = `${s.attempt + 1}/${_VP_MIN_ATTEMPT}`;
+  if (attemptEl) {
+    // sentence chunk-practice: 청크/전체 위치 표시
+    if (s._sentenceMode === 'chunk-practice' && q._chunkTotal) {
+      attemptEl.textContent = `청크 ${q._chunkNum}/${q._chunkTotal} · 시도 ${s.attempt + 1}/${minA}`;
+    } else if (s._sentenceMode === 'chunk-practice' && q._isFull) {
+      attemptEl.textContent = `전체 문장 · 시도 ${s.attempt + 1}/${minA}`;
+    } else {
+      attemptEl.textContent = `${s.attempt + 1}/${minA}`;
+    }
+  }
   if (starsEl) starsEl.textContent = `✨ ${s.stars}`;
   if (reactEmoji) { reactEmoji.textContent = ''; reactEmoji.style.transform = 'scale(1)'; }
   if (reactText) { reactText.textContent = ''; reactText.style.color = ''; }
@@ -8124,12 +8150,14 @@ function _vpHandleResult(sim, heard) {
   const attemptEl = document.getElementById('vpAttempt');
   const starsEl = document.getElementById('vpStars');
 
+  // 임계 — sentence chunk-practice 는 커스텀 (단어학습 +10 엄격)
+  const T = s.customThresh || _VP_THRESH;
   let emoji = '', label = '', color = '', starGain = 0, isGreat = false;
-  if (sim >= _VP_THRESH.great) {
+  if (sim >= T.great) {
     emoji = _vpPickEmoji('great'); label = 'Great!!'; color = '#059669'; starGain = 3; isGreat = true;
-  } else if (sim >= _VP_THRESH.good) {
+  } else if (sim >= T.good) {
     emoji = _vpPickEmoji('good'); label = 'Good!!'; color = '#0891b2'; starGain = 2;
-  } else if (sim >= _VP_THRESH.notbad) {
+  } else if (sim >= T.notbad) {
     emoji = _vpPickEmoji('notbad'); label = 'Not Bad!!'; color = '#f59e0b'; starGain = 1;
   } else {
     emoji = _vpPickEmoji('tryagain'); label = 'Try Again!'; color = '#94a3b8'; starGain = 0;
@@ -8152,17 +8180,19 @@ function _vpHandleResult(sim, heard) {
     if (starsEl) starsEl.textContent = `✨ ${s.stars}`;
   }
 
-  // 진행 규칙 — 최소 2회, 최대 3회, 2회 이상 & Great 시 조기 종료
-  // attempt 1: 항상 다음 시도 (아직 최소 미달)
-  // attempt 2: Great 이면 조기 종료, 아니면 3회로
-  // attempt 3: 무조건 다음 단어
+  // 진행 규칙 — 세션 커스텀 (sentence chunk-practice: min1/max2, vocab: min2/max3)
+  const maxA = s.customMax || _VP_MAX_ATTEMPT;
+  const minA2 = s.customMin || _VP_MIN_ATTEMPT;
   let canAdvance = false;
-  if (s.attempt >= _VP_MAX_ATTEMPT) canAdvance = true;
-  else if (s.attempt >= _VP_MIN_ATTEMPT && isGreat) canAdvance = true;
+  if (s.attempt >= maxA) canAdvance = true;
+  else if (s.attempt >= minA2 && isGreat) canAdvance = true;
 
   if (attemptEl) {
-    if (canAdvance) attemptEl.textContent = `${s.attempt}/${s.attempt}`;
-    else attemptEl.textContent = `${s.attempt}/${Math.max(_VP_MIN_ATTEMPT, s.attempt + 1)}`;
+    const prefix = (s._sentenceMode === 'chunk-practice')
+      ? (q._chunkTotal ? `청크 ${q._chunkNum}/${q._chunkTotal} · ` : (q._isFull ? '전체 문장 · ' : ''))
+      : '';
+    if (canAdvance) attemptEl.textContent = `${prefix}${s.attempt}/${s.attempt}`;
+    else attemptEl.textContent = `${prefix}${s.attempt}/${Math.max(minA2, s.attempt + 1)}`;
   }
 
   const g = s.gen;
@@ -8199,16 +8229,36 @@ async function _vpFinish() {
   const s = _vpState;
   s.submitting = true;
   const total = s.questions.length;
-  const avgAccuracy = total ? Math.round(s.wordAccuracies.reduce((sum, wa) => sum + (wa.best || 0), 0) / total) : 0;
+
+  // sentence chunk-practice 는 전체 문장 정확도만 score 로 (청크는 학습용, 참고 저장)
+  const isChunkPractice = s._sentenceMode === 'chunk-practice';
+  let avgAccuracy;
+  let sentenceAccs = null;
+  if (isChunkPractice) {
+    const fullItems = s.wordAccuracies.filter((_, i) => s.questions[i]?._isFull);
+    avgAccuracy = fullItems.length
+      ? Math.round(fullItems.reduce((sum, wa) => sum + (wa.best || 0), 0) / fullItems.length)
+      : 0;
+    // 문장별 정확도 + 청크 정확도 집계 (학원장 참고용)
+    sentenceAccs = (s._sourceSentences || []).map((sent, sIdx) => {
+      const chunkAccs = s.wordAccuracies.filter((_, i) => s.questions[i]?._sIdx === sIdx && !s.questions[i]?._isFull)
+        .map(wa => ({ chunk: wa.word, best: wa.best, attempts: wa.attempts }));
+      const fullWa = s.wordAccuracies.find((_, i) => s.questions[i]?._sIdx === sIdx && s.questions[i]?._isFull);
+      return { en: sent.en, ko: sent.ko || '', fullBest: fullWa?.best || 0, fullAttempts: fullWa?.attempts || 0, chunkAccs };
+    });
+  } else {
+    avgAccuracy = total ? Math.round(s.wordAccuracies.reduce((sum, wa) => sum + (wa.best || 0), 0) / total) : 0;
+  }
+
   // 저장 — completed 여부 + 정확도 (평가 X)
   try {
     await _writeUserCompleted(s.test.id, {
-      score: avgAccuracy,          // 참고 수치 (평가 X)
-      passed: true,                // 학습 완료 = passed
-      passScore: 0,                // 기준 없음
-      correct: s.stars,            // 별 총합 (참고)
+      score: avgAccuracy,
+      passed: true,
+      passScore: 0,
+      correct: s.stars,
       wrong: 0,
-      total,
+      total: isChunkPractice ? (sentenceAccs?.length || 0) : total,
       questions: s.questions,
       answers: s.wordAccuracies.map(wa => ({
         input: wa.word,
@@ -8220,11 +8270,16 @@ async function _vpFinish() {
         avgAccuracy,
         totalStars: s.stars,
         wordAccuracies: s.wordAccuracies.map(wa => ({ word: wa.word, best: wa.best, attempts: wa.attempts })),
+        ...(isChunkPractice ? {
+          sentenceMode: 'chunk-practice',
+          sentenceAccuracies: sentenceAccs,
+          chunkCount: s._chunkCount || 3,
+        } : {}),
       },
     });
   } catch(e) { console.warn('[vp] 저장 실패', e); }
 
-  // scores 도 박음 (진도체크·리포트에서 mode=vocab 로 집계, vocabFormat=practice)
+  // scores 저장 — mode/vocabFormat 분기
   try {
     await addDoc(collection(db,'scores'), {
       academyId: window.MY_ACADEMY_ID || 'default',
@@ -8234,9 +8289,10 @@ async function _vpFinish() {
       testId: s.test.id, testName: s.test.name || '',
       unitId: s.test.id, unitName: s.test.name || '',
       bookName: s.test.bookName || '',
-      mode: 'vocab',
-      vocabFormat: 'practice',
-      score: avgAccuracy, correct: s.stars, wrong: 0, total,
+      mode: isChunkPractice ? 'sentence' : 'vocab',
+      ...(isChunkPractice ? { sentenceMode: 'chunk-practice' } : { vocabFormat: 'practice' }),
+      score: avgAccuracy, correct: s.stars, wrong: 0,
+      total: isChunkPractice ? (sentenceAccs?.length || 0) : total,
       passed: true, passScore: 0,
       date: _ymdKST(),
       createdAt: serverTimestamp(),
@@ -8285,8 +8341,92 @@ function _vpRenderResult() {
 window.vpRestart = () => {
   const t = _vpState && _vpState.test;
   if (!t || !t.id) { showToast('시험 정보 없음'); return; }
+  // sentence chunk-practice 재시작
+  if (_vpState._sentenceMode === 'chunk-practice') { startSentence(t.id, t.name || ''); return; }
   startVocab(t.id, t.name || '');
 };
+
+// 문장 청크 분할 — 원문 단어 단위 N등분 (원문 보존)
+function _spChunkSentence(en, chunkCount) {
+  const words = String(en || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return [words.join(' ')];
+  const n = Math.max(2, Math.min(chunkCount || 3, words.length));
+  const perChunk = Math.ceil(words.length / n);
+  const chunks = [];
+  for (let i = 0; i < n; i++) {
+    const start = i * perChunk;
+    const end = Math.min(words.length, start + perChunk);
+    if (start >= words.length) break;
+    chunks.push(words.slice(start, end).join(' '));
+  }
+  return chunks;
+}
+
+// 문장시험 청크 따라읽기 — vocab-practice 화면·로직 재사용 (커스텀 임계·max attempt)
+async function _startSentenceChunkPractice(test, sentences) {
+  _screenPrepare('vocabPractice', '#vpProgressBar');
+  const opts = test.sentenceOptions || {};
+  const chunkCount = Math.max(2, Math.min(8, opts.chunkCount || 3));
+  const threshold = Math.max(50, Math.min(100, opts.matchThreshold || 80));
+  // 문제 순서 셔플 (청크 내부 순서는 유지 — 읽기 학습용)
+  let sList = sentences.slice();
+  if (opts.shuffleQ !== false) sList = _rngShuffle(sList);
+
+  // items 배열 flatten: 각 문장 → 청크 N개 + 전체 문장 1개
+  const items = [];
+  sList.forEach((sent, sIdx) => {
+    const chunks = _spChunkSentence(sent.en, chunkCount);
+    chunks.forEach((c, ci) => {
+      items.push({
+        word: c,
+        meaning: '',   // 청크는 뜻 표시 X
+        _sIdx: sIdx,
+        _isFull: false,
+        _chunkNum: ci + 1,
+        _chunkTotal: chunks.length,
+      });
+    });
+    // 전체 문장 마무리
+    items.push({
+      word: sent.en,
+      meaning: sent.ko || '',
+      _sIdx: sIdx,
+      _isFull: true,
+    });
+  });
+
+  _vpState = {
+    test,
+    questions: items,
+    currentIdx: 0,
+    attempt: 0,
+    stars: 0,
+    wordAccuracies: items.map(it => ({ word: it.word, best: 0, attempts: 0 })),
+    rec: null, listening: false, submitting: false,
+    ttsVoices: [],
+    gen: (_vpState?.gen || 0) + 1,
+    stopped: false,
+    silentStreak: 0,
+    vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
+    // 문장시험 chunk-practice 커스텀
+    _sentenceMode: 'chunk-practice',
+    _sourceSentences: sList,
+    _chunkCount: chunkCount,
+    customThresh: { great: threshold, good: Math.max(20, threshold - 25), notbad: Math.max(10, threshold - 45) },
+    customMin: 1,
+    customMax: 2,
+  };
+  if (typeof window.speechSynthesis !== 'undefined') {
+    _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
+    if (!_vpState.ttsVoices.length) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
+      };
+    }
+  }
+  show('vocabPractice');
+  _vpRenderStep();
+}
 
 // 마이크 이상 안내 모달 (3턴 연속 무음 시) — showConfirm 사용 (검증된 학생앱 표준)
 async function _vpShowMicAlert() {

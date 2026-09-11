@@ -5874,6 +5874,90 @@ function _adminRecBuildDetail(recordings, fullText, opts){
       </div>`;
   }).join('');
 }
+// sentence chunk-practice (문장 청크 따라읽기) 전용 상세 — 전체 문장 정확도 + 청크별 정확도
+function _adminSpChunkBuildDetail(comp) {
+  const sAccs = Array.isArray(comp?.extra?.sentenceAccuracies) ? comp.extra.sentenceAccuracies : [];
+  if (!sAccs.length) return '<div style="color:var(--gray);text-align:center;padding:20px;font-size:12px;">학습 상세 데이터 없음</div>';
+  const total = sAccs.length;
+  const avg = Math.round(sAccs.reduce((sum, s) => sum + (s.fullBest || 0), 0) / total);
+  const greatN = sAccs.filter(s => (s.fullBest||0) >= 80).length;
+  const goodN  = sAccs.filter(s => (s.fullBest||0) >= 55 && (s.fullBest||0) < 80).length;
+  const notBadN= sAccs.filter(s => (s.fullBest||0) >= 35 && (s.fullBest||0) < 55).length;
+  const lowN   = sAccs.filter(s => (s.fullBest||0) < 50).length;
+  const stars  = comp?.correct ?? comp?.extra?.totalStars ?? 0;
+  const chunkCount = comp?.extra?.chunkCount || 3;
+
+  const summary = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">
+      <div style="background:#f0f9ff;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#0891b2;">${avg}%</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">평균 정확도</div>
+      </div>
+      <div style="background:#fef3c7;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#f59e0b;">✨ ${stars}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">별 획득</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 4px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#555;">${total}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">전체 문장</div>
+      </div>
+      <div style="background:#fef2f2;border-radius:8px;padding:10px 4px;text-align:center;" title="정확도 50% 이하 (참고)">
+        <div style="font-size:20px;font-weight:800;color:#dc2626;">${lowN}</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:2px;">50% 이하</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;font-size:11px;">
+      <span style="background:#dcfce7;color:#059669;padding:3px 10px;border-radius:12px;font-weight:700;">🌟 Great ${greatN}</span>
+      <span style="background:#cffafe;color:#0891b2;padding:3px 10px;border-radius:12px;font-weight:700;">👍 Good ${goodN}</span>
+      <span style="background:#fef3c7;color:#f59e0b;padding:3px 10px;border-radius:12px;font-weight:700;">💪 Not Bad ${notBadN}</span>
+      <span style="background:#f3f4f6;color:#6b7280;padding:3px 10px;border-radius:12px;font-weight:600;">청크 ${chunkCount}개 분할</span>
+    </div>`;
+
+  const rows = sAccs.map((sa, i) => {
+    const acc = sa.fullBest || 0;
+    const attempts = sa.fullAttempts || 0;
+    let tier, tierColor, tierBg;
+    if (acc >= 80)      { tier = '🌟 Great'; tierColor = '#059669'; tierBg = '#f0fdf4'; }
+    else if (acc >= 55) { tier = '👍 Good';  tierColor = '#0891b2'; tierBg = '#f0f9ff'; }
+    else if (acc >= 35) { tier = '💪 Not Bad'; tierColor = '#f59e0b'; tierBg = '#fefce8'; }
+    else                { tier = '🤔 연습 필요'; tierColor = '#dc2626'; tierBg = '#fef2f2'; }
+    // 청크별 정확도 (접힘)
+    const chunkAccs = Array.isArray(sa.chunkAccs) ? sa.chunkAccs : [];
+    const chunkHtml = chunkAccs.length
+      ? `<details style="margin-top:6px;">
+          <summary style="font-size:11px;color:var(--gray);cursor:pointer;padding:4px 0;">청크 ${chunkAccs.length}개 정확도 보기</summary>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+            ${chunkAccs.map((c, ci) => {
+              const cAcc = c.best || 0;
+              const cCol = cAcc >= 80 ? '#059669' : cAcc >= 55 ? '#0891b2' : cAcc >= 35 ? '#f59e0b' : '#dc2626';
+              return `<div style="background:white;border:1px solid #e5e7eb;border-radius:6px;padding:4px 8px;font-size:11px;">
+                <span style="color:var(--gray);">청크${ci+1}</span> <b style="color:${cCol};">${cAcc}%</b>
+                <span style="color:var(--gray);font-size:10px;">(${c.attempts||0}회)</span>
+                <div style="font-size:10px;color:#555;max-width:220px;word-break:break-word;">${esc(c.chunk||'')}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </details>`
+      : '';
+    return `<div style="background:${tierBg};border-left:3px solid ${tierColor};border-radius:6px;padding:8px 12px;margin-bottom:5px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:10px;color:var(--gray);">문장 ${i+1}</div>
+          <div style="font-weight:700;color:var(--text);font-size:13px;word-break:break-word;line-height:1.4;">${esc(sa.en||'')}</div>
+          ${sa.ko ? `<div style="font-size:11px;color:var(--gray);margin-top:2px;">${esc(sa.ko)}</div>` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:15px;font-weight:800;color:${tierColor};">${acc}%</div>
+          <div style="font-size:10px;color:var(--gray);">${tier} · ${attempts}회 시도</div>
+        </div>
+      </div>
+      ${chunkHtml}
+    </div>`;
+  }).join('');
+
+  return summary + rows;
+}
+
 // vocab-practice (단어 학습·따라 읽기) 전용 상세 — 정답/오답 개념 X, 정확도 % 로 학습 진도 표시
 function _adminVpPracticeBuildDetail(comp) {
   const wa = Array.isArray(comp?.wordAccuracies) ? comp.wordAccuracies
@@ -5949,6 +6033,14 @@ function _adminBuildDetail(mode, comp){
     if (isPractice) return _adminVpPracticeBuildDetail(comp);
     return _adminVqBuildDetail(comp.questions, comp.answers);
   }
+  if(m==='sentence') {
+    // 문장시험 chunk-practice 감지 → 학습 상세 (전체 문장 + 청크 정확도)
+    if (comp?.extra?.sentenceMode === 'chunk-practice' || Array.isArray(comp?.extra?.sentenceAccuracies)) {
+      return _adminSpChunkBuildDetail(comp);
+    }
+    // 매칭식 sentence 는 기존 상세 없음 (fallthrough 로 빈 문자열)
+    return '';
+  }
   if(m==='mcq')         return _adminMcqBuildDetail(comp.questions, comp.answers);
   if(m==='fill_blank')  return _adminFbBuildDetail(comp.questions, comp.answers, comp.detail);
   if(m==='unscramble')  return _adminUqBuildDetail(comp.questions, comp.answers);
@@ -6017,8 +6109,10 @@ window.showScoreDetail = async(scoreId, testId) => {
         ));
         const ids = aSnap.docs.map(d=>d.id);
         const idx = ids.indexOf(scoreId);
-        // practice 는 "학습" 용어, 그 외는 "응시"
-        const unit = (mode === 'vocab' && (s.vocabFormat === 'practice' || comp?.extra?.practiceMode === true)) ? '학습' : '응시';
+        // practice / sentence chunk-practice 는 "학습" 용어, 그 외는 "응시"
+        const isPracticeUnit = (mode === 'vocab' && (s.vocabFormat === 'practice' || comp?.extra?.practiceMode === true))
+          || (mode === 'sentence' && (s.sentenceMode === 'chunk-practice' || comp?.extra?.sentenceMode === 'chunk-practice'));
+        const unit = isPracticeUnit ? '학습' : '응시';
         if(ids.length>1 && idx>=0) attemptLabel = `${ids.length}회 ${unit} 중 ${idx+1}번째`;
         else if(ids.length===1) attemptLabel = `1회 ${unit}`;
       }catch(e){ console.warn('응시 순번 조회 실패(인덱스 빌드중?)', e); }
@@ -6027,15 +6121,21 @@ window.showScoreDetail = async(scoreId, testId) => {
     const bookName = s.bookName || genTest?.bookName || s.unitName || '-';
     const testName = s.testName || genTest?.name || '-';
     const isRecording = mode === 'recording';
+    // sentence chunk-practice (문장 청크 따라읽기) 감지 — 학습 완료 개념
+    const isSentenceChunk = mode === 'sentence' && (
+      s.sentenceMode === 'chunk-practice' ||
+      genTest?.sentenceOptions?.mode === 'chunk-practice' ||
+      comp?.extra?.sentenceMode === 'chunk-practice'
+    );
     // vocab-practice (단어 학습) 감지 — 통과/오답 개념 X, 학습 완료 개념만
-    const isPractice = mode === 'vocab' && (
+    const isPractice = (mode === 'vocab' && (
       s.vocabFormat === 'practice' ||
       genTest?.vocabOptions?.format === 'practice' ||
       comp?.extra?.practiceMode === true
-    );
+    )) || isSentenceChunk;
     const passScore = s.passScore || genTest?.passScore || 80;
     // Phase B: 녹음숙제는 통과/불통 폐기 — 무조건 passed 로 간주 (상세 차단 X)
-    // Practice: 학습 완료 개념. 항상 완료 처리.
+    // Practice / sentence chunk: 학습 완료 개념. 항상 완료 처리.
     const passed = (isRecording || isPractice) ? true : (s.passed || (s.score>=passScore));
     const pct = s.score || 0;
     const badge = pct>=80?'badge-green':pct>=60?'badge-amber':'badge-red';
