@@ -15802,6 +15802,22 @@ window.tpOpenPublishModal = async () => {
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
+  // 문장시험 청크 개수 default — 선택 세트 sentence 문제의 chunkedEn 최빈값 (없으면 3)
+  let sentenceChunkDefault = 3;
+  {
+    const counts = [];
+    questions.filter(q => q?.type === 'sentence').forEach(q => {
+      const c = String(q.chunkedEn || '').split('/').map(s => s.trim()).filter(Boolean).length;
+      if (c >= 2) counts.push(c);
+    });
+    if (counts.length) {
+      const freq = {};
+      counts.forEach(n => { freq[n] = (freq[n] || 0) + 1; });
+      const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+      if (top) sentenceChunkDefault = parseInt(top[0]) || 3;
+    }
+  }
+
   // 시험명 기본값: 선택된 세트 이름 (1개면 그대로, 여러 개면 "첫이름 외 N")
   const defaultName = selectedSets.length === 1
     ? (selectedSets[0].name || `${cfg.kindLabel} 시험`)
@@ -15975,9 +15991,10 @@ window.tpOpenPublishModal = async () => {
                     style="width:120px;">
                   <span id="tpSentenceMatchThresholdVal" style="font-size:11px;font-weight:700;min-width:36px;color:#134e4a;">80%</span>
                 </label>
-                <label id="tpSentenceChunkCountRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="문장을 몇 개 청크로 나눠 따라읽게 할지">
+                <label id="tpSentenceChunkCountRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="문장을 몇 개 청크로 나눠 따라읽게 할지 · 세트 저장 청크와 개수 같으면 세트 청크 그대로, 다르면 자동 재분할">
                   청크 갯수:
-                  <input type="number" id="tpSentenceChunkCount" value="3" min="2" max="8" style="width:56px;padding:4px 6px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;">
+                  <input type="number" id="tpSentenceChunkCount" value="${sentenceChunkDefault}" min="2" max="8" style="width:56px;padding:4px 6px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;" title="세트 저장 기준 ${sentenceChunkDefault}. 변경 시 자동 재분할">
+                  <span style="font-size:10px;color:#0f766e;">(세트: ${sentenceChunkDefault})</span>
                 </label>
                 <label id="tpSentenceTtsRateRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="TTS 읽어주기 속도 (0.7 느림 · 1.0 보통)">
                   읽기 속도:
