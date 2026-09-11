@@ -1023,20 +1023,65 @@ SYSTEM_PROMPTS.sentence = SENTENCE_FROM_BOOK_PROMPT;
 
 // 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
 // subMode: 'polished' (default, 필터·다듬음) | 'verbatim' (청크 방식, 최소 필터·원문 그대로)
-// 문장을 N 균등 청크로 분할 (단어 단위, ' / ' 구분)
+// 문장을 N 청크로 분할 (규칙 기반 — 쉼표·접속사·전치사·관계사 앞 우선, 균등 폴백)
+// 우선순위: 4 = 쉼표 뒤 / 3 = 접속사 앞 / 2 = 전치사 앞 / 1 = 관계사 앞 / 0 = 그 외
+// 이상 경계 (균등 지점) ± window 안에서 가장 높은 우선순위 후보 선택. 없으면 균등.
 function _splitSentenceIntoChunks(sentence, n) {
-  const words = String(sentence || '').trim().split(/\s+/).filter(Boolean);
+  const tokens = String(sentence || '').trim().split(/\s+/).filter(Boolean);
   const N = Math.max(2, Math.min(8, parseInt(n) || 3));
-  if (words.length < N) return '';   // 너무 짧으면 청크 X (학생앱 자동 분할 fallback)
-  const size = Math.ceil(words.length / N);
-  const chunks = [];
-  for (let i = 0; i < N; i++) {
-    const start = i * size;
-    const end = Math.min(start + size, words.length);
-    if (start >= words.length) break;
-    chunks.push(words.slice(start, end).join(' '));
+  if (tokens.length < N) return '';   // 너무 짧으면 청크 X (학생앱 자동 분할 fallback)
+
+  const CONJ = new Set(['and','but','or','so','because','while','yet','nor','if','though','although']);
+  const PREP = new Set(['in','on','at','with','for','to','from','by','of','about','into','onto','upon','over','under','through','between','among','against','without']);
+  const REL  = new Set(['who','whom','which','that','where','when','whose']);
+  const ART  = new Set(['a','an','the']);
+  const stripPunct = s => s.replace(/[^\w']/g, '').toLowerCase();
+
+  // priority[i] = tokens[i] 뒤에 분할할 때 우선순위 (0 = 균등만, 음수 = 회피)
+  const priority = new Array(tokens.length - 1).fill(0);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (/,$/.test(tokens[i])) { priority[i] = 4; continue; }
+    const nw = stripPunct(tokens[i + 1]);
+    if (CONJ.has(nw)) priority[i] = 3;
+    else if (PREP.has(nw)) priority[i] = 2;
+    else if (REL.has(nw)) priority[i] = 1;
+    // 청크가 관사(a/an/the)로 끝나는 것 회피 — "in the / garden" 같이 명사구 절단 방지
+    const cw = stripPunct(tokens[i]);
+    if (ART.has(cw) && priority[i] < 2) priority[i] = -1;
   }
-  return chunks.join(' / ');
+
+  const idealChunk = tokens.length / N;
+  const minChunk = 2;   // 각 청크 최소 2단어 (한 단어 청크 회피)
+  const window = Math.max(2, Math.floor(idealChunk / 2));
+  const bounds = [];
+  let prevB = -1;   // 이전 boundary index (chunk 시작은 prevB+1)
+  for (let j = 1; j < N; j++) {
+    const idealAfter = Math.round(idealChunk * j) - 1;
+    const minK = prevB + minChunk;   // 다음 청크 최소 크기 보장
+    const maxK = tokens.length - 1 - (N - j) * minChunk;   // 남은 청크들 최소 크기 여지
+    if (minK > maxK) {
+      const forced = Math.max(0, Math.min(tokens.length - 2, idealAfter));
+      bounds.push(forced); prevB = forced; continue;
+    }
+    const lo = Math.max(minK, idealAfter - window);
+    const hi = Math.min(maxK, idealAfter + window);
+    let bestIdx = -1, bestScore = -Infinity;
+    for (let k = lo; k <= hi; k++) {
+      const score = priority[k] * 100 - Math.abs(k - idealAfter);
+      if (score > bestScore) { bestScore = score; bestIdx = k; }
+    }
+    if (bestIdx < 0) bestIdx = Math.min(Math.max(minK, idealAfter), maxK);
+    bounds.push(bestIdx); prevB = bestIdx;
+  }
+
+  const chunks = [];
+  let start = 0;
+  for (const b of bounds) {
+    chunks.push(tokens.slice(start, b + 1).join(' '));
+    start = b + 1;
+  }
+  if (start < tokens.length) chunks.push(tokens.slice(start).join(' '));
+  return chunks.filter(Boolean).join(' / ');
 }
 
 async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, chunkCount, customSystemPrompt, apiKey, res }) {

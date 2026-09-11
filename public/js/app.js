@@ -8398,19 +8398,62 @@ window.vpRestart = () => {
 };
 
 // 문장 청크 분할 — 원문 단어 단위 N등분 (원문 보존)
+// 문장 → N 청크 분할 (규칙 기반 — 쉼표·접속사·전치사·관계사 앞 우선, 균등 폴백)
+// 서버 _splitSentenceIntoChunks 와 동일 로직 (chunkedEn 없는 옛 세트 fallback 용)
 function _spChunkSentence(en, chunkCount) {
-  const words = String(en || '').trim().split(/\s+/).filter(Boolean);
-  if (words.length <= 1) return [words.join(' ')];
-  const n = Math.max(2, Math.min(chunkCount || 3, words.length));
-  const perChunk = Math.ceil(words.length / n);
-  const chunks = [];
-  for (let i = 0; i < n; i++) {
-    const start = i * perChunk;
-    const end = Math.min(words.length, start + perChunk);
-    if (start >= words.length) break;
-    chunks.push(words.slice(start, end).join(' '));
+  const tokens = String(en || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length <= 1) return [tokens.join(' ')];
+  const N = Math.max(2, Math.min(chunkCount || 3, tokens.length));
+
+  const CONJ = new Set(['and','but','or','so','because','while','yet','nor','if','though','although']);
+  const PREP = new Set(['in','on','at','with','for','to','from','by','of','about','into','onto','upon','over','under','through','between','among','against','without']);
+  const REL  = new Set(['who','whom','which','that','where','when','whose']);
+  const ART  = new Set(['a','an','the']);
+  const stripPunct = s => s.replace(/[^\w']/g, '').toLowerCase();
+
+  const priority = new Array(tokens.length - 1).fill(0);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (/,$/.test(tokens[i])) { priority[i] = 4; continue; }
+    const nw = stripPunct(tokens[i + 1]);
+    if (CONJ.has(nw)) priority[i] = 3;
+    else if (PREP.has(nw)) priority[i] = 2;
+    else if (REL.has(nw)) priority[i] = 1;
+    const cw = stripPunct(tokens[i]);
+    if (ART.has(cw) && priority[i] < 2) priority[i] = -1;
   }
-  return chunks;
+
+  const idealChunk = tokens.length / N;
+  const minChunk = 2;
+  const window = Math.max(2, Math.floor(idealChunk / 2));
+  const bounds = [];
+  let prevB = -1;
+  for (let j = 1; j < N; j++) {
+    const idealAfter = Math.round(idealChunk * j) - 1;
+    const minK = prevB + minChunk;
+    const maxK = tokens.length - 1 - (N - j) * minChunk;
+    if (minK > maxK) {
+      const forced = Math.max(0, Math.min(tokens.length - 2, idealAfter));
+      bounds.push(forced); prevB = forced; continue;
+    }
+    const lo = Math.max(minK, idealAfter - window);
+    const hi = Math.min(maxK, idealAfter + window);
+    let bestIdx = -1, bestScore = -Infinity;
+    for (let k = lo; k <= hi; k++) {
+      const score = priority[k] * 100 - Math.abs(k - idealAfter);
+      if (score > bestScore) { bestScore = score; bestIdx = k; }
+    }
+    if (bestIdx < 0) bestIdx = Math.min(Math.max(minK, idealAfter), maxK);
+    bounds.push(bestIdx); prevB = bestIdx;
+  }
+
+  const chunks = [];
+  let start = 0;
+  for (const b of bounds) {
+    chunks.push(tokens.slice(start, b + 1).join(' '));
+    start = b + 1;
+  }
+  if (start < tokens.length) chunks.push(tokens.slice(start).join(' '));
+  return chunks.filter(Boolean);
 }
 
 // 문장시험 청크 따라읽기 — vocab-practice 화면·로직 재사용 (커스텀 임계·max attempt)
