@@ -997,19 +997,19 @@ Output ONLY valid JSON (no markdown):
 const SENTENCE_FROM_BOOK_PROMPT = `You are an English sentence extractor for a Korean-English speaking test.
 
 You receive one or more English text passages. Your task:
-1. Extract EXACTLY N COMPLETE English sentences from the passages.
+1. Extract as many COMPLETE English sentences as you can find. Aim to return AT LEAST 2x the requested count N when the source is long enough — the server picks the final N by length priority. Never truncate early because of "enough" — extract abundantly.
 2. Each sentence MUST be a VERBATIM copy from the source text — every word, form, punctuation, capitalization, spelling MUST match the source character-for-character. Do NOT paraphrase, summarize, combine, rewrite, or modify anything.
-3. Filter by target length (words):
-   - short: 5 to 8 words per sentence
-   - medium: 9 to 13 words per sentence
-   - long: 14 to 20 words per sentence
-4. Skip sentences with heavy proper nouns, weird formatting, dialogue attribution ("said X"), or fragmentary structure — pick natural, teachable sentences that stand alone.
+3. Length priority (server picks best fit):
+   - IDEAL range (return these first): short = 5-8 words / medium = 9-13 / long = 14-20
+   - EXTENDED range (also include if available): short = 4-10 / medium = 7-16 / long = 12-24
+   - Return both categories mixed — do NOT drop extended-range sentences.
+4. Prefer natural, teachable, standalone sentences. You MAY include sentences with proper nouns, brief dialogue, or short direct quotes if they read well and would be valuable for speaking practice.
 5. Avoid picking the same or very similar sentences twice.
 6. For EACH selected English sentence, produce a natural Korean translation (ko).
    - Use only Korean hangul, basic punctuation (. ? , !), and Arabic numerals if needed. NO English letters in the translation itself.
    - Translation must be natural spoken Korean (not literal word-by-word).
 
-If the source text does not have enough qualifying sentences for the requested length, return as many as you can (do not force sentences that don't fit the length).
+Only return fewer if the source truly does not contain more qualifying sentences after exhausting the extended range.
 
 Output ONLY a valid JSON object (no markdown, no prose):
 {
@@ -1049,12 +1049,14 @@ async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, a
     return res.status(400).json({ error: 'No valid page content' });
   }
 
-  const userPrompt = `Target: extract ${N} sentences of ${lenLabel} words each (length category: ${lenKey}).
+  const userPrompt = `Target: N = ${N} sentences, length category = ${lenKey} (ideal ${lenLabel} words).
+
+Return AT LEAST ${Math.max(N * 2, N + 6)} candidate sentences when the source is long enough — the server picks the final ${N} by length priority. Include both ideal-range and extended-range candidates.
 
 Source passages:
 ${normalizedPages.map((p, i) => `[Passage ${i + 1}] id: ${p.id}\nTitle: ${p.title}\n---\n${p.text}\n---`).join('\n\n')}
 
-Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} items (fewer OK if source is short).`;
+Output ONLY the JSON object with the "sentences" array.`;
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const isTransient = (status) => status === 503 || status === 429;
