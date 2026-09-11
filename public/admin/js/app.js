@@ -13294,13 +13294,101 @@ function _qsRenderTopPane() {
       </table>`
     : `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`;
   return `
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
       <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
-      <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="qsBackfillBookIds()" title="Book 폴더가 미지정으로 표시되는 세트를 questions/sourcePages 로부터 자동 감지해 정리">🛠 Book 폴더 자동 정리</button>
+        <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
+      </span>
     </div>
     <div style="flex:1;overflow:auto;">${body}</div>
   `;
 }
+
+// 옛 세트 Book 폴더 backfill — bookId 빈값 세트를 questions[0].sourcePageId (or sourcePages[0].pageId) →
+// 실제 page fetch → bookId 회수 → 세트 doc update
+window.qsBackfillBookIds = async () => {
+  if (!(await showConfirm('Book 폴더 자동 정리', 'Book 미지정으로 표시되는 세트들을 문제/출처 정보로 자동 정리합니다. 계속할까요?'))) return;
+  const status = document.getElementById('qsStatus');
+  const toast = (msg) => showToast(msg);
+  toast('🛠 자동 정리 시작...');
+  try {
+    // 전체 세트 fetch (academyId 만)
+    const snap = await getDocs(query(
+      collection(db,'genQuestionSets'),
+      where('academyId','==', window.MY_ACADEMY_ID || 'default'),
+    ));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const targets = all.filter(s => !s.bookId);   // '' or undefined
+    if (targets.length === 0) {
+      toast('✓ 정리할 세트 없음 (모든 세트 Book 지정됨)');
+      return;
+    }
+
+    // 필요한 pageIds 수집
+    const pageIds = new Set();
+    targets.forEach(s => {
+      (s.sourcePages || []).forEach(sp => { if (sp?.pageId) pageIds.add(sp.pageId); });
+      (s.questions || []).forEach(q => { if (q?.sourcePageId) pageIds.add(q.sourcePageId); });
+    });
+    if (pageIds.size === 0) {
+      toast('⚠ 참조 페이지 정보 없는 세트뿐 — 수동으로 Book 지정 필요');
+      return;
+    }
+
+    // page docs 배치 fetch (documentId in 10개씩)
+    const pageById = {};
+    const pageIdArr = Array.from(pageIds);
+    for (let i = 0; i < pageIdArr.length; i += 10) {
+      const chunk = pageIdArr.slice(i, i + 10);
+      const pSnap = await getDocs(query(
+        collection(db,'genPages'),
+        where('academyId','==', window.MY_ACADEMY_ID || 'default'),
+        where(documentId(),'in', chunk),
+      ));
+      pSnap.docs.forEach(d => { pageById[d.id] = d.data(); });
+    }
+
+    // 각 세트 bookId 추정
+    let fixed = 0, skipped = 0;
+    for (const s of targets) {
+      // 후보 pageId 목록
+      const candIds = [];
+      (s.sourcePages || []).forEach(sp => { if (sp?.pageId) candIds.push(sp.pageId); });
+      (s.questions || []).forEach(q => { if (q?.sourcePageId) candIds.push(q.sourcePageId); });
+      // 첫 bookId 있는 page 찾기
+      let found = null;
+      for (const pid of candIds) {
+        const p = pageById[pid];
+        if (p?.bookId) { found = p; break; }
+      }
+      if (!found) { skipped++; continue; }
+
+      // sourcePages 도 함께 갱신 (bookId·chapterId 채움)
+      const newSourcePages = (s.sourcePages || []).map(sp => {
+        if (sp.bookId) return sp;
+        const p = pageById[sp.pageId] || found;
+        return {
+          ...sp,
+          bookId: p.bookId || found.bookId || '',
+          chapterId: p.chapterId || found.chapterId || sp.chapterId || '',
+        };
+      });
+      await updateDoc(doc(db,'genQuestionSets', s.id), {
+        bookId: found.bookId,
+        sourcePages: newSourcePages,
+        updatedAt: serverTimestamp(),
+      });
+      fixed++;
+    }
+    toast(`✓ 정리 완료 · ${fixed}개 정리 / ${skipped}개 skip (참조 페이지 없음)`);
+    _qsInvalidateCache?.();
+    await loadQuestionSets();
+  } catch (e) {
+    console.error('[qsBackfillBookIds]', e);
+    showAlert('정리 실패', e.message);
+  }
+};
 
 // ─── 하단 왼쪽: Book 폴더 리스트 ───
 function _qsRenderBookPane() {
