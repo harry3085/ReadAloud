@@ -13891,11 +13891,23 @@ function _qsRenderEditModal() {
   const st = _qsEditState;
   if (!st) return;
   const typeLabel = _qsTypeLabel(st.sourceType);
+  // 단어시험 세트에 학생앱 출제 카운터 + 전체 선택/해제 툴바 노출
+  const vocabQs = st.questions.filter(q => q?.type === 'vocab');
+  const isVocabSet = vocabQs.length > 0;
+  const appOnCount = vocabQs.filter(q => q.appInclude !== false).length;
+  const vocabToolbar = isVocabSet ? `
+    <div style="margin-top:6px;padding:6px 10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:#059669;font-weight:700;">📱 학생앱 출제 대상: <b>${appOnCount}/${vocabQs.length}</b> 단어</span>
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="qsEditVocabAppAll(true)">전체 포함</button>
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="qsEditVocabAppAll(false)">전체 제외</button>
+      <span style="font-size:10px;color:var(--gray);">※ 인쇄 시험지에는 모든 단어 포함 (해제해도 인쇄 안 빠짐)</span>
+    </div>` : '';
   const html = `
     <div style="width:100%;flex:1;display:flex;flex-direction:column;min-height:0;">
       <div style="padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <div style="font-size:17px;font-weight:700;">${iconSvg('edit')} 문제 세트 수정</div>
         <div style="font-size:11px;color:var(--gray);margin-top:4px;">총 ${st.questions.length}문제 · 유형: ${esc(typeLabel)}</div>
+        ${vocabToolbar}
       </div>
 
       <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#fafafa;flex-shrink:0;display:grid;grid-template-columns:1fr 280px;gap:12px;align-items:end;">
@@ -13978,8 +13990,16 @@ function _qsRenderEditQuestion(q, idx) {
   }
 
   if (q.type === 'vocab') {
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
+    const appOn = q.appInclude !== false;   // default true
+    const cardBg = appOn ? '#fafafa' : '#f5f5f5';
+    const cardOpacity = appOn ? '' : '0.55';
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:${cardBg};opacity:${cardOpacity};">
       ${header}
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:${appOn?'#059669':'var(--gray)'};font-weight:700;margin-bottom:8px;cursor:pointer;padding:4px 8px;background:${appOn?'#f0fdf4':'#f3f4f6'};border-radius:4px;border:1px solid ${appOn?'#a7f3d0':'#e5e7eb'};">
+        <input type="checkbox" ${appOn?'checked':''}
+          onchange="qsEditToggleAppInclude(${idx}, this.checked)">
+        📱 학생앱 시험 출제 대상 ${appOn?'':'(제외됨 · 인쇄만 사용)'}
+      </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
           <label style="font-size:11px;color:var(--gray);">영단어</label>
@@ -14110,6 +14130,20 @@ function _qsRenderEditQuestion(q, idx) {
 }
 
 // 수정 모달 전용 문장시험 청크 편집 (chunkedEn optional — 미리보기만, en 원문 무변경)
+// 단어시험 세트 — 학생앱 시험 출제 대상 여부 토글 (인쇄에는 영향 X)
+window.qsEditToggleAppInclude = (idx, checked) => {
+  if (!_qsEditState || !_qsEditState.questions[idx]) return;
+  _qsEditState.questions[idx].appInclude = !!checked;
+  _qsRenderEditModal();   // 전체 재렌더 — 카드 배경·헤더 카운터 갱신
+};
+
+// vocab 전체 앱 출제 on/off (세트 수정 모달 툴바)
+window.qsEditVocabAppAll = (on) => {
+  if (!_qsEditState) return;
+  _qsEditState.questions.forEach(q => { if (q?.type === 'vocab') q.appInclude = !!on; });
+  _qsRenderEditModal();
+};
+
 window.qsEditSentenceChunkedEn = (idx, value) => {
   if (!_qsEditState || !_qsEditState.questions[idx]) return;
   const chunked = String(value || '').trim();
@@ -16093,6 +16127,9 @@ window.tpOpenPublishModal = async () => {
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;" title="100점 될 때까지 재응시 반복 (틀린문제만재응시 선택 시 활성화)">
                   <input type="checkbox" id="tpVocabRequirePerfect" disabled> 100점까지
                 </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#059669;cursor:pointer;" title="세트 수정에서 📱 앱 출제 체크한 단어만으로 출제. 미체크 시 세트 전체 단어 사용.">
+                  <input type="checkbox" id="tpVocabAppSelectedOnly"> 📱 체크한 단어만
+                </label>
               </div>
               <div style="font-size:10px;color:var(--gray);margin-top:6px;">※ 학생이 풀 때마다 매번 새로 섞이며, 재시험 시에도 다시 섞입니다</div>
 
@@ -16290,6 +16327,19 @@ window.tpPublish = async () => {
   const selectedSets = _tpSets.filter(s => _tpSelectedSets.has(s.id));
   let questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
+
+  // vocab 세트 — 학생앱 출제 대상 필터 (📱 체크한 단어만 옵션)
+  if (cfg.testMode === 'vocab' && document.getElementById('tpVocabAppSelectedOnly')?.checked) {
+    const before = questions.length;
+    questions = questions.filter(q => q?.type !== 'vocab' || q.appInclude !== false);
+    if (questions.length === 0) {
+      showAlert('출제 불가', '📱 체크한 단어만 옵션이 켜져 있지만 체크된 단어가 없습니다. 세트 [수정] 에서 학생앱 출제 대상 단어를 체크하세요.');
+      return;
+    }
+    if (questions.length < before) {
+      console.log(`[tpPublish] vocab appInclude 필터: ${questions.length}/${before} (${before-questions.length}개 제외)`);
+    }
+  }
 
   // 출제 문제수 — 입력값이 전체보다 작으면 Fisher-Yates 셔플 후 N개만 픽
   const poolTotal = questions.length;
