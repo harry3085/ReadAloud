@@ -16099,10 +16099,10 @@ window.tpOpenPublishModal = async () => {
                   <input type="checkbox" id="tpVocabShuffleChoices" checked> 보기(4지문) 섞기
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;" title="불통 학생 재응시 시 이전에 틀린 문제만 다시 풀게 함">
-                  <input type="checkbox" id="tpVocabRetryWrongOnly" onchange="document.getElementById('tpVocabRequirePerfect').disabled=!this.checked;if(!this.checked)document.getElementById('tpVocabRequirePerfect').checked=false;"> 틀린문제만재응시
+                  <input type="checkbox" id="tpVocabRetryWrongOnly" checked onchange="document.getElementById('tpVocabRequirePerfect').disabled=!this.checked;if(!this.checked)document.getElementById('tpVocabRequirePerfect').checked=false;"> 틀린문제만재응시
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;" title="100점 될 때까지 재응시 반복 (틀린문제만재응시 선택 시 활성화)">
-                  <input type="checkbox" id="tpVocabRequirePerfect" disabled> 100점까지
+                  <input type="checkbox" id="tpVocabRequirePerfect" checked> 100점까지
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#059669;cursor:pointer;" title="세트 수정에서 📱 앱 출제 체크한 단어만으로 출제. 해제 시 세트 전체 단어 사용.">
                   <input type="checkbox" id="tpVocabAppSelectedOnly" checked> 📱 체크한 단어만
