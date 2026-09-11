@@ -6210,6 +6210,22 @@ window.showScoreDetail = async(scoreId, testId) => {
       }catch(e){ console.warn('genTest 조회 실패', e); }
     }
 
+    // extra 필드 shim — _writeUserCompleted 이 extra 를 top-level 로 spread 저장하는데
+    // 학원장 코드는 comp.extra.X 로 읽음. 실제 저장 위치(top-level) 를 comp.extra 로 mirror.
+    // vocab-practice / sentence chunk-practice 상세 안 뜨던 원인.
+    if (comp) {
+      const _e = comp.extra || {};
+      comp.extra = {
+        practiceMode:        _e.practiceMode        ?? comp.practiceMode,
+        sentenceMode:        _e.sentenceMode        ?? comp.sentenceMode,
+        sentenceAccuracies:  _e.sentenceAccuracies  ?? comp.sentenceAccuracies,
+        wordAccuracies:      _e.wordAccuracies      ?? comp.wordAccuracies,
+        chunkCount:          _e.chunkCount          ?? comp.chunkCount,
+        avgAccuracy:         _e.avgAccuracy         ?? comp.avgAccuracy,
+        totalStars:          _e.totalStars          ?? comp.totalStars,
+      };
+    }
+
     // 응시 순번 — 이 학생·이 시험 전체 scores 중 현재 기록이 몇 번째 (createdAt 오름차순)
     let attemptLabel = '';
     if(testId && s.uid){
