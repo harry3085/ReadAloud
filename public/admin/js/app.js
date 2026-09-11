@@ -15065,7 +15065,6 @@ async function _tpLazyFetchFolder(bookId) {
         collection(db,'genQuestionSets'),
         where('academyId','==',window.MY_ACADEMY_ID),
         where('bookId','==',''),
-        where('sourceType','==', sourceType),
         orderBy('createdAt','desc')
       );
     } else {
@@ -15073,12 +15072,16 @@ async function _tpLazyFetchFolder(bookId) {
         collection(db,'genQuestionSets'),
         where('academyId','==',window.MY_ACADEMY_ID),
         where('bookId','==', bookId),
-        where('sourceType','==', sourceType),
         orderBy('createdAt','desc')
       );
     }
     const snap = await getDocs(q);
-    const sets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // sourceType 필터 클라 측 — 옛 세트 (sourceType 잘못 저장·미저장) 도 questions[0].type 으로 판별
+    const allSets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const sets = allSets.filter(s => {
+      const st = s.sourceType || s.questions?.[0]?.type || '';
+      return st === sourceType;
+    });
     _tpSetsByFolder[cacheKey] = sets;
   } catch(e) {
     showToast('폴더 조회 실패: ' + e.message);
