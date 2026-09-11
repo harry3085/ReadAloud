@@ -18071,7 +18071,7 @@ let _prog = {
 
 const _PROG_TYPES = [
   { mode: 'vocab',       label: '단어시험'     },
-  { mode: 'fill_blank',  label: '빈칸채우기'   },
+  { mode: 'sentence',    label: '문장시험'     },   // 2026-09-11 학생앱 홈 fill_blank → sentence 교체 반영
   { mode: 'unscramble',  label: '언스크램블'   },
   { mode: 'mcq',         label: '본문이해·문법' },
   { mode: 'recording',   label: '녹음숙제'     },
