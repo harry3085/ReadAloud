@@ -12184,11 +12184,12 @@ function _qgBuildSentenceSnapSection() {
       </div>
       <div style="font-size:10px;margin-bottom:6px;line-height:1.5;">${bookNote}</div>
       <div style="font-size:10px;color:var(--gray);margin-bottom:6px;line-height:1.5;">
-        <b>각 줄에 '한글문장 → Tab → 영어문장'</b> 형식. Excel 두 칸 선택 → 복사 → 여기 붙여넣기.
+        <b>각 줄에 '한글문장 → Tab → 영어문장'</b> 형식 (Excel 두 칸 복사·붙여넣기).<br>
+        <b>또는 영어만</b> 한 줄씩 입력 시 저장 버튼 누르면 <b>AI 가 자동 한글 번역</b>.
       </div>
       <textarea id="qgSentenceSnapInput" rows="5" spellcheck="false"
         oninput="_qgSentenceSnapUpdateStatus()"
-        placeholder="나는 사과를 먹는다.\tI eat an apple.&#10;그는 매일 학교에 간다.\tHe goes to school every day.&#10;오늘 날씨가 좋다.\tThe weather is nice today."
+        placeholder="나는 사과를 먹는다.\tI eat an apple.&#10;He goes to school every day.&#10;오늘 날씨가 좋다.\tThe weather is nice today."
         style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;font-family:'Consolas','Malgun Gothic',monospace;font-size:11px;line-height:1.6;resize:vertical;box-sizing:border-box;">${esc(_qgSentenceSnapDraft)}</textarea>
       <div id="qgSentenceSnapStatus" style="font-size:10px;color:var(--gray);margin:6px 0 8px;min-height:14px;">입력 대기 중</div>
       <button class="btn btn-primary" onclick="qgRunSentenceSnap()" id="qgSentenceSnapBtn"
@@ -12200,6 +12201,9 @@ function _qgBuildSentenceSnapSection() {
 }
 
 // Excel 붙여넣기 파싱 — 각 줄 '한글\t영어' (탭 구분). 반환: { rows, errors }
+// 파싱 — 두 가지 형식 지원:
+//   (a) [한글]TAB[영어] — ko 확정
+//   (b) [영어] 한 줄 — ko 비어있음 (저장 시 AI 로 자동 번역)
 function _qgParseSentenceRows(text) {
   const lines = (text || '').split(/\r?\n/);
   const rows = [];
@@ -12209,21 +12213,23 @@ function _qgParseSentenceRows(text) {
     const s = line.trim();
     if (!s) return;
     const parts = s.split(/\t+/);
-    if (parts.length < 2) { errors.push({ line: i + 1, msg: '탭(\\t) 없음 — [한글]TAB[영어] 형식' }); return; }
-    const ko = (parts[0] || '').trim();
-    const en = (parts[1] || '').trim();
-    if (!ko) { errors.push({ line: i + 1, msg: '한글 문장 없음' }); return; }
+    let ko = '', en = '';
+    if (parts.length >= 2) {
+      ko = (parts[0] || '').trim();
+      en = (parts[1] || '').trim();
+    } else {
+      en = parts[0].trim();   // 영어-only (AI 번역 대상)
+    }
     if (!en) { errors.push({ line: i + 1, msg: '영어 문장 없음' }); return; }
-    if (ko.length > 300 || en.length > 300) { errors.push({ line: i + 1, msg: '문장이 너무 김 (300자 초과)' }); return; }
+    if (en.length > 300 || (ko && ko.length > 300)) { errors.push({ line: i + 1, msg: '문장이 너무 김 (300자 초과)' }); return; }
     if (en.length < 3) { errors.push({ line: i + 1, msg: '영어 문장이 너무 짧음' }); return; }
-    // 한글 문장이 실제 한글 포함? (영어만 있으면 잘못된 순서 의심)
-    if (!/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ko)) { errors.push({ line: i + 1, msg: '첫 칸에 한글 없음 (순서 뒤바뀜?)' }); return; }
-    // 영어 문장에 영문자 있어야
-    if (!/[a-zA-Z]/.test(en)) { errors.push({ line: i + 1, msg: '둘째 칸에 영문자 없음' }); return; }
-    const key = ko + '|' + en.toLowerCase();
+    if (!/[a-zA-Z]/.test(en)) { errors.push({ line: i + 1, msg: '영문자 없음 (영어 문장 필요)' }); return; }
+    // ko 있을 때는 한글 포함 검증
+    if (ko && !/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ko)) { errors.push({ line: i + 1, msg: '첫 칸에 한글 없음 (순서 뒤바뀜?)' }); return; }
+    const key = (ko || '') + '|' + en.toLowerCase();
     if (seen.has(key)) { errors.push({ line: i + 1, msg: '중복 문장' }); return; }
     seen.add(key);
-    rows.push({ ko, en });
+    rows.push({ ko, en, needsTranslation: !ko });
   });
   return { rows, errors };
 }
@@ -12236,7 +12242,11 @@ window._qgSentenceSnapUpdateStatus = () => {
   if (!ta.value.trim()) { status.innerHTML = '입력 대기 중'; status.style.color = 'var(--gray)'; return; }
   const { rows, errors } = _qgParseSentenceRows(ta.value);
   const parts = [];
-  if (rows.length) parts.push(`<span style="color:#0a7a3a;font-weight:700;">✓ ${rows.length}쌍 문장</span>`);
+  const need = rows.filter(r => r.needsTranslation).length;
+  if (rows.length) {
+    const label = need > 0 ? `✓ ${rows.length}문장 (${need}개 AI 번역 예정)` : `✓ ${rows.length}쌍 문장`;
+    parts.push(`<span style="color:#0a7a3a;font-weight:700;">${label}</span>`);
+  }
   if (errors.length) parts.push(`<span style="color:#c33;">⚠ ${errors.length}줄 오류</span>`);
   status.innerHTML = parts.join(' · ') || '<span style="color:#c33;">파싱 결과 없음</span>';
 };
@@ -12327,19 +12337,62 @@ window.qgRunSentenceSnap = async () => {
   const opts = _qgCollectOpts('sentence');
   const isChunkMode = /청크/.test(String(opts.mode || ''));
   const chunkCount = isChunkMode ? Math.max(2, Math.min(8, parseInt(opts.chunkCount) || 3)) : 0;
-  const chunkNote = isChunkMode ? `\n(청크방식: 각 문장 자동 ${chunkCount}청크 분할)` : '';
+  const chunkNote = isChunkMode ? `\n청크방식: 각 문장 자동 ${chunkCount}청크 분할` : '';
+  const needTranslation = rows.filter(r => r.needsTranslation);
+  const translateNote = needTranslation.length ? `\nAI 번역 호출: ${needTranslation.length}문장 (한글 없는 줄만)` : '';
   const ok = await showConfirm(
-    `${rows.length}쌍 문장 → 문장시험 세트 저장?`,
-    `직접 입력이라 AI 호출 없이 즉시 저장됩니다.${errNote}${chunkNote}`
+    `${rows.length}문장 → 문장시험 세트 저장?`,
+    `${translateNote ? '' : '직접 입력이라 AI 호출 없이 즉시 저장됩니다.'}${errNote}${translateNote}${chunkNote}`
   );
   if (!ok) return;
+
+  // AI 번역 배치 (한글 없는 줄만)
+  if (needTranslation.length > 0) {
+    const status = document.getElementById('qgSentenceSnapStatus');
+    if (status) status.innerHTML = `<span style="color:#0d9488;">🤖 AI 번역 중 (${needTranslation.length}문장)...</span>`;
+    try {
+      const t0 = Date.now();
+      const res = await _geminiFetch('/api/generate-quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'sentence-translate',
+          sentences: needTranslation.map(r => r.en),
+        }),
+      });
+      const data = await res.json();
+      const sec = ((Date.now() - t0) / 1000).toFixed(1);
+      if (!res.ok || !data.success) {
+        showToast('AI 번역 실패: ' + (data.error || 'unknown'));
+        if (status) status.innerHTML = `<span style="color:#c33;">AI 번역 실패 — 취소됨</span>`;
+        return;
+      }
+      // 번역 결과 매핑 (en 기준 매칭)
+      const koByEn = new Map();
+      (data.translations || []).forEach(t => { if (t.en && t.ko) koByEn.set(t.en, t.ko); });
+      let filled = 0;
+      rows.forEach(r => {
+        if (r.needsTranslation) {
+          const ko = koByEn.get(r.en);
+          if (ko) { r.ko = ko; filled++; }
+        }
+      });
+      if (filled < needTranslation.length) {
+        showToast(`AI 번역 ${filled}/${needTranslation.length}개만 성공 · 실패분은 한글 비어있음`);
+      }
+      if (status) status.innerHTML = `<span style="color:#0a7a3a;">✓ ${sec}s · 번역 ${filled}/${needTranslation.length}</span>`;
+    } catch (e) {
+      showToast('AI 번역 실패: ' + e.message);
+      return;
+    }
+  }
 
   // 문제 객체로 변환 (AI 응답과 동일 구조)
   const questions = rows.map((r, i) => {
     const q = {
       type: 'sentence',
       en: r.en,
-      ko: r.ko,
+      ko: r.ko || '',
       wordCount: r.en.split(/\s+/).filter(Boolean).length,
       sourcePageId: '',
       sourcePageTitle: '',
@@ -15868,14 +15921,18 @@ window.tpOpenPublishModal = async () => {
   const questions = selectedSets.flatMap(s => s.questions || []);
   if (questions.length === 0) { showAlert('입력 확인', '선택된 세트에 문제가 없습니다'); return; }
 
-  // 문장시험 청크 개수 default — 선택 세트 sentence 문제의 chunkedEn 최빈값 (없으면 3)
+  // 문장시험 청크 개수 default + 모드 자동 고정 (세트 chunkedEn 유무 기반)
   let sentenceChunkDefault = 3;
+  let sentenceHasChunks = false;
   {
     const counts = [];
-    questions.filter(q => q?.type === 'sentence').forEach(q => {
+    const sentQs = questions.filter(q => q?.type === 'sentence');
+    sentQs.forEach(q => {
       const c = String(q.chunkedEn || '').split('/').map(s => s.trim()).filter(Boolean).length;
       if (c >= 2) counts.push(c);
     });
+    // 세트에 청크 데이터 있으면 청크 모드 고정, 없으면 매칭 모드 고정
+    sentenceHasChunks = sentQs.length > 0 && counts.length > 0;
     if (counts.length) {
       const freq = {};
       counts.forEach(n => { freq[n] = (freq[n] || 0) + 1; });
@@ -15883,6 +15940,7 @@ window.tpOpenPublishModal = async () => {
       if (top) sentenceChunkDefault = parseInt(top[0]) || 3;
     }
   }
+  const sentenceForcedMode = sentenceHasChunks ? 'chunk-practice' : 'match';
 
   // 시험명 기본값: 선택된 세트 이름 (1개면 그대로, 여러 개면 "첫이름 외 N")
   const defaultName = selectedSets.length === 1
@@ -16043,12 +16101,13 @@ window.tpOpenPublishModal = async () => {
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#f0fdfa;border-radius:6px;border:1px solid #a7f3d0;">
               <div style="font-size:11px;font-weight:700;color:#134e4a;margin-bottom:8px;">🗣 문장시험 옵션</div>
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="세트 저장 청크 유무로 자동 고정 — 변경 불가">
                   방식:
-                  <select id="tpSentenceMode" onchange="_tpSentenceModeChanged()" style="padding:4px 8px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;background:white;">
-                    <option value="match" selected>매칭식 (한글→영어 발화)</option>
-                    <option value="chunk-practice">청크 따라읽기 (학습용)</option>
+                  <select id="tpSentenceMode" onchange="_tpSentenceModeChanged()" disabled style="padding:4px 8px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;background:#f0fdfa;color:#0f766e;font-weight:700;cursor:not-allowed;opacity:0.85;">
+                    <option value="match" ${sentenceForcedMode === 'match' ? 'selected' : ''}>매칭식 (한글→영어 발화)</option>
+                    <option value="chunk-practice" ${sentenceForcedMode === 'chunk-practice' ? 'selected' : ''}>청크 따라읽기 (학습용)</option>
                   </select>
+                  <span style="font-size:10px;color:#0f766e;">🔒 세트 기준</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="정확도 임계 — 이 값 이상이면 Great (조기 종료). 매칭식은 정답/오답 판정.">
                   정확도 기준:

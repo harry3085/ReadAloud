@@ -670,6 +670,13 @@ module.exports = async function handler(req, res) {
       return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, chunkCount, customSystemPrompt, apiKey, res });
     }
 
+    // ─── 문장 번역 (영어 → 한글 배치) ───
+    // 학원장이 문장시험 직접 입력에 영어만 넣었을 때, AI 로 자연스러운 한글 번역 생성.
+    // sentences: string[] (영어), output: { translations: [{en, ko}] }
+    if (mode === 'sentence-translate') {
+      return await handleSentenceTranslate({ sentences: req.body?.sentences, apiKey, res });
+    }
+
     // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
     // 휴리스틱(3글자 이하)은 클라가, 의성어·사전·ASR위험 판단은 AI. generator 쿼터(위에서 카운트됨).
     if (mode === 'speaking-unfit-check') {
@@ -1020,6 +1027,85 @@ Output ONLY a valid JSON object (no markdown, no prose):
 
 // SYSTEM_PROMPTS 에 등록 — 편집 UI (학원장·super) 노출 + getEffectivePrompt / customSystemPrompt 지원
 SYSTEM_PROMPTS.sentence = SENTENCE_FROM_BOOK_PROMPT;
+
+// 문장 번역 프롬프트 — 영어 → 한글 자연 번역 배치
+const SENTENCE_TRANSLATE_PROMPT = `You translate English sentences into natural spoken Korean for a Korean-English speaking test.
+
+Rules:
+1. Preserve the meaning fully. Translate into natural spoken Korean (not literal word-by-word).
+2. Use only Korean hangul, basic punctuation (. ? , !), and Arabic numerals if needed. NO English letters in the translation.
+3. Return exactly one Korean translation per input English sentence, in the same order.
+
+Output ONLY a valid JSON object (no markdown, no prose):
+{
+  "translations": [
+    { "en": "The boy picked up the red ball.", "ko": "그 소년이 빨간 공을 주웠다." }
+  ]
+}`;
+
+async function handleSentenceTranslate({ sentences, apiKey, res }) {
+  if (!Array.isArray(sentences) || sentences.length === 0) {
+    return res.status(400).json({ error: 'sentences array is required' });
+  }
+  if (sentences.length > 100) {
+    return res.status(400).json({ error: `문장은 최대 100개까지 (요청: ${sentences.length}개)` });
+  }
+  const cleaned = sentences.map(s => String(s || '').trim()).filter(s => s.length >= 2 && s.length <= 400);
+  if (cleaned.length === 0) {
+    return res.status(400).json({ error: '유효한 영어 문장이 없습니다' });
+  }
+  const userPrompt = `Translate the following ${cleaned.length} English sentences into natural spoken Korean. Return exactly ${cleaned.length} items in the same order.
+
+${cleaned.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+Output ONLY the JSON object with the "translations" array.`;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isTransient = (status) => status === 503 || status === 429;
+  let rawText = null, usedModel = null, lastError = null, lastStatus = null;
+  outer:
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await callGemini(model, apiKey, SENTENCE_TRANSLATE_PROMPT, userPrompt);
+        if (result.ok) { usedModel = model; rawText = result.text; break outer; }
+        lastError = result.error; lastStatus = result.status || null;
+        if (lastStatus && lastStatus >= 400 && lastStatus < 500 && lastStatus !== 404 && !isTransient(lastStatus)) {
+          return res.status(502).json({ error: 'AI service error', detail: lastError, model, status: lastStatus });
+        }
+        if (isTransient(lastStatus) && attempt === 0) { await sleep(800); continue; }
+        continue outer;
+      } catch (e) {
+        lastError = e.message;
+        if (attempt === 0) { await sleep(800); continue; }
+      }
+    }
+  }
+  if (!rawText) {
+    return res.status(502).json({ error: 'All AI models failed', detail: lastError, triedModels: GEMINI_MODELS });
+  }
+  const parsed = parseAIResponse(rawText);
+  if (!parsed || !Array.isArray(parsed.translations)) {
+    return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
+  }
+  // 입력 순서 유지 + 한글 검증 (영문 섞임 방지)
+  const out = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    const en = cleaned[i];
+    const t = parsed.translations[i];
+    const ko = (t && String(t.ko || '').trim()) || '';
+    if (!ko) { out.push({ en, ko: '' }); continue; }
+    if (/[a-zA-Z]/.test(ko.replace(/\d/g, ''))) { out.push({ en, ko: '' }); continue; }
+    out.push({ en, ko });
+  }
+  return res.status(200).json({
+    success: true,
+    model: usedModel,
+    translations: out,
+    requestedCount: cleaned.length,
+    successCount: out.filter(x => x.ko).length,
+  });
+}
 
 // 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
 // subMode: 'polished' (default, 필터·다듬음) | 'verbatim' (청크 방식, 최소 필터·원문 그대로)
