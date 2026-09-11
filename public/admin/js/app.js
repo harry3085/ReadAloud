@@ -12630,10 +12630,17 @@ function _qgBuildRecordingSet(opts) {
 
   const firstPage = pages[0];
   const lastPage = pages[pages.length - 1];
-  const book = (_genBooks||[]).find(b => b.id === firstPage.bookId);
-  const chapter = (_genChapters||[]).find(c => c.id === firstPage.chapterId);
+  // 선택 pages 중 실제 bookId 있는 첫 페이지로 폴더 자동 결정 (미지정 pages 섞여도 안전)
+  const pgWithBook = pages.find(p => p.bookId) || firstPage;
+  const book = (_genBooks||[]).find(b => b.id === pgWithBook.bookId);
+  const chapter = (_genChapters||[]).find(c => c.id === pgWithBook.chapterId);
   const bookName = book?.name || '';
   const chapterName = chapter?.name || '';
+  // qgSaveSet 폴더 폴백 (allEmpty → _qgActiveBook) 에 대비해 auto-set
+  // 학원장이 Book 폴더 클릭 안 하고 chapter 뷰에서 pages 만 골라 생성한 경우에도
+  // 세트가 올바른 Book 아래에 저장되도록 함
+  if (!_qgActiveBook && book) _qgActiveBook = { id: book.id, name: book.name };
+  if (!_qgActiveChapter && chapter) _qgActiveChapter = { id: chapter.id, name: chapter.name };
 
   const fullText = pages
     .map(p => (p.text || '').replace(/\s+/g, ' ').trim())
@@ -12978,6 +12985,16 @@ window.qgSaveSet = async () => {
       bookId: _qgActiveBook?.id || '',
       chapterId: _qgActiveChapter?.id || '',
     }];
+  }
+  // Book 폴더 폴백 2: entries 는 있으나 bookId 만 빈 케이스 (녹음숙제 pgWithBook null·
+  // 옛 Page bookId 미할당 등) → _qgActiveBook 로 채움. sourcePageId 는 유지 (출처 참조용).
+  if (_qgActiveBook) {
+    sourcePages.forEach(sp => {
+      if (!sp.bookId) {
+        sp.bookId = _qgActiveBook.id;
+        if (_qgActiveChapter && !sp.chapterId) sp.chapterId = _qgActiveChapter.id;
+      }
+    });
   }
 
   // 단어시험 / Wordsnap — 한글·특수문자 포함 단어 검증 게이트
