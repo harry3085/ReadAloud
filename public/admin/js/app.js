@@ -710,7 +710,7 @@ function _bigcalRenderSide(){
 }
 
 // 결제 상세 인라인 모달 (보기 전용 — 편집은 결제관리 페이지에서)
-const _BIGCAL_TYPE_LABELS = { tuition:'수강료', book:'교재비', test:'시험비', uniform:'교복·체육복', extra:'기타' };
+const _BIGCAL_TYPE_LABELS = { tuition:'수강료', book:'교재비', app:'앱사용료', test:'시험비', uniform:'교복·체육복', extra:'기타' };
 window._bigcalShowBillingDetail = async (billingId) => {
   // 민감정보 토글 가드 — OFF 면 모달 안 열림
   if (!_dashSensitiveVisible) { showToast('상단 [민감정보 보기] 를 먼저 누르세요'); return; }
@@ -2711,7 +2711,7 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
             <th rowspan="2" style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;">학생</th>
             <th rowspan="2" style="padding:10px 12px;text-align:left;border-right:1px solid #e9ecef;">반</th>
             <th colspan="2" style="padding:8px 12px;text-align:center;background:rgba(13,148,136,0.08);border-right:1px solid #e9ecef;border-bottom:1px solid #e9ecef;">💳 학원 결제</th>
-            ${matEnabled ? '<th colspan="2" style="padding:8px 12px;text-align:center;background:rgba(255,165,100,0.08);border-right:1px solid #e9ecef;border-bottom:1px solid #e9ecef;">📚 교재/시험비</th>' : ''}
+            ${matEnabled ? '<th colspan="2" style="padding:8px 12px;text-align:center;background:rgba(255,165,100,0.08);border-right:1px solid #e9ecef;border-bottom:1px solid #e9ecef;">📚 교재/앱사용/시험</th>' : ''}
             <th rowspan="2" style="padding:10px 12px;text-align:right;border-right:1px solid #e9ecef;">합계</th>
             <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">납부기한</th>
             <th rowspan="2" style="padding:10px 12px;text-align:center;border-right:1px solid #e9ecef;">상태</th>
@@ -3173,11 +3173,11 @@ function _billingRenderItemPanel() {
   const b = _billings.find(x => x.id === _billingPanelId);
   if (!b) return;
   const items = (b.items || []).filter(i => i.channel === _billingPanelChannel);
-  const channelLabel = _billingPanelChannel === 'tuition' ? '💳 학원 결제 (수강료 등)' : '📚 교재/시험비';
+  const channelLabel = _billingPanelChannel === 'tuition' ? '💳 학원 결제 (수강료 등)' : '📚 교재/앱사용/시험';
   const channelTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
 
   const TYPE_OPTS = [
-    ['tuition', '수강료'], ['book', '교재비'], ['test', '시험비'],
+    ['tuition', '수강료'], ['book', '교재비'], ['app', '앱사용료'], ['test', '시험비'],
     ['uniform', '교복·체육복'], ['extra', '기타'],
   ];
 
@@ -3931,6 +3931,28 @@ window.closeModal = function() {
 // 이번 달 청구서 자동 생성 (lazy) — active + tuitionPlan.amount > 0 학생 대상
 // 이미 생성된 학생은 skip (idempotent)
 // 반환: 새로 생성된 건수
+// 앱사용료 자동 청구 조건 판정
+//   - lastChargedAt 있음: 12개월 경과 시 anniversary 월 재청구
+//   - lastChargedAt 없음: 학생 등록월 === 현재월 (엄격한 anniversary 매칭)
+function _shouldChargeAppFee(student, ym) {
+  const [cy, cm] = ym.split('-').map(Number);
+  const _toDate = (t) => t?.toDate?.() || (t instanceof Date ? t : (typeof t === 'number' ? new Date(t) : null));
+  const reg = _toDate(student.createdAt);
+  if (!reg) return false;
+  const regMonth = reg.getMonth() + 1;
+  const regYear = reg.getFullYear();
+
+  const lastAt = _toDate(student.appFeeLastChargedAt);
+  if (!lastAt) {
+    // 미청구 학생 — 등록월 === 현재월이면 청구 (신규 등록 첫 달 + 옛 학생 anniversary 도래)
+    return cm === regMonth;
+  }
+  const lastMonth = lastAt.getMonth() + 1;
+  const lastYear = lastAt.getFullYear();
+  const monthsElapsed = (cy - lastYear) * 12 + (cm - lastMonth);
+  return monthsElapsed >= 12;
+}
+
 async function _ensureCurrentMonthBillings() {
   try {
     const academyId = window.MY_ACADEMY_ID || 'default';
@@ -3950,10 +3972,17 @@ async function _ensureCurrentMonthBillings() {
       where('academyId', '==', academyId),
       where('yearMonth', '==', ym),
     ));
-    const existingUids = new Set(existingSnap.docs.map(d => d.data().studentUid));
+    const existingByUid = new Map();
+    existingSnap.docs.forEach(d => { existingByUid.set(d.data().studentUid, { id: d.id, data: d.data() }); });
+
+    // 앱사용료 자동 설정 (materialsChannel 활성 + appFeeEnabled)
+    const matCh = _billingSettings?.materialsChannel;
+    const appFeeActive = !!(matCh?.enabled && matCh?.appFeeEnabled !== false);
+    const academyAppFee = parseInt(matCh?.appFeeAmount) || 25000;
 
     // 3) 누락된 학생만 생성
     let created = 0;
+    let appFeeAdded = 0;
     // 0 || 15 함정 회피 — -1 (말일) 도 정상값. isFinite + 범위 체크.
     const rawDD = _billingSettings?.defaultDueDay;
     const defaultDueDay = (isFinite(rawDD) && (rawDD === -1 || (rawDD >= 1 && rawDD <= 31))) ? rawDD : 15;
@@ -3962,10 +3991,46 @@ async function _ensureCurrentMonthBillings() {
     for (const sDoc of studentsSnap.docs) {
       const s = sDoc.data();
       const uid = sDoc.id;
-      if (existingUids.has(uid)) continue;
-      if (!s.tuitionPlan?.active) continue;
-      const amount = parseInt(s.tuitionPlan.amount) || 0;
-      if (amount <= 0) continue;
+      const existing = existingByUid.get(uid);
+
+      // 앱사용료 자동 추가 (기존 billing / 신규 billing 양쪽 처리)
+      const needAppFee = appFeeActive && _shouldChargeAppFee(s, ym);
+      const perStudentAppFee = parseInt(s.appFeeAmount);
+      const appFeeAmountFinal = isFinite(perStudentAppFee) && perStudentAppFee >= 0 ? perStudentAppFee : academyAppFee;
+
+      if (existing) {
+        // 이미 있는 billing — app 항목이 아직 없고 청구 필요 시 append
+        if (needAppFee && appFeeAmountFinal > 0) {
+          const items = (existing.data.items || []);
+          const hasAppFee = items.some(i => i.type === 'app' && i.channel === 'materials');
+          if (!hasAppFee) {
+            const newAppItem = {
+              itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+              type: 'app',
+              label: '앱사용료',
+              amount: appFeeAmountFinal,
+              channel: 'materials',
+              paid: false, paidAt: null, paidVia: '', memo: '',
+              addedAt: Date.now(),
+              addedBy: 'system',
+            };
+            const newItems = [...items, newAppItem];
+            const newTotal = newItems.reduce((sum, i) => sum + (parseInt(i.amount) || 0), 0);
+            await updateDoc(doc(db, 'billings', existing.id), {
+              items: newItems, totalAmount: newTotal, updatedAt: serverTimestamp(),
+            });
+            await updateDoc(doc(db, 'users', uid), { appFeeLastChargedAt: serverTimestamp() });
+            appFeeAdded++;
+          }
+        }
+        continue;
+      }
+
+      // billing 미생성 학생 — 수강료 or 앱사용료 있으면 생성
+      const hasTuition = !!s.tuitionPlan?.active && (parseInt(s.tuitionPlan.amount) || 0) > 0;
+      const willAddAppFee = needAppFee && appFeeAmountFinal > 0;
+      if (!hasTuition && !willAddAppFee) continue;
+      const amount = parseInt(s.tuitionPlan?.amount) || 0;
 
       // 납부일 결정 — 학생 dueDay > 학원 default. -1 = 말일
       let dueDay = parseInt(s.tuitionPlan.dueDay);
@@ -3975,6 +4040,33 @@ async function _ensureCurrentMonthBillings() {
       const actualDay = (dueDay === -1) ? lastDay : Math.min(Math.max(1, dueDay), lastDay);
       const dueDate = new Date(y, mm - 1, actualDay);
 
+      const items = [];
+      if (hasTuition) {
+        items.push({
+          itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+          type: 'tuition',
+          label: `${monthNum}월 수강료`,
+          amount,
+          channel: 'tuition',
+          paid: false, paidAt: null, paidVia: '', memo: '',
+          addedAt: Date.now(),   // serverTimestamp 는 array 안에서 작동 X
+          addedBy: 'system',
+        });
+      }
+      if (willAddAppFee) {
+        items.push({
+          itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9) + '_app',
+          type: 'app',
+          label: '앱사용료',
+          amount: appFeeAmountFinal,
+          channel: 'materials',
+          paid: false, paidAt: null, paidVia: '', memo: '',
+          addedAt: Date.now(),
+          addedBy: 'system',
+        });
+      }
+      const totalAmount = items.reduce((sum, i) => sum + (parseInt(i.amount) || 0), 0);
+
       await addDoc(collection(db, 'billings'), {
         academyId,
         studentUid: uid,
@@ -3983,20 +4075,8 @@ async function _ensureCurrentMonthBillings() {
         groupName: s.group || '',
         yearMonth: ym,
         dueDate,
-        items: [{
-          itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-          type: 'tuition',
-          label: `${monthNum}월 수강료`,
-          amount,
-          channel: 'tuition',
-          paid: false,
-          paidAt: null,
-          paidVia: '',
-          memo: '',
-          addedAt: Date.now(),  // serverTimestamp 는 array 안에서 작동 X
-          addedBy: 'system',
-        }],
-        totalAmount: amount,
+        items,
+        totalAmount,
         paidAmount: 0,
         status: 'unpaid',
         createdAt: serverTimestamp(),
@@ -4006,11 +4086,15 @@ async function _ensureCurrentMonthBillings() {
         messagesSentCount: 0,
         memo: '',
       });
+      if (willAddAppFee) {
+        await updateDoc(doc(db, 'users', uid), { appFeeLastChargedAt: serverTimestamp() });
+        appFeeAdded++;
+      }
       created++;
     }
-    // 새 billing 생성 시 그 월 캐시 무효화 (다음 _renderBillingGrid 가 fresh fetch)
-    if (created > 0 && typeof _billingInvalidateCache === 'function') _billingInvalidateCache(ym);
-    return created;
+    // 새 billing 생성 or app fee 추가 시 그 월 캐시 무효화 (다음 _renderBillingGrid 가 fresh fetch)
+    if ((created > 0 || appFeeAdded > 0) && typeof _billingInvalidateCache === 'function') _billingInvalidateCache(ym);
+    return created + appFeeAdded;
   } catch (e) {
     console.warn('[ensureCurrentMonthBillings]', e.message);
     return 0;
@@ -4030,6 +4114,9 @@ window.openPaymentSettingsWizard = () => {
     tuition: { ...(existing.tuitionChannel || {}) },
     materialsEnabled: existing.materialsChannel?.enabled || false,
     materials: { ...(existing.materialsChannel || {}) },
+    // 앱사용료 설정 (materialsChannel 하위 개념)
+    appFeeEnabled: existing.materialsChannel?.appFeeEnabled !== false,   // default true
+    appFeeAmount: parseInt(existing.materialsChannel?.appFeeAmount) || 25000,
   };
   _renderBillingWizard();
 };
@@ -4177,6 +4264,20 @@ function _renderWizardStep2() {
             <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">안내 문구 <span style="color:#bbb;font-weight:400;">(선택)</span></label>
             <input id="wizMatNote" type="text" value="${esc(m.note || '입금자명에 학생 이름 기재 부탁드립니다')}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
+          <div style="padding-top:14px;border-top:1px dashed var(--border);">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#0d9488;cursor:pointer;margin-bottom:8px;">
+              <input id="wizAppFeeEnabled" type="checkbox" ${(d.appFeeEnabled !== false) ? 'checked' : ''}>
+              📱 앱사용료 자동 청구 (연 1회, 학생별 등록 anniversary)
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 100px;gap:10px;align-items:end;">
+              <div>
+                <label style="color:var(--gray);font-size:12px;display:block;margin-bottom:5px;">기본 금액 (학생별 개별 조정 가능)</label>
+                <input id="wizAppFeeAmount" type="number" value="${d.appFeeAmount || 25000}" min="0" step="1000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;box-sizing:border-box;">
+              </div>
+              <div style="font-size:12px;color:var(--gray);padding-bottom:11px;">원</div>
+            </div>
+            <div style="font-size:11px;color:var(--gray);margin-top:6px;">등록월에 첫 청구 · 이후 매년 anniversary 월에 자동 삽입 (학생 편집에서 학생별 금액 재정의 가능)</div>
+          </div>
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
@@ -4209,10 +4310,15 @@ window._billingWizardComplete = async () => {
       showAlert('입력 확인', '별도 계좌의 은행·계좌번호·예금주를 모두 입력하세요.');
       return;
     }
+    // 앱사용료 필드 수집 (materials 활성 시만 유효)
+    const appFeeEnabled = !!document.getElementById('wizAppFeeEnabled')?.checked;
+    const appFeeAmountRaw = parseInt(document.getElementById('wizAppFeeAmount')?.value);
+    const appFeeAmount = (isFinite(appFeeAmountRaw) && appFeeAmountRaw >= 0) ? appFeeAmountRaw : 25000;
     materialsChannel = {
       enabled: true,
-      label: '교재/시험비',
+      label: '교재/앱사용/시험',
       cardLink, bankName, bankAccount, accountHolder, note,
+      appFeeEnabled, appFeeAmount,
     };
   }
 
@@ -7930,6 +8036,20 @@ window.editStudent = async(id) => {
             <input id="euTuitionActive" type="checkbox" ${(u.tuitionPlan?.active ?? true) ? 'checked' : ''}>
             매월 자동 청구서 생성 (해지 시 체크 해제 — 휴원/퇴원 처리 시 자동으로 해제됨)
           </label>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+            <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">📱 앱사용료 개별 금액 (선택)</div>
+            <div style="display:grid;grid-template-columns:1fr 140px;gap:12px;font-size:13px;">
+              <div>
+                <div style="color:var(--gray);margin-bottom:5px;">이 학생 앱사용료 <span style="color:#bbb;font-weight:400;">(비우면 학원 기본값 사용)</span></div>
+                <input id="euAppFeeAmount" type="number" value="${u.appFeeAmount ?? ''}" min="0" step="1000" placeholder="예: 25000" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;">
+              </div>
+              <div>
+                <div style="color:var(--gray);margin-bottom:5px;">마지막 청구</div>
+                <div style="padding:8px 10px;font-size:12px;color:var(--gray);">${u.appFeeLastChargedAt?.toDate?.() ? u.appFeeLastChargedAt.toDate().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit'}) : '<span style="color:#bbb;">없음</span>'}</div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--gray);margin-top:6px;">등록월에 자동 첫 청구 → 매년 anniversary 월 자동 재청구 (학원 결제 설정에서 앱사용료 자동 청구 켜져 있을 때)</div>
+          </div>
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
           <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">🔑 비밀번호 변경 이력 (최근 10건)</div>
@@ -8089,6 +8209,8 @@ window.updateStudent = async(id) => {
   const tuitionAmount = parseInt(document.getElementById('euTuitionAmount')?.value) || 0;
   const dueDayRaw = parseInt(document.getElementById('euDueDay')?.value);
   const tuitionActive = !!document.getElementById('euTuitionActive')?.checked;
+  const appFeeRaw = document.getElementById('euAppFeeAmount')?.value;
+  const appFeeAmountOverride = (appFeeRaw != null && appFeeRaw !== '') ? (parseInt(appFeeRaw) || 0) : null;
   // 기존 tuitionPlan.startMonth 보존 (없으면 이번 달)
   const existSnap = await getDoc(doc(db,'users',id));
   const existPlan = existSnap.data()?.tuitionPlan || {};
@@ -8106,6 +8228,8 @@ window.updateStudent = async(id) => {
       startMonth: existPlan.startMonth || new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 7),
       active: tuitionActive && tuitionAmount > 0,
     },
+    // 앱사용료 개별 금액 — null 이면 필드 제거 (학원 default 사용)
+    appFeeAmount: appFeeAmountOverride !== null ? appFeeAmountOverride : deleteField(),
   };
   try {
     await updateDoc(doc(db,'users',id), data);
