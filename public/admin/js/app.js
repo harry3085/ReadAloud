@@ -13737,23 +13737,15 @@ function _qsRenderViewCard(q, i) {
   }
 
   if (q.type === 'vocab') {
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
-      ${header}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
-        <div style="padding:8px 12px;background:#f0f9ff;border-radius:6px;">
-          <div style="font-size:10px;color:#64748b;margin-bottom:2px;">영단어</div>
-          <div style="font-size:15px;font-weight:700;color:#0c4a6e;">${esc(q.word||'')}</div>
-        </div>
-        <div style="padding:8px 12px;background:#fef3c7;border-radius:6px;">
-          <div style="font-size:10px;color:#92400e;margin-bottom:2px;">뜻</div>
-          <div style="font-size:14px;font-weight:600;color:#78350f;">${esc(q.meaning||'')}</div>
-        </div>
-      </div>
-      ${q.example ? `
-        <div style="font-size:11px;color:#64748b;padding:6px 10px;background:#f9fafb;border-left:2px solid #d1d5db;">
-          <em>${esc(q.example)}</em>
-          ${q.exampleKo ? `<div style="color:#6b7280;margin-top:3px;">↳ ${esc(q.exampleKo)}</div>` : ''}
-        </div>` : ''}
+    // 컴팩트 한 줄 (번호 · 영단어 · 뜻 · 📱 출제) — 편집 카드와 동일 스타일
+    const appOn = q.appInclude !== false;
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;background:${appOn?'#fff':'#f5f5f5'};opacity:${appOn?'':'0.6'};display:flex;gap:10px;align-items:center;">
+      <span style="font-size:11px;color:var(--gray);flex-shrink:0;min-width:24px;font-weight:700;">${i+1}.</span>
+      <div style="flex:1;min-width:0;font-size:14px;font-weight:700;color:#0c4a6e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(q.word||'')}</div>
+      <div style="flex:1.4;min-width:0;font-size:13px;color:#78350f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(q.meaning||'')}</div>
+      <span style="flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700;color:${appOn?'#059669':'var(--gray)'};background:${appOn?'#f0fdf4':'#f3f4f6'};border:1px solid ${appOn?'#a7f3d0':'#e5e7eb'};" title="학생앱 시험 출제 대상">
+        📱 ${appOn?'출제':'제외'}
+      </span>
     </div>`;
   }
 
@@ -13993,35 +13985,20 @@ function _qsRenderEditQuestion(q, idx) {
     const appOn = q.appInclude !== false;   // default true
     const cardBg = appOn ? '#fafafa' : '#f5f5f5';
     const cardOpacity = appOn ? '' : '0.55';
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:${cardBg};opacity:${cardOpacity};">
-      ${header}
-      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:${appOn?'#059669':'var(--gray)'};font-weight:700;margin-bottom:8px;cursor:pointer;padding:4px 8px;background:${appOn?'#f0fdf4':'#f3f4f6'};border-radius:4px;border:1px solid ${appOn?'#a7f3d0':'#e5e7eb'};">
+    // 컴팩트 한 줄: [영단어 input] | [뜻 input] | [☑ 출제] (오른쪽)
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;background:${cardBg};opacity:${cardOpacity};display:flex;gap:8px;align-items:center;">
+      <span style="font-size:11px;color:var(--gray);flex-shrink:0;min-width:24px;font-weight:700;">${idx+1}.</span>
+      <input type="text" value="${esc(q.word||'')}" placeholder="영단어"
+        oninput="qsEditUpdate(${idx},'word',this.value)"
+        style="flex:1;min-width:100px;padding:6px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:700;">
+      <input type="text" value="${esc(q.meaning||'')}" placeholder="뜻"
+        oninput="qsEditUpdate(${idx},'meaning',this.value)"
+        style="flex:1.4;min-width:120px;padding:6px 9px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:${appOn?'#059669':'var(--gray)'};font-weight:700;cursor:pointer;flex-shrink:0;padding:4px 8px;background:${appOn?'#f0fdf4':'#f3f4f6'};border-radius:4px;border:1px solid ${appOn?'#a7f3d0':'#e5e7eb'};" title="학생앱 시험 출제 대상 (인쇄에는 항상 포함)">
         <input type="checkbox" ${appOn?'checked':''}
           onchange="qsEditToggleAppInclude(${idx}, this.checked)">
-        📱 학생앱 시험 출제 대상 ${appOn?'':'(제외됨 · 인쇄만 사용)'}
+        📱 출제
       </label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div>
-          <label style="font-size:11px;color:var(--gray);">영단어</label>
-          <input type="text" value="${esc(q.word||'')}"
-            oninput="qsEditUpdate(${idx},'word',this.value)"
-            style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:700;">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--gray);">뜻</label>
-          <input type="text" value="${esc(q.meaning||'')}"
-            oninput="qsEditUpdate(${idx},'meaning',this.value)"
-            style="width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
-        </div>
-      </div>
-      <label style="font-size:11px;color:var(--gray);display:block;margin-top:10px;">예문 (영어, 선택)</label>
-      <input type="text" value="${esc(q.example||'')}"
-        oninput="qsEditUpdate(${idx},'example',this.value)"
-        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-style:italic;">
-      <label style="font-size:11px;color:var(--gray);">예문 한글 번역 (선택)</label>
-      <input type="text" value="${esc(q.exampleKo||'')}"
-        oninput="qsEditUpdate(${idx},'exampleKo',this.value)"
-        style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:13px;">
     </div>`;
   }
 
