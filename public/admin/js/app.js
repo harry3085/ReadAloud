@@ -2601,6 +2601,9 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
   if (!main) return;
   const academyId = window.MY_ACADEMY_ID || 'default';
 
+  // 그리드 스크롤 위치 보존 (입금 체크박스 토글 시 최상단 튀는 문제 방지)
+  const prevGridScroll = document.getElementById('billingGridScroll')?.scrollTop || 0;
+
   // 청구서 로드 — refetch=false 일 땐 in-memory _billings 사용 (eventual consistency 회피)
   // refetch=true 라도 월별 캐시 hit 면 fetch skip (2026-05-14)
   if (refetch) {
@@ -2704,7 +2707,7 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
     </div>
 
     <!-- 그리드 -->
-    <div class="card" style="padding:0;overflow:auto;">
+    <div id="billingGridScroll" class="card" style="padding:0;overflow:auto;">
       <table class="billing-grid" style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead style="position:sticky;top:0;background:#f8f9fa;z-index:5;">
           <tr style="border-bottom:2px solid var(--border);">
@@ -2748,6 +2751,11 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
     </div>
 
     `;
+  // 그리드 스크롤 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
+  requestAnimationFrame(() => {
+    const gs = document.getElementById('billingGridScroll');
+    if (gs && prevGridScroll) gs.scrollTop = prevGridScroll;
+  });
 }
 
 function _billingRenderRow(b, matEnabled) {
@@ -11012,6 +11020,13 @@ function _qgRender() {
   const root = document.getElementById('quizGenRoot');
   if (!root) return;
 
+  // 재렌더 시 3개 리스트 pane 스크롤 보존 (페이지 체크박스 토글·정렬·검색 시 최상단 튀는 문제 방지)
+  const prevScrolls = {
+    book: document.getElementById('qgBookList')?.scrollTop || 0,
+    chapter: document.getElementById('qgChapterList')?.scrollTop || 0,
+    page: document.getElementById('qgPageList')?.scrollTop || 0,
+  };
+
   const allBooks = _genBooks || [];
   const allChapters = _qgFilteredChapters();
   const allPages = _qgFilteredPages();
@@ -11121,6 +11136,15 @@ function _qgRender() {
   _qgRenderOptions(_qgCurrentType);
   _qgAttachResizers();
   _qgUpdateTokenEstimate();
+  // 스크롤 위치 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
+  requestAnimationFrame(() => {
+    const b = document.getElementById('qgBookList');
+    const c = document.getElementById('qgChapterList');
+    const p = document.getElementById('qgPageList');
+    if (b && prevScrolls.book) b.scrollTop = prevScrolls.book;
+    if (c && prevScrolls.chapter) c.scrollTop = prevScrolls.chapter;
+    if (p && prevScrolls.page) p.scrollTop = prevScrolls.page;
+  });
 }
 
 // ─── 컬럼 리사이저 (4개 pane = 3개 리사이저) ───
@@ -13224,6 +13248,13 @@ function _qsRenderList() {
   const root = document.getElementById('quizSetsRoot');
   if (!root) return;
 
+  // 재렌더 시 3개 pane 스크롤 보존 (⭐ 토글·정렬·Book 클릭 시 최상단으로 튀는 문제 방지)
+  const prevScrolls = {
+    top: document.getElementById('qsTopPaneScroll')?.scrollTop || 0,
+    book: document.getElementById('qsBookPaneScroll')?.scrollTop || 0,
+    set: document.getElementById('qsSetPaneScroll')?.scrollTop || 0,
+  };
+
   // 책도 세트도 없는 학원 → 폐기 안내 (lazy fetch 끝난 후 판정)
   const recentCache = _qsSetsByBook['__all_recent__'];
   const isReallyEmpty = _qsBooks.length === 0 && Array.isArray(recentCache) && recentCache.length === 0;
@@ -13256,6 +13287,15 @@ function _qsRenderList() {
     </div>
   `;
   _qsAttachResizers();
+  // 스크롤 위치 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
+  requestAnimationFrame(() => {
+    const top = document.getElementById('qsTopPaneScroll');
+    const book = document.getElementById('qsBookPaneScroll');
+    const set = document.getElementById('qsSetPaneScroll');
+    if (top && prevScrolls.top) top.scrollTop = prevScrolls.top;
+    if (book && prevScrolls.book) book.scrollTop = prevScrolls.book;
+    if (set && prevScrolls.set) set.scrollTop = prevScrolls.set;
+  });
 }
 
 // ─── <th> 렌더 헬퍼 (폭 + 리사이즈 핸들 + 선택적 정렬) ───
@@ -13298,7 +13338,7 @@ function _qsRenderTopPane() {
       <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
       <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
     </div>
-    <div style="flex:1;overflow:auto;">${body}</div>
+    <div id="qsTopPaneScroll" style="flex:1;overflow:auto;">${body}</div>
   `;
 }
 
@@ -13432,7 +13472,7 @@ function _qsRenderBookPane() {
       <span>📁 Book 폴더</span>
       <span style="font-size:11px;color:var(--gray);font-weight:400;">${items.length}개</span>
     </div>
-    <div style="flex:1;overflow:auto;">
+    <div id="qsBookPaneScroll" style="flex:1;overflow:auto;">
       ${rows || '<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">폴더가 없습니다</div>'}
     </div>
   `;
@@ -13488,7 +13528,7 @@ function _qsRenderSetPane() {
     <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
       <span>${iconSvg('clipboard')} ${esc(bookLabel)} · <span style="font-weight:400;color:var(--gray);font-size:11px;">${cntLabel}</span></span>
     </div>
-    <div style="flex:1;overflow:auto;">${body}</div>
+    <div id="qsSetPaneScroll" style="flex:1;overflow:auto;">${body}</div>
   `;
 }
 
