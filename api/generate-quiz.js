@@ -1087,11 +1087,16 @@ Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} ite
     return res.status(502).json({ error: 'Failed to parse AI response', rawSnippet: rawText.slice(0, 500), model: usedModel });
   }
 
+  // 단어수 범위 (배정 옵션 sentenceLength 강제)
+  const wordRange = { short: [5, 8], medium: [9, 13], long: [14, 20] }[lenKey];
+  const [wcMin, wcMax] = wordRange;
+
   // Verbatim 검증 — 각 en 문장이 원본 본문에 존재해야 (공백·개행 정규화)
   const normText = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const bookNorm = normalizedPages.map(p => ({ id: p.id, title: p.title, textNorm: normText(p.text) }));
   const sentencesOut = [];
   const seenEn = new Set();
+  let rejectedByWordCount = 0;
   for (const s of parsed.sentences) {
     if (!s || typeof s !== 'object') continue;
     const en = String(s.en || '').trim();
@@ -1100,13 +1105,15 @@ Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} ite
     if (en.length < 5 || en.length > 300) continue;
     // 한글 번역에 영문자 섞임 방지 (약자 등)
     if (/[a-zA-Z]/.test(ko.replace(/\d/g, ''))) continue;
+    // 단어수 범위 강제 — AI 가 범위 벗어난 문장 반환해도 폐기
+    const wordCount = en.split(/\s+/).filter(Boolean).length;
+    if (wordCount < wcMin || wordCount > wcMax) { rejectedByWordCount++; continue; }
     // Verbatim 검증
     const enNorm = normText(en);
     if (seenEn.has(enNorm)) continue;
     const matched = bookNorm.find(p => p.textNorm.includes(enNorm));
     if (!matched) continue;  // 원문에 없음 = 폐기 (verbatim 실패)
     seenEn.add(enNorm);
-    const wordCount = en.split(/\s+/).filter(Boolean).length;
     sentencesOut.push({
       type: 'sentence',
       en, ko, wordCount,
