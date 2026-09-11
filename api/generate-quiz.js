@@ -642,7 +642,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
     }
 
-    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType, sentences, chunkCount, sentenceLength } = req.body || {};
+    const { idToken, pages, count, type, customSystemPrompt, mode, words, subType, sentences, chunkCount, sentenceLength, subMode } = req.body || {};
 
     // ─── 인증 + Generator 월 쿼터 체크 (T2/T3 5분류 분리) ───
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'generator' });
@@ -667,7 +667,7 @@ module.exports = async function handler(req, res) {
     // 2026-07-22: 학원장 요청 신 시험 유형 sentence.
     // pages 본문에서 N 문장 verbatim 추출 + 각 한글번역. 길이 3단계 필터.
     if (mode === 'sentence-from-book') {
-      return await handleSentenceFromBook({ pages, count, sentenceLength, apiKey, res });
+      return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, apiKey, res });
     }
 
     // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
@@ -1025,7 +1025,8 @@ Output ONLY a valid JSON object (no markdown, no prose):
 }`;
 
 // 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
-async function handleSentenceFromBook({ pages, count, sentenceLength, apiKey, res }) {
+// subMode: 'polished' (default, 필터·다듬음) | 'verbatim' (청크 방식, 최소 필터·원문 그대로)
+async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, apiKey, res }) {
   if (!Array.isArray(pages) || pages.length === 0) {
     return res.status(400).json({ error: 'pages array is required' });
   }
@@ -1126,6 +1127,7 @@ Output ONLY the JSON object with the "sentences" array. Aim for exactly ${N} ite
     requestedCount: N,
     actualCount: sentencesOut.length,
     sentenceLength: lenKey,
+    subMode: subMode === 'verbatim' ? 'verbatim' : 'polished',
   });
 }
 

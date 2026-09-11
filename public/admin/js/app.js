@@ -10637,15 +10637,17 @@ const QG_TYPE_OPTIONS = {
     options: [],  // 옵션 없음 — 학원 설정 (학원 단위) + 시험 배정 시 (시험별) 두 단계에서 결정
   },
   // 2026-07-22 학원장 요청 신 시험 유형 — 문장시험 (한글→영어 STT)
+  // 2026-09-11 mode 옵션 추가 — 매칭식 / 청크 따라읽기 (청크는 원문 verbatim)
   'sentence': {
     label: '문장시험',
     icon: '🗣',
     enabled: true,
     phaseLabel: null,
-    noteHint: '본문에서 문장을 추출해 문장시험을 만듭니다. 학생이 한글 문장을 보고 영어로 말하면 매칭률로 채점 (Excel 붙여넣기 직접 입력 가능).',
+    noteHint: '본문에서 문장을 추출합니다. 매칭식(한글→영어 발화 매칭) 또는 청크 따라읽기(chunk 단위 반복 학습) 로 배정.',
     options: [
       { key:'count',          label:'문제수',     type:'number', default:10, min:1, max:30 },
       { key:'sentenceLength', label:'문장 길이',  type:'select', choices:['짧음(5-8)','보통(9-13)','길다(14-20)'], default:'보통(9-13)' },
+      { key:'mode',           label:'생성 방식',  type:'select', choices:['매칭식(다듬음)','청크방식(원문 verbatim)'], default:'매칭식(다듬음)' },
     ],
   },
 };
@@ -12049,6 +12051,8 @@ async function _qgCallSentence(opts) {
   // 문장 길이 매핑 (한글 label → 서버 key)
   const lenLabel = String(opts.sentenceLength || '');
   const sentenceLength = /짧/.test(lenLabel) ? 'short' : (/길/.test(lenLabel) ? 'long' : 'medium');
+  // 생성 방식 매핑 — 청크방식(원문 verbatim) vs 매칭식(다듬음)
+  const subMode = /청크/.test(String(opts.mode||'')) ? 'verbatim' : 'polished';
 
   try {
     const t0 = Date.now();
@@ -12060,6 +12064,7 @@ async function _qgCallSentence(opts) {
         pages: selectedPages,
         count: opts.count,
         sentenceLength,
+        subMode,
       }),
     });
     const data = await res.json();
@@ -15570,22 +15575,33 @@ window.tpOpenPublishModal = async () => {
           ? `<div style="margin-bottom:14px;padding:10px 12px;background:#f0fdfa;border-radius:6px;border:1px solid #a7f3d0;">
               <div style="font-size:11px;font-weight:700;color:#134e4a;margin-bottom:8px;">🗣 문장시험 옵션</div>
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="학생 발화와 정답 문장의 매칭률 임계. 이 값 이상이면 정답, 미만이면 오답.">
-                  매칭률 기준:
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
+                  방식:
+                  <select id="tpSentenceMode" onchange="_tpSentenceModeChanged()" style="padding:4px 8px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;background:white;">
+                    <option value="match" selected>매칭식 (한글→영어 발화)</option>
+                    <option value="chunk-practice">청크 따라읽기 (학습용)</option>
+                  </select>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="정확도 임계 — 이 값 이상이면 Great (조기 종료). 매칭식은 정답/오답 판정.">
+                  정확도 기준:
                   <input type="range" id="tpSentenceMatchThreshold" min="50" max="100" step="5" value="80"
                     oninput="document.getElementById('tpSentenceMatchThresholdVal').textContent=this.value+'%';"
                     style="width:120px;">
                   <span id="tpSentenceMatchThresholdVal" style="font-size:11px;font-weight:700;min-width:36px;color:#134e4a;">80%</span>
                 </label>
+                <label id="tpSentenceChunkCountRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="문장을 몇 개 청크로 나눠 따라읽게 할지">
+                  청크 갯수:
+                  <input type="number" id="tpSentenceChunkCount" value="3" min="2" max="8" style="width:56px;padding:4px 6px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;">
+                </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
                   <input type="checkbox" id="tpSentenceShuffleQ" checked> 문제 순서 섞기
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
+                <label id="tpSentenceAllowHintRow" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;">
                   <input type="checkbox" id="tpSentenceAllowHint" checked> 힌트 버튼 허용 (최대 3회, 감점 X)
                 </label>
               </div>
-              <div style="font-size:10px;color:#0f766e;margin-top:6px;line-height:1.5;">
-                ※ 학생이 한글을 보고 영어로 말하기 → 실시간 STT → 제출 → 정답 대비 매칭률 계산<br>
+              <div id="tpSentenceModeHint" style="font-size:10px;color:#0f766e;margin-top:6px;line-height:1.5;">
+                ※ 매칭식: 학생이 한글을 보고 영어로 말하기 → 실시간 STT → 정답 매칭률 계산<br>
                 ※ 마이크 권한 필요 — Chrome/Safari 권장
               </div>
             </div>`
@@ -15613,6 +15629,28 @@ window.tpOpenPublishModal = async () => {
     emptyText: '반/학생을 선택하세요',
     height: 280,
   });
+};
+
+// 문장시험 방식 변경 시 — chunk-practice 이면 청크 갯수 활성 + 힌트 비활성
+window._tpSentenceModeChanged = () => {
+  const mode = document.getElementById('tpSentenceMode')?.value;
+  const isChunk = mode === 'chunk-practice';
+  const chunkRow = document.getElementById('tpSentenceChunkCountRow');
+  const hintRow = document.getElementById('tpSentenceAllowHintRow');
+  const hintChk = document.getElementById('tpSentenceAllowHint');
+  const hintEl = document.getElementById('tpSentenceModeHint');
+  if (chunkRow) chunkRow.style.display = isChunk ? 'inline-flex' : 'none';
+  if (hintRow) {
+    hintRow.style.opacity = isChunk ? '0.4' : '1';
+    hintRow.style.pointerEvents = isChunk ? 'none' : 'auto';
+    if (hintChk) hintChk.disabled = isChunk;
+    if (isChunk && hintChk) hintChk.checked = false;
+  }
+  if (hintEl) {
+    hintEl.innerHTML = isChunk
+      ? '※ 청크 따라읽기: 문장을 N청크로 나눠 순서대로 TTS → 학생 따라읽기 → 전체 문장 마무리 (단어학습 스타일)<br>※ 마이크 권한 필요 — Chrome/Safari 권장'
+      : '※ 매칭식: 학생이 한글을 보고 영어로 말하기 → 실시간 STT → 정답 매칭률 계산<br>※ 마이크 권한 필요 — Chrome/Safari 권장';
+  }
 };
 
 // 단어시험 형식 변경 시 — 말하기·연습 모드 옵션 토글 + 방향·비율 옵션 무력화
@@ -15745,15 +15783,21 @@ window.tpPublish = async () => {
     }
   }
 
-  // 2026-07-22 문장시험 옵션
+  // 2026-07-22 문장시험 옵션 (+ 2026-09-11 chunk-practice mode)
   let sentenceOptions = null;
   if (cfg.testMode === 'sentence') {
     const _th = parseInt(document.getElementById('tpSentenceMatchThreshold')?.value);
+    const _mode = document.getElementById('tpSentenceMode')?.value || 'match';
+    const _cc = parseInt(document.getElementById('tpSentenceChunkCount')?.value);
     sentenceOptions = {
+      mode: _mode,   // 'match' | 'chunk-practice'
       matchThreshold: isFinite(_th) ? Math.max(50, Math.min(100, _th)) : 80,
       shuffleQ: document.getElementById('tpSentenceShuffleQ')?.checked !== false,
-      allowHint: document.getElementById('tpSentenceAllowHint')?.checked !== false,
+      allowHint: _mode === 'chunk-practice' ? false : (document.getElementById('tpSentenceAllowHint')?.checked !== false),
     };
+    if (_mode === 'chunk-practice') {
+      sentenceOptions.chunkCount = isFinite(_cc) ? Math.max(2, Math.min(8, _cc)) : 3;
+    }
   }
 
   // 안전망: vocab+speaking 일 때 말하기 출제 데이터(homophones/koPron/sent/sentKo) 자동 채움
@@ -16697,8 +16741,14 @@ function _tpBuildOptionsLine(t) {
     if (o.shuffleChoices === false) items.push('선택지 고정');
   } else if (tMode === 'sentence' && t.sentenceOptions) {
     const o = t.sentenceOptions;
-    if (typeof o.matchThreshold === 'number') items.push(`매칭 임계 ${o.matchThreshold}%`);
-    if (o.allowHint) items.push('힌트 허용');
+    if (o.mode === 'chunk-practice') {
+      items.push(it('🗣 청크 따라읽기', '#0891b2'));
+      if (typeof o.chunkCount === 'number') items.push(`청크 ${o.chunkCount}개`);
+      if (typeof o.matchThreshold === 'number') items.push(`정확도 ${o.matchThreshold}%`);
+    } else {
+      if (typeof o.matchThreshold === 'number') items.push(`매칭 임계 ${o.matchThreshold}%`);
+      if (o.allowHint) items.push('힌트 허용');
+    }
     if (o.shuffleQ === false) items.push('순서 고정');
   } else if (tMode === 'recording') {
     const q0 = t.questions?.[0] || {};
