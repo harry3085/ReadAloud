@@ -12563,8 +12563,10 @@ function _qgRenderQuestion(q, idx) {
       </div>
     `;
   } else if (q.type === 'sentence') {
-    // 2026-07-22 문장시험 (한글→영어 STT)
+    // 2026-07-22 문장시험 (한글→영어 STT) + 청크 학습 편집 (chunkedEn optional)
     const wc = q.wordCount || (q.en || '').split(/\s+/).filter(Boolean).length;
+    const chunkedEn = q.chunkedEn || '';
+    const chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
     body = `
       <div style="font-size:11px;color:#0d9488;font-weight:700;margin-bottom:5px;">🗣 문장 (${wc}단어)</div>
       <div style="display:grid;grid-template-columns:1fr;gap:6px;">
@@ -12575,6 +12577,17 @@ function _qgRenderQuestion(q, idx) {
         <div style="padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #3b82f6;">
           <div style="font-size:10px;color:#1e40af;margin-bottom:2px;">영어 (정답)</div>
           <div style="font-size:14px;font-weight:700;color:#1e3a8a;">${esc(q.en || '')}</div>
+        </div>
+        <div style="padding:8px 12px;background:#f0fdfa;border-radius:6px;border-left:3px solid #0d9488;">
+          <div style="font-size:10px;color:#0f766e;margin-bottom:3px;">청크 학습용 <span style="color:#0d9488;">('/' 로 청크 구분, 비우면 배정 시 자동 분할)</span></div>
+          <input type="text" value="${esc(chunkedEn)}"
+            onchange="_qgEditSentenceChunkedEn(${idx}, this.value)"
+            oninput="_qgPreviewSentenceChunks(${idx}, this.value)"
+            placeholder="예: I saw an advertisement / on television / yesterday"
+            style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:monospace;">
+          <div id="qgSentChunkPreview_${idx}" style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+            ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션의 청크 개수로 자동 분할)</span>'}
+          </div>
         </div>
       </div>
     `;
@@ -13456,19 +13469,30 @@ function _qsRenderViewCard(q, i) {
     </div>`;
   }
 
-  // 2026-07-22 문장시험
+  // 2026-07-22 문장시험 + 청크 학습 편집 (chunkedEn optional)
   if (q.type === 'sentence') {
     const wc = q.wordCount || (q.en || '').split(/\s+/).filter(Boolean).length;
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">
+    const chunkedEn = q.chunkedEn || '';
+    const chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
       ${header}
-      <div style="display:grid;grid-template-columns:1fr;gap:6px;">
-        <div style="padding:8px 12px;background:#f0fdfa;border-radius:6px;border-left:3px solid #14b8a6;">
-          <div style="font-size:10px;color:#0f766e;margin-bottom:2px;">한글 (학생이 보고 말할 문장)</div>
-          <div style="font-size:14px;font-weight:600;color:#134e4a;">${esc(q.ko||'')}</div>
-        </div>
-        <div style="padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #3b82f6;">
-          <div style="font-size:10px;color:#1e40af;margin-bottom:2px;">영어 (정답, ${wc}단어)</div>
-          <div style="font-size:14px;font-weight:700;color:#1e3a8a;">${esc(q.en||'')}</div>
+      <label style="font-size:11px;color:var(--gray);">한글 (학생이 보고 말할 문장)</label>
+      <input type="text" value="${esc(q.ko||'')}"
+        oninput="qsEditUpdate(${idx},'ko',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">영어 (정답, ${wc}단어)</label>
+      <input type="text" value="${esc(q.en||'')}"
+        oninput="qsEditUpdate(${idx},'en',this.value)"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
+      <label style="font-size:11px;color:var(--gray);">청크 학습용 <span style="color:#0d9488;">('/' 로 청크 구분, 비우면 배정 시 자동 분할)</span></label>
+      <input type="text" value="${esc(chunkedEn)}"
+        oninput="qsEditSentenceChunkedEn(${idx}, this.value)"
+        placeholder="예: I saw an advertisement / on television / yesterday"
+        style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:monospace;">
+      <div id="qsEditSentChunkPreview_${idx}" style="padding:6px 10px;background:#f0fdfa;border-radius:4px;">
+        <div style="font-size:10px;color:#0f766e;margin-bottom:3px;">청크 미리보기 (${chunks.length}개)</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션 청크 개수로 자동 분할)</span>'}
         </div>
       </div>
     </div>`;
@@ -13757,6 +13781,23 @@ function _qsRenderEditQuestion(q, idx) {
       style="width:100%;padding:7px 9px;margin:4px 0 0;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;">${esc(q.explanation||'')}</textarea>
   </div>`;
 }
+
+// 수정 모달 전용 문장시험 청크 편집 (chunkedEn optional — 미리보기만, en 원문 무변경)
+window.qsEditSentenceChunkedEn = (idx, value) => {
+  if (!_qsEditState || !_qsEditState.questions[idx]) return;
+  const chunked = String(value || '').trim();
+  _qsEditState.questions[idx].chunkedEn = chunked;
+  const chunks = chunked.split('/').map(s => s.trim()).filter(Boolean);
+  const el = document.getElementById(`qsEditSentChunkPreview_${idx}`);
+  if (el) {
+    el.innerHTML = `
+      <div style="font-size:10px;color:#0f766e;margin-bottom:3px;">청크 미리보기 (${chunks.length}개)</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션 청크 개수로 자동 분할)</span>'}
+      </div>
+    `;
+  }
+};
 
 // 수정 모달 전용 언스크램블 편집 (chunked + sentence + chunkCount 동시 갱신 + 프리뷰)
 window.qsEditUnscrambleEdit = (idx, value) => {
@@ -17186,6 +17227,18 @@ window._qgEditUnscrambleChunks = (idx, value) => {
   _qgGenerated[idx].sentence = chunks.join(' ').replace(/\s+/g, ' ').trim();
   _qgGenerated[idx].chunkCount = chunks.length;
 };
+// 문장시험 청크 편집 (chunkedEn optional — 비우면 배정 시 자동 분할)
+window._qgEditSentenceChunkedEn = (idx, value) => {
+  if (!_qgGenerated[idx]) return;
+  _qgGenerated[idx].chunkedEn = String(value || '').trim();
+};
+window._qgPreviewSentenceChunks = (idx, value) => {
+  const chunks = String(value || '').split('/').map(s => s.trim()).filter(Boolean);
+  const el = document.getElementById(`qgSentChunkPreview_${idx}`);
+  if (!el) return;
+  el.innerHTML = chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션의 청크 개수로 자동 분할)</span>';
+};
+
 window._qgPreviewUnscrambleChunks = (idx, value) => {
   const chunks = String(value || '').split('/').map(s => s.trim()).filter(Boolean);
   const el = document.getElementById(`qgUnscPreview_${idx}`);

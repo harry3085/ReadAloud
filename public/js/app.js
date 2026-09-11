@@ -8424,9 +8424,15 @@ async function _startSentenceChunkPractice(test, sentences) {
   if (opts.shuffleQ !== false) sList = _rngShuffle(sList);
 
   // items 배열 flatten: 각 문장 → 청크 N개 + 전체 문장 1개
+  // chunkedEn (관리자 편집) 있으면 우선 사용 · 없으면 자동 분할
   const items = [];
   sList.forEach((sent, sIdx) => {
-    const chunks = _spChunkSentence(sent.en, chunkCount);
+    let chunks;
+    const chunkedEn = String(sent.chunkedEn || '').trim();
+    if (chunkedEn) {
+      chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
+    }
+    if (!chunks || chunks.length < 2) chunks = _spChunkSentence(sent.en, chunkCount);
     chunks.forEach((c, ci) => {
       items.push({
         word: c,
