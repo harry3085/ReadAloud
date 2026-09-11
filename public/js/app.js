@@ -8133,6 +8133,7 @@ function _vpHandleResult(sim, heard) {
   const s = _vpState;
   if (s.stopped) return;
   s.attempt++;
+  const q = s.questions[s.currentIdx];   // 현재 item — attemptEl label prefix 에 필요
   const wa = s.wordAccuracies[s.currentIdx];
   if (sim > wa.best) wa.best = sim;
   wa.attempts = s.attempt;
