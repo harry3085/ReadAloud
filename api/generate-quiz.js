@@ -1126,7 +1126,8 @@ Output ONLY the JSON object with the "sentences" array.`;
   const outRange = candidates
     .filter(c => dist(c.wordCount) > 0)
     .sort((a, b) => dist(a.wordCount) - dist(b.wordCount));  // 범위 가까운 것부터
-  const picked = inRange.slice();
+  // N 상한 강제 — 이상 범위 통과분 우선, 남으면 확장 범위 근접순 채움
+  const picked = inRange.slice(0, N);
   for (const c of outRange) {
     if (picked.length >= N) break;
     picked.push(c);
