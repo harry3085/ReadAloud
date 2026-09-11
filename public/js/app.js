@@ -8039,7 +8039,7 @@ function _vpSpeakAndListen() {
   }
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이 — 문장 chunk-practice 는 여유 (읽고 발화 준비)
-  const postDelay = s._sentenceMode === 'chunk-practice' ? 900 : 100;
+  const postDelay = 100;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
   const MAX_POLLS = 100;   // 20초 상한
