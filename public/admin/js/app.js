@@ -14108,17 +14108,28 @@ function _qsRenderEditQuestion(q, idx) {
 
 // 수정 모달 전용 문장시험 청크 편집 (chunkedEn optional — 미리보기만, en 원문 무변경)
 // 단어시험 세트 — 학생앱 시험 출제 대상 여부 토글 (인쇄에는 영향 X)
+// 스크롤 위치 보존 — 재렌더 후 이전 스크롤 복원
 window.qsEditToggleAppInclude = (idx, checked) => {
   if (!_qsEditState || !_qsEditState.questions[idx]) return;
   _qsEditState.questions[idx].appInclude = !!checked;
-  _qsRenderEditModal();   // 전체 재렌더 — 카드 배경·헤더 카운터 갱신
+  const prevScroll = document.getElementById('qsEditQuestions')?.scrollTop || 0;
+  _qsRenderEditModal();
+  requestAnimationFrame(() => {
+    const el = document.getElementById('qsEditQuestions');
+    if (el) el.scrollTop = prevScroll;
+  });
 };
 
 // vocab 전체 앱 출제 on/off (세트 수정 모달 툴바)
 window.qsEditVocabAppAll = (on) => {
   if (!_qsEditState) return;
   _qsEditState.questions.forEach(q => { if (q?.type === 'vocab') q.appInclude = !!on; });
+  const prevScroll = document.getElementById('qsEditQuestions')?.scrollTop || 0;
   _qsRenderEditModal();
+  requestAnimationFrame(() => {
+    const el = document.getElementById('qsEditQuestions');
+    if (el) el.scrollTop = prevScroll;
+  });
 };
 
 window.qsEditSentenceChunkedEn = (idx, value) => {
