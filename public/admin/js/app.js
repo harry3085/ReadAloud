@@ -13294,19 +13294,17 @@ function _qsRenderTopPane() {
       </table>`
     : `<div style="padding:24px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`;
   return `
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
       <span>🕘 최근 생성 <span style="font-weight:400;color:var(--gray);font-size:11px;">(최근 ${_QS_RECENT_LIMIT}개)</span></span>
-      <span style="display:flex;align-items:center;gap:8px;">
-        <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="qsBackfillBookIds()" title="Book 폴더가 미지정으로 표시되는 세트를 questions/sourcePages 로부터 자동 감지해 정리">🛠 Book 폴더 자동 정리</button>
-        <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
-      </span>
+      <span style="font-size:11px;color:var(--gray);font-weight:400;">로드 ${totalLabel}</span>
     </div>
     <div style="flex:1;overflow:auto;">${body}</div>
   `;
 }
 
-// 옛 세트 Book 폴더 backfill — bookId 빈값 세트를 questions[0].sourcePageId (or sourcePages[0].pageId) →
-// 실제 page fetch → bookId 회수 → 세트 doc update
+// 옛 세트 Book 폴더 backfill — 1회성 도구. UI 버튼 제거됨(2026-09-11 v762).
+// 필요 시 브라우저 콘솔에서 qsBackfillBookIds() 로 재실행 가능. 진단은
+// scripts/diag/check-sets-bookid.js 로 학원별 미지정 카운트 확인.
 window.qsBackfillBookIds = async () => {
   if (!(await showConfirm('Book 폴더 자동 정리', 'Book 미지정으로 표시되는 세트들을 문제/출처 정보로 자동 정리합니다. 계속할까요?'))) return;
   const status = document.getElementById('qsStatus');
