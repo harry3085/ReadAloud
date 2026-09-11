@@ -667,7 +667,7 @@ module.exports = async function handler(req, res) {
     // 2026-07-22: 학원장 요청 신 시험 유형 sentence.
     // pages 본문에서 N 문장 verbatim 추출 + 각 한글번역. 길이 3단계 필터.
     if (mode === 'sentence-from-book') {
-      return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, customSystemPrompt, apiKey, res });
+      return await handleSentenceFromBook({ pages, count, sentenceLength, subMode, chunkCount, customSystemPrompt, apiKey, res });
     }
 
     // ─── 말하기 부적합 단어 판별 (의성어 / 사전없음 / ASR 오인식 위험) ───
@@ -1023,7 +1023,23 @@ SYSTEM_PROMPTS.sentence = SENTENCE_FROM_BOOK_PROMPT;
 
 // 문장시험 handler — 본문 페이지 → N 문장 추출 (verbatim 검증)
 // subMode: 'polished' (default, 필터·다듬음) | 'verbatim' (청크 방식, 최소 필터·원문 그대로)
-async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, customSystemPrompt, apiKey, res }) {
+// 문장을 N 균등 청크로 분할 (단어 단위, ' / ' 구분)
+function _splitSentenceIntoChunks(sentence, n) {
+  const words = String(sentence || '').trim().split(/\s+/).filter(Boolean);
+  const N = Math.max(2, Math.min(8, parseInt(n) || 3));
+  if (words.length < N) return '';   // 너무 짧으면 청크 X (학생앱 자동 분할 fallback)
+  const size = Math.ceil(words.length / N);
+  const chunks = [];
+  for (let i = 0; i < N; i++) {
+    const start = i * size;
+    const end = Math.min(start + size, words.length);
+    if (start >= words.length) break;
+    chunks.push(words.slice(start, end).join(' '));
+  }
+  return chunks.join(' / ');
+}
+
+async function handleSentenceFromBook({ pages, count, sentenceLength, subMode, chunkCount, customSystemPrompt, apiKey, res }) {
   if (!Array.isArray(pages) || pages.length === 0) {
     return res.status(400).json({ error: 'pages array is required' });
   }
@@ -1132,13 +1148,22 @@ Output ONLY the JSON object with the "sentences" array.`;
     if (picked.length >= N) break;
     picked.push(c);
   }
-  const sentencesOut = picked.map(c => ({
-    type: 'sentence',
-    en: c.en, ko: c.ko, wordCount: c.wordCount,
-    sourcePageId: c.matched.id,
-    sourcePageTitle: c.matched.title,
-    length: lenKey,
-  }));
+  // 청크방식 (verbatim) 이면 각 문장을 chunkCount 균등 청크로 사전 분할 (chunkedEn)
+  const wantChunks = subMode === 'verbatim';
+  const sentencesOut = picked.map(c => {
+    const out = {
+      type: 'sentence',
+      en: c.en, ko: c.ko, wordCount: c.wordCount,
+      sourcePageId: c.matched.id,
+      sourcePageTitle: c.matched.title,
+      length: lenKey,
+    };
+    if (wantChunks) {
+      const chunked = _splitSentenceIntoChunks(c.en, chunkCount);
+      if (chunked) out.chunkedEn = chunked;
+    }
+    return out;
+  });
 
   if (sentencesOut.length === 0) {
     return res.status(502).json({ error: 'AI 응답에서 검증 통과 문장 0개 — 다시 시도해 주세요', model: usedModel, rawSnippet: rawText.slice(0, 300) });

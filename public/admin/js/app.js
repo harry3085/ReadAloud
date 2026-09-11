@@ -10748,6 +10748,7 @@ const QG_TYPE_OPTIONS = {
       { key:'count',          label:'문제수',     type:'number', default:10, min:1, max:30 },
       { key:'sentenceLength', label:'문장 길이',  type:'select', choices:['짧음(5-8)','보통(9-13)','길다(14-20)'], default:'보통(9-13)' },
       { key:'mode',           label:'생성 방식',  type:'select', choices:['매칭식(다듬음)','청크방식(원문 verbatim)'], default:'매칭식(다듬음)' },
+      { key:'chunkCount',     label:'청크 개수',  type:'number', default:3, min:2, max:8 },
     ],
   },
 };
@@ -12165,6 +12166,7 @@ async function _qgCallSentence(opts) {
         count: opts.count,
         sentenceLength,
         subMode,
+        chunkCount: Math.max(2, Math.min(8, parseInt(opts.chunkCount) || 3)),
         customSystemPrompt: _qgGetCustomPrompt('sentence') || undefined,
       }),
     });
