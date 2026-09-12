@@ -8174,10 +8174,10 @@ function _vpSpeakAndListen() {
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
-  // v788: TTS onend 조기 발화로 인해 beep ↔ TTS 소리 겹침 + TTS 잔향 SR 캡처 이슈
-  // → postDelay 100ms 로 살짝 늘림 (TTS 완전 종료 여유 + 반응 속도 여전히 유지)
-  // iOS = 100ms / 안드 = 100ms
-  const postDelay = 100;
+  // v789: v788 100ms 는 "띠딱" 어중간 gap 유발 → v787 (iOS 0) 상태 복귀
+  // (beep ↔ TTS 소리 겹침은 문제 될 정도 아님. 100 은 오히려 어색)
+  // iOS = 0ms / 안드 = 100ms
+  const postDelay = _isIos() ? 0 : 100;
   _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
