@@ -105,6 +105,7 @@ function _isIos() {
 // startVocab 등이 await getDoc 후 speak() 하면 gesture context 손실 → 조용히 실패.
 // 앱 진입 후 첫 사용자 터치·클릭에 무음 utterance 실행해 이후 세션 전체 speak() 허용.
 let _ttsUnlocked = false;
+let _sharedAudioCtx = null;   // beep 재사용 인스턴스 (iOS gesture unlock 유지)
 function _installTtsUnlock() {
   if (_ttsUnlocked || typeof window.speechSynthesis === 'undefined') return;
   const unlock = () => {
@@ -114,6 +115,14 @@ function _installTtsUnlock() {
       u.volume = 0;
       u.rate = 1;
       window.speechSynthesis.speak(u);
+      // AudioContext 도 같은 gesture 로 unlock — iOS 는 gesture 밖에서 new Ctx() 하면 suspended 로 시작하고 resume 실패
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx && !_sharedAudioCtx) {
+          _sharedAudioCtx = new Ctx();
+          if (_sharedAudioCtx.state === 'suspended') _sharedAudioCtx.resume().catch(() => {});
+        }
+      } catch(_) {}
       _ttsUnlocked = true;
       document.removeEventListener('touchend', unlock, true);
       document.removeEventListener('click', unlock, true);
@@ -7805,13 +7814,16 @@ let _vpToneIdx = 0;
 
 // 발화 시작 신호음 — TTS 종료 → SR 시작 사이 학생 인지용 짧은 "삐"
 // Chrome/Android 는 SR 자체 native beep 있으나 iOS Safari 는 없음. 통일용 신호.
-// iOS 도 재생 — WebKit Bug #321436 은 뒤이은 getUserMedia priming 이 세션 리셋으로 해결
+// iOS 는 gesture 밖에서 new AudioContext() 하면 suspended 로 시작·resume 실패 →
+// _installTtsUnlock 이 첫 gesture 에 만든 _sharedAudioCtx 재사용 (close 하지 않음)
 function _vpPlayStartBeep() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
-    // iOS AudioContext suspended → resume 필요
+    if (!_sharedAudioCtx) {
+      _sharedAudioCtx = new Ctx();
+    }
+    const ctx = _sharedAudioCtx;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -7824,7 +7836,7 @@ function _vpPlayStartBeep() {
     osc.connect(gain).connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.18);
-    setTimeout(() => { try { ctx.close(); } catch(_) {} }, 300);
+    // ctx.close() 하지 않음 — 다음 beep 재사용
   } catch(_) {}
 }
 
