@@ -8243,9 +8243,32 @@ function _vpStartListen() {
   const q = s.questions[s.currentIdx];
   const target = q.word || '';
   let resolved = false;
+  let started = false;
 
+  // 안전망 timeout — iOS Safari SR 이 onresult/onerror/onend 어느 것도 발화 안 하고 hang
+  // 되는 경우 방어. 12초 안 아무 응답 없으면 강제 종료 + 학생 안내
+  const HANG_MS = 12000;
+  const hangTimer = setTimeout(() => {
+    if (resolved || s.stopped || s.gen !== g) return;
+    resolved = true;
+    console.warn('[vp] SR hang timeout — started:', started, 'iOS:', _isIos());
+    try { rec.abort(); } catch(_){}
+    s.listening = false;
+    if (_isIos()) {
+      _vpShowSrIssue('말소리가 감지되지 않았어요',
+        '아이패드/아이폰 음성 인식이 자주 이런 상태가 됩니다.\n\n확인:\n① 설정 → 일반 → 키보드 → 받아쓰기 [켬]\n② 설정 → Safari → 마이크 [허용]\n③ 방금 마이크 권한 팝업이 떴는지\n④ Wi-Fi/LTE 연결\n\n한 번 종료 후 다시 시도해주세요.');
+    } else {
+      _vpHandleResult(0, '');   // 다른 플랫폼은 조용히 다음 시도
+    }
+  }, HANG_MS);
+
+  rec.onstart = () => {
+    started = true;
+    console.log('[vp] SR onstart');
+  };
   rec.onresult = (event) => {
     resolved = true;
+    clearTimeout(hangTimer);
     if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
@@ -8259,9 +8282,10 @@ function _vpStartListen() {
   };
   rec.onerror = (e) => {
     resolved = true;
+    clearTimeout(hangTimer);
     s.listening = false;
     if (s.stopped || s.gen !== g) return;
-    console.warn('[vp] SR error:', e.error);
+    console.warn('[vp] SR error:', e.error, 'started:', started);
     // 특정 에러는 학생 안내 (iOS 진단용)
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       _vpShowSrIssue('마이크 권한 필요',
@@ -8280,14 +8304,24 @@ function _vpStartListen() {
     _vpHandleResult(0, '');
   };
   rec.onend = () => {
+    clearTimeout(hangTimer);
     s.listening = false;
     if (s.stopped || s.gen !== g) return;
-    if (!resolved) _vpHandleResult(0, '');
+    console.log('[vp] SR onend, resolved:', resolved, 'started:', started);
+    if (!resolved) {
+      // onstart 도 안 옴 = SR 시작조차 안 됨 (iOS Safari 특유 조용한 실패)
+      if (!started && _isIos()) {
+        _vpShowSrIssue('음성 인식이 시작되지 않았어요',
+          'Safari 브라우저인지 확인 · 설정 → 일반 → 받아쓰기 [켬] · 설정 → Safari → 마이크 [허용].');
+        return;
+      }
+      _vpHandleResult(0, '');
+    }
   };
   try { rec.start(); } catch(e) {
+    clearTimeout(hangTimer);
     console.warn('[vp] rec.start throw:', e);
     s.listening = false;
-    // iOS 는 start() 자체가 throw 하는 경우 있음 (권한/gesture 문제)
     if (_isIos()) {
       _vpShowSrIssue('음성 인식 시작 실패',
         'Safari 브라우저인지 확인 · 설정 → Safari → 마이크 권한 · 설정 → 일반 → 받아쓰기 활성화 여부 확인.');
