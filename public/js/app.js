@@ -6037,6 +6037,7 @@ async function _vqSubmit() {
   const passed = requirePerfect ? (score === 100) : (score >= passScore);
   const today = _ymdKST();
 
+  const deviceInfo = _rv2BuildDeviceInfo();   // 디바이스별 진단용 (녹음숙제 헬퍼 재사용)
   try {
     await addDoc(collection(db,'scores'), {
       academyId: window.MY_ACADEMY_ID || 'default',
@@ -6053,6 +6054,7 @@ async function _vqSubmit() {
       passed, passScore,
       date: today,
       createdAt: serverTimestamp(),
+      ...(deviceInfo ? { deviceInfo } : {}),
     });
     try {
       await _writeUserCompleted(t.id, {
@@ -7582,6 +7584,7 @@ async function _stqSubmitFinal() {
   const passScore = t.passScore ?? 80;
   const passed = score >= passScore;
   const today = _ymdKST();
+  const deviceInfo = _rv2BuildDeviceInfo();   // 디바이스 정보 (녹음숙제 헬퍼 재사용, 유형별 진단용)
   try {
     await addDoc(collection(db, 'scores'), {
       academyId: window.MY_ACADEMY_ID || 'default',
@@ -7596,12 +7599,14 @@ async function _stqSubmitFinal() {
       passed, passScore,
       date: today,
       createdAt: serverTimestamp(),
+      ...(deviceInfo ? { deviceInfo } : {}),
     });
     try {
       await _writeUserCompleted(t.id, {
         score, passed, passScore,
         correct, wrong: total - correct, total,
         questions: s.questions, answers: s.answers,
+        extra: deviceInfo ? { deviceInfo } : undefined,
       });
     } catch(e) { console.warn('genTest 완료 기록 실패', e); }
     s._submitted = true;
@@ -8376,7 +8381,8 @@ async function _vpFinish() {
     });
   } catch(e) { console.warn('[vp] 저장 실패', e); }
 
-  // scores 저장 — mode/vocabFormat 분기
+  // scores 저장 — mode/vocabFormat 분기 + 디바이스 진단용
+  const _vpDeviceInfo = _rv2BuildDeviceInfo();
   try {
     await addDoc(collection(db,'scores'), {
       academyId: window.MY_ACADEMY_ID || 'default',
@@ -8393,6 +8399,7 @@ async function _vpFinish() {
       passed: true, passScore: 0,
       date: _ymdKST(),
       createdAt: serverTimestamp(),
+      ...(_vpDeviceInfo ? { deviceInfo: _vpDeviceInfo } : {}),
     });
   } catch(e) { console.warn('[vp] scores 저장 실패', e); }
 
