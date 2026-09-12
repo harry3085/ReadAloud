@@ -3,6 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- 디버그 오버레이 — ?debug=1 URL 파라미터로 활성화 (아이패드·아이폰 F12 없는 환경 진단용).
+       eruda 라이브러리 CDN 로드 → 우측 하단 버튼 → Console/Network/Elements 확인 가능.
+       파라미터 없으면 로드조차 안 함 (일반 학생 영향 0). sessionStorage 로 세션 유지. -->
+  <script>
+    (function(){
+      try {
+        var hasParam = /[?&]debug=1(?:&|$)/.test(location.search);
+        var sessionOn = sessionStorage.getItem('_erudaOn') === '1';
+        if (hasParam) sessionStorage.setItem('_erudaOn', '1');
+        if (hasParam || sessionOn) {
+          var s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/eruda@3';
+          s.onload = function(){ try { window.eruda && eruda.init(); } catch(_){} };
+          document.head.appendChild(s);
+        }
+      } catch(_){}
+    })();
+  </script>
   <title>LexiAI</title>
   <link id="manifest-link" rel="manifest" href="/api/manifest">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
