@@ -8161,12 +8161,10 @@ function _vpSpeakAndListen() {
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
-  // iOS + 2번째 이후 SR = 세션 재사용 실패 방지 위해 더 여유 (1200ms)
-  // iOS + 첫 SR = 600ms
-  // 그 외 = 100ms
-  const postDelay = _isIos()
-    ? (_vpState._srSessionUsed ? 1200 : 600)
-    : 100;
+  // getUserMedia priming (WebKit Bug #321436 fix) 이 세션 리셋을 담당하니
+  // iOS 이후 SR 대기는 500ms 로 단축 (옛 1200ms 는 hang 회피용, 이제 불필요)
+  // iOS 첫 SR = 500ms / 안드 = 100ms
+  const postDelay = _isIos() ? 500 : 100;
   _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
@@ -8230,8 +8228,8 @@ async function _vpPrimeSrIos() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // 즉시 track 종료 (mic 인디케이터 안 뜨게)
     stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
-    // 300ms 대기 — iOS AudioSession category 리셋 여유
-    await new Promise(r => setTimeout(r, 300));
+    // 200ms 대기 — iOS AudioSession category 리셋 여유
+    await new Promise(r => setTimeout(r, 200));
   } catch(e) {
     console.warn('[vp] iOS getUserMedia priming 실패:', e);
   }
@@ -8541,10 +8539,9 @@ function _vpHandleResult(sim, heard) {
       return;
     }
     if (canAdvance) {
-      // iOS 는 WebSpeech 세션 재사용 실패 버그 회피 위해 학생 gesture 로 다음 진행
-      // (자동 진행 시 3~4청크 후 hang. 학생 명시적 탭이 fresh gesture context 제공)
-      if (_isIos()) _vpShowNextGate();
-      else _vpAdvance();
+      // 자동 진행 — iOS hang 은 getUserMedia priming (WebKit Bug #321436 fix) 이 해결
+      // 옛 next gate 는 hang 회피용이었으나 이제 불필요
+      _vpAdvance();
     } else _vpSpeakAndListen();
   }, 700);
 }
