@@ -7803,6 +7803,47 @@ const _VP_TONES = [
 ];
 let _vpToneIdx = 0;
 
+// 발화 시작 신호음 — TTS 종료 → SR 시작 사이 학생 인지용 짧은 "삐"
+// Chrome/Android 는 SR 자체 native beep 있으나 iOS Safari 는 없음. 통일용 신호.
+function _vpPlayStartBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    // iOS AudioContext suspended → resume 필요
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;   // A5 — 밝고 짧게
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+    gain.gain.linearRampToValueAtTime(0, now + 0.16);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+    setTimeout(() => { try { ctx.close(); } catch(_) {} }, 300);
+  } catch(_) {}
+}
+
+// iOS novelty voices — 로봇/속삭임/괴상 등 학습에 부적합. 이름 매칭으로 제외
+const _IOS_BAD_VOICES = /Fred|Zarvox|Junior|Ralph|Whisper|Cellos|Organ|Bells|Bahh|Bubbles|Trinoids|Boing|Deranged|Hysterical|Bad News|Good News|Pipe Organ/i;
+
+// TTS 자연 영어 음성 선택 — iOS 는 novelty 제외 + premium/enhanced 우선
+function _vpPickBestEnVoice(voices) {
+  const en = (voices || []).filter(v => (v.lang || '').startsWith('en'));
+  if (en.length === 0) return null;
+  // iOS novelty 제외
+  const clean = en.filter(v => !_IOS_BAD_VOICES.test(v.name || ''));
+  const pool = clean.length ? clean : en;
+  // 우선순위: premium/enhanced > 로컬 > 첫 번째
+  const enhanced = pool.find(v => /premium|enhanced/i.test(v.name || ''));
+  if (enhanced) return enhanced;
+  const local = pool.find(v => v.localService);
+  return local || pool[0];
+}
+
 async function _startVocabPractice(test, questions) {
   _screenPrepare('vocabPractice', '#vpProgressBar');
   // 문제섞기 옵션 반영 — vocabOptions.shuffleQ !== false 면 셔플 (default true)
@@ -8131,6 +8172,8 @@ function _vpSpeakAndListen() {
     }
     started = true;
     _vpShowWave(false);
+    // 발화 신호음 (iOS SR 은 native beep 없음 — 통일용)
+    _vpPlayStartBeep();
     // 학생이 읽고 발화 준비 시간 확보 후 SR 시작
     setTimeout(() => {
       if (s.stopped || s.gen !== g) return;
@@ -8150,8 +8193,10 @@ function _vpSpeakAndListen() {
       u.rate = s.customTtsRate ? s.customTtsRate : tone.rate;
       u.pitch = tone.pitch;
       u.volume = 1.0;
-      const enVoices = (s.ttsVoices || []).filter(v => (v.lang || '').startsWith('en'));
-      if (enVoices.length) u.voice = enVoices[_vpToneIdx % enVoices.length];
+      // voice 선택 — iOS novelty (Fred·Zarvox·Bubbles 등) 제외 + premium 우선
+      // rate/pitch 만 rotate (voice 는 세션 내 고정 — iOS 이상 톤 방지)
+      const bestVoice = _vpPickBestEnVoice(s.ttsVoices);
+      if (bestVoice) u.voice = bestVoice;
       u.onend = () => startOnce();
       u.onerror = () => startOnce();
       try { window.speechSynthesis.speak(u); }
