@@ -8215,9 +8215,9 @@ function _vpSpeakAndListen() {
       // rate/pitch 만 rotate (voice 는 세션 내 고정 — iOS 이상 톤 방지)
       const bestVoice = _vpPickBestEnVoice(s.ttsVoices);
       if (bestVoice) u.voice = bestVoice;
-      u.onend = () => startOnce();
-      u.onerror = () => startOnce();
-      try { window.speechSynthesis.speak(u); }
+      u.onend = () => { _vpState._tTtsEnd = performance.now(); console.log('[timing] TTS onend'); startOnce(); };
+      u.onerror = () => { _vpState._tTtsEnd = performance.now(); startOnce(); };
+      try { _vpState._tTtsStart = performance.now(); window.speechSynthesis.speak(u); }
       catch(e) { console.warn('[vp] speak:', e); startOnce(); }
     }, 80);
     // safety net — onend 안 오는 브라우저 대비 (폴링이 실제 종료 검증)
@@ -8236,11 +8236,14 @@ async function _vpPrimeSrIos() {
   if (!_isIos()) return;
   if (!navigator.mediaDevices?.getUserMedia) return;
   try {
+    const t0 = performance.now();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const t1 = performance.now();
     // 즉시 track 종료 (mic 인디케이터 안 뜨게)
     stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
     // 200ms 대기 — iOS AudioSession category 리셋 여유 (v777 150ms 는 hang 재발)
     await new Promise(r => setTimeout(r, 200));
+    console.log('[timing] priming gum=' + Math.round(t1 - t0) + 'ms + wait 200ms');
   } catch(e) {
     console.warn('[vp] iOS getUserMedia priming 실패:', e);
   }
@@ -8319,7 +8322,11 @@ async function _vpStartListen() {
 
   rec.onstart = () => {
     started = true;
-    console.log('[vp] SR onstart');
+    const t = performance.now();
+    _vpState._tSrStart = t;
+    const tEnd = _vpState._tTtsEnd || t;
+    const tCallStart = _vpState._tRecStart || t;
+    console.log('[timing] SR onstart — TTSend→onstart=' + Math.round(t - tEnd) + 'ms, recStart→onstart=' + Math.round(t - tCallStart) + 'ms');
   };
   rec.onresult = (event) => {
     resolved = true;
@@ -8331,6 +8338,9 @@ async function _vpStartListen() {
     // 진단 로그 — iOS 언어 미설치 시 empty transcript 반환하는지 확인용
     const allTranscripts = [];
     for (let i = 0; i < r.length; i++) allTranscripts.push(r[i].transcript || '');
+    const tRes = performance.now();
+    const tOn = _vpState._tSrStart || tRes;
+    console.log('[timing] SR onresult — onstart→onresult=' + Math.round(tRes - tOn) + 'ms (학생 발화 + 침묵 감지)');
     console.log('[vp] SR onresult lang:', rec.lang, 'alts:', allTranscripts, 'target:', target);
     let bestSim = 0, bestHeard = '';
     for (let i = 0; i < r.length; i++) {
@@ -8379,6 +8389,9 @@ async function _vpStartListen() {
     }
   };
   try {
+    _vpState._tRecStart = performance.now();
+    const tEnd = _vpState._tTtsEnd;
+    if (tEnd) console.log('[timing] rec.start() call — TTSend→recStart=' + Math.round(_vpState._tRecStart - tEnd) + 'ms');
     rec.start();
     s._srSessionUsed = true;   // 다음 SR 부터 iOS priming 트리거 (WebKit Bug #321436)
   } catch(e) {
