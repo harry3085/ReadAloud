@@ -8160,10 +8160,10 @@ function _vpSpeakAndListen() {
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
-  // getUserMedia priming (WebKit Bug #321436 fix) 이 세션 리셋을 담당하니
-  // iOS 이후 SR 대기 300ms 로 단축 — 첫 단어 안 놓치는 최소 안전선
-  // iOS 첫 SR = 300ms / 안드 = 100ms
-  const postDelay = _isIos() ? 300 : 100;
+  // beep 재생 시 AudioContext 생성으로 세션 부담 → priming 이 충분히 정리하려면 500ms 필요
+  // (v777 300ms 는 첫 청크마다 hang 재발 확인, v776 500ms 안정선으로 복귀)
+  // iOS = 500ms / 안드 = 100ms
+  const postDelay = _isIos() ? 500 : 100;
   _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
@@ -8227,8 +8227,8 @@ async function _vpPrimeSrIos() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // 즉시 track 종료 (mic 인디케이터 안 뜨게)
     stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
-    // 150ms 대기 — iOS AudioSession category 리셋 여유 (최소 안전선)
-    await new Promise(r => setTimeout(r, 150));
+    // 200ms 대기 — iOS AudioSession category 리셋 여유 (v777 150ms 는 hang 재발)
+    await new Promise(r => setTimeout(r, 200));
   } catch(e) {
     console.warn('[vp] iOS getUserMedia priming 실패:', e);
   }
