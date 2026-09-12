@@ -8172,9 +8172,10 @@ function _vpSpeakAndListen() {
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
-  // v782 (300+150) 안정 확인 후 v783 추가 단축 실험
-  // iOS = 200ms / 안드 = 100ms
-  const postDelay = _isIos() ? 200 : 100;
+  // v784 극한 실험: postDelay 0 + wait 0 — getUserMedia priming 자체가 세션 리셋 담당 검증
+  // (shared AudioContext 로 세션 부담 없음, 원인은 시간 아니라는 v782 결론 활용)
+  // iOS = 0ms / 안드 = 100ms
+  const postDelay = _isIos() ? 0 : 100;
   _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
@@ -8240,8 +8241,9 @@ async function _vpPrimeSrIos() {
     const t1 = performance.now();
     // 즉시 track 종료 (mic 인디케이터 안 뜨게)
     stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
-    // 100ms 대기 — v783 실험: v782 안정 확인 후 추가 단축
-    await new Promise(r => setTimeout(r, 100));
+    // 0ms — v784 극한 실험: gum 자체가 세션 리셋 담당하면 wait 불필요 검증
+    // (실패 시 wait 50 or 100 로 복귀)
+    // await new Promise(r => setTimeout(r, 0));
     console.log('[timing] priming gum=' + Math.round(t1 - t0) + 'ms + wait 200ms');
   } catch(e) {
     console.warn('[vp] iOS getUserMedia priming 실패:', e);
