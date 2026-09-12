@@ -136,8 +136,12 @@
     .mode-icon{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
     .mode-name{font-size:16px;font-weight:700;color:var(--text);}
     .mode-desc{font-size:13px;color:var(--gray);margin-top:2px;}
-    .quiz-header{display:flex;align-items:center;gap:12px;padding:14px 20px 0;flex-shrink:0;}
-    .quit-btn{background:none;border:none;font-size:20px;color:var(--gray);cursor:pointer;flex-shrink:0;}
+    /* padding-top: iOS status bar (시간·배터리) 회피 + 여유. PWA 는 env() 로 실제 inset, Safari 는 최소 24px */
+    .quiz-header{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top, 0px) + 24px) 20px 0;flex-shrink:0;}
+    /* Apple HIG 권장 최소 44x44 터치 영역 */
+    .quit-btn{background:none;border:1px solid transparent;font-size:24px;color:var(--gray);cursor:pointer;flex-shrink:0;padding:10px 12px;border-radius:10px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s;}
+    .quit-btn:hover,.quit-btn:active{background:#f3f4f6;border-color:var(--border);}
+    .quit-btn svg{width:20px !important;height:20px !important;margin:0 !important;vertical-align:middle !important;}
     .progress-bar-wrap{flex:1;height:8px;background:var(--c-brand-cream);border-radius:4px;}
     .progress-bar-fill{height:8px;background:var(--teal);border-radius:4px;transition:width .3s;}
     .progress-pill{font-size:12px;font-weight:700;color:var(--teal);flex-shrink:0;min-width:32px;text-align:right;}
