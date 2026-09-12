@@ -8512,9 +8512,52 @@ function _vpHandleResult(sim, heard) {
       _vpSpeakAndListen();
       return;
     }
-    if (canAdvance) _vpAdvance();
-    else _vpSpeakAndListen();
+    if (canAdvance) {
+      // iOS 는 WebSpeech 세션 재사용 실패 버그 회피 위해 학생 gesture 로 다음 진행
+      // (자동 진행 시 3~4청크 후 hang. 학생 명시적 탭이 fresh gesture context 제공)
+      if (_isIos()) _vpShowNextGate();
+      else _vpAdvance();
+    } else _vpSpeakAndListen();
   }, 700);
+}
+
+// iOS 전용 — [→ 다음] 버튼 표시. 학생 탭 시 다음 문제로 진행.
+// 학생 탭이 fresh user gesture 를 만들어 iOS SR 세션 리셋 유도 → 다음 SR 정상 시작 가능성 ↑
+function _vpShowNextGate() {
+  const s = _vpState;
+  const g = s.gen;
+  const isChunk = s._sentenceMode === 'chunk-practice';
+  const q = s.questions[s.currentIdx];
+  // 청크 학습에선 문장 마무리(_isFull) 문제 후엔 '→ 다음 문장', 청크 중엔 '→ 다음 청크'
+  const label = isChunk
+    ? (q?._isFull ? '→ 다음 문장' : (q?._chunkNum === q?._chunkTotal ? '→ 전체 문장 읽기' : '→ 다음 청크'))
+    : '→ 다음 단어';
+  const reactArea = document.getElementById('vpReactArea');
+  if (!reactArea) { _vpAdvance(); return; }
+  // 기존 wrap 제거 (중복 방지)
+  const old = reactArea.querySelector('#vpNextGateWrap');
+  if (old) old.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'vpNextGateWrap';
+  wrap.style.cssText = 'text-align:center;margin-top:14px;';
+  wrap.innerHTML = `<button id="vpNextGateBtn"
+    style="padding:16px 40px;background:#0891b2;color:white;border:none;border-radius:16px;font-size:19px;font-weight:800;box-shadow:0 6px 18px rgba(8,145,178,0.35);cursor:pointer;min-width:200px;">
+    ${label}
+  </button>`;
+  reactArea.appendChild(wrap);
+  const btn = wrap.querySelector('#vpNextGateBtn');
+  btn.onclick = () => {
+    if (s.stopped || s.gen !== g) return;
+    wrap.remove();
+    // 다음 진행 전 SR 세션 완전 리셋 (iOS WebSpeech 세션 pool 해제 유도)
+    if (s.rec) {
+      try { s.rec.abort(); } catch(_){}
+      try { s.rec.onstart = s.rec.onresult = s.rec.onerror = s.rec.onend = null; } catch(_){}
+      s.rec = null;
+    }
+    s._srRetryCount = 0;
+    _vpAdvance();
+  };
 }
 
 function _vpAdvance() {
