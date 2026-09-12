@@ -8115,8 +8115,9 @@ function _vpShowViz(on) {
   const slot = document.getElementById('vpVizSlot');
   const env = document.getElementById('vpVizEnv');
   if (!slot || !env) return;
+  // slot 은 CSS 의 height:160px 로 항상 공간 유지 (아래 요소 밀림 방지)
+  // env 의 is-on 클래스만 토글 → 웨이브 내용만 페이드 in/out
   if (on) {
-    slot.style.display = '';
     const type = _vpState.vizType || 'ribbon';
     let html;
     if (type === 'ribbon')      html = _vpBuildRibbonHtml();
@@ -8130,10 +8131,7 @@ function _vpShowViz(on) {
   } else {
     env.classList.remove('is-on');
     setTimeout(() => {
-      if (!env.classList.contains('is-on')) {
-        env.innerHTML = '';
-        slot.style.display = 'none';
-      }
+      if (!env.classList.contains('is-on')) env.innerHTML = '';
     }, 340);
   }
 }
