@@ -8283,6 +8283,10 @@ function _vpStartListen() {
     if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
+    // 진단 로그 — iOS 언어 미설치 시 empty transcript 반환하는지 확인용
+    const allTranscripts = [];
+    for (let i = 0; i < r.length; i++) allTranscripts.push(r[i].transcript || '');
+    console.log('[vp] SR onresult lang:', rec.lang, 'alts:', allTranscripts, 'target:', target);
     let bestSim = 0, bestHeard = '';
     for (let i = 0; i < r.length; i++) {
       const t = (r[i].transcript || '').trim();
@@ -8352,7 +8356,7 @@ async function _vpShowSrRetry() {
   if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 말소리 감지 안 됨</span>';
   const retry = await showConfirm(
     '🎤 말소리가 감지되지 않았어요',
-    '아이패드/아이폰 음성 인식이 자주 이런 상태가 됩니다.\n\n[확인] = 다시 시도\n[취소] = 홈으로\n\n계속 안 되면:\n① 설정 → 일반 → 키보드 → 받아쓰기 [켬]\n② 설정 → Safari → 마이크 [허용]\n③ iPad 재부팅 후 재시도'
+    '★ 가장 흔한 원인: 아이패드에 English (US) 받아쓰기 언어 미설치\n\n확인 (설정 앱):\n① 일반 → 키보드 → 받아쓰기 → 받아쓰기 언어 → English (US) 체크\n   (없으면 [언어 추가] 로 English 추가 → 음성 파일 다운로드 대기)\n② Safari → 마이크 [허용]\n③ Safari 브라우저에서 열었는지 (홈화면 아이콘 X)\n\n[확인] = 다시 시도\n[취소] = 홈으로'
   );
   if (retry) {
     s._srRetryCount = 0;   // 재시도 카운터 리셋
