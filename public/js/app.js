@@ -7805,7 +7805,9 @@ let _vpToneIdx = 0;
 
 // 발화 시작 신호음 — TTS 종료 → SR 시작 사이 학생 인지용 짧은 "삐"
 // Chrome/Android 는 SR 자체 native beep 있으나 iOS Safari 는 없음. 통일용 신호.
+// iOS 는 skip — WebKit Bug #321436 대응: 추가 audio 재생이 SR 세션 충돌 악화
 function _vpPlayStartBeep() {
+  if (_isIos()) return;
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
@@ -8218,8 +8220,25 @@ function _vpSpeakAndListen() {
   }
 }
 
+// iOS SR 세션 priming — WebKit Bug #321436 공식 workaround
+// TTS/audio 재생 후 iOS AudioSession 이 stuck 되어 SR 결과 안 나오는 문제 우회
+// getUserMedia 로 마이크 세션 잠깐 열고 → 즉시 close → 300ms 대기 → SR 시작
+async function _vpPrimeSrIos() {
+  if (!_isIos()) return;
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // 즉시 track 종료 (mic 인디케이터 안 뜨게)
+    stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
+    // 300ms 대기 — iOS AudioSession category 리셋 여유
+    await new Promise(r => setTimeout(r, 300));
+  } catch(e) {
+    console.warn('[vp] iOS getUserMedia priming 실패:', e);
+  }
+}
+
 // 자동 SR 시작 — TTS 끝난 뒤 호출
-function _vpStartListen() {
+async function _vpStartListen() {
   const s = _vpState;
   if (s.stopped || s.listening) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -8241,6 +8260,12 @@ function _vpStartListen() {
     s.rec = null;
   }
   const g = s.gen;
+  // iOS 세션 priming — TTS/audio 후 SR 세션 stuck 우회 (WebKit Bug #321436)
+  // 첫 SR 이후에만 실행 (첫 SR 은 문제 없음, 두 번째부터 필요)
+  if (_isIos() && s._srSessionUsed) {
+    await _vpPrimeSrIos();
+    if (s.stopped || s.gen !== g) return;
+  }
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">따라 읽어보세요!</span>';
   _vpShowMicAnim(true);
@@ -8344,7 +8369,10 @@ function _vpStartListen() {
       _vpHandleResult(0, '');
     }
   };
-  try { rec.start(); } catch(e) {
+  try {
+    rec.start();
+    s._srSessionUsed = true;   // 다음 SR 부터 iOS priming 트리거 (WebKit Bug #321436)
+  } catch(e) {
     clearTimeout(hangTimer);
     console.warn('[vp] rec.start throw:', e);
     s.listening = false;
