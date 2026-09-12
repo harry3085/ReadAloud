@@ -7890,7 +7890,7 @@ async function _startVocabPractice(test, questions) {
     }
   }
   show('vocabPractice');
-  _vpWarmupTts();   // Chrome 첫음절 약해짐 방지 — 엔진 미리 워밍업
+  await _vpWarmupTts();   // "Ready?" 재생 후 첫 청크 진행 — 첫음절 약함 방지 + 시작 신호
   _vpRenderStep();
 }
 
@@ -8862,22 +8862,31 @@ async function _startSentenceChunkPractice(test, sentences) {
     }
   }
   show('vocabPractice');
-  _vpWarmupTts();   // Chrome 첫음절 약해짐 방지 — 엔진 미리 워밍업
+  await _vpWarmupTts();   // "Ready?" 재생 후 첫 청크 진행 — 첫음절 약함 방지 + 시작 신호
   _vpRenderStep();
 }
 
-// TTS engine warm-up — Chrome 은 세션 첫 발화 앞부분(첫음절) 약하게 렌더링
-// 무음 utterance 로 엔진 미리 깨워둠. fire-and-forget, 결과 대기 X
+// TTS engine warm-up — Chrome/iOS 세션 첫 발화 첫음절 약함 방지
+// 실제 사용할 voice 로 "Ready?" 재생 → cold-start 해소 + 학생 인지 (곧 시작 신호)
+// 완료까지 await — 첫 청크 TTS 와 겹치지 않게
 function _vpWarmupTts() {
-  try {
-    if (typeof window.speechSynthesis === 'undefined') return;
-    // volume 0 · 짧은 텍스트로 엔진 로드 (실제 소리 안 남)
-    const u = new SpeechSynthesisUtterance('.');
-    u.lang = 'en-US';
-    u.volume = 0;
-    u.rate = 1.0;
-    window.speechSynthesis.speak(u);
-  } catch(_) {}
+  return new Promise((resolve) => {
+    try {
+      if (typeof window.speechSynthesis === 'undefined') return resolve();
+      const voices = window.speechSynthesis.getVoices();
+      const voice = _vpPickBestEnVoice(voices);
+      const u = new SpeechSynthesisUtterance('Ready?');
+      u.lang = 'en-US';
+      if (voice) u.voice = voice;
+      u.volume = 1;
+      u.rate = 1.0;
+      const done = () => resolve();
+      u.onend = done;
+      u.onerror = done;
+      setTimeout(done, 2000);   // safety net — onend 안 오는 경우 대비
+      window.speechSynthesis.speak(u);
+    } catch(_) { resolve(); }
+  });
 }
 
 // 마이크 이상 안내 모달 (3턴 연속 무음 시) — showConfirm 사용 (검증된 학생앱 표준)
