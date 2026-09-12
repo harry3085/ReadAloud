@@ -8157,8 +8157,10 @@ function _vpSpeakAndListen() {
     return;
   }
   let started = false;
-  // TTS 끝난 후 SR 시작 딜레이 — 문장 chunk-practice 는 여유 (읽고 발화 준비)
-  const postDelay = 100;
+  // TTS 끝난 후 SR 시작 딜레이
+  // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
+  // → iOS 600ms, 그 외 100ms
+  const postDelay = _isIos() ? 600 : 100;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
   const MAX_POLLS = 100;   // 20초 상한
@@ -8251,12 +8253,20 @@ function _vpStartListen() {
   const hangTimer = setTimeout(() => {
     if (resolved || s.stopped || s.gen !== g) return;
     resolved = true;
-    console.warn('[vp] SR hang timeout — started:', started, 'iOS:', _isIos());
+    console.warn('[vp] SR hang timeout — started:', started, 'iOS:', _isIos(), 'retry#', s._srRetryCount || 0);
     try { rec.abort(); } catch(_){}
     s.listening = false;
     if (_isIos()) {
-      _vpShowSrIssue('말소리가 감지되지 않았어요',
-        '아이패드/아이폰 음성 인식이 자주 이런 상태가 됩니다.\n\n확인:\n① 설정 → 일반 → 키보드 → 받아쓰기 [켬]\n② 설정 → Safari → 마이크 [허용]\n③ 방금 마이크 권한 팝업이 떴는지\n④ Wi-Fi/LTE 연결\n\n한 번 종료 후 다시 시도해주세요.');
+      // iOS 첫 SR 실패는 흔한 버그 — 자동 1회 재시도 (오디오 세션 리셋 효과)
+      const retryCount = s._srRetryCount || 0;
+      if (retryCount < 1) {
+        s._srRetryCount = retryCount + 1;
+        console.log('[vp] iOS SR 자동 재시도', s._srRetryCount);
+        setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 800);
+        return;
+      }
+      // 재시도도 실패 → 학생 안내 (다시 시도 버튼 포함)
+      _vpShowSrRetry();
     } else {
       _vpHandleResult(0, '');   // 다른 플랫폼은 조용히 다음 시도
     }
@@ -8269,6 +8279,7 @@ function _vpStartListen() {
   rec.onresult = (event) => {
     resolved = true;
     clearTimeout(hangTimer);
+    s._srRetryCount = 0;   // 성공 시 재시도 카운터 리셋
     if (s.stopped || s.gen !== g) return;
     const r = event.results[event.results.length - 1];
     if (!r || !r.isFinal) return;
@@ -8328,6 +8339,27 @@ function _vpStartListen() {
       return;
     }
     setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
+  }
+}
+
+// iOS SR hang 후 [다시 시도] / [중단] 선택 — 학생이 나가지 않고 즉시 재시도 가능
+async function _vpShowSrRetry() {
+  const s = _vpState;
+  s.listening = false;
+  _vpShowMicAnim(false);
+  _vpShowWave(false);
+  const statusEl = document.getElementById('vpStatus');
+  if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 말소리 감지 안 됨</span>';
+  const retry = await showConfirm(
+    '🎤 말소리가 감지되지 않았어요',
+    '아이패드/아이폰 음성 인식이 자주 이런 상태가 됩니다.\n\n[확인] = 다시 시도\n[취소] = 홈으로\n\n계속 안 되면:\n① 설정 → 일반 → 키보드 → 받아쓰기 [켬]\n② 설정 → Safari → 마이크 [허용]\n③ iPad 재부팅 후 재시도'
+  );
+  if (retry) {
+    s._srRetryCount = 0;   // 재시도 카운터 리셋
+    if (!s.stopped) _vpSpeakAndListen();   // TTS 부터 다시 (오디오 세션 리셋)
+  } else {
+    s.stopped = true;
+    if (typeof goHome === 'function') goHome();
   }
 }
 
