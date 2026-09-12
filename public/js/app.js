@@ -8159,8 +8159,13 @@ function _vpSpeakAndListen() {
   let started = false;
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
-  // → iOS 600ms, 그 외 100ms
-  const postDelay = _isIos() ? 600 : 100;
+  // iOS + 2번째 이후 SR = 세션 재사용 실패 방지 위해 더 여유 (1200ms)
+  // iOS + 첫 SR = 600ms
+  // 그 외 = 100ms
+  const postDelay = _isIos()
+    ? (_vpState._srSessionUsed ? 1200 : 600)
+    : 100;
+  _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
   const MAX_POLLS = 100;   // 20초 상한
@@ -8228,6 +8233,12 @@ function _vpStartListen() {
     _vpShowSrIssue('홈화면 아이콘에서는 말하기가 안돼요',
       '아이패드/아이폰은 홈화면 추가된 앱에서 음성 인식이 안 됩니다. Safari 브라우저에서 다시 열어주세요.');
     return;
+  }
+  // 옛 SR 인스턴스 명시적 파기 (iOS Safari 연속 사용 실패 대응 — 이전 세션 잔존 방지)
+  if (s.rec) {
+    try { s.rec.abort(); } catch(_){}
+    try { s.rec.onstart = s.rec.onresult = s.rec.onerror = s.rec.onend = null; } catch(_){}
+    s.rec = null;
   }
   const g = s.gen;
   const statusEl = document.getElementById('vpStatus');
