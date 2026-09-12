@@ -8216,7 +8216,17 @@ function _vpStartListen() {
   const s = _vpState;
   if (s.stopped || s.listening) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { showToast('이 브라우저는 음성 인식 미지원'); return; }
+  if (!SR) {
+    _vpShowSrIssue('이 브라우저는 음성 인식 미지원',
+      'iPhone/iPad 는 iOS 14.5 이상 Safari 만 지원해요. 폰을 업데이트하거나 Chrome 으로 접속.');
+    return;
+  }
+  // iOS PWA (홈화면 추가) 모드는 SR 전혀 안 됨 — 학생에게 명시 안내
+  if (_isIos() && window.navigator.standalone === true) {
+    _vpShowSrIssue('홈화면 아이콘에서는 말하기가 안돼요',
+      '아이패드/아이폰은 홈화면 추가된 앱에서 음성 인식이 안 됩니다. Safari 브라우저에서 다시 열어주세요.');
+    return;
+  }
   const g = s.gen;
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">따라 읽어보세요!</span>';
@@ -8252,6 +8262,21 @@ function _vpStartListen() {
     s.listening = false;
     if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error);
+    // 특정 에러는 학생 안내 (iOS 진단용)
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      _vpShowSrIssue('마이크 권한 필요',
+        '설정 → Safari → 마이크 → 이 사이트 [허용] 후 다시 시도해주세요.');
+      return;
+    }
+    if (e.error === 'audio-capture') {
+      _vpShowSrIssue('마이크를 찾을 수 없어요',
+        '다른 앱이 마이크 사용 중이거나 이어폰 연결 상태 확인. 재부팅 후 재시도.');
+      return;
+    }
+    if (e.error === 'network') {
+      _vpShowSrIssue('네트워크 확인 필요', 'iOS 음성 인식은 인터넷 필수. Wi-Fi/LTE 확인.');
+      return;
+    }
     _vpHandleResult(0, '');
   };
   rec.onend = () => {
@@ -8260,9 +8285,34 @@ function _vpStartListen() {
     if (!resolved) _vpHandleResult(0, '');
   };
   try { rec.start(); } catch(e) {
-    console.warn(e);
+    console.warn('[vp] rec.start throw:', e);
     s.listening = false;
+    // iOS 는 start() 자체가 throw 하는 경우 있음 (권한/gesture 문제)
+    if (_isIos()) {
+      _vpShowSrIssue('음성 인식 시작 실패',
+        'Safari 브라우저인지 확인 · 설정 → Safari → 마이크 권한 · 설정 → 일반 → 받아쓰기 활성화 여부 확인.');
+      return;
+    }
     setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
+  }
+}
+
+// SR 이슈 학생 안내 — 카드에 상세 안내 표시 + 학습 진행 정지 (다음 문제 자동 안 감)
+function _vpShowSrIssue(title, detail) {
+  const s = _vpState;
+  s.listening = false;
+  s.stopped = true;   // 자동 흐름 정지
+  _vpShowMicAnim(false);
+  _vpShowWave(false);
+  const statusEl = document.getElementById('vpStatus');
+  if (statusEl) statusEl.innerHTML = '';
+  // 화면 카드에 안내 오버레이
+  try {
+    showConfirm('🎤 ' + title, detail + '\n\n[확인] 을 누르고 홈으로 돌아가서 다시 시도해주세요.').then(() => {
+      if (typeof goHome === 'function') goHome();
+    });
+  } catch(_) {
+    showToast(title + ' — ' + detail);
   }
 }
 
