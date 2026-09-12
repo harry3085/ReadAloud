@@ -8146,7 +8146,10 @@ function _vpShowMicAnim(on) {
 function _vpShowReact(on) {
   const el = document.getElementById('vpReactArea');
   if (el) el.style.display = on ? 'block' : 'none';
-  if (on) _vpShowMicAnim(false);   // 리액션 켜면 마이크 감춤 (사실상 상호배타)
+  if (on) {
+    _vpShowMicAnim(false);   // 리액션 켜면 마이크 감춤 (사실상 상호배타)
+    _vpPlayStartBeep();      // 평가 결과 표시 신호음 (SR 시작 beep 와 동일 톤)
+  }
 }
 
 // TTS 재생 후 자동으로 SR 시작 (TTS 소리가 마이크에 잡히는 것 방지 위해 onend 대기)
