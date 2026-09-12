@@ -100,6 +100,32 @@ function _isIos() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// ── TTS 잠금 해제 (iOS Safari 필수) ────────────────
+// iOS 는 첫 speechSynthesis.speak() 이 반드시 user gesture 안에서 실행돼야 함.
+// startVocab 등이 await getDoc 후 speak() 하면 gesture context 손실 → 조용히 실패.
+// 앱 진입 후 첫 사용자 터치·클릭에 무음 utterance 실행해 이후 세션 전체 speak() 허용.
+let _ttsUnlocked = false;
+function _installTtsUnlock() {
+  if (_ttsUnlocked || typeof window.speechSynthesis === 'undefined') return;
+  const unlock = () => {
+    if (_ttsUnlocked) return;
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      u.rate = 1;
+      window.speechSynthesis.speak(u);
+      _ttsUnlocked = true;
+      document.removeEventListener('touchend', unlock, true);
+      document.removeEventListener('click', unlock, true);
+      document.removeEventListener('keydown', unlock, true);
+    } catch(_) {}
+  };
+  document.addEventListener('touchend', unlock, { capture: true, once: false });
+  document.addEventListener('click', unlock, { capture: true, once: false });
+  document.addEventListener('keydown', unlock, { capture: true, once: false });
+}
+_installTtsUnlock();
+
 // ── iOS [홈화면 추가] 후 자동 reload 등록 ─────────────
 // 사용자가 [공유 → 홈화면 추가] 누르고 공유 시트 닫힐 때 visibilitychange 발화
 // → reload → SW 가 학원명 박힌 HTML 응답 → 다시 추가 시 학원명 노출
