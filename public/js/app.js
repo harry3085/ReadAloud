@@ -7805,9 +7805,8 @@ let _vpToneIdx = 0;
 
 // 발화 시작 신호음 — TTS 종료 → SR 시작 사이 학생 인지용 짧은 "삐"
 // Chrome/Android 는 SR 자체 native beep 있으나 iOS Safari 는 없음. 통일용 신호.
-// iOS 는 skip — WebKit Bug #321436 대응: 추가 audio 재생이 SR 세션 충돌 악화
+// iOS 도 재생 — WebKit Bug #321436 은 뒤이은 getUserMedia priming 이 세션 리셋으로 해결
 function _vpPlayStartBeep() {
-  if (_isIos()) return;
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
@@ -8162,9 +8161,9 @@ function _vpSpeakAndListen() {
   // TTS 끝난 후 SR 시작 딜레이
   // iOS 는 speaker(TTS) ↔ mic(SR) 오디오 세션 전환에 시간 필요 (100ms 부족 → mic 못 잡음)
   // getUserMedia priming (WebKit Bug #321436 fix) 이 세션 리셋을 담당하니
-  // iOS 이후 SR 대기는 500ms 로 단축 (옛 1200ms 는 hang 회피용, 이제 불필요)
-  // iOS 첫 SR = 500ms / 안드 = 100ms
-  const postDelay = _isIos() ? 500 : 100;
+  // iOS 이후 SR 대기 300ms 로 단축 — 첫 단어 안 놓치는 최소 안전선
+  // iOS 첫 SR = 300ms / 안드 = 100ms
+  const postDelay = _isIos() ? 300 : 100;
   _vpState._srSessionUsed = true;
   // TTS 완전 종료 폴링 후 startListen — safety net 이 조기 발동해도 speaking 폴링으로 방어
   let pollCount = 0;
@@ -8228,8 +8227,8 @@ async function _vpPrimeSrIos() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // 즉시 track 종료 (mic 인디케이터 안 뜨게)
     stream.getTracks().forEach(t => { try { t.stop(); } catch(_){} });
-    // 200ms 대기 — iOS AudioSession category 리셋 여유
-    await new Promise(r => setTimeout(r, 200));
+    // 150ms 대기 — iOS AudioSession category 리셋 여유 (최소 안전선)
+    await new Promise(r => setTimeout(r, 150));
   } catch(e) {
     console.warn('[vp] iOS getUserMedia priming 실패:', e);
   }
