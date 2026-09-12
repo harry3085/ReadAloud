@@ -7813,10 +7813,11 @@ const _VP_TONES = [
 let _vpToneIdx = 0;
 
 // 발화 시작 신호음 — TTS 종료 → SR 시작 사이 학생 인지용 짧은 "삐"
-// Chrome/Android 는 SR 자체 native beep 있으나 iOS Safari 는 없음. 통일용 신호.
+// Android 는 native SR 시작음이 있어서 우리 beep 재생하면 이중음 → iOS 전용
 // iOS 는 gesture 밖에서 new AudioContext() 하면 suspended 로 시작·resume 실패 →
 // _installTtsUnlock 이 첫 gesture 에 만든 _sharedAudioCtx 재사용 (close 하지 않음)
 function _vpPlayStartBeep() {
+  if (!_isIos()) return;
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
