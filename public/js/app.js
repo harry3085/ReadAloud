@@ -8628,8 +8628,17 @@ function _vpHandleResult(sim, heard) {
       return;
     }
     if (canAdvance) {
+      // ko2en: 정답 영어 TTS 재생 중이면 완전히 끝날 때까지 대기 후 진행
+      if (q._isKo2En && typeof window.speechSynthesis !== 'undefined') {
+        const start = Date.now();
+        while (window.speechSynthesis.speaking && (Date.now() - start) < 8000) {
+          await new Promise(r => setTimeout(r, 150));
+          if (s.stopped || s.gen !== g) return;
+        }
+        await new Promise(r => setTimeout(r, 300));   // TTS 종료 후 여운
+        if (s.stopped || s.gen !== g) return;
+      }
       // 자동 진행 — iOS hang 은 getUserMedia priming (WebKit Bug #321436 fix) 이 해결
-      // 옛 next gate 는 hang 회피용이었으나 이제 불필요
       _vpAdvance();
     } else _vpSpeakAndListen();
   }, 700);
