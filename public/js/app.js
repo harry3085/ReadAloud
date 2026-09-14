@@ -7900,6 +7900,9 @@ function _vpRenderStep() {
   if (s.stopped) return;
   const q = s.questions[s.currentIdx];
   if (!q) return;
+  // 매 문제 진입 시 마이크 영역 onclick 초기화 (ko2en 탭 핸들러 잔존 방지)
+  const _mArea = document.getElementById('vpMicArea');
+  if (_mArea) { _mArea.onclick = null; _mArea.style.cursor = ''; }
   const barEl = document.getElementById('vpProgressBar');
   const txtEl = document.getElementById('vpProgressText');
   const wordEl = document.getElementById('vpWord');
@@ -8173,11 +8176,23 @@ function _vpSpeakAndListen() {
   _vpShowMicAnim(false);
   _vpShowReact(false);
 
-  // ko2en: 한글만 표시하고 학생이 영어로 발화 (문장 암기 훈련) — TTS 재생 skip
+  // ko2en: 한글만 표시하고 학생이 영어로 발화 (문장 암기 훈련) — TTS skip + 학생 탭 대기
+  // 생각할 시간 필요 → 자동 SR 시작 X. 학생이 마이크 눌러야 SR 시작
   if (q._isKo2En) {
     _vpShowWave(false);
-    if (statusEl) statusEl.innerHTML = '<span style="color:#0891b2;">한글을 보고 영어로 말해 보세요</span>';
-    _vpStartListen();
+    _vpShowMicAnim(true);   // 마이크 링 표시 (탭 대기)
+    if (statusEl) statusEl.innerHTML = '<span style="color:#0891b2;font-weight:700;">준비되면 🎤 마이크를 눌러 말해 보세요</span>';
+    const micArea = document.getElementById('vpMicArea');
+    if (micArea) {
+      micArea.style.cursor = 'pointer';
+      micArea.onclick = () => {
+        if (s.stopped || s.gen !== g) return;
+        micArea.style.cursor = '';
+        micArea.onclick = null;
+        if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 말하는 중...</span>';
+        _vpStartListen();
+      };
+    }
     return;
   }
 
