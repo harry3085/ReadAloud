@@ -14002,18 +14002,32 @@ window.qsEditSet = async (setId) => {
   }
   if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
 
+  // Book 목록 보장 — 시험관리에서 바로 열면 _qsBooks 가 비어 선택지가 (미지정)뿐이고 저장 시 bookId 가 지워짐
+  if (!_qsBooks.length) {
+    if (_genBooks.length) {
+      _qsBooks = _genBooks.slice();
+    } else {
+      try {
+        const bSnap = await getDocs(query(collection(db,'genBooks'), where('academyId','==',window.MY_ACADEMY_ID), orderBy('createdAt','asc')));
+        _qsBooks = bSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch(e) { console.warn('[qsEditSet] genBooks load:', e); }
+    }
+  }
+
   _qsEditState = {
     setId: s.id,
     name: s.name || '',
     sourceType: s.sourceType || 'mcq',
+    bookId: typeof s.bookId === 'string' ? s.bookId : null,
     questions: JSON.parse(JSON.stringify(s.questions || [])),
     sourcePages: JSON.parse(JSON.stringify(s.sourcePages || [])),
   };
   _qsRenderEditModal();
 };
 
-// 수정 중인 세트의 현재 주 Book ID (sourcePages 에서 최빈값, 없으면 '')
+// 수정 중인 세트의 현재 주 Book ID — top-level bookId 우선 (_qsPrimaryBookId 와 동일 기준), 없으면 sourcePages 최빈값
 function _qsEditCurrentBookId() {
+  if (_qsEditState?.bookId) return _qsEditState.bookId;
   const sp = _qsEditState?.sourcePages || [];
   const ids = sp.map(p => p.bookId).filter(Boolean);
   if (!ids.length) return '';
@@ -14057,6 +14071,7 @@ function _qsRenderEditModal() {
             style="width:100%;padding:9px 12px;margin-top:5px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white;">
             <option value="" ${!_qsEditCurrentBookId()?'selected':''}>(미지정)</option>
             ${(_qsBooks||[]).map(b => `<option value="${esc(b.id)}" ${b.id===_qsEditCurrentBookId()?'selected':''}>${esc(b.name||'(이름 없음)')}</option>`).join('')}
+            ${(_qsEditCurrentBookId() && !(_qsBooks||[]).some(b => b.id === _qsEditCurrentBookId())) ? `<option value="${esc(_qsEditCurrentBookId())}" selected>(목록에 없는 Book — 현재 값 유지)</option>` : ''}
           </select>
         </div>
       </div>
@@ -14693,8 +14708,9 @@ window.qsSaveEdits = async () => {
     if (chosenBookId) {
       sourcePages = [{ pageId: '', pageTitle: '', bookId: chosenBookId, chapterId: '' }];
     }
-  } else if (chosenBookId !== originalBookId) {
-    sourcePages = sourcePages.map(p => ({ ...p, bookId: chosenBookId, chapterId: '' }));
+  } else if (chosenBookId !== originalBookId || sourcePages.some(p => (p.bookId || '') !== chosenBookId)) {
+    // 선택 Book 과 다른 엔트리만 교체 (top-level bookId 만 있고 sourcePages bookId 빈 옛 세트 포함)
+    sourcePages = sourcePages.map(p => (p.bookId || '') === chosenBookId ? p : ({ ...p, bookId: chosenBookId, chapterId: '' }));
   }
 
   // vocab 세트 — 한글·특수문자 포함 단어 검증 게이트 (학원장이 단어 수정 시 검증)
@@ -14718,7 +14734,7 @@ window.qsSaveEdits = async () => {
   }
 
   try {
-    const newBookId = _qsPrimaryBookId({ sourcePages }) === _QS_UNASSIGNED ? '' : _qsPrimaryBookId({ sourcePages });
+    const newBookId = chosenBookId;
     const patch = {
       name: newName,
       questions: st.questions,
