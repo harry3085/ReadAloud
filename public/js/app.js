@@ -8810,23 +8810,22 @@ function _spChunkSentence(en, chunkCount) {
 async function _startSentenceChunkPractice(test, sentences) {
   _screenPrepare('vocabPractice', '#vpProgressBar');
   const opts = test.sentenceOptions || {};
-  const chunkCount = Math.max(2, Math.min(8, opts.chunkCount || 3));
   const threshold = Math.max(50, Math.min(100, opts.matchThreshold || 80));
   // 문제 순서 셔플 (청크 내부 순서는 유지 — 읽기 학습용)
   let sList = sentences.slice();
   if (opts.shuffleQ !== false) sList = _rngShuffle(sList);
 
   // items 배열 flatten: 각 문장 → 청크 N개 + 전체 문장 1개
-  // chunkedEn (관리자 편집) 개수 === 배정 chunkCount 이면 사용 · 다르면 자동 재분할 (배정 개수 우선)
+  // 세트 chunkedEn (문제세트에서 편집) 있으면 그대로 사용 (개수 무관, 1개도 그대로)
+  // 없는 경우만 자동 분할 (default 3, 옛 세트 호환용)
   const items = [];
   sList.forEach((sent, sIdx) => {
     let chunks;
     const chunkedEn = String(sent.chunkedEn || '').trim();
     if (chunkedEn) {
-      const parsed = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
-      if (parsed.length === chunkCount) chunks = parsed;   // 개수 일치 → 세트 청크 그대로
+      chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
     }
-    if (!chunks || chunks.length < 2) chunks = _spChunkSentence(sent.en, chunkCount);
+    if (!chunks || chunks.length === 0) chunks = _spChunkSentence(sent.en, 3);
     chunks.forEach((c, ci) => {
       items.push({
         word: c,
@@ -8862,7 +8861,7 @@ async function _startSentenceChunkPractice(test, sentences) {
     // 문장시험 chunk-practice 커스텀
     _sentenceMode: 'chunk-practice',
     _sourceSentences: sList,
-    _chunkCount: chunkCount,
+    _chunkCount: null,   // 배정 chunkCount 폐기 — 세트 chunkedEn 우선
     customThresh: { great: threshold, good: Math.max(20, threshold - 25), notbad: Math.max(10, threshold - 45) },
     customMin: 1,
     customMax: 2,
