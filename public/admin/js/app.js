@@ -16297,6 +16297,14 @@ window.tpOpenPublishModal = async () => {
                   </select>
                   <span style="font-size:10px;color:#0f766e;">🔒 세트 기준</span>
                 </label>
+                <label id="tpSentenceSubModeRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="청크 따라읽기 학습 단계 — 학생 익숙도에 따라 선택">
+                  학습 단계:
+                  <select id="tpSentenceSubMode" style="padding:4px 8px;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;background:white;color:#134e4a;font-weight:700;">
+                    <option value="chunk" selected>1. 청크 단위 (기본)</option>
+                    <option value="full">2. 문장 전체</option>
+                    <option value="ko2en">3. 한글→영문 (암기)</option>
+                  </select>
+                </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#134e4a;white-space:nowrap;" title="정확도 임계 — 이 값 이상이면 Great (조기 종료). 매칭식은 정답/오답 판정.">
                   정확도 기준:
                   <input type="range" id="tpSentenceMatchThreshold" min="50" max="100" step="5" value="80"
@@ -16356,10 +16364,12 @@ window.tpOpenPublishModal = async () => {
 window._tpSentenceModeChanged = () => {
   const mode = document.getElementById('tpSentenceMode')?.value;
   const isChunk = mode === 'chunk-practice';
+  const subModeRow = document.getElementById('tpSentenceSubModeRow');
   const ttsRow = document.getElementById('tpSentenceTtsRateRow');
   const hintRow = document.getElementById('tpSentenceAllowHintRow');
   const hintChk = document.getElementById('tpSentenceAllowHint');
   const hintEl = document.getElementById('tpSentenceModeHint');
+  if (subModeRow) subModeRow.style.display = isChunk ? 'inline-flex' : 'none';
   if (ttsRow) ttsRow.style.display = isChunk ? 'inline-flex' : 'none';
   if (hintRow) {
     hintRow.style.opacity = isChunk ? '0.4' : '1';
@@ -16533,6 +16543,9 @@ window.tpPublish = async () => {
       // 청크 개수는 세트 chunkedEn 기준으로 학생앱이 결정 (배정 옵션 폐기)
       // TTS 속도 slider (60~105) → rate 값 (0.60~1.05), default 0.85
       sentenceOptions.ttsRate = isFinite(_tr) ? Math.max(0.6, Math.min(1.1, _tr / 100)) : 0.85;
+      // 학습 단계: chunk (기본) / full (문장 전체) / ko2en (한글→영문)
+      const _sub = document.getElementById('tpSentenceSubMode')?.value || 'chunk';
+      sentenceOptions.chunkSubMode = _sub;
     }
   }
 
@@ -17478,7 +17491,10 @@ function _tpBuildOptionsLine(t) {
   } else if (tMode === 'sentence' && t.sentenceOptions) {
     const o = t.sentenceOptions;
     if (o.mode === 'chunk-practice') {
-      items.push(it('🗣 청크 따라읽기', '#0891b2'));
+      const subLabel = o.chunkSubMode === 'full' ? '문장 전체'
+                     : o.chunkSubMode === 'ko2en' ? '한글→영문'
+                     : '청크 단위';
+      items.push(it(`🗣 청크 따라읽기 · ${subLabel}`, '#0891b2'));
       if (typeof o.matchThreshold === 'number') items.push(`정확도 ${o.matchThreshold}%`);
       if (typeof o.ttsRate === 'number') items.push(`읽기 ${o.ttsRate.toFixed(2)}x`);
     } else {

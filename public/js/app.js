@@ -7951,7 +7951,15 @@ function _vpRenderStep() {
       wordEl.style.lineHeight = '';
     }
   }
-  if (meanEl) meanEl.textContent = q.meaning || '';
+  if (meanEl) {
+    // ko2en 은 발화 전 meaning 숨김 (발화 후 정답 영어 노출 시 채워짐)
+    meanEl.textContent = q._isKo2En ? '' : (q.meaning || '');
+    // 스타일 리셋 (이전 문제의 ko2en 정답 강조 잔존 방지)
+    meanEl.style.color = '';
+    meanEl.style.fontWeight = '';
+    meanEl.style.fontSize = '';
+    meanEl.style.marginTop = '';
+  }
   if (attemptEl) {
     // sentence chunk-practice: 청크/전체 위치 표시
     if (s._sentenceMode === 'chunk-practice' && q._chunkTotal) {
@@ -8164,6 +8172,15 @@ function _vpSpeakAndListen() {
   if (statusEl) statusEl.textContent = '';
   _vpShowMicAnim(false);
   _vpShowReact(false);
+
+  // ko2en: 한글만 표시하고 학생이 영어로 발화 (문장 암기 훈련) — TTS 재생 skip
+  if (q._isKo2En) {
+    _vpShowWave(false);
+    if (statusEl) statusEl.innerHTML = '<span style="color:#0891b2;">한글을 보고 영어로 말해 보세요</span>';
+    _vpStartListen();
+    return;
+  }
+
   _vpShowWave(true);
 
   if (typeof window.speechSynthesis === 'undefined') {
@@ -8294,7 +8311,8 @@ async function _vpStartListen() {
   s.listening = true;
 
   const q = s.questions[s.currentIdx];
-  const target = q.word || '';
+  // ko2en: 화면 word 는 한글, 실제 발화·채점 대상은 _targetEn (영어)
+  const target = q._targetEn || q.word || '';
   let resolved = false;
   let started = false;
 
@@ -8529,6 +8547,35 @@ function _vpHandleResult(sim, heard) {
   // 라벨만 표시 — 정확도 % · 들린 단어 숨김
   if (reactText) { reactText.textContent = label; reactText.style.color = color; }
   if (statusEl) statusEl.textContent = '';
+
+  // ko2en: 학생 발화 후 정답 영어 문장 노출 (한글 아래) + 정답 TTS 재생
+  if (q._isKo2En) {
+    const wordEl = document.getElementById('vpWord');
+    const meanEl = document.getElementById('vpMeaning');
+    if (wordEl) wordEl.textContent = q._koText || '';
+    if (meanEl) {
+      meanEl.textContent = q._enText || '';
+      meanEl.style.color = '#0e7490';
+      meanEl.style.fontWeight = '700';
+      meanEl.style.fontSize = '20px';
+      meanEl.style.marginTop = '10px';
+    }
+    // 정답 영어 TTS (문제세트 매칭식 _stqSpeakAnswer 와 동일 패턴)
+    try {
+      if (typeof window.speechSynthesis !== 'undefined' && q._enText) {
+        window.speechSynthesis.cancel();
+        setTimeout(() => {
+          const u = new SpeechSynthesisUtterance(q._enText);
+          u.lang = 'en-US';
+          u.rate = 0.95;
+          u.volume = 1.0;
+          const bestVoice = _vpPickBestEnVoice(_vpState.ttsVoices);
+          if (bestVoice) u.voice = bestVoice;
+          window.speechSynthesis.speak(u);
+        }, 200);
+      }
+    } catch(_) {}
+  }
 
   // 별 누적 — 매 단어별 최고 리액션만 카운트 (첫 정답 시)
   if (starGain > 0 && !wa._starred) {
@@ -8811,38 +8858,63 @@ async function _startSentenceChunkPractice(test, sentences) {
   _screenPrepare('vocabPractice', '#vpProgressBar');
   const opts = test.sentenceOptions || {};
   const threshold = Math.max(50, Math.min(100, opts.matchThreshold || 80));
+  // 학습 단계: 'chunk' (기본) / 'full' (문장 전체) / 'ko2en' (한글→영문)
+  const chunkSubMode = opts.chunkSubMode || 'chunk';
   // 문제 순서 셔플 (청크 내부 순서는 유지 — 읽기 학습용)
   let sList = sentences.slice();
   if (opts.shuffleQ !== false) sList = _rngShuffle(sList);
 
-  // items 배열 flatten: 각 문장 → 청크 N개 + 전체 문장 1개
-  // 세트 chunkedEn (문제세트에서 편집) 있으면 그대로 사용 (개수 무관, 1개도 그대로)
-  // 없는 경우만 자동 분할 (default 3, 옛 세트 호환용)
+  // items 배열 flatten — chunkSubMode 에 따라 3가지 흐름
+  // - chunk : 청크 N개 + 전체 문장 마무리 (기본)
+  // - full  : 전체 문장만 (청크 skip)
+  // - ko2en : 한글 표시 → 영어 발화 → 정답 영어·TTS 노출
   const items = [];
   sList.forEach((sent, sIdx) => {
-    let chunks;
-    const chunkedEn = String(sent.chunkedEn || '').trim();
-    if (chunkedEn) {
-      chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
-    }
-    if (!chunks || chunks.length === 0) chunks = _spChunkSentence(sent.en, 3);
-    chunks.forEach((c, ci) => {
+    if (chunkSubMode === 'ko2en') {
+      // 한글→영문: word 는 한글 표시용, _targetEn 이 실제 발화·채점 대상
       items.push({
-        word: c,
-        meaning: '',   // 청크는 뜻 표시 X
+        word: sent.ko || sent.en,   // 화면 표시 (한글 우선)
+        meaning: '',                 // 아래 뜻 표시 안 함
         _sIdx: sIdx,
-        _isFull: false,
-        _chunkNum: ci + 1,
-        _chunkTotal: chunks.length,
+        _isFull: true,
+        _isKo2En: true,
+        _targetEn: sent.en,          // 실제 발화 대상 (SR 채점용)
+        _koText: sent.ko || '',
+        _enText: sent.en || '',
       });
-    });
-    // 전체 문장 마무리
-    items.push({
-      word: sent.en,
-      meaning: sent.ko || '',
-      _sIdx: sIdx,
-      _isFull: true,
-    });
+    } else if (chunkSubMode === 'full') {
+      // 문장 전체: 청크 skip, 전체 문장만 (TTS 재생 → 학생 따라)
+      items.push({
+        word: sent.en,
+        meaning: sent.ko || '',
+        _sIdx: sIdx,
+        _isFull: true,
+      });
+    } else {
+      // 기본: 청크 N개 + 전체 마무리
+      let chunks;
+      const chunkedEn = String(sent.chunkedEn || '').trim();
+      if (chunkedEn) {
+        chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
+      }
+      if (!chunks || chunks.length === 0) chunks = _spChunkSentence(sent.en, 3);
+      chunks.forEach((c, ci) => {
+        items.push({
+          word: c,
+          meaning: '',
+          _sIdx: sIdx,
+          _isFull: false,
+          _chunkNum: ci + 1,
+          _chunkTotal: chunks.length,
+        });
+      });
+      items.push({
+        word: sent.en,
+        meaning: sent.ko || '',
+        _sIdx: sIdx,
+        _isFull: true,
+      });
+    }
   });
 
   _vpState = {
