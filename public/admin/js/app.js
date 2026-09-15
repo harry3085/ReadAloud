@@ -15299,9 +15299,10 @@ function _tpRender() {
   if (!root) return;
 
   // 재렌더 시 스크롤 위치 보존 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치) + folders pane(Book 폴더 클릭)
-  const prevScroll = document.getElementById('tpSetsScroll')?.scrollTop || 0;
-  const prevTestsScroll = document.getElementById('tpTestsScroll')?.scrollTop || 0;
-  const prevFoldersScroll = document.getElementById('tpFoldersScroll')?.scrollTop || 0;
+  // 7개 유형 root 가 DOM 에 동시에 남아 id 중복 → getElementById 는 첫 root(단어시험)만 잡음. 반드시 root 범위로 조회
+  const prevScroll = root.querySelector('#tpSetsScroll')?.scrollTop || 0;
+  const prevTestsScroll = root.querySelector('#tpTestsScroll')?.scrollTop || 0;
+  const prevFoldersScroll = root.querySelector('#tpFoldersScroll')?.scrollTop || 0;
 
   const folders = _tpBuildFolders();
   // 활성 폴더 캐시에서 _tpSets 채우기 (lazy — 폴더 클릭 시 fetch)
@@ -15417,15 +15418,15 @@ function _tpRender() {
 
   // 스크롤 위치 복원 — sets pane(체크박스 토글) + tests pane(더 보기 후 위치)
   if (prevScroll > 0) {
-    const newEl = document.getElementById('tpSetsScroll');
+    const newEl = root.querySelector('#tpSetsScroll');
     if (newEl) newEl.scrollTop = prevScroll;
   }
   if (prevTestsScroll > 0) {
-    const newEl = document.getElementById('tpTestsScroll');
+    const newEl = root.querySelector('#tpTestsScroll');
     if (newEl) newEl.scrollTop = prevTestsScroll;
   }
   if (prevFoldersScroll > 0) {
-    const newEl = document.getElementById('tpFoldersScroll');
+    const newEl = root.querySelector('#tpFoldersScroll');
     if (newEl) newEl.scrollTop = prevFoldersScroll;
   }
 }
