@@ -4816,3 +4816,103 @@ Object.assign(data, { ..., ...(extra ? _clean(extra) : {}) });
 3. sentence 매칭식 결과 리뷰 화면 (현재 재응시 스텁)
 4. 옛 vocab 세트 예문 데이터 활용도 조사 (본문 AI 생성분 얼마나 있나 · 힌트 사용률)
 5. Phase 5 출시 준비 (도메인·약관·결제 PG, 변동 없음)
+
+---
+
+## 2026-09-12 ~ 15: iOS 음성 학습 안정화 + 문장시험 청크 정책 + 스크롤 보존 재정비
+
+SW v774 → v796 (~25 commit). iPad(에어 5세대, iPadOS 26.3.1) 실측 기반 연속 튜닝.
+
+### 1) iOS SpeechRecognition hang — WebKit Bug #321436 우회 (v775~v784)
+
+증상: TTS 후 SR 시작하면 2~4청크 뒤 onresult/onerror/onend 모두 미발화 → "말소리 감지 안 됨".
+원인: WebKit Bug #321436 (audio 재생 후 SR 결과 없음, NEW/P2 미해결). 코드로 감지 불가.
+
+- **getUserMedia priming** (v775): 두 번째 SR 부터 `getUserMedia({audio:true})` → 즉시 track.stop → SR 시작.
+  WebKit 리포터가 제시한 공식 부분 완화책. `_vpPrimeSrIos` / `_srSessionUsed` flag
+- **iOS [→ 다음] 게이트 제거** (v776): priming 으로 hang 해결돼 자동 진행 복귀
+- **shared AudioContext** (v779): beep 이 매번 `new AudioContext()` 하던 것을 첫 gesture
+  (`_installTtsUnlock`) 에 1개 생성·재사용. gesture 밖 생성은 suspended + resume 실패 → 소리 안 남
+- **timing 로그** (v781): `[timing]` TTS onend / priming gum / rec.start / onstart / onresult
+- **대기시간 실측 튜닝**: postDelay+wait 500+200(1080ms) → 300+150(790) → 200+100(620) → **0+0(~340ms)**
+  - v777(300+150) hang 은 시간 부족이 아니라 **매번 new AudioContext 세션 부담**이 원인이었음
+    (v782 동일 세팅 재실험으로 확정)
+  - iOS `getUserMedia` 자체 ~340ms = iOS 웹 이론 하한 (안드 ~110ms)
+  - v788(postDelay 100)은 "띠딱" 어중간한 gap → v789 에서 iOS 0 복귀 (안드 100 유지)
+- **beep iOS 전용** (v787): 안드는 native SR 시작음과 이중음 → `_vpPlayStartBeep` 진입부 `!_isIos()` return.
+  SR 시작 + 리액션 표시(v786) 두 곳 재생
+- **TTS warm-up "Ready?"** (v780): 실제 voice(`_vpPickBestEnVoice`) + await → 첫 청크 첫음절 약함 해소
+- **웨이브 슬롯 공간 고정** (v785): `vpVizSlot` 인라인 `display:none` 이 CSS `height:160px` 를 덮어
+  마이크 링이 위아래로 흔들림 → display 조작 제거, env 클래스만 토글
+- 침묵 감지(onstart→onresult)는 **건드리지 않음** (Web Speech 기본값 존중, 학원장 결정)
+
+### 2) 문장시험 청크 정책 변경 (v790~v793)
+
+- **세트 chunkedEn 항상 존중** (v790): 기존엔 배정 chunkCount 와 개수 다르면 자동 재분할 → 학원장
+  편집 무시. 이제 chunkedEn 있으면 개수 무관(1개 포함) 그대로. 없는 옛 세트만 default 3 분할
+- **배정 "청크 갯수" 옵션 폐기** — 청크 수정은 문제세트 편집에서만
+- **학습 단계 chunkSubMode** (v791): `sentenceOptions.chunkSubMode = 'chunk' | 'full' | 'ko2en'`
+  - chunk: 청크 N개 + 전체 마무리 (기본) / full: 전체 문장만 TTS → 따라 / ko2en: 한글만 표시 → 영어 발화
+  - ko2en item: `word=한글`, `_targetEn=영어`(SR 채점 대상), `_isKo2En`
+- **ko2en 마이크 탭 대기** (v792): 생각할 시간 → 자동 SR X, `vpMicArea.onclick` 로 시작.
+  `_vpRenderStep` 진입 시 onclick 초기화
+- **ko2en 정답 노출 + TTS 완료 대기** (v793): 발화 후 영어 문장 + TTS, `speechSynthesis.speaking`
+  폴링(최대 8초) 후 다음 진행
+
+### 3) 문제세트 수정 모달 Book (미지정) 표시 (v794)
+
+시험관리에서 [수정하기] 열면 `_qsBooks`(문제세트목록 페이지에서만 로드) 비어 선택지가 (미지정)뿐 →
+저장 시 bookId 삭제 위험. `qsEditSet` 에서 `_qsBooks` 보장(_genBooks 복사 or fetch),
+`_qsEditCurrentBookId` top-level bookId 우선, 목록에 없는 현재값 보존 option, 저장 시 선택값 그대로.
+
+### 4) 스크롤 보존 재정비 (v795~v796)
+
+- **시험관리 7개 유형 root id 중복** (v795): wordAssignRoot~sentenceAssignRoot 가 DOM 에 동시 잔존 →
+  `tpFoldersScroll` 등 id 중복 → `getElementById` 가 항상 첫 root(단어시험)만 잡음 → 단어시험 외 유형
+  Book 폴더 클릭 시 스크롤 리셋. `_tpRender` 를 `root.querySelector` 로 범위 한정
+- **rAF 만의 복원 → 연속 렌더 시 무효** (v796): `qsSelectBook` 은 렌더 → await(캐시 hit 즉시) → 렌더.
+  두 번째 렌더가 rAF 복원 전 scrollTop 0 캡처 → 재방문 Book 클릭 시 리셋.
+  문제세트목록·AI Generator·결제 그리드·세트 수정 모달 4곳 모두 **동기 복원 + rAF 보조**
+
+### 5) 운영 진단 (코드 변경 없음)
+
+- 박소율 "문제 안 뜸": 배정 정상. 9/13 이력상 SR 필요 유형은 Android, iOS 는 mixed(SR 미사용)만 →
+  iOS SR 조건(14.5+·Safari·홈화면 아이콘 X) 또는 캐시 의심. 안드 폰 안내
+- AI 정리 "단어장 (Snapshot)" 결과가 한글-영어로 뒤집힘: 원본·저장은 영어-한글 정상, Gemini 가 순서
+  지시 무시 → 프리셋 프롬프트에 **절대 순서 규칙 + 잘못된 예/올바른 예** 추가 (default 커스텀 + 글로벌 Firestore)
+- 아이디어 보관: 학원장앱 Gemini 진단봇 ([memory/project_gemini_diagnosis_bot.md])
+
+### 작업 규칙 추가 (2026-09-12~15)
+
+- **여러 페이지 root 가 DOM 에 공존하면 id 중복 — `root.querySelector` 필수** — 시험관리처럼 같은
+  렌더 함수가 유형별 root 에 같은 id 를 찍는 구조는 `document.getElementById` 가 첫 요소만 반환.
+  신규 공용 렌더 함수는 처음부터 root 범위 조회. 증상 표본: "한 유형만 정상, 나머지 이상"
+- **스크롤 복원은 동기 실행 + rAF 보조** — rAF 만 쓰면 렌더→await→렌더 연속 호출 시 두 번째 캡처가
+  0 을 읽음. innerHTML 교체 직후 즉시 `scrollTop` 대입 (layout 강제되어 정상 동작)
+- **iOS 오디오 성능은 추정 금지, 실측 timing 로그 후 판단** — v777 을 "시간 부족"으로 오판 → 실제는
+  AudioContext 세션 부담. 한 번에 한 변수만 바꿔 원인 분리 ([memory/feedback_ios_audio_pitfalls.md])
+- **학원장이 명시 편집한 데이터는 배정 옵션보다 우선** — chunkedEn 처럼 세트 편집값을 배정 기본값이
+  덮어쓰면 혼선. 편집 위치를 한 곳(문제세트)으로 단일화하고 배정 옵션은 제거
+- **모달 select 데이터는 모달 오픈 시 보장** — 특정 페이지 진입에서만 로드되는 캐시(_qsBooks)에 의존하면
+  다른 진입 경로에서 빈 선택지 → 저장 시 데이터 소실. 오픈 함수에서 로드 보장 + 현재값 보존 option
+
+### 파일 크기 / SW 캐시 (2026-09-15)
+- `public/js/app.js`: priming·shared AudioContext·timing 로그·warm-up·chunkSubMode·ko2en 흐름 (+~150줄)
+- `public/admin/js/app.js`: 배정 청크옵션 제거·학습단계 select·qsEditSet Book 보장·스크롤 복원 정비
+- `public/_app.html`: vpVizSlot display 제거
+- Firestore: `appConfig/cleanupPresets` + `academies/default.customCleanupPresets` "단어장 (Snapshot)" 프롬프트
+- SW 캐시: `kunsori-v774` → `kunsori-v796`
+
+### 진행률 (2026-09-15)
+- **iOS 음성 학습 안정성**: ~95% (hang 해결·340ms 하한 도달. 자기 TTS 잔향 캡처 간헐 — 관찰 중)
+- **문장시험 청크 학습 3단계**: ~100% (학생 실사용 관찰 대기)
+- **스크롤 보존**: ~100% (id 중복 + 동기 복원 전수 정비)
+- Phase 5 출시 준비: 0%
+
+**다음 세션 후보**:
+1. 문장시험 학습 3단계 실사용 관찰 (ko2en 채점 임계·대기 UX)
+2. timing 로그 제거 (iOS 안정 며칠 확인 후)
+3. 자기 TTS 잔향 캡처 대응 필요 시 — heard 가 target 부분 문자열이면 무음 판정
+4. 3턴 무음 모달 + SR 재시도 모달 중복 표시 통합 검토
+5. "I" 단독 청크 iOS "Capital I" 낭독 — 출제 단계에서 회피 안내
+6. Phase 5 출시 준비 (변동 없음)
