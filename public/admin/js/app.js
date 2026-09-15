@@ -2751,11 +2751,13 @@ async function _renderBillingGrid(generated = 0, { refetch = true } = {}) {
     </div>
 
     `;
-  // 그리드 스크롤 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
-  requestAnimationFrame(() => {
+  // 그리드 스크롤 복원 — 즉시(동기) + rAF. 연속 렌더 시 두 번째 캡처가 0 을 읽지 않도록 동기 복원 필수
+  const _restoreGrid = () => {
     const gs = document.getElementById('billingGridScroll');
     if (gs && prevGridScroll) gs.scrollTop = prevGridScroll;
-  });
+  };
+  _restoreGrid();
+  requestAnimationFrame(_restoreGrid);
 }
 
 function _billingRenderRow(b, matEnabled) {
@@ -11136,15 +11138,17 @@ function _qgRender() {
   _qgRenderOptions(_qgCurrentType);
   _qgAttachResizers();
   _qgUpdateTokenEstimate();
-  // 스크롤 위치 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
-  requestAnimationFrame(() => {
+  // 스크롤 위치 복원 — 즉시(동기) + rAF. 연속 렌더 시 두 번째 캡처가 0 을 읽지 않도록 동기 복원 필수
+  const _restoreQg = () => {
     const b = document.getElementById('qgBookList');
     const c = document.getElementById('qgChapterList');
     const p = document.getElementById('qgPageList');
     if (b && prevScrolls.book) b.scrollTop = prevScrolls.book;
     if (c && prevScrolls.chapter) c.scrollTop = prevScrolls.chapter;
     if (p && prevScrolls.page) p.scrollTop = prevScrolls.page;
-  });
+  };
+  _restoreQg();
+  requestAnimationFrame(_restoreQg);
 }
 
 // ─── 컬럼 리사이저 (4개 pane = 3개 리사이저) ───
@@ -13287,15 +13291,18 @@ function _qsRenderList() {
     </div>
   `;
   _qsAttachResizers();
-  // 스크롤 위치 복원 (rAF — innerHTML 교체 후 layout 완료 대기)
-  requestAnimationFrame(() => {
+  // 스크롤 위치 복원 — 즉시(동기) 복원 필수: qsSelectBook 은 렌더→await(캐시 hit 시 즉시)→렌더 로
+  // 연속 호출되는데 rAF 로만 복원하면 두 번째 렌더가 복원 전 0 을 캡처해 스크롤이 리셋됨
+  const _restoreQs = () => {
     const top = document.getElementById('qsTopPaneScroll');
     const book = document.getElementById('qsBookPaneScroll');
     const set = document.getElementById('qsSetPaneScroll');
     if (top && prevScrolls.top) top.scrollTop = prevScrolls.top;
     if (book && prevScrolls.book) book.scrollTop = prevScrolls.book;
     if (set && prevScrolls.set) set.scrollTop = prevScrolls.set;
-  });
+  };
+  _restoreQs();
+  requestAnimationFrame(_restoreQs);
 }
 
 // ─── <th> 렌더 헬퍼 (폭 + 리사이즈 핸들 + 선택적 정렬) ───
@@ -14272,10 +14279,9 @@ window.qsEditToggleAppInclude = (idx, checked) => {
   _qsEditState.questions[idx].appInclude = !!checked;
   const prevScroll = document.getElementById('qsEditQuestions')?.scrollTop || 0;
   _qsRenderEditModal();
-  requestAnimationFrame(() => {
-    const el = document.getElementById('qsEditQuestions');
-    if (el) el.scrollTop = prevScroll;
-  });
+  const _restore = () => { const el = document.getElementById('qsEditQuestions'); if (el) el.scrollTop = prevScroll; };
+  _restore();   // 동기 — 빠른 연속 클릭 시 다음 캡처가 0 을 읽지 않도록
+  requestAnimationFrame(_restore);
 };
 
 // vocab 전체 앱 출제 on/off (세트 수정 모달 툴바)
@@ -14284,10 +14290,9 @@ window.qsEditVocabAppAll = (on) => {
   _qsEditState.questions.forEach(q => { if (q?.type === 'vocab') q.appInclude = !!on; });
   const prevScroll = document.getElementById('qsEditQuestions')?.scrollTop || 0;
   _qsRenderEditModal();
-  requestAnimationFrame(() => {
-    const el = document.getElementById('qsEditQuestions');
-    if (el) el.scrollTop = prevScroll;
-  });
+  const _restore = () => { const el = document.getElementById('qsEditQuestions'); if (el) el.scrollTop = prevScroll; };
+  _restore();   // 동기 — 빠른 연속 클릭 시 다음 캡처가 0 을 읽지 않도록
+  requestAnimationFrame(_restore);
 };
 
 window.qsEditSentenceChunkedEn = (idx, value) => {
