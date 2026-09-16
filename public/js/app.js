@@ -3094,6 +3094,66 @@ function _rv2BuildDeviceInfo() {
   } catch (_) { return null; }
 }
 
+// 말하기 기기·오류 기록 — 실패한 시도는 scores 가 안 남아 원인 추적 불가 → 진입·오류 시점에 기록
+// users/{uid}.speakLog (최근 30건). 학생 본인 문서라 Rules 변경 불필요. 실패해도 시험 흐름 무영향
+let _speakCtx = null;
+let _speakDevPromise = null;
+let _speakLogChain = Promise.resolve();
+function _speakDevice() {
+  if (_speakDevPromise) return _speakDevPromise;
+  _speakDevPromise = (async () => {
+    const base = _rv2BuildDeviceInfo() || {};
+    const ua = navigator.userAgent || '';
+    let ver = '', model = '';
+    if (/iPhone|iPad|iPod/.test(ua)) {
+      // iOS 26+ 는 UA 의 "OS 18_7" 이 고정값 — 실제 버전은 Version/x.y
+      const v = ua.match(/Version\/(\d+(?:\.\d+)*)/);
+      const o = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
+      ver = v ? v[1] : (o ? [o[1], o[2], o[3]].filter(Boolean).join('.') : '');
+    } else if (/Android/.test(ua)) {
+      const a = ua.match(/Android ([\d.]+)/);
+      ver = a ? a[1] : '';
+      const m = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/);
+      if (m && m[1] !== 'K') model = m[1].trim();
+      // Chrome 은 UA 를 "Android 10; K" 로 고정 → Client Hints 로 실제 버전·기종
+      try {
+        const hi = await navigator.userAgentData?.getHighEntropyValues?.(['platformVersion', 'model']);
+        if (hi?.platformVersion) ver = hi.platformVersion.split('.')[0];
+        if (hi?.model) model = hi.model;
+      } catch (_) {}
+    }
+    return {
+      os: base.os || 'Unknown',
+      browser: /CriOS/.test(ua) ? 'Chrome(iOS)' : (base.browser || 'Unknown'),
+      ver, model,
+      standalone: !!(window.navigator.standalone || window.matchMedia?.('(display-mode: standalone)')?.matches),
+      sr: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+    };
+  })();
+  return _speakDevPromise;
+}
+function _speakLog(event, detail = '') {
+  _speakLogChain = _speakLogChain.then(async () => {
+    try {
+      if (!currentUser?.uid || !userProfile) return;
+      const dev = await _speakDevice();
+      const entry = {
+        at: new Date(),
+        event: String(event).slice(0, 40),
+        detail: String(detail || '').slice(0, 120),
+        testId: _speakCtx?.testId || '',
+        testName: String(_speakCtx?.testName || '').slice(0, 80),
+        mode: _speakCtx?.mode || '',
+        ...dev,
+      };
+      const prev = Array.isArray(userProfile.speakLog) ? userProfile.speakLog : [];
+      const next = prev.concat(entry).slice(-30);
+      userProfile.speakLog = next;
+      await updateDoc(doc(db, 'users', currentUser.uid), { speakLog: next });
+    } catch (e) { console.warn('[speakLog] 기록 실패:', e.message); }
+  });
+}
+
 // 실시간 게인 측정 — AnalyserNode → RMS → UI 막대 갱신
 // 음성 강도 낮으면 학생에게 안내 ("마이크 확인 후 다시 녹음")
 function _rv2StartGainMeter() {
@@ -4006,6 +4066,7 @@ async function _checkMicSupport(opts = {}) {
 
   // 1) 브라우저 자체가 API 미지원
   if (!navigator.mediaDevices?.getUserMedia) {
+    if (needSpeech) _speakLog('block:no-media');
     return _showMicBlockModal({
       title: '브라우저가 마이크를 지원하지 않아요',
       detail: '브라우저를 최신 버전으로 업데이트하거나 다른 브라우저(Chrome / Safari)로 접속해주세요.',
@@ -4013,6 +4074,7 @@ async function _checkMicSupport(opts = {}) {
     });
   }
   if (needSpeech && !(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+    _speakLog('block:no-sr');
     return _showMicBlockModal({
       title: '이 브라우저는 음성 인식을 지원하지 않아요',
       detail: 'iPhone 은 iOS 14.5 이상 필요해요. 폰을 업데이트하거나 Chrome 으로 접속해보세요.',
@@ -4027,6 +4089,7 @@ async function _checkMicSupport(opts = {}) {
   } catch (e) {
     const code = e?.name || e?.message || '';
     const denied = /NotAllowed|SecurityError|Permission/i.test(code);
+    if (needSpeech) _speakLog(denied ? 'block:mic-denied' : 'block:mic-error', code);
     return _showMicBlockModal({
       title: denied ? '마이크 권한이 차단되어 있어요' : '마이크를 사용할 수 없어요',
       detail: denied
@@ -4037,6 +4100,7 @@ async function _checkMicSupport(opts = {}) {
   }
 
   // (Web Speech 실제 작동 체크는 시간 비용 큼 — 시험 중 onerror 로 처리)
+  if (needSpeech) _speakLog('enter');
   return true;
 }
 
@@ -4983,6 +5047,7 @@ window.startVocab = async (testId, testName) => {
     const snap = await getDoc(doc(db,'genTests',testId));
     if (!snap.exists()) { showToast('시험 정보를 불러올 수 없어요.'); return; }
     const test = { id: testId, ...snap.data() };
+    _speakCtx = { testId, testName: test.name || testName || '', mode: 'vocab-' + (test.vocabOptions?.format || 'mixed') };
     let questions = (test.questions || []).filter(q => q.type === 'vocab');
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
 
@@ -5680,6 +5745,7 @@ window.vqSpkStart = async () => {
     if (_stale()) return;
     s.spk.srResolved = true;
     console.warn('[vqSpk] error:', e.error, 'attempt:', attempt);
+    if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       s.spk.busy = false;
       if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
@@ -7313,6 +7379,12 @@ window.startSentence = async (testId, testName) => {
     const snap = await getDoc(doc(db, 'genTests', testId));
     if (!snap.exists()) { showToast('시험 정보를 불러올 수 없어요.'); return; }
     const test = { id: testId, ...snap.data() };
+    _speakCtx = {
+      testId, testName: test.name || testName || '',
+      mode: test.sentenceOptions?.mode === 'chunk-practice'
+        ? 'sentence-chunk-' + (test.sentenceOptions?.chunkSubMode || 'chunk')
+        : 'sentence-match',
+    };
     let questions = (test.questions || []).filter(q => q.type === 'sentence' && q.ko && q.en);
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
 
@@ -7482,7 +7554,10 @@ window.stqToggleMic = () => {
     const submitBtn = document.getElementById('stqSubmitBtn');
     if (submitBtn && s.transcript) submitBtn.disabled = false;
   };
-  rec.onerror = (e) => { console.warn('[stq] SR error:', e.error); };
+  rec.onerror = (e) => {
+    console.warn('[stq] SR error:', e.error);
+    if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
+  };
   rec.onend = () => {
     s.listening = false;
     if (btn) { btn.textContent = '🎤 마이크'; btn.style.background = 'var(--teal)'; }
@@ -8338,6 +8413,7 @@ async function _vpStartListen() {
     if (resolved || s.stopped || s.gen !== g) return;
     resolved = true;
     console.warn('[vp] SR hang timeout — started:', started, 'iOS:', _isIos(), 'retry#', s._srRetryCount || 0);
+    _speakLog('sr-hang', `started=${started} retry#${s._srRetryCount || 0}`);
     try { rec.abort(); } catch(_){}
     s.listening = false;
     if (_isIos()) {
@@ -8392,6 +8468,7 @@ async function _vpStartListen() {
     s.listening = false;
     if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error, 'started:', started);
+    if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
     // 특정 에러는 학생 안내 (iOS 진단용)
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       _vpShowSrIssue('마이크 권한 필요',
@@ -8417,6 +8494,7 @@ async function _vpStartListen() {
     if (!resolved) {
       // onstart 도 안 옴 = SR 시작조차 안 됨 (iOS Safari 특유 조용한 실패)
       if (!started && _isIos()) {
+        _speakLog('sr-not-started');
         _vpShowSrIssue('음성 인식이 시작되지 않았어요',
           'Safari 브라우저인지 확인 · 설정 → 일반 → 받아쓰기 [켬] · 설정 → Safari → 마이크 [허용].');
         return;
@@ -8433,6 +8511,7 @@ async function _vpStartListen() {
   } catch(e) {
     clearTimeout(hangTimer);
     console.warn('[vp] rec.start throw:', e);
+    _speakLog('sr-start-throw', e?.message || '');
     s.listening = false;
     if (_isIos()) {
       _vpShowSrIssue('음성 인식 시작 실패',
@@ -9002,6 +9081,7 @@ function _vpWarmupTts() {
 
 // 마이크 이상 안내 모달 (3턴 연속 무음 시) — showConfirm 사용 (검증된 학생앱 표준)
 async function _vpShowMicAlert() {
+  _speakLog('silent-3');
   return showConfirm(
     '🎤 마이크 확인이 필요해요',
     '말소리가 감지되지 않고 있어요.\n\n' +

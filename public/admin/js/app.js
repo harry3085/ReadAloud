@@ -8022,6 +8022,47 @@ function _pwHistoryHtml(history) {
   }).join('')}</div>`;
 }
 
+// 말하기 기기·오류 기록 (학생앱 _speakLog → users.speakLog)
+const _SPEAK_EVENT_LABELS = {
+  'enter':            { label: '진입',              color: '#059669' },
+  'block:no-sr':      { label: '음성인식 미지원',    color: '#dc2626' },
+  'block:no-media':   { label: '마이크 미지원',      color: '#dc2626' },
+  'block:mic-denied': { label: '마이크 권한 거부',   color: '#dc2626' },
+  'block:mic-error':  { label: '마이크 사용 불가',   color: '#dc2626' },
+  'sr-error':         { label: '인식 오류',          color: '#dc2626' },
+  'sr-not-started':   { label: '인식 시작 안 됨',    color: '#dc2626' },
+  'sr-start-throw':   { label: '인식 시작 실패',     color: '#dc2626' },
+  'sr-hang':          { label: '인식 무응답',        color: '#d97706' },
+  'silent-3':         { label: '3회 연속 무음',      color: '#d97706' },
+};
+function _speakDevLabel(e) {
+  const parts = [e.os === 'iOS' || e.os === 'Android' ? `${e.os} ${e.ver || '?'}` : (e.os || '?')];
+  if (e.model) parts.push(e.model);
+  parts.push(e.browser || '?');
+  if (e.standalone) parts.push('홈화면 앱');
+  if (e.sr === false) parts.push('음성인식 없음');
+  return parts.join(' · ');
+}
+function _speakLogHtml(log) {
+  if (!Array.isArray(log) || !log.length) {
+    return `<div style="font-size:12px;color:var(--gray);padding:6px 0;">기록 없음 (2026-09-16 이후 말하기 시험 진입분부터 기록)</div>`;
+  }
+  const items = log.slice(-10).reverse();
+  return `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px;">${items.map(e => {
+    const ts = e.at?.toDate ? e.at.toDate() : (e.at ? new Date(e.at.seconds ? e.at.seconds*1000 : e.at) : null);
+    const tsStr = ts ? new Date(ts.getTime() + 9*3600*1000).toISOString().replace('T',' ').slice(5,16) : '-';
+    const meta = _SPEAK_EVENT_LABELS[e.event] || { label: e.event || '?', color: '#666' };
+    return `<div style="padding:6px 8px;background:#fafafa;border-radius:6px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-family:monospace;color:#666;">${tsStr}</span>
+        <span style="background:${meta.color};color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${esc(meta.label)}${e.detail ? ' · ' + esc(e.detail) : ''}</span>
+        <span style="color:var(--text);">${esc(_speakDevLabel(e))}</span>
+      </div>
+      ${e.testName ? `<div style="color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.testName)}</div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
 // ── 학생 수정 ────────────────────────────────────────────
 window.editStudent = async(id) => {
   const snap = await getDoc(doc(db,'users',id));
@@ -8096,6 +8137,10 @@ window.editStudent = async(id) => {
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
           <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">🔑 비밀번호 변경 이력 (최근 10건)</div>
           ${_pwHistoryHtml(u.passwordHistory)}
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-bottom:8px;">${iconSvg('mic')} 말하기 기기·오류 기록 (최근 10건)</div>
+          ${_speakLogHtml(u.speakLog)}
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
           <button class="btn btn-secondary" onclick="_billingOpenStuHistory('${id}','${esc(u.name||'').replace(/'/g,"\\'")}')" style="width:100%;font-size:13px;">💳 최근 12개월 결제 이력 보기</button>
