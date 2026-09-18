@@ -10859,6 +10859,8 @@ let _qsLoadingBook = null;              // 중복 클릭 방지
 
 // ─── 문제 세트 목록 화면 상태 (Phase 7) ───
 const _QS_RECENT_LIMIT = 20;
+const _QS_BOOK_PAGE = 20;                 // Book 폴더 세트 목록 1회 조회 개수 (더보기 단위)
+let _qsBookPage = {};                     // { cacheKey: { lastDoc, exhausted } } — Book 폴더 cursor 상태
 let _qsSplitV = 40;                     // 상단 pane 높이 %
 let _qsSplitH = 30;                     // 하단 좌측 pane 폭 %
 let _qsFavSets = new Set();             // 즐겨찾기된 세트 ID
@@ -13163,24 +13165,15 @@ async function _qsLazyFetch(bid) {
         orderBy('createdAt','desc'),
         limit(_QS_RECENT_LIMIT)
       );
-    } else if (bid === _QS_UNASSIGNED) {
-      q = query(
-        collection(db,'genQuestionSets'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('bookId','==',''),
-        orderBy('createdAt','desc')
-      );
     } else {
-      q = query(
-        collection(db,'genQuestionSets'),
-        where('academyId','==',window.MY_ACADEMY_ID),
-        where('bookId','==',bid),
-        orderBy('createdAt','desc')
-      );
+      q = query(..._qsBookQueryBase(bid), limit(_QS_BOOK_PAGE));
     }
     const snap = await getDocs(q);
     const sets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     _qsSetsByBook[cacheKey] = sets;
+    if (bid != null) {
+      _qsBookPage[cacheKey] = { lastDoc: snap.docs[snap.docs.length - 1] || null, exhausted: snap.docs.length < _QS_BOOK_PAGE };
+    }
     // _qsList 에 dedup merge — 최근 생성·기타 뷰 통합 데이터
     const seen = new Set(_qsList.map(s => s.id));
     sets.forEach(s => { if (!seen.has(s.id)) _qsList.push(s); });
@@ -13191,10 +13184,56 @@ async function _qsLazyFetch(bid) {
   }
 }
 
+// Book 폴더 세트 조회 공통 조건 (미지정 = bookId '')
+function _qsBookQueryBase(bid) {
+  return [
+    collection(db,'genQuestionSets'),
+    where('academyId','==',window.MY_ACADEMY_ID),
+    where('bookId','==', bid === _QS_UNASSIGNED ? '' : bid),
+    orderBy('createdAt','desc'),
+  ];
+}
+
+// Book 폴더 세트 추가 조회 — all=false: 다음 20개 / all=true: 나머지 전부
+async function _qsFetchMoreBook(bid, all) {
+  const st = _qsBookPage[bid];
+  const cache = _qsSetsByBook[bid];
+  if (!st || st.exhausted || !st.lastDoc || !Array.isArray(cache)) return;
+  if (_qsLoadingBook === bid) return;
+  _qsLoadingBook = bid;
+  try {
+    const cons = [..._qsBookQueryBase(bid), startAfter(st.lastDoc)];
+    if (!all) cons.push(limit(_QS_BOOK_PAGE));
+    const snap = await getDocs(query(...cons));
+    const seenCache = new Set(cache.map(x => x.id));
+    const seenList = new Set(_qsList.map(x => x.id));
+    snap.docs.forEach(d => {
+      const set = { id: d.id, ...d.data() };
+      if (!seenCache.has(set.id)) cache.push(set);
+      if (!seenList.has(set.id)) _qsList.push(set);
+    });
+    st.lastDoc = snap.docs[snap.docs.length - 1] || st.lastDoc;
+    st.exhausted = all || snap.docs.length < _QS_BOOK_PAGE;
+  } catch (e) {
+    showToast('세트 조회 실패: ' + e.message);
+  } finally {
+    _qsLoadingBook = null;
+  }
+}
+
+window.qsLoadMoreBook = async (all) => {
+  const bid = _qsActiveBookId;
+  if (bid == null) return;
+  _qsRenderList();   // 로딩 표시
+  await _qsFetchMoreBook(bid, !!all);
+  _qsRenderList();
+};
+
 // 캐시 무효화 (저장·삭제·이름변경 후 호출) — quiz-sets 페이지 + 시험관리 페이지 둘 다 무효화
 function _qsInvalidateCache() {
   _qsList = [];
   _qsSetsByBook = {};
+  _qsBookPage = {};
   if (typeof _tpInvalidateSetsCache === 'function') _tpInvalidateSetsCache();
 }
 
@@ -13510,7 +13549,8 @@ function _qsRenderBookPane() {
   const rows = items.map(it => {
     const active = _qsActiveBookId === it.id;
     const loading = _qsLoadingBook === it.id;
-    const cntLabel = loading ? '…' : (it.count == null ? '?' : it.count);
+    const more = it.count != null && _qsBookPage[it.id] && !_qsBookPage[it.id].exhausted;
+    const cntLabel = loading ? '…' : (it.count == null ? '?' : it.count + (more ? '+' : ''));
     return `
     <div onclick="qsSelectBook('${esc(it.id)}')" style="padding:8px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${active?'var(--teal-light)':''};display:flex;align-items:center;gap:8px;">
       <span onclick="event.stopPropagation();qsToggleFavBook('${esc(it.id)}')" style="cursor:pointer;font-size:14px;color:${it.fav?'#f0b000':'#ccc'};" title="즐겨찾기">${it.fav?'★':'☆'}</span>
@@ -13572,10 +13612,11 @@ function _qsRenderSetPane() {
           </tr>
         </thead>
         <tbody>${sorted.map(s => _qsRenderRow(s, 'bottom')).join('')}</tbody>
-      </table>`;
+      </table>${_qsBookMoreBar(cacheKey, loading)}`;
     }
   }
-  const cntLabel = loaded ? `세트 ${cache.length}개` : (loading ? '로딩...' : '미로드');
+  const hasMore = loaded && _qsBookPage[cacheKey] && !_qsBookPage[cacheKey].exhausted;
+  const cntLabel = loaded ? `세트 ${cache.length}개${hasMore ? '+ (최근순 일부)' : ''}` : (loading ? '로딩...' : '미로드');
 
   return `
     <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f8f9fa;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -13583,6 +13624,17 @@ function _qsRenderSetPane() {
     </div>
     <div id="qsSetPaneScroll" style="flex:1;overflow:auto;">${body}</div>
   `;
+}
+
+// Book 폴더 목록 하단 — 아직 안 불러온 세트가 있으면 [더보기] [전체보기]
+function _qsBookMoreBar(cacheKey, loading) {
+  const st = _qsBookPage[cacheKey];
+  if (!st || st.exhausted) return '';
+  if (loading) return `<div style="padding:12px;text-align:center;color:#bbb;font-size:12px;">불러오는 중...</div>`;
+  return `<div style="padding:12px;display:flex;gap:8px;justify-content:center;">
+    <button class="btn btn-secondary" style="font-size:12px;padding:5px 16px;" onclick="qsLoadMoreBook(false)">+ 더보기 (${_QS_BOOK_PAGE}개)</button>
+    <button class="btn btn-secondary" style="font-size:12px;padding:5px 16px;" onclick="qsLoadMoreBook(true)">전체보기</button>
+  </div>`;
 }
 
 function _qsRenderRow(s, where) {
@@ -16274,7 +16326,7 @@ window.tpDeleteSelectedSets = async () => {
   }
   _tpSelectedSets.clear();
   _tpInvalidateSetsCache();
-  if (typeof _qsList !== 'undefined') { _qsList = []; _qsSetsByBook = {}; } // quiz-sets 캐시도 무효화
+  if (typeof _qsList !== 'undefined') { _qsList = []; _qsSetsByBook = {}; _qsBookPage = {}; } // quiz-sets 캐시도 무효화
   showToast(fail === 0 ? `✓ ${success}개 세트 삭제됨` : `${success}개 삭제 / ${fail}개 실패`);
   _activeTestFolderKey = null; // 폴더 미선택 상태로
   await _renderTestAssignDetail(_activeTestType);
