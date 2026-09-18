@@ -13602,6 +13602,9 @@ function _qsRenderRow(s, where) {
     <td class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_qsDateStr(s))}</td>
     <td class="td-center">
       <button class="action-btn" onclick="qsAssignSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9;">시험출제</button>
+      ${_qsCanPrint(s)
+        ? `<button class="action-btn" onclick="qsPrintSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;background:#e3f2fd;color:#1565c0;border-color:#bbdefb;">시험인쇄</button>`
+        : `<button class="action-btn" disabled title="이 유형은 인쇄를 지원하지 않습니다" style="font-size:11px;padding:3px 8px;opacity:0.4;cursor:not-allowed;">시험인쇄</button>`}
       <button class="action-btn danger" onclick="qsDeleteSet('${esc(s.id)}')" style="font-size:11px;padding:3px 8px;">${iconSvg('trash')} 삭제</button>
     </td>
   </tr>`;
@@ -13743,6 +13746,33 @@ const _QS_SOURCE_TO_UI_TYPE = {
   subjective: 'subj',
   recording: 'rec-ai',
   sentence: 'sentence',  // 2026-07-22 신 유형 (Phase 2 — 시험 배정 UI 는 다음 세션)
+};
+
+// 세트 유형이 시험지 인쇄를 지원하는지 (_TEST_TYPE_CONFIG.actions 기준)
+function _qsCanPrint(s) {
+  const type = _QS_SOURCE_TO_UI_TYPE[s?.sourceType] || s?.sourceType;
+  return !!_TEST_TYPE_CONFIG?.[type]?.actions?.includes('print');
+}
+
+// 문제세트목록 → 시험지 인쇄 (시험관리의 인쇄 모달 재사용)
+window.qsPrintSet = async (setId) => {
+  const s = _qsList.find(x => x.id === setId)
+       || Object.values(_qsSetsByBook).flat().find(x => x?.id === setId);
+  if (!s) { showAlert('입력 확인', '세트를 찾을 수 없음'); return; }
+  const type = _QS_SOURCE_TO_UI_TYPE[s.sourceType] || s.sourceType;
+  const cfg = _TEST_TYPE_CONFIG?.[type];
+  if (!cfg?.actions?.includes('print')) { showAlert('입력 확인', `${cfg?.kindLabel || s.sourceType || '이'} 유형은 시험지 인쇄가 지원되지 않습니다`); return; }
+
+  // 인쇄 모달이 기대하는 전역 상태 세팅 (qsAssignSet 과 동일)
+  _activeTestType = type;
+  _tpSets = [s];
+  _tpSelectedSets = new Set([s.id]);
+
+  try {
+    tpOpenPrintModal();
+  } catch (e) {
+    showToast('인쇄 모달 열기 실패: ' + (e?.message || e));
+  }
 };
 
 window.qsAssignSet = async (setId) => {
