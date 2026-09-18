@@ -8034,6 +8034,7 @@ const _SPEAK_EVENT_LABELS = {
   'sr-start-throw':   { label: '인식 시작 실패',     color: '#dc2626' },
   'sr-hang':          { label: '인식 무응답',        color: '#d97706' },
   'silent-3':         { label: '3회 연속 무음',      color: '#d97706' },
+  'warn:kakao':       { label: '카톡 안에서 진입',   color: '#d97706' },
 };
 function _speakDevLabel(e) {
   const parts = [e.os === 'iOS' || e.os === 'Android' ? `${e.os} ${e.ver || '?'}` : (e.os || '?')];

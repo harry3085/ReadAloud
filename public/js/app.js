@@ -3154,6 +3154,104 @@ function _speakLog(event, detail = '') {
   });
 }
 
+// ── 음성 인식 환경·오류별 학생 안내 (진입 차단 + 시험 중 오류 공통) ─────────
+// 코드는 _speakLog 기록 이벤트와 같은 이름 → 학원장 기록과 학생 안내 일치
+function _srEnv() {
+  const ua = navigator.userAgent || '';
+  return {
+    ipad: /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    kakao: /KAKAOTALK/i.test(ua),
+    inapp: /KAKAOTALK|NAVER\(inapp|FBAN|FBAV|Instagram|;\s*Line|MicroMessenger|EveryMe|Daum/i.test(ua),
+    iosOtherBrowser: /CriOS|FxiOS|EdgiOS|Whale|NAVER/i.test(ua),
+    standalone: !!(window.navigator.standalone || window.matchMedia?.('(display-mode: standalone)')?.matches),
+  };
+}
+const _SR_GUIDE_CODES = new Set(['not-allowed', 'service-not-allowed', 'audio-capture', 'network', 'language-not-supported']);
+function _srGuide(code) {
+  const env = _srEnv();
+  const ios = _isIos();
+  const dev = env.ipad ? '아이패드' : '아이폰';
+  const micSetting = ios
+    ? '설정 → 앱 → Safari → 마이크 → [허용]\n또는 Safari 주소창 왼쪽 메뉴 → 웹사이트 설정 → 마이크 → [허용]'
+    : '주소창 왼쪽 자물쇠(또는 ⋮ 메뉴) → 권한 → 마이크 → [허용]';
+  const dictation = '설정 → 일반 → 키보드 → [받아쓰기 활성화] 켜기';
+  const kakaoTip = `카카오톡 안에서 열면 음성 인식이 잘 안 돼요. 아래 버튼을 눌러 ${ios ? 'Safari' : '다른 브라우저'}로 열고 다시 로그인해 주세요.`;
+  let g;
+  switch (code) {
+    case 'no-sr':
+      if (env.kakao) g = { title: '카카오톡에서는 말하기가 안 돼요', detail: kakaoTip };
+      else if (ios && env.standalone) g = { title: '홈화면 아이콘에서는 말하기가 안 돼요', detail: `${dev}는 홈화면에 추가한 앱에서 음성 인식이 안 돼요.\nSafari 를 열고 주소창에 raloud.vercel.app 을 입력해 접속해 주세요.` };
+      else if (ios && env.iosOtherBrowser) g = { title: 'Safari 로 접속해 주세요', detail: `${dev}는 Safari 에서만 음성 인식이 돼요. (Chrome·네이버 앱 등은 안 돼요)\nSafari 주소창에 raloud.vercel.app 을 입력해 주세요.` };
+      else if (ios) g = { title: '이 브라우저는 음성 인식을 지원하지 않아요', detail: `${dev} 설정 → 일반 → 소프트웨어 업데이트로 iOS 를 최신으로 올린 뒤 Safari 로 접속해 주세요.` };
+      else if (env.inapp) g = { title: '다른 앱 안에서는 말하기가 안 돼요', detail: '오른쪽 위 ⋮ 메뉴 → "다른 브라우저로 열기" → Chrome 을 선택해 주세요.' };
+      else g = { title: '이 브라우저는 음성 인식을 지원하지 않아요', detail: 'Chrome 을 최신 버전으로 업데이트한 뒤 Chrome 으로 접속해 주세요.' };
+      break;
+    case 'no-media':
+      g = { title: '브라우저가 마이크를 지원하지 않아요', detail: ios ? 'Safari 로 접속해 주세요.' : 'Chrome 을 최신 버전으로 업데이트한 뒤 Chrome 으로 접속해 주세요.' };
+      break;
+    case 'mic-denied':
+    case 'not-allowed':
+      g = { title: '마이크 권한이 꺼져 있어요', detail: `${micSetting}\n\n허용한 뒤 다시 시도해 주세요.` };
+      break;
+    case 'service-not-allowed':
+      g = ios
+        ? { title: `${dev}의 받아쓰기(음성 인식)가 꺼져 있어요`, detail: `① ${dictation}\n② 받아쓰기 스위치가 회색이라 안 켜지면:\n설정 → 스크린 타임 → 콘텐츠 및 개인정보 보호 제한 → 허용된 앱 → [Siri 및 받아쓰기] 켜기\n(부모님 암호가 필요할 수 있어요)` }
+        : { title: '음성 인식 서비스를 쓸 수 없어요', detail: '① Play 스토어에서 "Google" 앱을 설치하거나 업데이트해 주세요.\n② 삼성 인터넷이라면 Chrome 으로 접속해 주세요.' };
+      break;
+    case 'mic-error':
+    case 'audio-capture':
+      g = { title: '마이크를 사용할 수 없어요', detail: '① 통화·녹음·영상 앱을 모두 끄고\n② 블루투스 이어폰은 연결을 끊은 뒤\n③ 다시 시도해 주세요. 그래도 안 되면 폰을 재시작해 주세요.' };
+      break;
+    case 'network':
+      g = { title: '인터넷 연결을 확인해 주세요', detail: '음성 인식은 인터넷이 필요해요. Wi-Fi 나 데이터가 켜져 있는지 확인한 뒤 다시 시도해 주세요.' };
+      break;
+    case 'language-not-supported':
+    case 'hang':
+      g = ios
+        ? { title: '말소리가 인식되지 않았어요', detail: `① ${dictation}\n② 받아쓰기 언어에 English 가 있는지 확인\n(없으면 설정 → 일반 → 키보드 → 키보드 → 새로운 키보드 추가 → English)\n③ 마이크에 가까이 대고 또박또박 말해 주세요.` }
+        : { title: '말소리가 인식되지 않았어요', detail: '마이크에 가까이 대고 또박또박 말해 주세요.\n계속 안 되면 Chrome 을 최신 버전으로 업데이트해 주세요.' };
+      break;
+    default:   // not-started / start-throw
+      g = ios
+        ? { title: '음성 인식이 시작되지 않았어요', detail: `① Safari 로 접속했는지 확인 (홈화면 아이콘·카카오톡 X)\n② ${dictation}\n③ ${micSetting.split('\n')[0]}` }
+        : { title: '음성 인식이 시작되지 않았어요', detail: `① Chrome 으로 접속했는지 확인\n② ${micSetting}` };
+  }
+  if (env.kakao && code !== 'no-sr') g.detail = kakaoTip + '\n\n' + g.detail;
+  g.openExternal = env.kakao;
+  g.extLabel = ios ? 'Safari 로 열기' : '다른 브라우저로 열기';
+  return g;
+}
+// 카카오톡 인앱 → 외부 브라우저 (iOS=Safari, Android=기본 브라우저). 외부 브라우저는 로그인 별도
+window.openExternalBrowser = () => {
+  location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+};
+// 안내 모달 — resolve(true)=primary, false=secondary
+function _showSrGuideModal(g, { primary = '확인', secondary = '' } = {}) {
+  return new Promise((resolve) => {
+    document.getElementById('srGuideOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'srGuideOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:14px;width:min(440px,94vw);max-height:88vh;overflow-y:auto;padding:22px 22px 18px;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
+        <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:12px;color:#dc2626;">${esc(g.title)}</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:16px;white-space:pre-line;">${esc(g.detail)}</div>
+        ${g.openExternal ? `<button id="srGuideExt" style="width:100%;padding:12px;margin-bottom:8px;background:#0ea5e9;color:white;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;">${esc(g.extLabel || 'Safari 로 열기')}</button>` : ''}
+        <div style="display:flex;gap:8px;">
+          ${secondary ? `<button id="srGuideSecondary" style="flex:1;padding:11px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">${esc(secondary)}</button>` : ''}
+          <button id="srGuidePrimary" style="flex:1.5;padding:11px;background:var(--c-brand);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">${esc(primary)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const done = (v) => { overlay.remove(); resolve(v); };
+    document.getElementById('srGuidePrimary').onclick = () => done(true);
+    const sec = document.getElementById('srGuideSecondary');
+    if (sec) sec.onclick = () => done(false);
+    const ext = document.getElementById('srGuideExt');
+    if (ext) ext.onclick = () => window.openExternalBrowser();
+  });
+}
+
 // 실시간 게인 측정 — AnalyserNode → RMS → UI 막대 갱신
 // 음성 강도 낮으면 학생에게 안내 ("마이크 확인 후 다시 녹음")
 function _rv2StartGainMeter() {
@@ -4067,19 +4165,16 @@ async function _checkMicSupport(opts = {}) {
   // 1) 브라우저 자체가 API 미지원
   if (!navigator.mediaDevices?.getUserMedia) {
     if (needSpeech) _speakLog('block:no-media');
-    return _showMicBlockModal({
-      title: '브라우저가 마이크를 지원하지 않아요',
-      detail: '브라우저를 최신 버전으로 업데이트하거나 다른 브라우저(Chrome / Safari)로 접속해주세요.',
-      needSpeech,
-    });
+    return _showMicBlockModal({ ..._srGuide('no-media'), needSpeech });
   }
   if (needSpeech && !(window.SpeechRecognition || window.webkitSpeechRecognition)) {
     _speakLog('block:no-sr');
-    return _showMicBlockModal({
-      title: '이 브라우저는 음성 인식을 지원하지 않아요',
-      detail: 'iPhone 은 iOS 14.5 이상 필요해요. 폰을 업데이트하거나 Chrome 으로 접속해보세요.',
-      needSpeech,
-    });
+    return _showMicBlockModal({ ..._srGuide('no-sr'), needSpeech });
+  }
+  // iOS 홈화면 앱(PWA) 은 SR 객체가 있어도 동작 안 함 (WebKit Bug 225298)
+  if (needSpeech && _isIos() && _srEnv().standalone) {
+    _speakLog('block:no-sr', 'standalone');
+    return _showMicBlockModal({ ..._srGuide('no-sr'), needSpeech });
   }
 
   // 2) 마이크 권한 — getUserMedia 시도. 즉시 stop 해서 LED·자원 해제
@@ -4090,13 +4185,22 @@ async function _checkMicSupport(opts = {}) {
     const code = e?.name || e?.message || '';
     const denied = /NotAllowed|SecurityError|Permission/i.test(code);
     if (needSpeech) _speakLog(denied ? 'block:mic-denied' : 'block:mic-error', code);
-    return _showMicBlockModal({
-      title: denied ? '마이크 권한이 차단되어 있어요' : '마이크를 사용할 수 없어요',
-      detail: denied
-        ? '브라우저 설정 → 마이크 권한 → "허용" 으로 변경 후 [재시도] 해주세요.'
-        : '다른 앱이 마이크를 사용 중이거나 폰 자체 문제일 수 있어요. 다른 앱 종료 후 [재시도]·또는 폰을 재시작 해주세요.',
-      needSpeech,
-    });
+    return _showMicBlockModal({ ..._srGuide(denied ? 'mic-denied' : 'mic-error'), needSpeech });
+  }
+
+  // 3) 카카오톡 인앱 — 차단은 아니지만 불안정 → 세션당 1회 외부 브라우저 권유
+  if (needSpeech && _srEnv().kakao) {
+    let warned = false;
+    try { warned = sessionStorage.getItem('_kakaoSpeakWarned') === '1'; } catch (_) {}
+    if (!warned) {
+      try { sessionStorage.setItem('_kakaoSpeakWarned', '1'); } catch (_) {}
+      _speakLog('warn:kakao');
+      const g = _srGuide('no-sr');
+      g.title = '카카오톡에서는 말하기가 잘 안 될 수 있어요';
+      g.detail = `음성 인식이 멈추거나 인식이 안 될 수 있어요.\n${_isIos() ? 'Safari' : '다른 브라우저'}에서 열면 안정적으로 할 수 있어요. (다시 로그인 필요)`;
+      const go = await _showSrGuideModal(g, { primary: '그냥 진행', secondary: '돌아가기' });
+      if (!go) return false;
+    }
   }
 
   // (Web Speech 실제 작동 체크는 시간 비용 큼 — 시험 중 onerror 로 처리)
@@ -4105,7 +4209,7 @@ async function _checkMicSupport(opts = {}) {
 }
 
 // 차단 모달 — Promise 반환. 학생 [재시도] 시 _checkMicSupport 재호출 → 통과면 true / 실패면 다시 모달
-function _showMicBlockModal({ title, detail, needSpeech }) {
+function _showMicBlockModal({ title, detail, needSpeech, openExternal, extLabel }) {
   return new Promise((resolve) => {
     // 이미 떠 있으면 제거 (재시도 케이스)
     const existing = document.getElementById('micBlockOverlay');
@@ -4118,7 +4222,8 @@ function _showMicBlockModal({ title, detail, needSpeech }) {
       <div style="background:white;border-radius:14px;width:min(440px,94vw);max-height:88vh;overflow-y:auto;padding:22px 22px 18px;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
         <div style="font-size:32px;text-align:center;margin-bottom:10px;">🎙️</div>
         <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:10px;color:#dc2626;">${esc(title)}</div>
-        <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:14px;text-align:center;">${esc(detail)}</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:14px;white-space:pre-line;">${esc(detail)}</div>
+        ${openExternal ? `<button id="micBlockExt" style="width:100%;padding:12px;margin-bottom:10px;background:#0ea5e9;color:white;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;">${esc(extLabel || 'Safari 로 열기')}</button>` : ''}
         <div style="padding:10px 12px;background:#f0f9ff;border-left:3px solid #38BDF8;border-radius:6px;font-size:12px;color:#075985;line-height:1.6;margin-bottom:14px;">
           📢 자세한 해결 방법은 <b>공지사항</b>에 안내되어 있어요. 그래도 안 되면 학원에 알려주세요.
         </div>
@@ -4129,6 +4234,8 @@ function _showMicBlockModal({ title, detail, needSpeech }) {
       </div>`;
     document.body.appendChild(overlay);
 
+    const extBtn = document.getElementById('micBlockExt');
+    if (extBtn) extBtn.onclick = () => window.openExternalBrowser();
     document.getElementById('micBlockBack').onclick = () => { overlay.remove(); resolve(false); };
     document.getElementById('micBlockRetry').onclick = async () => {
       overlay.remove();
@@ -5746,6 +5853,11 @@ window.vqSpkStart = async () => {
     s.spk.srResolved = true;
     console.warn('[vqSpk] error:', e.error, 'attempt:', attempt);
     if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
+    // 원인별 해결 안내 — 시험당 1회 (단어마다 반복되면 방해)
+    if (_SR_GUIDE_CODES.has(e.error) && !s._srGuideShown) {
+      s._srGuideShown = true;
+      _showSrGuideModal(_srGuide(e.error), { primary: '확인' });
+    }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       s.spk.busy = false;
       if (status) status.textContent = '⚠️ 마이크 권한이 필요합니다.';
@@ -7557,6 +7669,11 @@ window.stqToggleMic = () => {
   rec.onerror = (e) => {
     console.warn('[stq] SR error:', e.error);
     if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
+    // 원인별 해결 안내 — 시험당 1회
+    if (_SR_GUIDE_CODES.has(e.error) && !s._srGuideShown) {
+      s._srGuideShown = true;
+      _showSrGuideModal(_srGuide(e.error), { primary: '확인' });
+    }
   };
   rec.onend = () => {
     s.listening = false;
@@ -8365,14 +8482,12 @@ async function _vpStartListen() {
   if (s.stopped || s.listening) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
-    _vpShowSrIssue('이 브라우저는 음성 인식 미지원',
-      'iPhone/iPad 는 iOS 14.5 이상 Safari 만 지원해요. 폰을 업데이트하거나 Chrome 으로 접속.');
+    _vpShowSrIssue('no-sr');
     return;
   }
   // iOS PWA (홈화면 추가) 모드는 SR 전혀 안 됨 — 학생에게 명시 안내
   if (_isIos() && window.navigator.standalone === true) {
-    _vpShowSrIssue('홈화면 아이콘에서는 말하기가 안돼요',
-      '아이패드/아이폰은 홈화면 추가된 앱에서 음성 인식이 안 됩니다. Safari 브라우저에서 다시 열어주세요.');
+    _vpShowSrIssue('no-sr');
     return;
   }
   // 옛 SR 인스턴스 명시적 파기 (iOS Safari 연속 사용 실패 대응 — 이전 세션 잔존 방지)
@@ -8469,19 +8584,9 @@ async function _vpStartListen() {
     if (s.stopped || s.gen !== g) return;
     console.warn('[vp] SR error:', e.error, 'started:', started);
     if (e.error !== 'aborted' && e.error !== 'no-speech') _speakLog('sr-error', e.error);
-    // 특정 에러는 학생 안내 (iOS 진단용)
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      _vpShowSrIssue('마이크 권한 필요',
-        '설정 → Safari → 마이크 → 이 사이트 [허용] 후 다시 시도해주세요.');
-      return;
-    }
-    if (e.error === 'audio-capture') {
-      _vpShowSrIssue('마이크를 찾을 수 없어요',
-        '다른 앱이 마이크 사용 중이거나 이어폰 연결 상태 확인. 재부팅 후 재시도.');
-      return;
-    }
-    if (e.error === 'network') {
-      _vpShowSrIssue('네트워크 확인 필요', 'iOS 음성 인식은 인터넷 필수. Wi-Fi/LTE 확인.');
+    // 원인별 학생 안내 (마이크 권한 / 받아쓰기 차단 / 마이크 점유 / 인터넷 / 언어)
+    if (_SR_GUIDE_CODES.has(e.error)) {
+      _vpShowSrIssue(e.error);
       return;
     }
     _vpHandleResult(0, '');
@@ -8495,8 +8600,7 @@ async function _vpStartListen() {
       // onstart 도 안 옴 = SR 시작조차 안 됨 (iOS Safari 특유 조용한 실패)
       if (!started && _isIos()) {
         _speakLog('sr-not-started');
-        _vpShowSrIssue('음성 인식이 시작되지 않았어요',
-          'Safari 브라우저인지 확인 · 설정 → 일반 → 받아쓰기 [켬] · 설정 → Safari → 마이크 [허용].');
+        _vpShowSrIssue('not-started');
         return;
       }
       _vpHandleResult(0, '');
@@ -8514,8 +8618,7 @@ async function _vpStartListen() {
     _speakLog('sr-start-throw', e?.message || '');
     s.listening = false;
     if (_isIos()) {
-      _vpShowSrIssue('음성 인식 시작 실패',
-        'Safari 브라우저인지 확인 · 설정 → Safari → 마이크 권한 · 설정 → 일반 → 받아쓰기 활성화 여부 확인.');
+      _vpShowSrIssue('start-throw');
       return;
     }
     setTimeout(() => { if (s.gen === g && !s.stopped) _vpStartListen(); }, 500);
@@ -8530,10 +8633,7 @@ async function _vpShowSrRetry() {
   _vpShowWave(false);
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">🎤 말소리 감지 안 됨</span>';
-  const retry = await showConfirm(
-    '🎤 말소리가 감지되지 않았어요',
-    '★ 가장 흔한 원인: 아이패드에 English (US) 받아쓰기 언어 미설치\n\n확인 (설정 앱):\n① 일반 → 키보드 → 받아쓰기 → 받아쓰기 언어 → English (US) 체크\n   (없으면 [언어 추가] 로 English 추가 → 음성 파일 다운로드 대기)\n② Safari → 마이크 [허용]\n③ Safari 브라우저에서 열었는지 (홈화면 아이콘 X)\n\n[확인] = 다시 시도\n[취소] = 홈으로'
-  );
+  const retry = await _showSrGuideModal(_srGuide('hang'), { primary: '다시 시도', secondary: '홈으로' });
   if (retry) {
     s._srRetryCount = 0;   // 재시도 카운터 리셋
     if (!s.stopped) _vpSpeakAndListen();   // TTS 부터 다시 (오디오 세션 리셋)
@@ -8543,8 +8643,8 @@ async function _vpShowSrRetry() {
   }
 }
 
-// SR 이슈 학생 안내 — 카드에 상세 안내 표시 + 학습 진행 정지 (다음 문제 자동 안 감)
-function _vpShowSrIssue(title, detail) {
+// SR 이슈 학생 안내 — 오류 코드별 해결 방법 표시 + 학습 진행 정지 (다음 문제 자동 안 감)
+function _vpShowSrIssue(code) {
   const s = _vpState;
   s.listening = false;
   s.stopped = true;   // 자동 흐름 정지
@@ -8552,14 +8652,11 @@ function _vpShowSrIssue(title, detail) {
   _vpShowWave(false);
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '';
-  // 화면 카드에 안내 오버레이
-  try {
-    showConfirm('🎤 ' + title, detail + '\n\n[확인] 을 누르고 홈으로 돌아가서 다시 시도해주세요.').then(() => {
-      if (typeof goHome === 'function') goHome();
-    });
-  } catch(_) {
-    showToast(title + ' — ' + detail);
-  }
+  const g = _srGuide(code);
+  g.detail += '\n\n설정을 바꾼 뒤 홈에서 다시 시작해 주세요.';
+  _showSrGuideModal(g, { primary: '홈으로' }).then(() => {
+    if (typeof goHome === 'function') goHome();
+  });
 }
 
 // Levenshtein 유사도 (0-100) — 단어 1개 매칭용

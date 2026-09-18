@@ -126,16 +126,25 @@
       const inappPatterns = /KAKAOTALK|NAVER\(inapp|FBAN|FBAV|Instagram|;\s*Line|MicroMessenger|EveryMe|Daum/i;
       const isInapp = inappPatterns.test(ua) || (isAndroid && /;\s*wv\)/.test(ua));
       if (!isInapp) return;
+      const isKakao = /KAKAOTALK/i.test(ua);
       document.addEventListener('DOMContentLoaded', () => {
-        const box = document.getElementById('inappWarn');
-        const hint = document.getElementById('inappWarnHint');
-        if (!box || !hint) return;
-        if (isIOS) {
-          hint.innerHTML = '우상단 <b>공유 메뉴</b> 또는 <b>···</b> 를 눌러 <b>"Safari로 열기"</b> 선택<br>또는 Safari 에서 직접 <b>raloud.vercel.app</b> 입력';
-        } else {
-          hint.innerHTML = '우상단 <b>···</b> 또는 메뉴 버튼 → <b>"다른 브라우저로 열기"</b> → <b>크롬</b> 선택<br>또는 크롬에서 직접 <b>raloud.vercel.app</b> 입력';
-        }
-        box.style.display = '';
+        const hintHtml = isKakao
+          ? `아래 <b>[${isIOS ? 'Safari로 열기' : '다른 브라우저로 열기'}]</b> 를 누르고 다시 로그인해 주세요.`
+          : (isIOS
+              ? '우상단 <b>공유 메뉴</b> 또는 <b>···</b> 를 눌러 <b>"Safari로 열기"</b> 선택<br>또는 Safari 에서 직접 <b>raloud.vercel.app</b> 입력'
+              : '우상단 <b>···</b> 또는 메뉴 버튼 → <b>"다른 브라우저로 열기"</b> → <b>크롬</b> 선택<br>또는 크롬에서 직접 <b>raloud.vercel.app</b> 입력');
+        ['inappWarn', 'inappHomeWarn'].forEach(id => {
+          const box = document.getElementById(id);
+          if (!box) return;
+          const hint = box.querySelector('.inapp-hint');
+          if (hint) hint.innerHTML = hintHtml;
+          const ext = box.querySelector('.inapp-ext');
+          if (ext && isKakao) {
+            ext.textContent = isIOS ? 'Safari로 열기' : '다른 브라우저로 열기';
+            ext.style.display = '';
+          }
+          box.style.display = '';
+        });
       });
     })();
   </script>
@@ -157,9 +166,10 @@
       <div style="display:flex;align-items:start;gap:10px;">
         <div style="font-size:24px;line-height:1;">⚠️</div>
         <div style="flex:1;">
-          <div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:4px;">앱 설치를 위해 정식 브라우저로 열어주세요</div>
-          <div id="inappWarnHint" style="font-size:12px;color:#78350f;line-height:1.6;"></div>
+          <div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:4px;">정식 브라우저로 열어주세요 (말하기·녹음이 안 될 수 있어요)</div>
+          <div id="inappWarnHint" class="inapp-hint" style="font-size:12px;color:#78350f;line-height:1.6;"></div>
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="inapp-ext" onclick="location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(location.href)" style="display:none;padding:6px 12px;font-size:12px;background:#0ea5e9;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;">Safari로 열기</button>
             <button onclick="(navigator.clipboard?.writeText(location.href).then(()=>alert('주소가 복사됐어요!\n정식 브라우저에 붙여넣기 하세요.')))" style="padding:6px 12px;font-size:12px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>주소 복사</button>
             <button onclick="document.getElementById('inappWarn').style.display='none'" style="padding:6px 12px;font-size:12px;background:white;color:#78350f;border:1px solid #fbbf24;border-radius:6px;cursor:pointer;">닫기</button>
           </div>
@@ -194,6 +204,15 @@
 
   <!-- STUDENT HOME -->
   <div id="home" class="screen">
+    <!-- 인앱 브라우저(카톡 등) 로 로그인 상태 진입 시 안내 — 로그인 화면 배너는 로그인 유지 학생에게 안 보임 -->
+    <div id="inappHomeWarn" style="display:none;background:#fffbeb;border-bottom:2px solid #f59e0b;padding:10px 16px;flex-shrink:0;">
+      <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:3px;">카카오톡 등 앱 안에서 열었어요 — 말하기·녹음이 안 될 수 있어요</div>
+      <div class="inapp-hint" style="font-size:12px;color:#78350f;line-height:1.6;"></div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="inapp-ext" onclick="location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(location.href)" style="display:none;padding:6px 12px;font-size:12px;background:#0ea5e9;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;">Safari로 열기</button>
+        <button onclick="document.getElementById('inappHomeWarn').style.display='none'" style="padding:6px 12px;font-size:12px;background:white;color:#78350f;border:1px solid #fbbf24;border-radius:6px;cursor:pointer;">닫기</button>
+      </div>
+    </div>
     <div class="home-header">
       <div class="home-header-top">
         <div class="home-logo">
