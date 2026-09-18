@@ -5162,6 +5162,7 @@ window.startVocab = async (testId, testName) => {
     if (test.vocabOptions?.format === 'practice') {
       const ok = await _checkMicSupport({ needSpeech: true });
       if (!ok) return;
+      if (await _vpTryResume(testId)) return;
       return _startVocabPractice(test, questions);
     }
 
@@ -7504,6 +7505,7 @@ window.startSentence = async (testId, testName) => {
     if (test.sentenceOptions?.mode === 'chunk-practice') {
       const ok = await _checkMicSupport({ needSpeech: true });
       if (!ok) return;
+      if (await _vpTryResume(testId)) return;
       return _startSentenceChunkPractice(test, questions);
     }
 
@@ -8874,6 +8876,7 @@ function _vpAdvance() {
 async function _vpFinish() {
   const s = _vpState;
   s.submitting = true;
+  if (s.test?.id) _vpClearProgress(s.test.id);   // 학습 완료 → 중간 저장분 삭제
   const total = s.questions.length;
 
   // sentence chunk-practice 는 전체 문장 정확도만 score 로 (청크는 학습용, 참고 저장)
@@ -9208,8 +9211,86 @@ window.quitVocabPractice = async () => {
     return;
   }
   s.stopped = true;
+  // 진행분이 있으면 저장 여부 묻기 → 저장 시 다음 진입에서 이어하기 (단어시험 quitVocab 과 동일 정책)
+  if ((s.currentIdx || 0) > 0) {
+    const save = await showConfirm('진행 내용을 저장할까요?', '저장하면 중단한 곳부터 이어서 학습할 수 있어요. 단, 저장은 오늘(자정)까지만 유효하며 내일부터는 처음부터 다시 해야 해요.');
+    if (save) {
+      if (_vpSaveProgress()) showToast('저장 완료 — 오늘 안에 다시 열면 이어서 학습할 수 있어요');
+    } else if (s.test?.id) {
+      _vpClearProgress(s.test.id);
+    }
+  }
   goHome();
 };
+
+// ── 학습(단어 따라읽기·문장 청크) 중간 저장 — localStorage, 당일(KST) TTL ──
+// 단어시험 _vqSaveProgress 와 같은 정책. 런타임 필드(rec·gen·ttsVoices 등)는 저장 X
+const _VP_PROG_KEYS = ['test', 'questions', 'currentIdx', 'stars', 'wordAccuracies', 'vizType',
+  '_sentenceMode', '_sourceSentences', '_chunkCount', 'customThresh', 'customMin', 'customMax', 'customTtsRate'];
+function _vpProgKey(testId) {
+  const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || 'anon';
+  return `vpProgress_${testId}_${uid}`;
+}
+function _vpClearProgress(testId) {
+  try { if (testId) localStorage.removeItem(_vpProgKey(testId)); } catch (_) {}
+}
+function _vpSaveProgress() {
+  try {
+    const s = _vpState;
+    if (!s || !s.test || !s.test.id || !Array.isArray(s.questions)) return false;
+    const state = {};
+    _VP_PROG_KEYS.forEach(k => { if (s[k] !== undefined) state[k] = s[k]; });
+    localStorage.setItem(_vpProgKey(s.test.id), JSON.stringify({
+      v: 1, testId: s.test.id, ymd: _ymdKST(), savedAt: Date.now(), state,
+    }));
+    return true;
+  } catch (e) { console.warn('[vp] 진행 저장 실패', e); return false; }
+}
+function _vpLoadProgress(testId) {
+  try {
+    const raw = localStorage.getItem(_vpProgKey(testId));
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (!snap || snap.testId !== testId || !snap.state) return null;
+    if (snap.ymd !== _ymdKST()) { _vpClearProgress(testId); return null; }   // 당일만 유효
+    const st = snap.state;
+    if (!Array.isArray(st.questions) || !st.questions.length) return null;
+    if ((st.currentIdx || 0) >= st.questions.length) { _vpClearProgress(testId); return null; }
+    return snap;
+  } catch (_) { return null; }
+}
+// 저장분 있으면 이어하기 확인 → 이어하면 true (호출부는 return), 처음부터면 저장분 삭제 후 false
+async function _vpTryResume(testId) {
+  const snap = _vpLoadProgress(testId);
+  if (!snap) return false;
+  const st = snap.state;
+  const done = st.currentIdx || 0, total = st.questions.length;
+  const resume = await showConfirm('중단된 학습이 있어요', `${total}개 중 ${done + 1}번째부터 이어서 할까요? (아니오 = 처음부터)`);
+  if (!resume) { _vpClearProgress(testId); return false; }
+  _screenPrepare('vocabPractice', '#vpProgressBar');
+  _vpState = {
+    ...st,
+    attempt: 0,
+    rec: null, listening: false, submitting: false,
+    ttsVoices: [],
+    gen: (_vpState?.gen || 0) + 1,
+    stopped: false,
+    silentStreak: 0,
+    vizType: st.vizType || _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
+  };
+  if (typeof window.speechSynthesis !== 'undefined') {
+    _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
+    if (!_vpState.ttsVoices.length) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
+      };
+    }
+  }
+  show('vocabPractice');
+  await _vpWarmupTts();
+  _vpRenderStep();
+  return true;
+}
 
 // _EXAM_SCREENS / _EXAM_QUIT_FNS 에 등록 (뒤로가기 보호 흐름)
 if (typeof _EXAM_SCREENS !== 'undefined') _EXAM_SCREENS.add('vocabPractice');
