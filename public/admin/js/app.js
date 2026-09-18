@@ -42,6 +42,7 @@ const ICONS = {
   x:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   chart:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
   bot:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
+  pin:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>`,
   lightbulb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
 };
 function iconSvg(name, size=16) {
@@ -1354,7 +1355,7 @@ async function loadDashNotices(){
     el.innerHTML=snap.docs.map(d=>{
       const n=d.data();
       return `<div class="notice-item">
-        <span class="notice-new">NEW</span>
+        ${n.pinned ? `<span title="고정 공지" style="color:var(--teal);line-height:0;">${iconSvg('pin', 13)}</span>` : '<span class="notice-new">NEW</span>'}
         <span class="notice-title">${esc(n.title)||''}</span>
         <span class="notice-date">${esc(n.date)||''}</span>
       </div>`;
@@ -2089,6 +2090,13 @@ window.saveStudent = async() => {
 
 
 // ── 공지 관리 ────────────────────────────────────────
+// 공지 정렬 — 📌 고정 공지 먼저(고정한 시각 최신순), 나머지는 기존 순서(createdAt desc) 유지
+function _noticePinSort(arr) {
+  const ms = v => v?.toMillis ? v.toMillis() : (v instanceof Date ? v.getTime() : (v?.seconds ? v.seconds * 1000 : 0));
+  const pinned = arr.filter(n => n.pinned === true).sort((a, b) => ms(b.pinnedAt) - ms(a.pinnedAt));
+  return pinned.concat(arr.filter(n => n.pinned !== true));
+}
+
 async function loadNotices(){
   const el=document.getElementById('noticeTableBody');
   try{
@@ -2100,7 +2108,7 @@ async function loadNotices(){
       if (info) info.textContent = `${snap.size}/${limits.noticesPerAcademy} 저장됨 · 초과 시 기존 삭제 후 추가`;
     } catch(_) {}
     if(snap.empty){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">공지가 없습니다</td></tr>';return;}
-    const notices=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const notices=_noticePinSort(snap.docs.map(d=>({id:d.id,...d.data()})));
     const labelOf = (n) => {
       if (n.targetSummary) return n.targetSummary;
       if (Array.isArray(n.targets) && n.targets.length) return pickerSummarize(n.targets);
@@ -2110,12 +2118,29 @@ async function loadNotices(){
     initPagination('noticeTableBody', notices, (n,i)=>`<tr>
         <td><input type="checkbox" value="${n.id}"></td>
         <td>${i+1}</td>
-        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${n.id}','${(n.title||'').replace(/'/g,"\\'")}')">${esc(n.title)||'-'}</td>
+        <td style="font-weight:600;cursor:pointer;color:var(--teal);" onclick="editNotice('${n.id}','${(n.title||'').replace(/'/g,"\\'")}')"><button onclick="event.stopPropagation();toggleNoticePin('${n.id}')" title="${n.pinned ? '고정 해제' : '맨 위에 고정 (학생앱에도 맨 위)'}" style="background:none;border:none;cursor:pointer;padding:0 6px 0 0;vertical-align:-2px;color:${n.pinned ? 'var(--teal)' : '#ccc'};line-height:0;">${iconSvg('pin', 15)}</button>${esc(n.title)||'-'}</td>
         <td><span class="badge badge-teal">${esc(labelOf(n))}</span></td>
         <td class="td-sub">${esc(n.date)||''}</td>
       </tr>`, 'noticePagination', 10);
   }catch(e){el.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e05050;">불러오기 실패</td></tr>';}
 }
+// 📌 공지 고정/해제 — 목록 재조회 없이 그 항목만 갱신 후 재정렬 (surgical)
+window.toggleNoticePin = async (id) => {
+  const st = _pageState['noticeTableBody'];
+  const n = st?.data?.find(x => x.id === id);
+  if (!n) return;
+  const next = !n.pinned;
+  try {
+    await updateDoc(doc(db, 'notices', id), next
+      ? { pinned: true, pinnedAt: serverTimestamp() }
+      : { pinned: deleteField(), pinnedAt: deleteField() });
+  } catch (e) { showToast('고정 변경 실패: ' + e.message); return; }
+  _pageMutate('noticeTableBody', arr => _noticePinSort(arr.map(x => x.id === id
+    ? { ...x, pinned: next || undefined, pinnedAt: next ? new Date() : undefined }
+    : x)));
+  showToast(next ? '맨 위에 고정했어요 (학생앱에도 맨 위)' : '고정을 해제했어요');
+};
+
 window.openNoticeModal = async() => {
   showModal(`
     <div style="width:min(560px,92vw);max-height:88vh;display:flex;flex-direction:column;">

@@ -572,11 +572,18 @@ function _noticeIsAll(n) {
   return n.target === 'all';
 }
 
+// 공지 정렬 — 📌 고정 공지 먼저(고정한 시각 최신순), 나머지는 기존 순서(createdAt desc) 유지
+function _noticePinSort(arr) {
+  const ms = v => v?.toMillis ? v.toMillis() : (v instanceof Date ? v.getTime() : (v?.seconds ? v.seconds * 1000 : 0));
+  const pinned = arr.filter(n => n.pinned === true).sort((a, b) => ms(b.pinnedAt) - ms(a.pinnedAt));
+  return pinned.concat(arr.filter(n => n.pinned !== true));
+}
+
 async function loadNoticePreview(){
   const group = userProfile?.group||'';
   const uid = currentUser?.uid||'';
   const snap = await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-  allNotices = snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid));
+  allNotices = _noticePinSort(snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid)));
   const el = document.getElementById('noticePreview');
   if(!allNotices.length){el.innerHTML='<div class="empty-msg">공지사항이 없습니다</div>';return;}
   el.innerHTML = allNotices.slice(0,3).map(n=>{
@@ -587,7 +594,7 @@ async function loadNoticePreview(){
     <div class="notice-item" onclick="viewNotice('${n.id}')">
       <div class="notice-dot"></div>
       <div class="notice-item-text">
-        <div class="notice-item-title">${esc(n.title)}${clipIcon}</div>
+        <div class="notice-item-title">${n.pinned ? `<span title="고정 공지" style="color:var(--teal);vertical-align:-2px;margin-right:3px;">${iconSvg('pin', 13)}</span>` : ''}${esc(n.title)}${clipIcon}</div>
         <div class="notice-item-meta"><span class="notice-tag${_noticeIsAll(n)?' all':''}">${esc(_noticeLabel(n))}</span><span>${esc(n.date||'')}</span></div>
       </div>
     </div>`;
@@ -718,7 +725,7 @@ window.goNoticeList = async()=>{
   const group=userProfile?.group||'';
   const uid = currentUser?.uid||'';
   const snap=await getDocs(query(collection(db,'notices'),where('academyId','==',window.MY_ACADEMY_ID),orderBy('createdAt','desc')));
-  allNotices=snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid));
+  allNotices=_noticePinSort(snap.docs.map(d=>({id:d.id,...d.data()})).filter(n => _noticeMatchesMe(n, group, uid)));
   document.getElementById('noticeFullList').innerHTML=allNotices.map(n=>{
     const hasAtt = Array.isArray(n.attachments) && n.attachments.length > 0;
     const expired = _noticeAttExpired(n);
@@ -726,7 +733,7 @@ window.goNoticeList = async()=>{
     return `
     <div class="notice-full-item" onclick="viewNotice('${n.id}')" style="cursor:pointer;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <div class="notice-full-title" style="margin-bottom:0;">${esc(n.title)}${clipIcon}</div>
+        <div class="notice-full-title" style="margin-bottom:0;">${n.pinned ? `<span title="고정 공지" style="color:var(--teal);vertical-align:-2px;margin-right:3px;">${iconSvg('pin', 14)}</span>` : ''}${esc(n.title)}${clipIcon}</div>
         <span style="color:var(--teal);font-size:18px;">›</span>
       </div>
       <div class="notice-full-meta"><span class="notice-tag${_noticeIsAll(n)?' all':''}">${esc(_noticeLabel(n))}</span><span>${esc(n.date||'')}</span></div>
@@ -4968,6 +4975,7 @@ const ICONS = {
   x:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   chart:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
   bot:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>`,
+  pin:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>`,
   lightbulb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
 };
 function iconSvg(name, size=16) {
