@@ -1188,6 +1188,17 @@ window.startReadingMcq = async (testId, testName) => {
     const rawQuestions = test.questions || [];
     if(rawQuestions.length === 0){ showToast('문제가 비어있습니다.'); return; }
 
+    // 중간 저장분 이어풀기 (선지 셔플 순서 포함 그대로 복원)
+    const _prog = await _exProgAskResume('mcq', testId);
+    if (_prog) {
+      _mcqTakeState = { test, questions: _prog.questions, currentIdx: _prog.currentIdx || 0,
+        answers: _prog.answers, _locked: _prog._locked || {} };
+      _screenPrepare('readingMcq', '#mcqProgressBar');
+      show('readingMcq');
+      _mcqRenderStep();
+      return;
+    }
+
     // 매 응시마다 선지(①②③④) 위치 셔플 — Fisher-Yates (편향 없음).
     // 객체에 isAnswer 마커가 있어 자동 추적.
     const _shuf = (arr) => {
@@ -1330,6 +1341,7 @@ async function _mcqSubmit(){
   if(!t || !currentUser) return;
   if (s._submitted || s._submitting) return;
   s._submitting = true;
+  _exProgClear('mcq', t.id);   // 제출 → 중간 저장분 삭제
 
   let correct = 0;
   s.questions.forEach((q, i) => {
@@ -1470,7 +1482,11 @@ window.mcqViewPreviousResult = async (testId, testName) => {
 };
 
 window.quitReadingMcq = async () => {
-  if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  if(!(await showConfirm('시험을 중단할까요?',''))) return;
+  const s = _mcqTakeState;
+  await _exQuitSave('mcq', s?.test?.id, (s?.currentIdx || 0) > 0, () => ({
+    questions: s.questions, currentIdx: s.currentIdx, answers: s.answers, _locked: s._locked || {},
+  }));
   goHome();
 };
 
@@ -1509,6 +1525,20 @@ window.startFillBlank = async (testId, testName) => {
     const test = { id: testId, ...snap.data() };
     const questions = (test.questions || []).filter(q => q.type === 'fill_blank' || q.blanks);
     if(questions.length === 0){ showToast('문제가 비어있습니다.'); return; }
+
+    // 중간 저장분 이어풀기
+    const _prog = await _exProgAskResume('fb', testId);
+    if (_prog) {
+      _screenPrepare('fillBlank', '#fbProgressBar');
+      _fbState = {
+        test, questions: _prog.questions, playOrder: _prog.playOrder || [],
+        currentIdx: _prog.currentIdx || 0, answers: _prog.answers,
+        hintStages: _prog.hintStages || _prog.questions.map(() => 0), hintCache: _prog.hintCache || {},
+      };
+      show('fillBlank');
+      _fbRenderStep();
+      return;
+    }
 
     _screenPrepare('fillBlank', '#fbProgressBar');
 
@@ -1995,6 +2025,7 @@ async function _fbSubmit(){
   if (!s.test || !currentUser) return;
   if (s._submitted || s._submitting) return;
   s._submitting = true;
+  _exProgClear('fb', s.test.id);   // 제출 → 중간 저장분 삭제
   const t = s.test;
   if(!t || !currentUser) return;
 
@@ -2219,8 +2250,13 @@ window.fbViewPreviousResult = async (testId, testName) => {
 };
 
 window.quitFillBlank = async () => {
-  if(!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  if(!(await showConfirm('시험을 중단할까요?',''))) return;
   _fbStopTimer();
+  const s = _fbState;
+  await _exQuitSave('fb', s?.test?.id, (s?.currentIdx || 0) > 0, () => ({
+    questions: s.questions, playOrder: s.playOrder, currentIdx: s.currentIdx,
+    answers: s.answers, hintStages: s.hintStages, hintCache: s.hintCache,
+  }));
   goHome();
 };
 
@@ -5139,6 +5175,54 @@ function _vqLoadProgress(testId) {
   } catch (_) { return null; }
 }
 
+// ── 공용 시험 중간 저장 (객관식·빈칸·언스크램블·문장 매칭식) — 단어시험과 같은 정책 ──
+// localStorage, 당일(KST) TTL. 중단 시 저장 여부 질문 → 재진입 시 이어풀기. 제출 완료 시 삭제
+function _exProgKey(kind, testId) {
+  const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || 'anon';
+  return `exProgress_${kind}_${testId}_${uid}`;
+}
+function _exProgClear(kind, testId) {
+  try { if (testId) localStorage.removeItem(_exProgKey(kind, testId)); } catch (_) {}
+}
+function _exProgSave(kind, testId, data) {
+  try {
+    if (!testId || !data || !Array.isArray(data.questions)) return false;
+    localStorage.setItem(_exProgKey(kind, testId), JSON.stringify({ v: 1, testId, ymd: _ymdKST(), savedAt: Date.now(), data }));
+    return true;
+  } catch (e) { console.warn('[exProg] 진행 저장 실패', kind, e); return false; }
+}
+function _exProgLoad(kind, testId) {
+  try {
+    const raw = localStorage.getItem(_exProgKey(kind, testId));
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (!snap || snap.testId !== testId || !snap.data) return null;
+    if (snap.ymd !== _ymdKST()) { _exProgClear(kind, testId); return null; }   // 당일만 유효
+    const d = snap.data;
+    if (!Array.isArray(d.questions) || !d.questions.length || !Array.isArray(d.answers)) return null;
+    if ((d.currentIdx || 0) >= d.questions.length) { _exProgClear(kind, testId); return null; }
+    return d;
+  } catch (_) { return null; }
+}
+// 저장분 있으면 이어풀기 확인 → 이어풀면 data 반환, 아니면 저장분 삭제 후 null
+async function _exProgAskResume(kind, testId) {
+  const d = _exProgLoad(kind, testId);
+  if (!d) return null;
+  const ok = await showConfirm('중단된 시험이 있어요', `${d.questions.length}문제 중 ${(d.currentIdx || 0) + 1}번부터 이어서 풀까요? (아니오 = 처음부터 다시)`);
+  if (!ok) { _exProgClear(kind, testId); return null; }
+  return d;
+}
+// 중단 시 저장 여부 질문 (진행분 있을 때만)
+async function _exQuitSave(kind, testId, hasProgress, buildData) {
+  if (!testId || !hasProgress) return;
+  const save = await showConfirm('진행 내용을 저장할까요?', '저장하면 중단된 문제부터 이어서 풀 수 있어요. 단, 저장은 오늘(자정)까지만 유효하며 내일부터는 처음부터 다시 풀어야 해요.');
+  if (save) {
+    if (_exProgSave(kind, testId, buildData())) showToast('저장 완료 — 오늘 안에 다시 열면 이어서 풀 수 있어요 (내일부터는 처음부터)');
+  } else {
+    _exProgClear(kind, testId);
+  }
+}
+
 window.goVocab = async () => {
   show('vocabList');
   await loadVocabList();
@@ -6570,6 +6654,16 @@ window.startUnscramble2 = async (testId, testName) => {
     let questions = (test.questions || []).filter(q => q.type === 'unscramble');
     if (questions.length === 0) { showToast('문제가 비어있습니다.'); return; }
 
+    // 중간 저장분 이어풀기 (문제·청크 셔플 순서 그대로 복원)
+    const _prog = await _exProgAskResume('uq', testId);
+    if (_prog) {
+      _screenPrepare('unscrambleQuiz', '#uqProgressBar');
+      _uqState = { test, questions: _prog.questions, currentIdx: _prog.currentIdx || 0, answers: _prog.answers, feedback: null };
+      show('unscrambleQuiz');
+      _uqRenderStep();
+      return;
+    }
+
     // 매번 문제 순서 섞기
     questions = _rngShuffle(questions);
 
@@ -6844,6 +6938,7 @@ async function _uqSubmit() {
   if (!t || !currentUser) return;
   if (s._submitted || s._submitting) return;
   s._submitting = true;
+  _exProgClear('uq', t.id);   // 제출 → 중간 저장분 삭제
 
   let correct = 0;
   const total = s.questions.length;
@@ -6981,8 +7076,12 @@ window.uqViewPreviousResult = async (testId, testName) => {
 };
 
 window.quitUnscramble2 = async () => {
-  if (!(await showConfirm('시험을 중단할까요?','지금까지의 답안은 저장되지 않습니다.'))) return;
+  if (!(await showConfirm('시험을 중단할까요?',''))) return;
   _uqStopTimer();
+  const s = _uqState;
+  await _exQuitSave('uq', s?.test?.id, (s?.currentIdx || 0) > 0, () => ({
+    questions: s.questions, currentIdx: s.currentIdx, answers: s.answers,
+  }));
   goHome();
 };
 
@@ -7517,6 +7616,18 @@ window.startSentence = async (testId, testName) => {
     if (opts.shuffleQ) questions = _rngShuffle(questions);
     const ok = await _checkMicSupport({ needSpeech: true });
     if (!ok) return;
+    // 중간 저장분 이어풀기
+    const _prog = await _exProgAskResume('stq', testId);
+    if (_prog) {
+      _stqState = {
+        test, questions: _prog.questions, currentIdx: _prog.currentIdx || 0, answers: _prog.answers,
+        opts: _prog.opts || opts, rec: null, listening: false, transcript: '', hintCount: 0,
+        _submitted: false, _submitting: false,
+      };
+      show('sentenceQuiz');
+      _stqRenderStep();
+      return;
+    }
     _stqState = {
       test, questions, currentIdx: 0,
       answers: questions.map(() => ({ transcript: '', matchRate: 0, isCorrect: false, hintUsed: 0 })),
@@ -7807,6 +7918,7 @@ async function _stqSubmitFinal() {
   if (!t || !currentUser) return;
   if (s._submitted || s._submitting) return;
   s._submitting = true;
+  _exProgClear('stq', t.id);   // 제출 → 중간 저장분 삭제
   const correct = s.answers.filter(a => a.isCorrect).length;
   const total = s.questions.length;
   const score = total ? Math.round((correct / total) * 100) : 0;
@@ -7887,6 +7999,9 @@ window.quitSentence = async () => {
   const s = _stqState;
   if (s.listening && s.rec) { try { s.rec.stop(); } catch(_){} }
   if (typeof window.speechSynthesis !== 'undefined') { try { window.speechSynthesis.cancel(); } catch(_){} }
+  await _exQuitSave('stq', s?.test?.id, (s?.currentIdx || 0) > 0, () => ({
+    questions: s.questions, currentIdx: s.currentIdx, answers: s.answers, opts: s.opts,
+  }));
   goHome();
 };
 
