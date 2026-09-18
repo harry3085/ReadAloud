@@ -17767,6 +17767,14 @@ function _tpBuildOptionsLine(t) {
   </div>`;
 }
 
+// 학생 중간 저장 표시 (users.savedProgress.{testId}) — 오늘 저장분만 (이어풀기가 당일만 유효)
+function _savedProgLine(sp) {
+  if (!sp || sp.ymd !== _ymdKST()) return '';
+  const at = sp.savedAt?.toDate ? sp.savedAt.toDate() : (sp.savedAt ? new Date(sp.savedAt.seconds ? sp.savedAt.seconds * 1000 : sp.savedAt) : null);
+  const hm = at ? new Date(at.getTime() + 9 * 3600 * 1000).toISOString().slice(11, 16) : '';
+  return `<div style="color:#7c3aed;font-size:10px;font-weight:600;" title="학생이 중단하면서 저장함 — 오늘 안에 그 기기에서 이어풀기 가능">⏸ ${sp.done || 0}/${sp.total || 0} 저장${hm ? ' · ' + hm : ''}</div>`;
+}
+
 window.tpToggleTestProgress = async (testId, prefix, opts) => {
   if (prefix) _tpLastPrefix = prefix;
   const p = _tpLastPrefix;
@@ -17802,7 +17810,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
     let studentList = [];
     for (const tg of targets) {
       if (tg.type === 'student') {
-        studentList.push({uid:tg.id, name:tg.name, group:''});
+        studentList.push({uid:tg.id, name:tg.name, group:'', _needUserDoc: true});
       } else {
         try {
           // academyId 필터 필수 — 같은 그룹 이름이 다른 학원에 있어도 자기 학원만
@@ -17813,7 +17821,8 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
             where('role','==','student')
           ));
           gs.docs.forEach(d =>
-            studentList.push({uid:d.id, name:d.data().name, group:d.data().group||''})
+            studentList.push({uid:d.id, name:d.data().name, group:d.data().group||'',
+              savedProg: d.data().savedProgress?.[testId] || null})
           );
         } catch(e) {}
       }
@@ -17836,6 +17845,13 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
         const d = await getDoc(doc(db,'genTests',testId,'userCompleted',s.uid));
         if (d.exists()) completed.set(s.uid, d.data());
       } catch(e) {}
+      // 개별 배정 학생은 users doc 을 따로 읽어 중간 저장 표시
+      if (s._needUserDoc) {
+        try {
+          const u = await getDoc(doc(db,'users',s.uid));
+          if (u.exists()) s.savedProg = u.data().savedProgress?.[testId] || null;
+        } catch(e) {}
+      }
     }));
 
     if (studentList.length === 0) {
@@ -17982,6 +17998,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
                 ${xBtn}
                 <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
                 <div style="color:#92400e;">⚠ ${score}점 (통과 ${passScore})</div>
+                ${_savedProgLine(s.savedProg)}
               </div>`;
             }
             const xBtn = `<button onclick="event.stopPropagation();tpExcludeStudent('${esc(testId)}','${esc(s.uid)}','${esc(s.name||'').replace(/'/g,"&#39;")}', this)" title="이 학생을 시험에서 제외" style="position:absolute;top:3px;right:4px;width:18px;height:18px;background:rgba(0,0,0,0.05);color:#999;border:none;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">${iconSvg('x')}</button>`;
@@ -17989,6 +18006,7 @@ window.tpToggleTestProgress = async (testId, prefix, opts) => {
               ${xBtn}
               <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name||'?')}</div>
               <div style="color:#e65100;">⏳ 대기</div>
+              ${_savedProgLine(s.savedProg)}
             </div>`;
           }).join('')}
         </div>
@@ -18652,10 +18670,15 @@ async function _progLoadUserCompleted(uid) {
       .then(snap => ({ testId: t.id, data: snap.exists() ? snap.data() : null }))
       .catch(() => ({ testId: t.id, data: null }))
   );
-  const results = await Promise.all(fetches);
+  const [results, userSnap] = await Promise.all([
+    Promise.all(fetches),
+    getDoc(doc(db, 'users', uid)).catch(() => null),
+  ]);
   const map = {};
   results.forEach(r => { if (r.data) map[r.testId] = r.data; });
   _prog.userCompCache[uid] = map;
+  _prog.savedProgCache = _prog.savedProgCache || {};
+  _prog.savedProgCache[uid] = (userSnap && userSnap.exists && userSnap.exists()) ? (userSnap.data().savedProgress || {}) : {};
   return map;
 }
 
@@ -19002,13 +19025,16 @@ function _progBuildTestCardHtml(t, comp, isDone) {
       </div>
     `;
   }
-  // 진행/신규
+  // 진행/신규 — 중간 저장 표시 (선택된 학생의 users.savedProgress)
+  const _sp = (_prog.savedProgCache || {})[_prog.selectedUid]?.[t.id];
+  const spLine = _savedProgLine(_sp);
   const tried = comp?.latestScore !== undefined && comp?.latestScore !== null;
   if (tried) {
     return `
       <div style="background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;padding:8px 10px;margin-bottom:6px;">
         <div style="font-size:12px;font-weight:600;color:#bf360c;line-height:1.4;">${esc(name)}${badges}</div>
         <div style="font-size:10px;color:#555;margin-top:3px;">미통과 · 최고 ${comp.latestScore}점 · ${esc(dateStr)}</div>
+        ${spLine}
       </div>
     `;
   }
@@ -19016,6 +19042,7 @@ function _progBuildTestCardHtml(t, comp, isDone) {
     <div style="background:#fafafa;border-left:3px solid #999;border-radius:4px;padding:8px 10px;margin-bottom:6px;">
       <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.4;">${esc(name)}${badges}</div>
       <div style="font-size:10px;color:var(--gray);margin-top:3px;">신규 · ${qCount}문항 · ${esc(dateStr)}</div>
+      ${spLine}
     </div>
   `;
 }

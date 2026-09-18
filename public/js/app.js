@@ -5143,12 +5143,31 @@ let _vqState = {
 
 // ── 단어시험 중간 저장 (먹통/중단 시 이어풀기) — localStorage, 당일(KST) TTL ──
 // 1인1PC 타깃이라 localStorage 가 적절(개인·동기기·학원공유 불필요). 제출 완료/처음부터 선택 시 삭제.
+// 중간 저장 요약을 users/{uid}.savedProgress.{testId} 에 동기 (학원장 진도체크 표시용)
+// 이어풀기 자체는 localStorage (그 기기에서만). 서버에는 진행 위치 요약만. 실패해도 흐름 무영향
+function _syncSavedProg(testId, info) {
+  try {
+    if (typeof currentUser === 'undefined' || !currentUser?.uid || !testId) return;
+    const val = info
+      ? { done: info.done || 0, total: info.total || 0, ymd: _ymdKST(), savedAt: new Date() }
+      : deleteField();
+    updateDoc(doc(db, 'users', currentUser.uid), { [`savedProgress.${testId}`]: val })
+      .catch(e => console.warn('[savedProg] 동기 실패', e.message));
+  } catch (_) {}
+}
+// localStorage 저장분이 실제 있었을 때만 서버 요약도 삭제 (불필요한 write 방지)
+function _clearSavedProgIfAny(key, testId) {
+  let had = false;
+  try { had = localStorage.getItem(key) !== null; localStorage.removeItem(key); } catch (_) {}
+  if (had) _syncSavedProg(testId, null);
+}
+
 function _vqProgKey(testId) {
   const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || 'anon';
   return `vqProgress_${testId}_${uid}`;
 }
 function _vqClearProgress(testId) {
-  try { if (testId) localStorage.removeItem(_vqProgKey(testId)); } catch (_) {}
+  if (testId) _clearSavedProgIfAny(_vqProgKey(testId), testId);
 }
 function _vqSaveProgress() {
   try {
@@ -5159,6 +5178,7 @@ function _vqSaveProgress() {
       currentIdx: s.currentIdx || 0,
       test: s.test, questions: s.questions, answers: s.answers, opts: s.opts,
     }));
+    _syncSavedProg(s.test.id, { done: s.currentIdx || 0, total: s.questions.length });
     return true;
   } catch (e) { console.warn('[vq] 진행 저장 실패', e); return false; }
 }
@@ -5182,12 +5202,13 @@ function _exProgKey(kind, testId) {
   return `exProgress_${kind}_${testId}_${uid}`;
 }
 function _exProgClear(kind, testId) {
-  try { if (testId) localStorage.removeItem(_exProgKey(kind, testId)); } catch (_) {}
+  if (testId) _clearSavedProgIfAny(_exProgKey(kind, testId), testId);
 }
 function _exProgSave(kind, testId, data) {
   try {
     if (!testId || !data || !Array.isArray(data.questions)) return false;
     localStorage.setItem(_exProgKey(kind, testId), JSON.stringify({ v: 1, testId, ymd: _ymdKST(), savedAt: Date.now(), data }));
+    _syncSavedProg(testId, { done: data.currentIdx || 0, total: data.questions.length });
     return true;
   } catch (e) { console.warn('[exProg] 진행 저장 실패', kind, e); return false; }
 }
@@ -9347,7 +9368,7 @@ function _vpProgKey(testId) {
   return `vpProgress_${testId}_${uid}`;
 }
 function _vpClearProgress(testId) {
-  try { if (testId) localStorage.removeItem(_vpProgKey(testId)); } catch (_) {}
+  if (testId) _clearSavedProgIfAny(_vpProgKey(testId), testId);
 }
 function _vpSaveProgress() {
   try {
@@ -9358,6 +9379,7 @@ function _vpSaveProgress() {
     localStorage.setItem(_vpProgKey(s.test.id), JSON.stringify({
       v: 1, testId: s.test.id, ymd: _ymdKST(), savedAt: Date.now(), state,
     }));
+    _syncSavedProg(s.test.id, { done: s.currentIdx || 0, total: s.questions.length });
     return true;
   } catch (e) { console.warn('[vp] 진행 저장 실패', e); return false; }
 }
