@@ -3208,7 +3208,7 @@ function _srGuide(code) {
     case 'language-not-supported':
     case 'hang':
       g = ios
-        ? { title: '말소리가 인식되지 않았어요', detail: `① ${dictation}\n② 받아쓰기 언어에 English 가 있는지 확인\n(없으면 설정 → 일반 → 키보드 → 키보드 → 새로운 키보드 추가 → English)\n③ 마이크에 가까이 대고 또박또박 말해 주세요.` }
+        ? { title: '말소리가 인식되지 않았어요', detail: `① 읽어주는 소리가 안 들렸다면: 무음 모드 해제 (옆면 스위치 또는 제어센터 종 아이콘) + 볼륨 올리기\n② ${dictation}\n③ 받아쓰기 언어에 English 가 있는지 확인\n(없으면 설정 → 일반 → 키보드 → 키보드 → 새로운 키보드 추가 → English)\n④ 마이크에 가까이 대고 또박또박 말해 주세요.` }
         : { title: '말소리가 인식되지 않았어요', detail: '마이크에 가까이 대고 또박또박 말해 주세요.\n계속 안 되면 Chrome 을 최신 버전으로 업데이트해 주세요.' };
       break;
     default:   // not-started / start-throw
@@ -9184,8 +9184,9 @@ async function _vpShowMicAlert() {
     '말소리가 감지되지 않고 있어요.\n\n' +
     '• 브라우저 마이크 권한 허용 상태\n' +
     '• 다른 앱(통화·녹음) 사용 여부\n' +
-    '• 이어폰·볼륨 확인\n\n' +
-    '[확인] 을 눌러 계속하세요.'
+    '• 이어폰·볼륨 확인\n' +
+    (_isIos() ? '• 아이폰 무음 모드 해제 (읽어주는 소리가 안 들릴 때)\n' : '') +
+    '\n[확인] 을 눌러 계속하세요.'
   );
 }
 
