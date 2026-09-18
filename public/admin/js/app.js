@@ -16488,6 +16488,11 @@ window.tpOpenPublishModal = async () => {
                     <option value="speaking">말하기 (음성 인식)</option>
                   </select>
                 </label>
+                <label id="tpPracticeCountRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;" title="단어마다 따라 말하는 횟수. 이 횟수째에 Great 가 나오면 다음 단어로, 아니면 한 번 더 (최대 횟수+1)">
+                  말하기 횟수:
+                  <input type="number" id="tpPracticeCount" min="1" max="5" value="2" style="width:46px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;">
+                  <span>회 <span style="color:#aaa;">(Great 아니면 +1)</span></span>
+                </label>
                 <span id="tpVocabRatioRow" style="display:flex;gap:14px;flex-wrap:nowrap;align-items:center;">
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray);white-space:nowrap;" title="객관식 비율 (0% = 전체 주관식, 100% = 전체 객관식)">
                   객관식비율:
@@ -16654,6 +16659,8 @@ window._tpVocabFormatChanged = () => {
   const speakOpts = document.getElementById('tpSpeakingOpts');
   const ratioRow = document.getElementById('tpVocabRatioRow');
   if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
+  const pcRow = document.getElementById('tpPracticeCountRow');
+  if (pcRow) pcRow.style.display = isPractice ? 'flex' : 'none';
   // 말하기·연습 → 객관식비율·영→한비율 슬라이더 비활성화
   if (ratioRow) {
     ratioRow.style.opacity = disableRatio ? '0.4' : '1';
@@ -16784,6 +16791,11 @@ window.tpPublish = async () => {
     // 🎤 말하기 모드일 때만 엄격도 저장
     if (fmt === 'speaking') {
       vocabOptions.speakingStrictness = document.getElementById('tpSpeakingStrictness')?.value || 'lenient';
+    }
+    // 📖 단어 학습 — 단어별 말하기 횟수 (Great 아니면 +1)
+    if (fmt === 'practice') {
+      const _pc = parseInt(document.getElementById('tpPracticeCount')?.value);
+      vocabOptions.practiceCount = isFinite(_pc) ? Math.max(1, Math.min(5, _pc)) : 2;
     }
   }
 
@@ -17754,6 +17766,7 @@ function _tpBuildOptionsLine(t) {
       if (o.speakingStrictness) items.push(`엄격도 ${o.speakingStrictness === 'lenient' ? '관대' : o.speakingStrictness === 'strict' ? '엄격' : '보통'}`);
     } else if (o.format === 'practice') {
       items.push(it('📖 단어 학습 (따라 읽기)', '#0891b2'));
+      items.push(`말하기 ${o.practiceCount || 2}회 (Great 아니면 +1)`);
     } else {
       if (typeof o.mcqRatio === 'number') items.push(`객 ${o.mcqRatio}% / 주 ${100 - o.mcqRatio}%`);
       if (typeof o.en2koRatio === 'number') items.push(`영→한 ${o.en2koRatio}% / 한→영 ${100 - o.en2koRatio}%`);

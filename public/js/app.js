@@ -8219,6 +8219,13 @@ async function _startVocabPractice(test, questions) {
     // 이번 학습 리액티브 유형 (세션 내 고정, 다음 학습 시 랜덤 재선택)
     vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
   };
+  // 학원장 설정 말하기 횟수 N — N번째에 Great 면 다음 단어, 아니면 한 번 더 (N+1).
+  // 미설정(옛 시험)은 기본 2/3 (_VP_MIN/_VP_MAX) 그대로
+  const _pc = parseInt(test?.vocabOptions?.practiceCount);
+  if (isFinite(_pc) && _pc >= 1) {
+    _vpState.customMin = Math.min(5, _pc);
+    _vpState.customMax = Math.min(5, _pc) + 1;
+  }
   // TTS 음성 로드 (비동기 준비)
   if (typeof window.speechSynthesis !== 'undefined') {
     _vpState.ttsVoices = window.speechSynthesis.getVoices() || [];
