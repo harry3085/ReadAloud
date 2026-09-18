@@ -14131,6 +14131,10 @@ function _qsRenderEditModal() {
 
       <div id="qsEditQuestions" style="padding:14px 22px;flex:1;overflow-y:auto;min-height:0;">
         ${st.questions.map((q,i) => _qsRenderEditQuestion(q,i)).join('')}
+        ${_qsEditIsSentenceSet() ? `
+          <button class="btn btn-secondary" onclick="qsEditAddSentence()"
+            style="width:100%;padding:10px;border:1px dashed #5eead4;background:#f0fdfa;color:#0f766e;font-weight:700;font-size:13px;">+ 문장 추가</button>
+          <div style="font-size:10px;color:var(--gray);margin-top:6px;text-align:center;">※ 추가한 문장은 새로 출제하는 시험부터 반영됩니다 (이미 출제된 시험은 그대로)</div>` : ''}
       </div>
 
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;background:white;flex-shrink:0;">
@@ -14218,8 +14222,14 @@ function _qsRenderEditQuestion(q, idx) {
     const wc = q.wordCount || (q.en || '').split(/\s+/).filter(Boolean).length;
     const chunkedEn = q.chunkedEn || '';
     const chunks = chunkedEn.split('/').map(s => s.trim()).filter(Boolean);
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#fafafa;">
-      ${header}
+    const emptyNote = _qsEditChunkDefault() ? `(비어있음 — 저장 시 자동 ${_qsEditChunkDefault()}청크 분할)` : '(비어있음 — 청크 없음)';
+    // 이번 수정에서 새로 추가한 문장만 삭제 가능 (기존 문장 삭제는 범위 밖)
+    const newHeader = q._isNew ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:11px;font-weight:700;color:#0d9488;">💬 ${idx+1}번 · 새 문장</div>
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="qsEditRemoveNewSentence(${idx})">${iconSvg('trash')} 삭제</button>
+    </div>` : header;
+    return `<div style="border:1px solid ${q._isNew ? '#5eead4' : 'var(--border)'};border-radius:6px;padding:12px;margin-bottom:10px;background:${q._isNew ? '#f0fdfa' : '#fafafa'};">
+      ${newHeader}
       <label style="font-size:11px;color:var(--gray);">한글 (학생이 보고 말할 문장)</label>
       <input type="text" value="${esc(q.ko||'')}"
         oninput="qsEditUpdate(${idx},'ko',this.value)"
@@ -14228,7 +14238,7 @@ function _qsRenderEditQuestion(q, idx) {
       <input type="text" value="${esc(q.en||'')}"
         oninput="qsEditUpdate(${idx},'en',this.value)"
         style="width:100%;padding:7px 9px;margin:4px 0 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;">
-      <label style="font-size:11px;color:var(--gray);">청크 학습용 <span style="color:#0d9488;">('/' 로 청크 구분, 비우면 배정 시 자동 분할)</span></label>
+      <label style="font-size:11px;color:var(--gray);">청크 학습용 <span style="color:#0d9488;">('/' 로 청크 구분, 비우면 저장 시 자동 분할)</span></label>
       <input type="text" value="${esc(chunkedEn)}"
         oninput="qsEditSentenceChunkedEn(${idx}, this.value)"
         placeholder="예: I saw an advertisement / on television / yesterday"
@@ -14236,7 +14246,7 @@ function _qsRenderEditQuestion(q, idx) {
       <div id="qsEditSentChunkPreview_${idx}" style="padding:6px 10px;background:#f0fdfa;border-radius:4px;">
         <div style="font-size:10px;color:#0f766e;margin-bottom:3px;">청크 미리보기 (${chunks.length}개)</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;">
-          ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션 청크 개수로 자동 분할)</span>'}
+          ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || `<span style="font-size:11px;color:#aaa;">${emptyNote}</span>`}
         </div>
       </div>
     </div>`;
@@ -14341,6 +14351,63 @@ window.qsEditVocabAppAll = (on) => {
   requestAnimationFrame(_restore);
 };
 
+// 문장시험 세트 여부 — [+ 문장 추가] 버튼 노출 기준
+function _qsEditIsSentenceSet() {
+  const st = _qsEditState;
+  if (!st) return false;
+  return st.sourceType === 'sentence' || st.questions.some(q => q?.type === 'sentence');
+}
+
+// 청크 세트면 기존 문장의 최빈 청크 개수 (새 문장 자동 분할 기준). 청크 없는 세트(매칭식)면 0
+function _qsEditChunkDefault() {
+  const st = _qsEditState;
+  if (!st) return 0;
+  const counts = {};
+  st.questions.forEach(q => {
+    if (q?.type !== 'sentence' || q._isNew) return;
+    const n = String(q.chunkedEn || '').split('/').map(s => s.trim()).filter(Boolean).length;
+    if (n > 0) counts[n] = (counts[n] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+  return top ? Math.max(2, Math.min(8, parseInt(top[0]))) : 0;
+}
+
+// 재렌더 시 스크롤 + 입력 중인 세트 이름·Book 선택값 유지 (state 의 원래 Book 은 저장 시 비교 기준이라 건드리지 않음)
+function _qsEditRerenderKeepScroll(scrollTo) {
+  const prevScroll = document.getElementById('qsEditQuestions')?.scrollTop || 0;
+  const prevName = document.getElementById('qsEditName')?.value;
+  const prevBook = document.getElementById('qsEditBook')?.value;
+  _qsRenderEditModal();
+  if (prevName !== undefined) { const el = document.getElementById('qsEditName'); if (el) el.value = prevName; }
+  if (prevBook !== undefined) { const el = document.getElementById('qsEditBook'); if (el) el.value = prevBook; }
+  const _restore = () => {
+    const el = document.getElementById('qsEditQuestions');
+    if (el) el.scrollTop = scrollTo === 'bottom' ? el.scrollHeight : prevScroll;
+  };
+  _restore();
+  requestAnimationFrame(_restore);
+}
+
+// 세트 수정 모달 — 문장 1개 추가 (맨 아래, 이번 수정에서만 삭제 가능)
+window.qsEditAddSentence = () => {
+  if (!_qsEditState) return;
+  _qsEditState.questions.push({
+    type: 'sentence', ko: '', en: '', chunkedEn: '', wordCount: 0,
+    sourcePageId: '', sourcePageTitle: '', length: 'manual', _isNew: true,
+  });
+  _qsEditRerenderKeepScroll('bottom');
+  const idx = _qsEditState.questions.length - 1;
+  setTimeout(() => {
+    document.querySelector(`#qsEditQuestions input[oninput^="qsEditUpdate(${idx},'ko'"]`)?.focus();
+  }, 50);
+};
+
+window.qsEditRemoveNewSentence = (idx) => {
+  if (!_qsEditState || !_qsEditState.questions[idx]?._isNew) return;
+  _qsEditState.questions.splice(idx, 1);
+  _qsEditRerenderKeepScroll();
+};
+
 window.qsEditSentenceChunkedEn = (idx, value) => {
   if (!_qsEditState || !_qsEditState.questions[idx]) return;
   const chunked = String(value || '').trim();
@@ -14351,7 +14418,7 @@ window.qsEditSentenceChunkedEn = (idx, value) => {
     el.innerHTML = `
       <div style="font-size:10px;color:#0f766e;margin-bottom:3px;">청크 미리보기 (${chunks.length}개)</div>
       <div style="display:flex;gap:4px;flex-wrap:wrap;">
-        ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || '<span style="font-size:11px;color:#aaa;">(비어있음 — 배정 옵션 청크 개수로 자동 분할)</span>'}
+        ${chunks.map(c => `<span style="padding:3px 8px;background:white;border:1px solid #99f6e4;border-radius:4px;font-size:12px;color:#0f766e;">${esc(c)}</span>`).join('') || `<span style="font-size:11px;color:#aaa;">${_qsEditChunkDefault() ? '(비어있음 — 저장 시 자동 ' + _qsEditChunkDefault() + '청크 분할)' : '(비어있음 — 청크 없음)'}</span>`}
       </div>
     `;
   }
@@ -14774,7 +14841,25 @@ window.qsSaveEdits = async () => {
     }
   }
 
-  if (!(await showConfirm('수정사항을 저장할까요?', `${st.questions.length}문제 업데이트`))) return;
+  // 문장시험 — 새로 추가한 문장 정리: 청크 세트면 비어있는 chunkedEn 자동 분할 + wordCount 갱신
+  const addedCount = st.questions.filter(q => q?._isNew).length;
+  if (_qsEditIsSentenceSet()) {
+    const chunkN = _qsEditChunkDefault();
+    st.questions.forEach(q => {
+      if (q?.type !== 'sentence') return;
+      q.ko = String(q.ko || '').trim();
+      q.en = String(q.en || '').trim();
+      q.wordCount = q.en.split(/\s+/).filter(Boolean).length;
+      if (q._isNew && chunkN && !String(q.chunkedEn || '').trim()) {
+        const chunked = _adminSplitSentenceIntoChunks(q.en, chunkN);
+        if (chunked) q.chunkedEn = chunked;
+      }
+    });
+  }
+
+  if (!(await showConfirm('수정사항을 저장할까요?',
+    `${st.questions.length}문제 업데이트${addedCount ? ` (새 문장 ${addedCount}개 포함)` : ''}`))) return;
+  st.questions.forEach(q => { if (q) delete q._isNew; });
 
   // vocab 세트면 누락 단어 동음이의어 자동 채움 (학원장이 단어 추가/수정한 케이스 대응, 2026-05-15)
   if (st.sourceType === 'vocab' || st.questions.some(q => q.type === 'vocab')) {
