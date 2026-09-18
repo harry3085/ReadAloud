@@ -3195,7 +3195,7 @@ function _srGuide(code) {
       break;
     case 'service-not-allowed':
       g = ios
-        ? { title: `${dev}의 받아쓰기(음성 인식)가 꺼져 있어요`, detail: `① ${dictation}\n② 받아쓰기 스위치가 회색이라 안 켜지면:\n설정 → 스크린 타임 → 콘텐츠 및 개인정보 보호 제한 → 허용된 앱 → [Siri 및 받아쓰기] 켜기\n(부모님 암호가 필요할 수 있어요)` }
+        ? { title: `${dev}에서 Safari 음성 인식이 막혀 있어요`, detail: `① 설정 → 개인정보 보호 및 보안 → 음성 인식 → [Safari] 켜기 (가장 흔한 원인)\n② ${dictation}\n③ 받아쓰기 스위치가 회색이라 안 켜지면:\n설정 → 스크린 타임 → 콘텐츠 및 개인정보 보호 제한 → 허용된 앱 → [Siri 및 받아쓰기] 켜기\n(부모님 암호가 필요할 수 있어요)` }
         : { title: '음성 인식 서비스를 쓸 수 없어요', detail: '① Play 스토어에서 "Google" 앱을 설치하거나 업데이트해 주세요.\n② 삼성 인터넷이라면 Chrome 으로 접속해 주세요.' };
       break;
     case 'mic-error':
