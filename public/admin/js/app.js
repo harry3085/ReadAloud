@@ -17008,7 +17008,7 @@ window.tpOpenPrintModal = () => {
             <input type="number" id="tpPrintQuestionCount" value="${questions.length}" min="1" max="${questions.length}"
               oninput="tpPrintRefreshPreview()"
               style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:3px;">
-            <div style="font-size:9px;color:var(--gray);margin-top:1px;">전체 ${questions.length}문제 중 랜덤</div>
+            <div id="tpPrintQCountHint" style="font-size:9px;color:var(--gray);margin-top:1px;">전체 ${questions.length}문제 중 앞에서부터 · 문제 섞기 시 랜덤</div>
           </div>
         </div>
         ${typeOptionsHtml}
@@ -17117,6 +17117,7 @@ const _TP_OPT_INPUTS = {
   tpOptVocabColumns:     { type: 'value', key: 'vocabColumns' },
   tpOptVocabMcqRatio:    { type: 'value', key: 'vocabMcqRatio' },
   tpOptVocabEn2KoRatio:  { type: 'value', key: 'vocabEn2KoRatio' },
+  tpOptVocabAppOnly:     { type: 'check', key: 'vocabAppOnly' },
 };
 
 function _tpRestorePrintOpts(perKey) {
@@ -17203,6 +17204,9 @@ function _tpBuildTypeOptionsUI(sourceType) {
   if (sourceType === 'vocab') {
     return `
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#059669;font-weight:700;cursor:pointer;" title="문제세트에서 📱 출제 체크한 단어만 인쇄 (출제 문제수는 이 안에서 적용)">
+          <input type="checkbox" id="tpOptVocabAppOnly" onchange="tpPrintRefreshPreview()"> 📱 체크한 단어만
+        </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray);" title="객관식·주관식 배치 방식 (비율은 슬라이더로)">
           형식:
           <select id="tpOptVocabFormat" onchange="tpPrintRefreshPreview()"
@@ -17565,12 +17569,24 @@ window.tpPrintRefreshPreview = () => {
   const lineHeight = clamp(document.getElementById('tpOptLineHeight')?.value, 1.0, 2.5, _TP_PRINT_DEFAULTS.lineHeight);
   const qGap = clamp(document.getElementById('tpOptQGap')?.value, 0, 60, _TP_PRINT_DEFAULTS.qGap);
 
-  // 출제 문제수 — 입력값이 전체보다 작으면 앞 N개만 픽 (questions 는 이미 랜덤 셔플 가능 상태)
-  const totalQ = ctx.questions.length;
-  let pickCount = parseInt(document.getElementById('tpPrintQuestionCount')?.value);
-  if (!isFinite(pickCount) || pickCount < 1) pickCount = totalQ;
-  if (pickCount > totalQ) pickCount = totalQ;
-  const pickedQuestions = pickCount < totalQ ? ctx.questions.slice(0, pickCount) : ctx.questions;
+  // 단어시험 '📱 체크한 단어만' — 체크 해제(appInclude=false) 단어 제외한 풀에서 출제
+  const appOnly = ctx.sourceType === 'vocab' && !!document.getElementById('tpOptVocabAppOnly')?.checked;
+  const pool = appOnly ? ctx.questions.filter(q => q?.appInclude !== false) : ctx.questions;
+
+  // 출제 문제수 — 입력값이 풀보다 작으면 앞 N개만 픽 (questions 는 이미 랜덤 셔플 가능 상태)
+  const totalQ = pool.length;
+  const countEl = document.getElementById('tpPrintQuestionCount');
+  const st = window._tpPrintState || {};
+  let pickCount = parseInt(countEl?.value);
+  // 이전 풀 전체를 고른 상태였거나 풀보다 크면 → 새 풀 전체로 맞춤 (복원된 옛 값 44 등 정리)
+  if (!isFinite(pickCount) || pickCount < 1 || pickCount > totalQ || (st.lastPoolTotal && pickCount === st.lastPoolTotal)) pickCount = totalQ;
+  st.lastPoolTotal = totalQ;
+  if (countEl) { countEl.max = String(totalQ); if (String(countEl.value) !== String(pickCount)) countEl.value = pickCount; }
+  const hintEl = document.getElementById('tpPrintQCountHint');
+  if (hintEl) hintEl.textContent = appOnly
+    ? `체크 단어 ${totalQ}개 (전체 ${ctx.questions.length}) 중 앞에서부터 · 문제 섞기 시 랜덤`
+    : `전체 ${totalQ}문제 중 앞에서부터 · 문제 섞기 시 랜덤`;
+  const pickedQuestions = pickCount < totalQ ? pool.slice(0, pickCount) : pool;
 
   area.innerHTML = _tpBuildPrintHtml(pickedQuestions, {
     title: titleEl?.value || '시험',
