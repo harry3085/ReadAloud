@@ -4916,3 +4916,63 @@ SW v774 → v796 (~25 commit). iPad(에어 5세대, iPadOS 26.3.1) 실측 기반
 4. 3턴 무음 모달 + SR 재시도 모달 중복 표시 통합 검토
 5. "I" 단독 청크 iOS "Capital I" 낭독 — 출제 단계에서 회피 안내
 6. Phase 5 출시 준비 (변동 없음)
+
+---
+
+## 2026-09-16 ~ 18: 말하기 기기 기록·오류 안내 + 문제세트 목록/편집/인쇄 정비
+
+SW v796 → v802 (6 commit).
+
+### 1) 말하기 진입·실패 기기 기록 (`bb1e34f`, v797)
+실패한 말하기 시도는 scores 가 안 남아 어떤 폰·브라우저에서 막혔는지 추적 불가 → 진입·오류 시점 기록.
+- 학생앱 `_speakLog(event, detail)` → `users/{uid}.speakLog` (최근 30건, 본인 doc 이라 Rules 무변경)
+- 기기: os·browser·버전·기종·홈화면앱 여부·SR 지원. iOS 26+ UA 고정값(OS 18_7) 대신 `Version/x.y`,
+  Android Chrome 고정값(Android 10; K) 대신 `userAgentData` Client Hints
+- 시점: `_checkMicSupport` 진입/차단, SR 오류(aborted·no-speech 제외), iOS hang, 인식 시작 실패, 3회 연속 무음
+- 학원장 학생 수정 모달에 "말하기 기기·오류 기록 (최근 10건)"
+
+### 2) 음성 인식 오류별 맞춤 안내 + 카카오톡 [Safari로 열기] (`e68d74e`, v798)
+`service-not-allowed`(받아쓰기 차단)에 "마이크 허용" 안내가 떠서 엉뚱한 설정만 반복 확인하던 문제.
+- `_srGuide(code)` 한 곳으로 통일 — service-not-allowed(받아쓰기·스크린타임) / not-allowed / no-sr(카톡·홈화면앱·iOS Chrome·구버전) / audio-capture / network / hang
+- 카톡 인앱 말하기 진입 시 세션당 1회 [Safari로 열기](`kakaotalk://web/openExternal`) 권유, 로그인·홈 배너 동일
+
+### 3) 문장시험 세트 수정 모달 [+ 문장 추가] (`a3aef05`, v799)
+- 문장시험 세트 수정 모달 하단 버튼 → 한 개씩 추가. 새 문장(`_isNew`)만 삭제 버튼, 저장 시 플래그 제거
+- 청크 세트: 새 문장 chunkedEn 비우면 저장 시 **기존 문장 최빈 청크 개수**로 `_adminSplitSentenceIntoChunks` 자동 분할. 매칭식 세트는 분할 X
+- 저장 시 wordCount 갱신. 재렌더 시 세트 이름·Book 선택 DOM 값 유지 (state.bookId 는 저장 시 '원래 Book' 비교 기준이라 건드리지 않음)
+- **기존 출제 시험 무영향 확인** — `tpPublish` 가 questions 를 genTests 에 복사(sourceSetIds 는 출처 표시용), 학생앱은 genQuestionSets 미조회
+
+### 4) 문제세트목록 [시험인쇄] 버튼 (`1e02807`, v800)
+- 작업 칸 [시험출제] [시험인쇄] [삭제]. `qsPrintSet` 이 `_activeTestType/_tpSets/_tpSelectedSets` 세팅 후 `tpOpenPrintModal` 재사용 (qsAssignSet 패턴, 인쇄 모달은 모달 내부 DOM 만 사용)
+- 인쇄 미지원 유형(녹음·문장, `_TEST_TYPE_CONFIG.actions` 기준 `_qsCanPrint`)은 비활성 + 툴팁
+
+### 5) Book 폴더 세트 목록 최근 20개 + 더보기/전체보기 (`fdc85df`, v801)
+- 폴더 클릭 시 `limit(20)` + cursor `_qsBookPage[key] = {lastDoc, exhausted}`. `_qsBookQueryBase(bid)` 공통 조건
+- 하단 [+ 더보기 (20개)] / [전체보기](limit 없음, startAfter). 폴더 개수·헤더 `20+` 표시
+- 캐시 무효화 2곳(`_qsInvalidateCache`, 시험관리 세트 삭제)에서 `_qsBookPage = {}` 동반. 인덱스 기존 것 그대로
+- 정렬은 로드된 세트 안에서만 (전체 정렬은 [전체보기] 후)
+
+### 6) 단어 인쇄 '📱 체크한 단어만' 옵션 (`a16b6fb`, v802)
+- 진단: "체크 해제 단어가 번호만 나온다" → 버그 아님. Magic melon 세트 뜻이 숫자(one→1)라 한→영 방향 문제가 숫자로 보인 것. 인쇄는 원래 appInclude 무관 전체
+- 인쇄 옵션 `tpOptVocabAppOnly` (기본 해제, 세트별 저장) → 풀 = appInclude !== false. 출제 문제수는 풀 안에서 적용
+- 문제수 입력값이 풀보다 크거나(복원된 옛 값 44 등) 이전 풀 전체였으면 새 풀 개수로 자동 맞춤 (`lastPoolTotal`)
+- 안내 문구 정정: 실제 동작은 "앞에서부터 N개 · 문제 섞기 시 랜덤" (기존 "랜덤" 표기는 부정확)
+- MCQ 오답 보기 3개는 여전히 세트 전체 단어에서 추출
+
+### 작업 규칙 추가 (2026-09-16~18)
+- **UI 안내 문구는 실제 동작과 일치 확인** — "랜덤"이라 적혀 있었지만 slice(0,N) 이었던 사례. 옵션 추가 시 주변 안내 문구도 코드와 대조.
+- **"버그 같다" 보고는 데이터 먼저** — admin SDK 로 실제 doc 조회(`scripts/diag/check-vocab-appinclude.js`) → 데이터 정상이면 캡처로 화면 확인. 뜻이 숫자인 세트처럼 데이터 특성이 표시를 헷갈리게 만드는 경우 있음.
+- **lazy 폴더 목록은 limit + cursor 기본** — 폴더 단위 전체 fetch 는 세트 누적 시 reads·렌더 부담. 캐시 무효화 지점마다 cursor 상태도 같이 초기화.
+- **기존 모달 재사용 진입점 추가 시 전역 상태 세팅 패턴 따르기** — tpOpenPrintModal/tpOpenPublishModal 은 `_activeTestType/_tpSets/_tpSelectedSets` 전역 의존. 다른 화면에서 열 때 세 개 모두 세팅.
+
+### 진행률 / SW 캐시 (2026-09-18)
+- 말하기 진단·안내: ~90% (기기 기록 데이터 쌓이는 중)
+- 문제세트 목록·편집·인쇄 UX: ~100%
+- SW 캐시: `kunsori-v796` → `kunsori-v802`
+
+**다음 세션 후보**:
+1. speakLog 누적 데이터로 iOS/카톡 실패 패턴 분석
+2. 기존 문장 삭제 기능 (현재 새로 추가한 문장만 삭제 가능) — 학원장 요청 시
+3. 인쇄 '앞에서부터 N개' → 진짜 랜덤 추출 옵션 여부 (학원장 결정)
+4. 문장시험 학습 3단계 실사용 관찰 / timing 로그 제거 (변동 없음)
+5. Phase 5 출시 준비 (변동 없음)
