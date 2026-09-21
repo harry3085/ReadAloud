@@ -513,6 +513,8 @@
       <div style="background:var(--brand-login-gradient);padding:16px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:4px;" id="vqLabel">영단어</div>
         <div id="vqPrompt" style="font-size:22px;font-weight:800;color:white;line-height:1.3;word-break:break-word;"></div>
+        <!-- 듣고 선택하기 — 단어 대신 오디오 인디케이터 (말하기 학습과 동일 5종) -->
+        <div id="vqVizSlot" class="vq-viz" style="display:none;"><div id="vqVizEnv" class="vq-env"></div></div>
         <div id="vqHeaderHint" style="font-size:11px;color:rgba(255,255,255,0.8);margin-top:5px;font-style:italic;display:none;"></div>
         <!-- 듣고 선택하기 전용: 다시 듣기 / 힌트(단어 보기) -->
         <div id="vqListenArea" style="display:none;gap:8px;margin-top:11px;">
@@ -660,6 +662,18 @@
     @media (prefers-reduced-motion: reduce) {
       .vp-slot * { animation:none !important; }
       .vp-env { opacity:1; transform:none; transition:none; }
+    }
+
+    /* 🔊 듣고 선택하기 — 문제 카드(코랄 헤더) 안 컴팩트 오디오 인디케이터.
+       재생 중이 아닐 때도 자리를 지켜 카드 높이가 흔들리지 않음 (흐리게만) */
+    .vq-viz { height:66px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .vq-viz .vq-env { width:100%; display:flex; justify-content:center;
+                      opacity:.38; transition:opacity 260ms ease; }
+    .vq-viz.is-playing .vq-env { opacity:1; }
+    .vq-viz svg { height:66px; max-width:100%; }
+    @media (prefers-reduced-motion: reduce) {
+      .vq-viz * { animation:none !important; }
+      .vq-viz .vq-env { opacity:1; transition:none; }
     }
   </style>
   <div id="vocabPractice" class="screen" style="background:#F0FDFF;">

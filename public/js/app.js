@@ -5302,6 +5302,7 @@ window.startVocab = async (testId, testName) => {
           test: _prog.test, questions: _prog.questions,
           currentIdx: Math.min(doneN, totalN - 1),
           answers: _prog.answers, opts: rOpts,
+          vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
           spk: { attempt: 0, recognition: null, strictness: (rOpts && rOpts.speakingStrictness) || 'normal', gen: 0 },
         };
         show('vocabQuiz');
@@ -5444,6 +5445,8 @@ window.startVocab = async (testId, testName) => {
 
     _vqState = {
       test, questions, currentIdx: 0, answers, opts,
+      // 🔊 듣고 선택하기 오디오 인디케이터 유형 (세션 내 고정, 다음 응시 때 랜덤 재선택)
+      vizType: _VP_VIZ_TYPES[Math.floor(Math.random() * _VP_VIZ_TYPES.length)],
       spk: { attempt: 0, recognition: null, strictness: opts.speakingStrictness || 'normal', gen: 0 },
     };
 
@@ -5497,18 +5500,25 @@ function _vqRenderStep() {
   // 🔊 듣고 선택하기 전용 버튼 영역 (다시 듣기 · 힌트)
   const listenArea = document.getElementById('vqListenArea');
   const listenHintBtn = document.getElementById('vqListenHintBtn');
+  const vizSlot = document.getElementById('vqVizSlot');
   if (listenArea) listenArea.style.display = ans.listening ? 'flex' : 'none';
+  if (vizSlot) vizSlot.style.display = ans.listening ? 'flex' : 'none';
+  if (promptEl && !ans.listening) promptEl.style.display = '';   // 다른 형식은 단어 자리 복구
   if (ans.listening) {
     if (labelEl) labelEl.textContent = '듣고 고르기';
-    // 힌트 누르기 전엔 단어를 감춤 (음성만). 힌트 후에는 단어 노출
-    if (promptEl) promptEl.textContent = ans.hintUsed ? (q.word || '') : '🔊  ? ? ?';
+    // 힌트 누르기 전엔 단어를 감추고 그 자리에 오디오 인디케이터 (힌트 후 단어 노출)
+    if (promptEl) {
+      promptEl.textContent = ans.hintUsed ? (q.word || '') : '';
+      promptEl.style.display = ans.hintUsed ? '' : 'none';
+    }
+    _vqRenderListenViz();
     if (headerHint) headerHint.style.display = 'none';   // 예문에 단어가 들어있을 수 있어 숨김
     if (listenHintBtn) {
       listenHintBtn.disabled = !!ans.hintUsed;
       listenHintBtn.style.opacity = ans.hintUsed ? '0.45' : '1';
     }
     // 문제 진입 시 1회 자동 재생 (이후는 [다시 듣기])
-    if (q.word) _fbSpeakWords([q.word]);
+    if (q.word) _vqSpeakListenWord(q.word);
   } else if (ans.direction === 'en2ko') {
     if (labelEl) labelEl.textContent = '영단어';
     if (promptEl) promptEl.textContent = q.word || '';
@@ -5576,11 +5586,50 @@ function _vqRenderStep() {
   _vqStartTimer();
 }
 
+// 🔊 듣고 선택하기 — 문제 카드(코랄 헤더) 위라 흰색 팔레트
+const _VQ_LISTEN_COLORS = { main: '#ffffff', mid: '#ffe3d6', light: '#fff2ec', core: '#ffffff' };
+let _vqListenSpeakTimer = null;
+
+// 문제마다 새로 그림 (gradient id 충돌 방지 — 빌더가 인스턴스 번호 부여)
+function _vqRenderListenViz() {
+  const env = document.getElementById('vqVizEnv');
+  if (env) env.innerHTML = _vpVizHtml(_vqState?.vizType || 'ribbon', _VQ_LISTEN_COLORS);
+}
+// 재생 중에만 또렷하게 (꺼져도 자리는 유지 — 카드 높이 흔들림 방지)
+function _vqShowListenViz(playing) {
+  const slot = document.getElementById('vqVizSlot');
+  if (slot) slot.classList.toggle('is-playing', !!playing);
+}
+
+// 단어 재생 — TTS 시작/종료에 맞춰 인디케이터 on/off (onend 미발화 대비 안전망 타이머)
+function _vqSpeakListenWord(word) {
+  const w = String(word || '').trim();
+  if (!w) return;
+  const stop = () => { clearTimeout(_vqListenSpeakTimer); _vqShowListenViz(false); };
+  _vqShowListenViz(true);
+  try {
+    if (!('speechSynthesis' in window)) { stop(); return; }
+    const busy = window.speechSynthesis.speaking || window.speechSynthesis.pending;
+    window.speechSynthesis.cancel();
+    clearTimeout(_vqListenSpeakTimer);
+    _vqListenSpeakTimer = setTimeout(stop, 6000);
+    // Chrome — cancel 직후 바로 speak 하면 첫 음절이 잘림. 듣기 문제는 음성이 전부라 여유를 둠
+    setTimeout(() => {
+      try {
+        const u = new SpeechSynthesisUtterance(w);
+        u.lang = 'en-US'; u.rate = 0.9; u.pitch = 1; u.volume = 1;
+        u.onend = stop; u.onerror = stop;
+        window.speechSynthesis.speak(u);
+      } catch (_) { stop(); }
+    }, busy ? 130 : 80);
+  } catch (_) { stop(); }
+}
+
 // 🔊 듣고 선택하기 — 단어 다시 듣기 (횟수 제한 없음)
 window.vqListenReplay = () => {
   const s = _vqState;
   const q = s?.questions?.[s.currentIdx];
-  if (q?.word) _fbSpeakWords([q.word]);
+  if (q?.word) _vqSpeakListenWord(q.word);
 };
 
 // 🔊 듣고 선택하기 — 힌트(단어 보기). 점수 영향 없음, 사용 여부만 기록
@@ -5591,7 +5640,7 @@ window.vqListenHint = () => {
   if (!ans || !ans.listening || ans.hintUsed) return;
   ans.hintUsed = true;
   const p = document.getElementById('vqPrompt');
-  if (p) p.textContent = q?.word || '';
+  if (p) { p.textContent = q?.word || ''; p.style.display = ''; }
   const btn = document.getElementById('vqListenHintBtn');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.45'; }
 };
@@ -6193,8 +6242,9 @@ function _vqRenderMcqFeedback(ans) {
   if (!container) return;
   // 🔊 듣고 선택하기 — 채점 시점엔 감췄던 단어를 공개 (힌트 버튼은 잠금, 다시 듣기는 유지)
   if (ans.listening) {
+    _vqShowListenViz(false);
     const pEl = document.getElementById('vqPrompt');
-    if (pEl) pEl.textContent = q.word || '';
+    if (pEl) { pEl.textContent = q.word || ''; pEl.style.display = ''; }
     const hb = document.getElementById('vqListenHintBtn');
     if (hb) { hb.disabled = true; hb.style.opacity = '0.45'; }
   }
@@ -8405,8 +8455,7 @@ const _VP_VIZ_TYPES = ['ribbon', 'pill', 'band', 'blob', 'flow'];
 let _vpInst = 0;
 
 // 1a 호흡 리본
-function _vpBuildRibbonHtml() {
-  const c = _VP_COLORS;
+function _vpBuildRibbonHtml(c = _VP_COLORS) {
   const inst = ++_vpInst;
   const gStroke = `vpRibbonStroke_${inst}`;
   const gFill = `vpRibbonFill_${inst}`;
@@ -8441,8 +8490,7 @@ function _vpBuildRibbonHtml() {
 }
 
 // 1c 물방울 기둥 — 5개 rect (rx 6), 가운데 강조
-function _vpBuildPillHtml() {
-  const c = _VP_COLORS;
+function _vpBuildPillHtml(c = _VP_COLORS) {
   const inst = ++_vpInst;
   const g = `vpPillGrad_${inst}`;
   return `<svg viewBox="0 0 200 120" width="200" height="120" style="display:block">
@@ -8463,8 +8511,7 @@ function _vpBuildPillHtml() {
 }
 
 // 2a 숨 밴드 — 3겹 알약 rect
-function _vpBuildBandHtml() {
-  const c = _VP_COLORS;
+function _vpBuildBandHtml(c = _VP_COLORS) {
   const inst = ++_vpInst;
   const g1 = `vpMistGrad_${inst}`;
   const g2 = `vpMistGrad2_${inst}`;
@@ -8490,8 +8537,7 @@ function _vpBuildBandHtml() {
 }
 
 // 2b 유동 방울 — 3개 ellipse 드리프트
-function _vpBuildBlobHtml() {
-  const c = _VP_COLORS;
+function _vpBuildBlobHtml(c = _VP_COLORS) {
   const inst = ++_vpInst;
   const g1 = `vpBlobG1_${inst}`, g2 = `vpBlobG2_${inst}`, g3 = `vpBlobG3_${inst}`;
   return `<svg viewBox="0 0 240 120" width="240" height="120" style="display:block">
@@ -8519,8 +8565,7 @@ function _vpBuildBlobHtml() {
 }
 
 // 2c 흐르는 점 — 8개 circle 0.14s 위상차
-function _vpBuildFlowHtml() {
-  const c = _VP_COLORS;
+function _vpBuildFlowHtml(c = _VP_COLORS) {
   let dots = '';
   for (let i = 0; i < 8; i++) {
     const cx = 20 + i * 30;
@@ -8528,6 +8573,15 @@ function _vpBuildFlowHtml() {
     dots += `<circle cx="${cx}" cy="60" r="8" style="transform-box:fill-box;transform-origin:center;animation:vpFlowDot 1.8s cubic-bezier(.37,0,.63,1) ${delay}s infinite"/>`;
   }
   return `<svg viewBox="0 0 260 120" width="260" height="120" style="display:block"><g fill="${c.main}">${dots}</g></svg>`;
+}
+
+// 유형 → HTML 디스패처 (말하기 학습 슬롯 · 듣고 선택하기 카드 공용)
+function _vpVizHtml(type, c) {
+  if (type === 'pill') return _vpBuildPillHtml(c);
+  if (type === 'band') return _vpBuildBandHtml(c);
+  if (type === 'blob') return _vpBuildBlobHtml(c);
+  if (type === 'flow') return _vpBuildFlowHtml(c);
+  return _vpBuildRibbonHtml(c);
 }
 
 // 슬롯 + 엔벨로프 IN/OUT — 세션 유형 사용
@@ -8538,15 +8592,7 @@ function _vpShowViz(on) {
   // slot 은 CSS 의 height:160px 로 항상 공간 유지 (아래 요소 밀림 방지)
   // env 의 is-on 클래스만 토글 → 웨이브 내용만 페이드 in/out
   if (on) {
-    const type = _vpState.vizType || 'ribbon';
-    let html;
-    if (type === 'ribbon')      html = _vpBuildRibbonHtml();
-    else if (type === 'pill')   html = _vpBuildPillHtml();
-    else if (type === 'band')   html = _vpBuildBandHtml();
-    else if (type === 'blob')   html = _vpBuildBlobHtml();
-    else if (type === 'flow')   html = _vpBuildFlowHtml();
-    else                         html = _vpBuildRibbonHtml();
-    env.innerHTML = html;
+    env.innerHTML = _vpVizHtml(_vpState.vizType || 'ribbon', _VP_COLORS);
     requestAnimationFrame(() => { env.classList.add('is-on'); });
   } else {
     env.classList.remove('is-on');
