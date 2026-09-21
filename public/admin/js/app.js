@@ -14763,9 +14763,13 @@ function _tpSpeakingUnfitGate(questions) {
 // 호출자: qgSaveSet (AI Generator·Wordsnap 세트 저장) / qsSaveEdits (세트 수정 저장)
 // vocab 타입 questions 만 대상. 학원장이 inline 수정 또는 삭제 후 진행.
 
-// 영어 단어/숙어 표준 문자: a-zA-Z 공백 ' - . (apostrophe, hyphen, period)
-// 한글/한자/일본어/그 외 특수문자(괄호·따옴표·물음표·콜론 등)는 부적합.
-// 회색: / > ~ 등 변화형 표기 — 학원장이 사용 중인 데이터 보호 위해 일단 허용.
+// 영어 단어/숙어 표준 문자 + 영문 문장부호 허용 (2026-09-21 확대)
+//   a-zA-Z 0-9 공백 ' - . , / > ~  (기존)  +  ? ! = : ; " ( )  (추가)
+// 추가 근거: 구(phrase) 중심 단어장에 'so what?' · 'He does do good work!' ·
+//   'but = except' 같은 표기가 자연스럽게 들어옴. 원래 차단 이유였던 '학생이
+//   특수문자를 못 쳐서 제출 불가' 는 이미 해소 — 학생앱이 채점 시 문장부호를
+//   모두 무시하고(_vqNormStr / _spkNorm), 스펠 칸도 문장부호를 자동으로 채움.
+// 한글/한자/일본어는 계속 차단 (모바일 IME 로 영단어 칸 입력 자체가 막힘).
 function _qsValidateWordChars(questions) {
   const out = [];
   (questions || []).forEach((q, idx) => {
@@ -14776,9 +14780,8 @@ function _qsValidateWordChars(questions) {
     if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(w)) reasons.push('한글 포함');
     if (/[一-龯]/.test(w)) reasons.push('한자 포함');
     if (/[ぁ-んァ-ヶ]/.test(w)) reasons.push('일본어 포함');
-    // 영문·공백·기본 구두점·변화형 표기(/>~) 외 특수문자
-    // 허용: a-zA-Z 공백 ' - . / > ~ , 숫자
-    const nonStandard = w.replace(/[a-zA-Z0-9\s'.\-/>~,]/g, '')
+    // 허용: a-zA-Z 숫자 공백 ' - . , / > ~ ? ! = : ; " ( )
+    const nonStandard = w.replace(/[a-zA-Z0-9\s'".\-/>~,?!=:;()]/g, '')
                           .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ一-龯ぁ-んァ-ヶ]/g, '');
     if (nonStandard.length > 0) {
       const samples = [...new Set(nonStandard.split(''))].slice(0, 5).join(' ');

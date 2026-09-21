@@ -5540,7 +5540,7 @@ function _vqRenderStep() {
     if (headerHint) {
       if (ans.format === 'short') {
         headerHint.style.display = '';
-        headerHint.textContent = `힌트: ${(q.word||'').length}글자`;
+        headerHint.textContent = `힌트: ${(q.word||'').replace(_VQ_NON_LETTER_G, '').length}글자`;
       } else headerHint.style.display = 'none';
     }
   }
@@ -5668,6 +5668,13 @@ function _vqRenderSpellBoxes(ans) {
   const boxW = len > 12 ? 26 : len > 8 ? 30 : 34;
   const fontSize = len > 12 ? 13 : len > 8 ? 15 : 17;
   boxes.innerHTML = Array.from({length:len},(_,i)=>{
+    const tch = target[i];
+    // 공백·문장부호는 학생이 치지 않는 자리 — 빈 칸 대신 고정 표시 (so what? → s o ␣ w h a t ?)
+    if (_VQ_IS_NON_LETTER(tch)) {
+      const isSpace = /\s/.test(tch);
+      const w = Math.round(boxW * (isSpace ? 0.4 : 0.62));
+      return `<div onclick="_vqFocusSpellInput()" style="width:${w}px;height:${boxW+18}px;display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;color:#bba;">${isSpace ? '' : esc(tch)}</div>`;
+    }
     const ch = val[i] || '';
     const cls = ch ? 'spell-box filled' : (i === val.length ? 'spell-box active' : 'spell-box');
     return `<div class="${cls}" onclick="_vqFocusSpellInput()"
@@ -6283,14 +6290,22 @@ function _vqRenderMcqFeedback(ans) {
 // 스펠링 채점 정규화: NFKC + hidden 공백/zero-width 제거 + collapse + lowercase
 // 정답의 공백 위치는 자동 삽입. 학생이 공백 안 눌러도 알아서 띄움.
 // 'itmightbe' + target 'it might be' → 'it might be' 자동 변환.
+// 글자(영문·숫자·한글) 가 아닌 문자 = 학생이 입력하지 않는 공백·문장부호
+const _VQ_NON_LETTER = /[^\p{L}\p{N}]/u;
+const _VQ_NON_LETTER_G = /[^\p{L}\p{N}]/gu;
+const _VQ_IS_NON_LETTER = (ch) => !!ch && _VQ_NON_LETTER.test(ch);
+
 function _vqAutoSpaces(userInput, target) {
-  if (!target || target.indexOf(' ') === -1) return userInput;  // 공백 없는 정답은 그대로
-  const cleanUser = String(userInput || '').replace(/\s+/g, '');  // 학생 입력 공백 모두 제거
+  // 정답의 공백·문장부호(? ! = : ; " ( ) 등) 위치를 자동으로 채움.
+  // 학생은 글자(영문·숫자)만 입력하면 됨 — 'sowhat' + 'so what?' → 'so what?'
+  if (!target || !_VQ_NON_LETTER.test(target)) return userInput;   // 글자뿐인 정답은 그대로
+  const cleanUser = String(userInput || '').replace(_VQ_NON_LETTER_G, '');  // 글자만 추출
   let result = '';
   let ui = 0;
   for (let i = 0; i < target.length; i++) {
-    if (target[i] === ' ') {
-      result += ' ';
+    if (_VQ_IS_NON_LETTER(target[i])) {
+      if (ui === 0) continue;        // 첫 글자도 안 친 상태 — 앞쪽 기호는 아직 넣지 않음
+      result += target[i];
     } else if (ui < cleanUser.length) {
       result += cleanUser[ui++];
     } else {
@@ -7257,7 +7272,7 @@ function _vqBindSpellInput(){
     // 모바일 한글 IME 함정만 회피. +, ?, ! 등 모든 특수문자 자유 입력.
     // 대소문자는 학생 입력 그대로 (채점·박스 비교 시 _vqNormCh 가 lowercase 처리).
     if (ans.direction === 'ko2en') v = v.replace(/[가-힯ㄱ-ㆎ぀-ゟ゠-ヿ一-鿿]/g, '');
-    // 정답의 공백 위치는 자동 삽입 — 학생이 글자만 입력해도 OK ('itmightbe' → 'it might be')
+    // 정답의 공백·문장부호는 자동 삽입 — 학생은 글자만 입력 ('sowhat' → 'so what?')
     v = _vqAutoSpaces(v, target);
     if (v.length > target.length) v = v.slice(0, target.length);
     this.value = v;
@@ -7272,15 +7287,17 @@ function _vqBindSpellInput(){
       if (ans && ans.input && String(ans.input).trim()) vqNext();
       return;
     }
-    // Backspace 가 자동 띄어쓰기 위에서 작동하도록:
-    // 커서 직전이 공백이면 공백 + 앞 글자 함께 삭제.
-    // (그렇지 않으면 _vqAutoSpaces 가 input 이벤트에서 공백 즉시 복원해 backspace 무효)
+    // Backspace 가 자동 삽입(공백·문장부호) 위에서 작동하도록:
+    // 커서 직전의 공백·문장부호를 건너뛰어 그 앞 글자까지 함께 삭제.
+    // (그렇지 않으면 _vqAutoSpaces 가 input 이벤트에서 즉시 복원해 backspace 무효)
     if (e.key === 'Backspace' && this.selectionStart === this.selectionEnd) {
       const pos = this.selectionStart;
-      if (pos >= 2 && this.value[pos - 1] === ' ') {
+      let k = pos;
+      while (k > 0 && _VQ_IS_NON_LETTER(this.value[k - 1])) k--;
+      if (k < pos && k >= 1) {
         e.preventDefault();
-        this.value = this.value.slice(0, pos - 2) + this.value.slice(pos);
-        this.selectionStart = this.selectionEnd = pos - 2;
+        this.value = this.value.slice(0, k - 1) + this.value.slice(pos);
+        this.selectionStart = this.selectionEnd = k - 1;
         this.dispatchEvent(new Event('input'));
       }
     }
