@@ -5342,6 +5342,9 @@ window.startVocab = async (testId, testName) => {
     const isSpeaking = opts.format === 'speaking';
     // 🔊 듣고 선택하기 — 단어를 음성으로만 들려주고 4지선다 한글 뜻 고르기
     const isListening = opts.format === 'listening';
+    // 객관식 오답 보기 풀 — 시험 전체 단어 기준 (아래 '틀린문제만 재응시' 필터 전에 보관).
+    // 재응시로 문제가 1~2개만 남아도 보기 4개가 '—' 로 비지 않게 함.
+    const choicePool = questions.slice();
 
     // 틀린문제만재응시 옵션 — 이전 응시의 틀린 문제만 필터 (2026-07-22)
     // + 재응시 시 이전 direction/format 보존 (예문 사라짐 방지 등, 2026-08-14)
@@ -5401,11 +5404,17 @@ window.startVocab = async (testId, testName) => {
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
         const correctText = dir === 'en2ko' ? q.meaning : q.word;
-        const pool = questions.filter(x => x !== q);
-        const wrongs = _rngShuffle(pool).slice(0, 3)
-          .map(w => dir === 'en2ko' ? w.meaning : w.word)
-          .filter(x => x && x !== correctText);
-        // 부족하면 채우기
+        // 빈값·정답중복·보기중복을 걸러내며 3개가 찰 때까지 훑음 (먼저 3개 자르고 거르면 모자람)
+        const seen = new Set([String(correctText || '').trim()]);
+        const wrongs = [];
+        for (const w of _rngShuffle(choicePool.filter(x => x !== q))) {
+          const txt = String((dir === 'en2ko' ? w.meaning : w.word) || '').trim();
+          if (!txt || seen.has(txt)) continue;
+          seen.add(txt);
+          wrongs.push(txt);
+          if (wrongs.length >= 3) break;
+        }
+        // 시험 단어 자체가 4개 미만일 때만 자리 채움
         while (wrongs.length < 3) wrongs.push('—');
         let choices = [correctText, ...wrongs.slice(0, 3)];
         if (opts.shuffleChoices) choices = _rngShuffle(choices);
