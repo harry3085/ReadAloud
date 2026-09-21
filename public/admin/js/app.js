@@ -5711,7 +5711,9 @@ function _adminVqBuildDetail(questions, answers){
       : (user && user.toLowerCase() === target.trim().toLowerCase());
     const bg=isCorrect?'#F0FDF4':'#FEF2F2';
     const border=isCorrect?'#BBF7D0':'#FECACA';
-    const formatLabel = a.format==='mcq' ? '객관식' : (isSpeaking ? '🎤 말하기' : '단답');
+    const formatLabel = a.format==='mcq'
+      ? (a.listening ? ('🔊 듣고 고르기' + (a.hintUsed ? ' · 힌트 사용' : '')) : '객관식')
+      : (isSpeaking ? '🎤 말하기' : '단답');
     // 동음이의어 매칭으로 통과한 경우 표시 (q.homophones 에 들린 단어가 있는지)
     // AI 거친 경우 spkHeard 는 정답(q.word) 이라 무의미 → spkAiHeard(실제 발음) 우선
     const _heardRaw = a.spkAiHeard || a.spkHeard;
@@ -16484,6 +16486,7 @@ window.tpOpenPublishModal = async () => {
                     <option value="mixed" selected>혼합 (랜덤)</option>
                     <option value="mixed_mcq_first">혼합 (객→주)</option>
                     <option value="mixed_short_first">혼합 (주→객)</option>
+                    <option value="listening">듣고 선택하기 (음성 → 4지선다)</option>
                     <option value="practice">단어 학습 (따라 읽기)</option>
                     <option value="speaking">말하기 (음성 인식)</option>
                   </select>
@@ -16655,7 +16658,9 @@ window._tpVocabFormatChanged = () => {
   const fmt = document.getElementById('tpVocabFormat')?.value;
   const isSpeaking = fmt === 'speaking';
   const isPractice = fmt === 'practice';
-  const disableRatio = isSpeaking || isPractice;
+  // 🔊 듣고 선택하기 — 영단어 음성 → 한글 4지선다 고정이라 비율 슬라이더 무의미
+  const isListening = fmt === 'listening';
+  const disableRatio = isSpeaking || isPractice || isListening;
   const speakOpts = document.getElementById('tpSpeakingOpts');
   const ratioRow = document.getElementById('tpVocabRatioRow');
   if (speakOpts) speakOpts.style.display = isSpeaking ? 'block' : 'none';
@@ -16779,7 +16784,7 @@ window.tpPublish = async () => {
     const _mcqR = parseInt(document.getElementById('tpVocabMcqRatio')?.value);
     const _e2kR = parseInt(document.getElementById('tpVocabEn2koRatio')?.value);
     vocabOptions = {
-      format: fmt,                                                       // mixed | mixed_mcq_first | mixed_short_first | speaking
+      format: fmt,                                                       // mixed | mixed_mcq_first | mixed_short_first | listening | practice | speaking
       mcqRatio: isFinite(_mcqR) ? Math.max(0, Math.min(100, _mcqR)) : 50,
       en2koRatio: isFinite(_e2kR) ? Math.max(0, Math.min(100, _e2kR)) : 50,
       shuffleQ: document.getElementById('tpVocabShuffleQ')?.checked !== false,
@@ -17764,6 +17769,8 @@ function _tpBuildOptionsLine(t) {
     if (o.format === 'speaking') {
       items.push(it('🎤 말하기', '#dc2626'));
       if (o.speakingStrictness) items.push(`엄격도 ${o.speakingStrictness === 'lenient' ? '관대' : o.speakingStrictness === 'strict' ? '엄격' : '보통'}`);
+    } else if (o.format === 'listening') {
+      items.push(it('🔊 듣고 선택하기 (음성 → 한글 4지선다)', '#1d4ed8'));
     } else if (o.format === 'practice') {
       items.push(it('📖 단어 학습 (따라 읽기)', '#0891b2'));
       items.push(`말하기 ${o.practiceCount || 2}회 (Great 아니면 +1)`);

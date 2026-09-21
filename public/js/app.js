@@ -1087,6 +1087,11 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
   const speakingBadge = isSpeaking
     ? `<span style="font-size:11px;background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:20px;font-weight:700;">${iconSvg('mic')} 말하기</span>`
     : '';
+  // 단어시험 + vocabOptions.format='listening' 이면 🔊 듣고 고르기 배지 표시
+  const isListening = type === 'vocab' && t.vocabOptions?.format === 'listening';
+  const listeningBadge = isListening
+    ? `<span style="font-size:11px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:20px;font-weight:700;">🔊 듣고 고르기</span>`
+    : '';
   // 단어시험 + vocabOptions.format='practice' 이면 📖 단어 학습 배지 표시 (연습·평가 X)
   const isPractice = type === 'vocab' && t.vocabOptions?.format === 'practice';
   const practiceBadge = isPractice
@@ -1102,7 +1107,7 @@ function _makeTypeCard(type, t, isCompleted, onclick, completedScore, latestFail
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="unit-name">${esc(t.name||ui.defaultName)}</div>
-          ${speakingBadge}
+          ${speakingBadge}${listeningBadge}
           ${practiceBadge}
           ${grammarBadge}
           ${isCompleted
@@ -5335,6 +5340,8 @@ window.startVocab = async (testId, testName) => {
       requirePerfect: !!_raw.requirePerfect,
     };
     const isSpeaking = opts.format === 'speaking';
+    // 🔊 듣고 선택하기 — 단어를 음성으로만 들려주고 4지선다 한글 뜻 고르기
+    const isListening = opts.format === 'listening';
 
     // 틀린문제만재응시 옵션 — 이전 응시의 틀린 문제만 필터 (2026-07-22)
     // + 재응시 시 이전 direction/format 보존 (예문 사라짐 방지 등, 2026-08-14)
@@ -5387,7 +5394,10 @@ window.startVocab = async (testId, testName) => {
         // 스펠링 쓰기·말하기는 항상 한글→영어
         if (fmt === 'short' || fmt === 'speaking') dir = 'ko2en';
       }
+      // 🔊 듣고 선택하기 — 형식·방향 고정 (영단어 음성 → 한글 뜻 4지선다)
+      if (isListening) { fmt = 'mcq'; dir = 'en2ko'; }
       const ans = { input: '', direction: dir, format: fmt };
+      if (isListening) ans.listening = true;
       // MCQ 라면 보기 미리 생성 (shuffleChoices 반영)
       if (fmt === 'mcq') {
         const correctText = dir === 'en2ko' ? q.meaning : q.word;
@@ -5464,7 +5474,9 @@ function _vqRenderStep() {
   const spellBoxes = document.getElementById('vqSpellBoxes');
 
   // 지시문
-  if (ans.format === 'mcq') {
+  if (ans.listening) {
+    if (instEl) instEl.textContent = '🔊 단어를 듣고 알맞은 뜻을 고르세요. (단어는 보이지 않아요)';
+  } else if (ans.format === 'mcq') {
     if (instEl) instEl.textContent = ans.direction === 'en2ko' ? '뜻과 일치하는 한글을 고르세요.' : '알맞은 영어 단어를 고르세요.';
   } else if (ans.format === 'speaking') {
     if (instEl) instEl.textContent = '🎤 한글 뜻에 해당하는 영어 단어를 발음하세요.';
@@ -5473,7 +5485,22 @@ function _vqRenderStep() {
   }
 
   // 주황 헤더: 라벨 + 큰 질문 + (선택적) 힌트
-  if (ans.direction === 'en2ko') {
+  // 🔊 듣고 선택하기 전용 버튼 영역 (다시 듣기 · 힌트)
+  const listenArea = document.getElementById('vqListenArea');
+  const listenHintBtn = document.getElementById('vqListenHintBtn');
+  if (listenArea) listenArea.style.display = ans.listening ? 'flex' : 'none';
+  if (ans.listening) {
+    if (labelEl) labelEl.textContent = '듣고 고르기';
+    // 힌트 누르기 전엔 단어를 감춤 (음성만). 힌트 후에는 단어 노출
+    if (promptEl) promptEl.textContent = ans.hintUsed ? (q.word || '') : '🔊  ? ? ?';
+    if (headerHint) headerHint.style.display = 'none';   // 예문에 단어가 들어있을 수 있어 숨김
+    if (listenHintBtn) {
+      listenHintBtn.disabled = !!ans.hintUsed;
+      listenHintBtn.style.opacity = ans.hintUsed ? '0.45' : '1';
+    }
+    // 문제 진입 시 1회 자동 재생 (이후는 [다시 듣기])
+    if (q.word) _fbSpeakWords([q.word]);
+  } else if (ans.direction === 'en2ko') {
     if (labelEl) labelEl.textContent = '영단어';
     if (promptEl) promptEl.textContent = q.word || '';
     if (headerHint) {
@@ -5539,6 +5566,26 @@ function _vqRenderStep() {
   _vqUpdateSubmitBtn();
   _vqStartTimer();
 }
+
+// 🔊 듣고 선택하기 — 단어 다시 듣기 (횟수 제한 없음)
+window.vqListenReplay = () => {
+  const s = _vqState;
+  const q = s?.questions?.[s.currentIdx];
+  if (q?.word) _fbSpeakWords([q.word]);
+};
+
+// 🔊 듣고 선택하기 — 힌트(단어 보기). 점수 영향 없음, 사용 여부만 기록
+window.vqListenHint = () => {
+  const s = _vqState;
+  const ans = s?.answers?.[s.currentIdx];
+  const q = s?.questions?.[s.currentIdx];
+  if (!ans || !ans.listening || ans.hintUsed) return;
+  ans.hintUsed = true;
+  const p = document.getElementById('vqPrompt');
+  if (p) p.textContent = q?.word || '';
+  const btn = document.getElementById('vqListenHintBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.45'; }
+};
 
 function _vqRenderChoices(ans, container) {
   const selected = ans.input;
@@ -6135,6 +6182,13 @@ function _vqRenderMcqFeedback(ans) {
   const correctText = ans.direction === 'en2ko' ? (q.meaning||'') : (q.word||'');
   const container = document.getElementById('vqChoicesArea');
   if (!container) return;
+  // 🔊 듣고 선택하기 — 채점 시점엔 감췄던 단어를 공개 (힌트 버튼은 잠금, 다시 듣기는 유지)
+  if (ans.listening) {
+    const pEl = document.getElementById('vqPrompt');
+    if (pEl) pEl.textContent = q.word || '';
+    const hb = document.getElementById('vqListenHintBtn');
+    if (hb) { hb.disabled = true; hb.style.opacity = '0.45'; }
+  }
   // 시간만료/입력누락 — input 이 비었음. 정답/오답 표시를 시간만료용으로 분기 (2026-06-21)
   // 옛 버전: 시간만료여도 정답 옵션에 ✓ 표시 + banner 오답 → 학생 혼란 (정답 누른 줄 아는데 오답 나옴)
   const userInputEmpty = !ans.input || !String(ans.input).trim();
@@ -6423,7 +6477,7 @@ function _vqBuildDetail(questions, answers) {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
           <span style="font-size:11px;color:var(--gray);font-weight:700;">Q${i+1}</span>
           <span style="font-size:12px;color:${isCorrect?'#059669':'#dc2626'};font-weight:700;">${isCorrect?'✓ 정답':'✗ 오답'}</span>
-          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?'객관식':a.format==='speaking'?'🎤 말하기':'단답'}</span>
+          <span style="font-size:10px;color:var(--gray);">${dir==='en2ko'?'영→한':'한→영'} · ${a.format==='mcq'?(a.listening?'🔊 듣고 고르기':'객관식'):a.format==='speaking'?'🎤 말하기':'단답'}${a.listening&&a.hintUsed?' · 힌트 사용':''}</span>
         </div>
         <div style="font-size:13px;color:var(--text);margin-bottom:3px;font-weight:600;">${esc(prompt)}</div>
         <div style="font-size:11px;color:var(--gray);">
