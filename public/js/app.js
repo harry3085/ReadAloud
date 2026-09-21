@@ -5503,13 +5503,15 @@ function _vqRenderStep() {
   const vizSlot = document.getElementById('vqVizSlot');
   if (listenArea) listenArea.style.display = ans.listening ? 'flex' : 'none';
   if (vizSlot) vizSlot.style.display = ans.listening ? 'flex' : 'none';
-  if (promptEl && !ans.listening) promptEl.style.display = '';   // 다른 형식은 단어 자리 복구
+  // 다른 형식은 단어 자리 원복 (듣기에서 잡아둔 최소 높이 해제)
+  if (promptEl && !ans.listening) { promptEl.style.display = ''; promptEl.style.minHeight = ''; }
   if (ans.listening) {
     if (labelEl) labelEl.textContent = '듣고 고르기';
-    // 힌트 누르기 전엔 단어를 감추고 그 자리에 오디오 인디케이터 (힌트 후 단어 노출)
+    // 힌트 누르기 전엔 단어를 비워두되 자리는 미리 확보 (정답·힌트 공개 때 화면 안 밀림)
     if (promptEl) {
+      promptEl.style.display = '';
+      promptEl.style.minHeight = '29px';   // 22px × line-height 1.3 = 한 줄 높이
       promptEl.textContent = ans.hintUsed ? (q.word || '') : '';
-      promptEl.style.display = ans.hintUsed ? '' : 'none';
     }
     _vqRenderListenViz();
     if (headerHint) headerHint.style.display = 'none';   // 예문에 단어가 들어있을 수 있어 숨김
