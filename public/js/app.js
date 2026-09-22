@@ -70,6 +70,8 @@ function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt
 // ── 드롭다운 ──────────────────────────────────────────────
 window.toggleDropdown = id => {
   ['dd1','dd2'].forEach(d=>{if(d!==id)document.getElementById(d)?.classList.remove('open');});
+  // 메뉴 열 때 [홈화면에 추가] 노출 여부 재판정 (설치 직후·아이폰 등)
+  if (id === 'dd1' && typeof _refreshInstallMenuItem === 'function') _refreshInstallMenuItem();
   document.getElementById(id).classList.toggle('open');
 };
 document.addEventListener('click', e=>{if(!e.target.closest('.home-header')){document.getElementById('dd1')?.classList.remove('open');document.getElementById('dd2')?.classList.remove('open');}});
@@ -3282,7 +3284,7 @@ function _showSrGuideModal(g, { primary = '확인', secondary = '' } = {}) {
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
     overlay.innerHTML = `
       <div style="background:white;border-radius:14px;width:min(440px,94vw);max-height:88vh;overflow-y:auto;padding:22px 22px 18px;box-shadow:0 12px 40px rgba(0,0,0,0.25);">
-        <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:12px;color:#dc2626;">${esc(g.title)}</div>
+        <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:12px;color:${g.tone === 'info' ? 'var(--c-brand)' : '#dc2626'};">${esc(g.title)}</div>
         <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:16px;white-space:pre-line;">${esc(g.detail)}</div>
         ${g.openExternal ? `<button id="srGuideExt" style="width:100%;padding:12px;margin-bottom:8px;background:#0ea5e9;color:white;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;">${esc(g.extLabel || 'Safari 로 열기')}</button>` : ''}
         <div style="display:flex;gap:8px;">
@@ -4830,17 +4832,28 @@ window.addEventListener('beforeinstallprompt',e=>{
   _deferredPrompt=e;
 });
 
-// 학생 메인 화면 점3개 메뉴의 [홈화면에 추가] 항목 — standalone 아니면 노출
+// 학생 메인 화면 점3개 메뉴의 [홈화면에 추가] 항목 노출 규칙 (2026-09-22)
+//   숨김 ① 이미 홈화면 앱으로 실행 중
+//   숨김 ② 아이폰·아이패드 — 홈화면 아이콘에서는 음성 인식이 막혀 말하기·학습을
+//          아예 못 함 (Apple 제약). 설치를 권하면 안 되는 환경이라 항목 자체를 뺌
+//   노출 — 안드로이드·PC. Chrome 은 설치 프롬프트, 그 외는 수동 안내
 function _refreshInstallMenuItem() {
   const item = document.getElementById('ddInstallItem');
-  if (!item) return;
+  const dot = document.getElementById('ddInstallDot');
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  item.style.display = isStandalone ? 'none' : 'flex';
+  const hide = isStandalone || _isIos();
+  if (item) item.style.display = hide ? 'none' : 'flex';
+  // ⋮ 버튼 빨간 점 — 한 번 눌러보면 사라짐 (계속 뜨면 알림으로 오해·피로감)
+  let seen = false;
+  try { seen = localStorage.getItem('a2hsSeen') === '1'; } catch (_) {}
+  if (dot) dot.style.display = (hide || seen) ? 'none' : 'block';
 }
 document.addEventListener('DOMContentLoaded', _refreshInstallMenuItem);
 window.addEventListener('beforeinstallprompt', _refreshInstallMenuItem);
 
 window.installApp=async()=>{
+  try { localStorage.setItem('a2hsSeen', '1'); } catch (_) {}   // ⋮ 안내 점 해제
+  _refreshInstallMenuItem();
   const ua = navigator.userAgent || '';
   // iPad 데스크톱 모드 (iPadOS 13+) — UA 가 'Macintosh' 로 위장. maxTouchPoints 로 검출
   const isIPadDesktop = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
@@ -4860,22 +4873,35 @@ window.installApp=async()=>{
     if(outcome==='accepted') showToast('홈화면에 추가됐어요! 🎉');
     return;
   }
-  // iOS Safari
+  // iOS — 홈화면 아이콘에서는 음성 인식이 막혀 말하기·학습 불가. 설치 대신 Safari 안내
   if(isIOS){
-    alert('📱 홈화면 추가 방법 (iOS)\n\n① 하단 공유 버튼 (□↑)\n② 메뉴에서 "홈 화면에 추가" 선택\n   (안 보이면 [더 보기] 눌러주세요)\n③ 우상단 "추가"\n\n※ Safari 에서 열어주세요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요');
+    _showSrGuideModal({
+      title: '아이폰은 홈화면 아이콘을 쓰지 마세요',
+      detail: '홈 화면에 추가한 아이콘으로 열면 말하기·따라 읽기에서 음성 인식이 되지 않아요. (애플 제한)\n\nSafari 를 열고 주소창에\nraloud.vercel.app\n을 입력해서 사용해 주세요.\n\n이미 홈 화면 아이콘이 있다면 꾹 눌러 삭제해 주세요.',
+    }, { primary: '확인' });
     return;
   }
-  // Android 기타 브라우저
+  // Android 기타 브라우저 (삼성 인터넷 등) — 수동 안내 + Chrome 권장
   if(isAndroid){
-    alert('📱 홈화면 추가 방법 (Android)\n\n① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는\n   "앱 설치" 선택\n\n※ 크롬 브라우저를 권장해요\n\n⚠️ 이전에 추가한 아이콘이 있으면\n   먼저 삭제 후 다시 추가하세요');
+    _showSrGuideModal({
+      tone: 'info',
+      title: '홈화면에 추가하는 방법',
+      detail: '① 브라우저 우상단 메뉴(⋮) 탭\n② "홈 화면에 추가" 또는 "앱 설치" 선택\n\n※ 말하기가 잘 되려면 Chrome 을 권장해요.\n※ 예전 아이콘이 있으면 먼저 삭제한 뒤 다시 추가해 주세요.',
+    }, { primary: '확인' });
     return;
   }
-  // PC (또는 UA 가 모바일로 인식 안 된 케이스 — iPad 데스크톱 모드 등)
-  alert('💻 PC 에서 바로가기 추가\n\n① 크롬 주소창 우측 ⊕ 설치 아이콘 클릭\n  (또는 우상단 ⋮ → "앱 설치")\n② 설치\n\n⚠️ 이전 아이콘 있으면 먼저 삭제 후 추가');
+  // PC (또는 UA 가 모바일로 인식 안 된 케이스)
+  _showSrGuideModal({
+    tone: 'info',
+    title: 'PC 에서 바로가기 추가',
+    detail: '① Chrome 주소창 오른쪽 ⊕ 설치 아이콘 클릭\n   (또는 우상단 ⋮ → "앱 설치")\n② [설치]\n\n※ 예전 아이콘이 있으면 먼저 삭제한 뒤 다시 추가해 주세요.',
+  }, { primary: '확인' });
 };
 
 window.addEventListener('appinstalled',()=>{
   showToast('앱이 설치됐어요! 🎉');
+  _deferredPrompt = null;
+  _refreshInstallMenuItem();
 });
 
 // ── 모바일 키패드 대응 ────────────────────────────────────
