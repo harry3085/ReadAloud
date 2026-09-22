@@ -4251,6 +4251,21 @@ async function _checkMicSupport(opts = {}) {
     }
   }
 
+  // 4) 삼성 인터넷 — 차단은 아니지만 무음·멈춤이 잦음 → 세션당 1회 Chrome 권유
+  if (needSpeech && /SamsungBrowser/i.test(navigator.userAgent || '')) {
+    let warned = false;
+    try { warned = sessionStorage.getItem('_samsungSpeakWarned') === '1'; } catch (_) {}
+    if (!warned) {
+      try { sessionStorage.setItem('_samsungSpeakWarned', '1'); } catch (_) {}
+      _speakLog('warn:samsung');
+      const go = await _showSrGuideModal({
+        title: '삼성 인터넷은 말소리 인식이 자주 끊겨요',
+        detail: '말해도 인식이 안 되거나 도중에 멈출 수 있어요.\nChrome 으로 접속하면 훨씬 안정적이에요.\n\nChrome 을 열고 주소창에\nraloud.vercel.app 을 입력해 주세요. (다시 로그인 필요)',
+      }, { primary: '그냥 진행', secondary: '돌아가기' });
+      if (!go) return false;
+    }
+  }
+
   // (Web Speech 실제 작동 체크는 시간 비용 큼 — 시험 중 onerror 로 처리)
   if (needSpeech) _speakLog('enter');
   return true;
@@ -4691,13 +4706,21 @@ let _exitToast=null; // 종료 안내 토스트 타이머
 
 // SW 자동 reload (2026-06-05) — 시험 중이면 대기, 다른 화면 전환 시 자동 적용
 // 새 sw.js activate 시 SW_UPDATED postMessage 받음 (sw.js 의 activate handler)
-const _EXAM_SCREENS = new Set(['vocabQuiz','unscrambleQuiz','recAiQuiz','readingMcq','fillBlank','sentenceQuiz','result']);
+// vocabPractice = 단어 학습·문장 청크 학습 — 시험과 동일 보호 대상 (2026-09-22)
+//   듣고 따라 말하는 흐름이라 화면을 안 만져 wake lock 이 특히 중요
+const _EXAM_SCREENS = new Set(['vocabQuiz','unscrambleQuiz','recAiQuiz','readingMcq','fillBlank','sentenceQuiz','vocabPractice','result']);
 function _isInExam(id) { return _EXAM_SCREENS.has(id); }
+// 적용 시점 (2026-09-22 변경) — 앱을 쓰는 도중에는 절대 새로고침하지 않음.
+// 옛 동작: 업데이트 감지 즉시(시험 중이면 시험 끝나자마자) reload → 배포가 잦은 날
+//          학생이 "앱이 자꾸 튕긴다"고 느낌 (홈화면 앱은 스플래시까지 떠서 재시작처럼 보임).
+// 신 동작: 표시만 해두고, 학생이 앱을 나갔다 다시 돌아왔을 때 한 번 적용.
 let _pendingReload = false;
+let _wasHidden = false;
 function _trySwReload() {
+  if (!_pendingReload) return;
   if (sessionStorage.getItem('_swReloadDone')) return;
   const id = document.querySelector('.screen.active')?.id;
-  if (_isInExam(id)) { _pendingReload = true; return; }
+  if (_isInExam(id)) return;   // 시험·학습 중이면 보류 (다음 복귀 때 재시도)
   sessionStorage.setItem('_swReloadDone', '1');
   setTimeout(() => location.reload(), 300);
 }
@@ -4706,8 +4729,12 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data?.type === 'SW_UPDATED') {
       if (_swInitialMsg) { _swInitialMsg = false; return; }
-      _trySwReload();
+      _pendingReload = true;   // 표시만 — 적용은 앱 복귀 시
     }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { _wasHidden = true; return; }
+    if (_wasHidden) { _wasHidden = false; _trySwReload(); }
   });
 }
 
@@ -4733,8 +4760,6 @@ window.show=id=>{
   if (_isInExam(id)) _acquireWakeLock();
   else _releaseWakeLock();
   _originalShow(id);
-  // 시험 화면 벗어났는데 SW reload 대기 중이면 적용
-  if (_pendingReload && !_isInExam(id)) _trySwReload();
 };
 
 // 시험 유형별 quit 함수 — 상단 X 버튼과 동일 흐름 (중단 확인 + 저장 여부 확인 + goHome)
@@ -4745,6 +4770,7 @@ const _EXAM_QUIT_FNS = {
   readingMcq: 'quitReadingMcq',
   fillBlank: 'quitFillBlank',
   sentenceQuiz: 'quitSentence',
+  vocabPractice: 'quitVocabPractice',
 };
 
 window.addEventListener('popstate', async e=>{
@@ -8924,15 +8950,39 @@ async function _vpShowSrRetry() {
   }
 }
 
-// SR 이슈 학생 안내 — 오류 코드별 해결 방법 표시 + 학습 진행 정지 (다음 문제 자동 안 감)
+// 일시적 오류 — 설정 문제가 아니라 잠깐 실패한 것. 학습을 끝내면 안 됨 (2026-09-22)
+//   network: Chrome 이 구글 음성 서버와 통신 한 번 실패 (인터넷 끊김과 다름.
+//            Wi-Fi↔LTE 전환·신호 약함·서버 혼잡에도 발생)
+const _VP_TRANSIENT_SR = new Set(['network', 'language-not-supported']);
+
+// SR 이슈 학생 안내 — 일시적이면 같은 자리에서 [다시 시도], 설정 문제면 학습 정지 후 홈
 function _vpShowSrIssue(code) {
   const s = _vpState;
   s.listening = false;
-  s.stopped = true;   // 자동 흐름 정지
   _vpShowMicAnim(false);
   _vpShowWave(false);
   const statusEl = document.getElementById('vpStatus');
   if (statusEl) statusEl.innerHTML = '';
+
+  // 일시적 오류 — 진행 중인 학습 유지. 홈으로 튕기면 학생이 처음부터 다시 들어와야 함
+  if (_VP_TRANSIENT_SR.has(code)) {
+    const g = _srGuide(code);
+    g.detail += '\n\n연결되면 [다시 시도]를 눌러 하던 곳부터 이어서 하세요.';
+    if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">잠시 인식이 끊겼어요</span>';
+    _showSrGuideModal(g, { primary: '다시 시도', secondary: '홈으로' }).then(retry => {
+      if (retry) {
+        s._srRetryCount = 0;
+        if (!s.stopped) _vpSpeakAndListen();   // TTS 부터 다시 (오디오 세션 리셋)
+      } else {
+        s.stopped = true;
+        if (typeof goHome === 'function') goHome();
+      }
+    });
+    return;
+  }
+
+  // 권한·설정 문제 — 설정을 바꿔야 해결되므로 학습 정지
+  s.stopped = true;
   const g = _srGuide(code);
   g.detail += '\n\n설정을 바꾼 뒤 홈에서 다시 시작해 주세요.';
   _showSrGuideModal(g, { primary: '홈으로' }).then(() => {
