@@ -127,9 +127,30 @@
       const isInapp = inappPatterns.test(ua) || (isAndroid && /;\s*wv\)/.test(ua));
       if (!isInapp) return;
       const isKakao = /KAKAOTALK/i.test(ua);
+
+      // 카카오톡 인앱 — 자동으로 기본 브라우저(크롬·사파리)로 내보냄 (2026-09-23)
+      //   카톡 메시지의 주소는 링크 카드로 바뀌고, 누르면 카톡 인앱 브라우저로 열림.
+      //   인앱에서는 마이크·음성 인식이 막혀 말하기·녹음이 전부 실패 →
+      //   배너 버튼을 학생이 직접 누르길 기대하지 말고 진입 즉시 전환.
+      //   세션당 1회만 시도 (전환 실패·학생이 되돌아온 경우 무한 반복 방지).
+      //   전환이 안 되는 기기는 기존 배너가 그대로 남아 수동 탈출 가능.
+      if (isKakao) {
+        var _extTried = false;
+        try { _extTried = sessionStorage.getItem('_kakaoExtTried') === '1'; } catch (_) {}
+        if (!_extTried) {
+          try { sessionStorage.setItem('_kakaoExtTried', '1'); } catch (_) {}
+          // 배너가 먼저 그려지도록 살짝 지연 (전환 실패 시 안내가 남아 있어야 함)
+          setTimeout(function () {
+            try {
+              location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+            } catch (_) {}
+          }, 600);
+        }
+      }
+
       document.addEventListener('DOMContentLoaded', () => {
         const hintHtml = isKakao
-          ? `아래 <b>[${isIOS ? 'Safari로 열기' : '다른 브라우저로 열기'}]</b> 를 누르고 다시 로그인해 주세요.`
+          ? `카카오톡 안에서는 <b>말하기·녹음이 안 됩니다.</b><br>아래 <b>[${isIOS ? 'Safari로 열기' : '다른 브라우저로 열기'}]</b> 를 누르고 다시 로그인해 주세요.`
           : (isIOS
               ? '우상단 <b>공유 메뉴</b> 또는 <b>···</b> 를 눌러 <b>"Safari로 열기"</b> 선택<br>또는 Safari 에서 직접 <b>raloud.vercel.app</b> 입력'
               : '우상단 <b>···</b> 또는 메뉴 버튼 → <b>"다른 브라우저로 열기"</b> → <b>크롬</b> 선택<br>또는 크롬에서 직접 <b>raloud.vercel.app</b> 입력');
