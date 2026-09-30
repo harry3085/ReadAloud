@@ -457,6 +457,70 @@ const _BADGE_MAP = {
 };
 let _badgeUpdateInflight = null;
 
+// ── 응시 결과 캐시 (2026-10-01 전송량 절감) ─────────────────
+// 옛: collectionGroup('userCompleted') where uid — 학생 응시 기록 전체(150~200건, 문제·답안
+//     스냅샷 포함 1~2MB)를 배지·목록 진입마다 받음 → Firestore 한국행 전송량 월 14.8GB.
+// 신: 화면에 보이는 시험의 genTests/{id}/userCompleted/{uid} 만 getDoc.
+//     통과 완료분(score 있음)은 10분 재사용, 미완료·미통과분은 매번 확인(바뀔 수 있는 쪽).
+//     학원장 재시험 등으로 lastTestUpdate 가 갱신되면 그 이전 캐시는 버림.
+const _compCache = new Map();   // testId → { data: object|null, ts }
+let _compCacheUid = '';
+const _COMP_DONE_TTL = 10 * 60 * 1000;
+async function _fetchUserComps(testIds) {
+  const uid = currentUser?.uid;
+  const out = new Map();
+  if (!uid || !testIds?.length) return out;
+  if (_compCacheUid !== uid) { _compCache.clear(); _compCacheUid = uid; }
+  const lastUpdate = await _getAcademyLastTestUpdate();
+  const now = Date.now();
+  const ids = [...new Set(testIds)];
+  const need = ids.filter(id => {
+    const c = _compCache.get(id);
+    if (!c) return true;
+    if (c.ts <= lastUpdate) return true;
+    if (c.data?.score !== undefined && now - c.ts < _COMP_DONE_TTL) return false;
+    return true;
+  });
+  await Promise.all(need.map(async id => {
+    try {
+      const snap = await getDoc(doc(db, 'genTests', id, 'userCompleted', uid));
+      _compCache.set(id, { data: snap.exists() ? snap.data() : null, ts: Date.now() });
+    } catch (e) {
+      console.warn('[comp] 응시 결과 조회 실패:', id, e.message);
+    }
+  }));
+  ids.forEach(id => { const c = _compCache.get(id); if (c?.data) out.set(id, c.data); });
+  return out;
+}
+// 응시 직후 캐시 반영 (다시 받지 않음)
+function _compCacheMerge(testId, patch) {
+  const c = _compCache.get(testId);
+  _compCache.set(testId, { data: { ...(c?.data || {}), ...patch }, ts: Date.now() });
+}
+
+// 배지용 시험 목록 캐시 — lastTestUpdate 헤드체크 + 최대 5분
+let _badgeTests = null, _badgeTestsAt = 0, _badgeTestsUid = '';
+const _TEST_CACHE_MAX_AGE = 5 * 60 * 1000;
+
+function _renderBadgeCounts(myTests, isDone) {
+  Object.keys(_BADGE_MAP).forEach(mode => {
+    const badge = document.getElementById(_BADGE_MAP[mode]);
+    if (!badge) return;
+    const unfinished = myTests.filter(t => t.testMode === mode && !isDone(t.id)).length;
+    if (unfinished > 0) {
+      badge.textContent = unfinished > 99 ? '99+' : unfinished;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+// 결과 화면용 — 네트워크 없이 캐시로만 배지 재계산 (방금 응시한 시험은 _compCacheMerge 로 반영됨)
+function _badgeRecountLocal() {
+  if (!_badgeTests) return;
+  _renderBadgeCounts(_badgeTests, id => _compCache.get(id)?.data?.score !== undefined);
+}
+
 async function _updateAllBadgesAtOnce() {
   if (_badgeUpdateInflight) return _badgeUpdateInflight;
   _badgeUpdateInflight = (async () => {
@@ -481,49 +545,33 @@ async function _updateAllBadgesAtOnce() {
       if (myGroup) {
         tQueries.push(query(collection(db,'genTests'), ...tBase, where('targetGroups','array-contains', myGroup)));
       }
-      const tSnaps = await Promise.all(tQueries.map(q => getDocs(q)));
-      const tSeen = new Set();
-      const myTests = [];
-      tSnaps.forEach(snap => {
-        snap.docs.forEach(d => {
-          if (!tSeen.has(d.id)) {
-            tSeen.add(d.id);
-            const data = d.data();
-            if (data.active !== false && !(Array.isArray(data.excludedUids) && data.excludedUids.includes(myUid))) {
-              myTests.push({id: d.id, ...data});
+      let myTests;
+      const lastUpdate = await _getAcademyLastTestUpdate();
+      const nowMs = Date.now();
+      if (_badgeTests && _badgeTestsUid === myUid && _badgeTestsAt > lastUpdate
+          && nowMs - _badgeTestsAt < _TEST_CACHE_MAX_AGE) {
+        myTests = _badgeTests.filter(t => (t.createdAt?.toMillis?.() || 0) >= tenDaysAgo.getTime());
+      } else {
+        const tSnaps = await Promise.all(tQueries.map(q => getDocs(q)));
+        const tSeen = new Set();
+        myTests = [];
+        tSnaps.forEach(snap => {
+          snap.docs.forEach(d => {
+            if (!tSeen.has(d.id)) {
+              tSeen.add(d.id);
+              const data = d.data();
+              if (data.active !== false && !(Array.isArray(data.excludedUids) && data.excludedUids.includes(myUid))) {
+                myTests.push({id: d.id, ...data});
+              }
             }
-          }
+          });
         });
-      });
+        _badgeTests = myTests; _badgeTestsAt = nowMs; _badgeTestsUid = myUid;
+      }
 
-      // userCompleted batch — collectionGroup 1회 (N+1 → 1)
-      const completedSet = new Set();
-      try {
-        const compSnap = await getDocs(query(
-          collectionGroup(db, 'userCompleted'),
-          where('uid', '==', myUid)
-        ));
-        compSnap.docs.forEach(d => {
-          if (d.data().score !== undefined) {
-            const testId = d.ref.parent.parent.id;
-            completedSet.add(testId);
-          }
-        });
-      } catch(e) { console.warn('[badge] userCompleted batch:', e.message); }
-
-      // 5종 badge 분배
-      Object.keys(_BADGE_MAP).forEach(mode => {
-        const badge = document.getElementById(_BADGE_MAP[mode]);
-        if (!badge) return;
-        const tests = myTests.filter(t => t.testMode === mode);
-        const unfinished = tests.filter(t => !completedSet.has(t.id)).length;
-        if (unfinished > 0) {
-          badge.textContent = unfinished > 99 ? '99+' : unfinished;
-          badge.style.display = 'flex';
-        } else {
-          badge.style.display = 'none';
-        }
-      });
+      // 보이는 시험의 응시 결과만 (전체 이력 X)
+      const compMap = await _fetchUserComps(myTests.map(t => t.id));
+      _renderBadgeCounts(myTests, id => compMap.get(id)?.score !== undefined);
     } catch(e) {
       console.warn('[badge] _updateAllBadgesAtOnce:', e.message);
       // 실패 시 모든 badge 숨김 (잘못된 큰 수 표시 방지)
@@ -812,15 +860,12 @@ async function _writeUserCompleted(testId, { score, passed, passScore, correct, 
     showToast(`기존 최고점 ${existing.score}점 유지`);
   }
 
-  // 응시 후 캐시 동기 — 학생이 결과→시험목록 돌아갈 때 통과/미통과 즉시 반영 (2026-06-18)
-  // myTests 캐시는 그대로 (시험 list 자체는 변동 없음), userCompMap 만 그 testId 갱신
+  // 응시 후 캐시 동기 — 결과→시험목록·홈 배지에 통과/미통과 즉시 반영 (다시 받지 않음)
   try {
     const newCompEntry = passed
-      ? { score, latestScore: score, passed: true, latestPassed: true }
+      ? { score: Math.max(score, existing?.score ?? score), latestScore: score, passed: true, latestPassed: true }
       : { latestScore: score, latestPassed: false };
-    _testListState.forEach(state => {
-      if (state.userCompMap) state.userCompMap.set(testId, { ...(state.userCompMap.get(testId) || {}), ...newCompEntry });
-    });
+    _compCacheMerge(testId, newCompEntry);
   } catch (e) { console.warn('[userCompleted] 캐시 동기 실패 — 다음 진입 시 fresh fetch:', e); }
 
   return { isNewBest, prevBest };
@@ -893,7 +938,7 @@ const TEST_TYPE_UI = {
 //   - 10일 default, 더보기 +10일씩, 30일 상한
 //   - 캐시 없음 (학원장 변경 즉시 반영, 학생앱 실시간성 우선)
 //   - userCompleted N+1 → collectionGroup batch 1회 (진입당)
-const _testListState = new Map();  // type → { daysLoaded, userCompMap, myTests?, fetchedAt?, cacheKey? }
+const _testListState = new Map();  // type → { daysLoaded, myTests?, fetchedAt?, cacheKey? } — 응시 결과는 _compCache
 // 학원 lastTestUpdate 헤드체크 캐시 — 같은 진입 흐름에서 여러 type 페이지 들어가도 1 read 만
 let _lastUpdateCheck = { value: -1, ts: 0 };
 const _LAST_UPDATE_TTL = 30000;  // 30초 동안 한 번만 fetch — 학생이 짧은 시간에 여러 페이지 이동 시 효율
@@ -929,8 +974,9 @@ async function _loadTestListByType(type) {
   const ui = TEST_TYPE_UI[type];
   const elP = document.getElementById(ui.pendingElId);
   if (elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-  // 새 진입 — state 리셋 (userCompMap 도 새로 fetch)
-  _testListState.set(type, { daysLoaded: 10, userCompMap: null });
+  // 새 진입 — 기간만 10일로 되돌림. 시험 목록 캐시(myTests)는 보존해 헤드체크로 재사용
+  // (옛 코드는 여기서 state 를 통째로 새로 만들어 캐시가 한 번도 적용되지 않았음 — 2026-10-01 fix)
+  _testListState.set(type, { ...(_testListState.get(type) || {}), daysLoaded: 10 });
   try {
     await _loadTestListPage(type);
   } catch(e) {
@@ -956,8 +1002,10 @@ async function _loadTestListPage(type) {
   let myTests;
   const lastUpdate = await _getAcademyLastTestUpdate();
   const cacheValid = Array.isArray(state.myTests)
+    && state.uid === myUid
     && state.cacheKey === state.daysLoaded
-    && state.fetchedAt > lastUpdate;
+    && state.fetchedAt > lastUpdate
+    && Date.now() - state.fetchedAt < _TEST_CACHE_MAX_AGE;
   if (cacheValid) {
     myTests = state.myTests;
   } else {
@@ -999,24 +1047,11 @@ async function _loadTestListPage(type) {
     state.myTests = myTests;
     state.fetchedAt = Date.now();
     state.cacheKey = state.daysLoaded;
+    state.uid = myUid;
   }
 
-  // userCompleted batch — 한 진입당 1회 (collectionGroup, N+1 → 1)
-  if (!state.userCompMap) {
-    const map = new Map();
-    try {
-      const compSnap = await getDocs(query(
-        collectionGroup(db, 'userCompleted'),
-        where('uid', '==', myUid)
-      ));
-      compSnap.docs.forEach(d => {
-        const testId = d.ref.parent.parent.id;
-        map.set(testId, d.data());
-      });
-    } catch(e) { console.warn('[testList] userCompleted batch:', e.message); }
-    state.userCompMap = map;
-  }
-  const userCompMap = state.userCompMap;
+  // 보이는 시험의 응시 결과만 (전체 이력 X, 2026-10-01)
+  const userCompMap = await _fetchUserComps(myTests.map(t => t.id));
 
   const isCompleted = t => userCompMap.get(t.id)?.score !== undefined;
   const pending = myTests.filter(t => !isCompleted(t));
@@ -1445,7 +1480,7 @@ function _mcqRenderResult({correct, wrong, total, score, passed, passScore, ques
     correct, wrong, total, score, passed, passScore,
     detailHtml: _mcqBuildDetail(questions, answers),
   });
-  updateMcqBadge();
+  _badgeRecountLocal();  // 결과 화면 — 캐시로만 재계산 (2026-10-01)
 }
 
 // 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조)
@@ -2188,7 +2223,7 @@ function _fbRenderResult({correct, wrong, total, score, passed, passScore, detai
     correct, wrong, total, score, passed, passScore, hintUsageCount,
     detailHtml: _fbBuildDetail(questions, answers, detail),
   });
-  updateFbBadge();
+  _badgeRecountLocal();  // 결과 화면 — 캐시로만 재계산 (2026-10-01)
 }
 
 // ─── 완료된 시험의 이전 결과 보기 + 재응시 선택 ───
@@ -2286,8 +2321,8 @@ window.goRecAi = async () => {
 async function loadRecAiList(){
   const elP = document.getElementById('raListPending');
   if(elP) elP.innerHTML = '<div class="empty-msg" style="padding:20px;">로딩 중...</div>';
-  // state 리셋 — 10일 default, userCompMap 새로 fetch
-  _testListState.set('recording', { daysLoaded: 10, userCompMap: null });
+  // state 리셋 — 10일 default (응시 결과는 _compCache 로 보이는 시험만 조회)
+  _testListState.set('recording', { daysLoaded: 10 });
   try {
     await _loadRecAiListPage();
   } catch(e) {
@@ -2338,22 +2373,8 @@ async function _loadRecAiListPage(){
     return true;
   });
 
-  // userCompleted batch — 진입당 1회 (N+1 → 1)
-  if (!state.userCompMap) {
-    const map = new Map();
-    try {
-      const compSnap = await getDocs(query(
-        collectionGroup(db, 'userCompleted'),
-        where('uid', '==', myUid)
-      ));
-      compSnap.docs.forEach(d => {
-        const testId = d.ref.parent.parent.id;
-        map.set(testId, d.data());
-      });
-    } catch(e) { console.warn('[recAi] userCompleted batch:', e.message); }
-    state.userCompMap = map;
-  }
-  const userCompMap = state.userCompMap;
+  // 보이는 숙제의 응시 결과만 (전체 이력 X, 2026-10-01)
+  const userCompMap = await _fetchUserComps(myTests.map(t => t.id));
 
   const completedMap = new Map();
   const inProgressMap = new Map();
@@ -6637,7 +6658,7 @@ function _vqRenderResult({ correct, wrong, total, score, passed, passScore, ques
     retryLabel: canRetryWrong ? `🔁 틀린 ${wrong}문제 다시 풀기` : null,  // 2026-07-22 재응시 옵션
   });
   screen.dataset.stage = 'result';  // popstate 뒤로가기 보호 분기 — 결과 보기 중엔 모달 X
-  updateVocabBadge();
+  _badgeRecountLocal();  // 결과 화면 — 캐시로만 재계산 (2026-10-01)
 }
 
 // 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조 → 특수문자 이스케이프 이슈 회피)
@@ -7233,7 +7254,7 @@ function _uqRenderResult({ correct, wrong, total, score, passed, passScore, ques
     correct, wrong, total, score, passed, passScore,
     detailHtml: _uqBuildDetail(questions, answers),
   });
-  updateUnscBadge2();
+  _badgeRecountLocal();  // 결과 화면 — 캐시로만 재계산 (2026-10-01)
 }
 
 // 결과 화면에서 현재 시험 재응시 (파라미터 없이 state 참조)
