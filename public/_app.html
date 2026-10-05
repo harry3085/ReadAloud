@@ -128,6 +128,79 @@
       if (!isInapp) return;
       const isKakao = /KAKAOTALK/i.test(ua);
 
+      // 인앱 전면 차단 (2026-10-06) — 인앱(WebView)은 음성 인식이 구조적으로 막혀
+      //   말하기·학습이 100% 실패. 옛 동작(경고 후 '그냥 진행')은 모달 15회 중 8회(53%)
+      //   학생이 진행을 눌러 실패만 반복했음. 자동 전환은 작동하나 인앱 화면이 뒤에 남아
+      //   뒤로가기로 돌아오면 인앱에만 로그인이 남아 있어 계속 거기서 쓰게 됨.
+      //   → 인앱에서는 앱을 아예 쓸 수 없게 하고, 로그인은 기본 브라우저에서만 하게 한다.
+      //   판정은 명시 패턴만 — 안드로이드 'wv' 는 일반 크롬에도 붙어 오탐이라 제외(배너만).
+      const hardBlock = inappPatterns.test(ua);
+      if (hardBlock) {
+        // app.js 가 이 플래그를 보고 로그인 세션을 정리한다 (기록 남긴 뒤 로그아웃)
+        window.__INAPP_BLOCK = { kakao: isKakao, ios: isIOS };
+        var _leftPage = false;
+        var _markLeft = function () { _leftPage = true; };
+        document.addEventListener('visibilitychange', function () { if (document.hidden) _markLeft(); });
+        window.addEventListener('blur', _markLeft);
+
+        window.__inappOpenExt = function () {
+          _leftPage = false;
+          try { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href); } catch (_) {}
+          // 2.5초 안에 화면이 안 바뀌면 전환 실패 → 수동 안내 노출
+          setTimeout(function () {
+            if (_leftPage) return;
+            var fb = document.getElementById('inappFb');
+            if (fb) fb.style.display = 'block';
+          }, 2500);
+        };
+        window.__inappCopy = function (btn) {
+          var done = function () { btn.textContent = '주소가 복사됐어요'; };
+          var fail = function () { var fb = document.getElementById('inappFb'); if (fb) fb.style.display = 'block'; };
+          try {
+            if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(done, fail);
+            else fail();
+          } catch (_) { fail(); }
+        };
+
+        var extLabel = isIOS ? 'Safari 로 열기' : '브라우저로 열기';
+        var box = document.createElement('div');
+        box.id = 'inappBlock';
+        box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;overflow-y:auto;' +
+          '-webkit-font-smoothing:antialiased;font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;';
+        box.innerHTML =
+          '<div style="max-width:420px;margin:0 auto;padding:34px 22px 28px;">' +
+            '<div style="font-size:40px;text-align:center;margin-bottom:14px;">\uD83C\uDF99\uFE0F</div>' +
+            '<div style="font-size:19px;font-weight:800;text-align:center;color:#dc2626;line-height:1.45;margin-bottom:12px;">' +
+              (isKakao ? '카카오톡 안에서는<br>사용할 수 없어요' : '다른 앱 안에서는<br>사용할 수 없어요') + '</div>' +
+            '<div style="font-size:14px;color:#334155;line-height:1.75;margin-bottom:18px;">' +
+              '마이크와 음성 인식이 막혀 있어서 시험과 학습이 되지 않아요.<br>' +
+              '아래 버튼을 눌러 <b>' + (isIOS ? 'Safari' : '브라우저') + '</b>에서 열어 주세요.</div>' +
+            (isKakao
+              ? '<button id="inappExt" style="width:100%;padding:15px;margin-bottom:9px;background:#0ea5e9;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:800;cursor:pointer;">' + extLabel + '</button>'
+              : '') +
+            '<button id="inappCopy" style="width:100%;padding:13px;margin-bottom:16px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">주소 복사</button>' +
+            '<div style="padding:12px 14px;background:#fff7ed;border-left:3px solid #fb923c;border-radius:7px;font-size:13px;color:#7c2d12;line-height:1.7;margin-bottom:12px;">' +
+              '브라우저에서는 <b>처음 한 번 로그인</b>이 필요해요.<br>아이디·비밀번호를 모르면 학원에 물어봐 주세요.</div>' +
+            (isIOS
+              ? '<div style="padding:12px 14px;background:#eff6ff;border-left:3px solid #60a5fa;border-radius:7px;font-size:13px;color:#1e3a8a;line-height:1.7;margin-bottom:12px;">' +
+                '아이폰은 <b>Safari 에서만</b> 말하기가 돼요.<br>다른 브라우저가 열리면 Safari 로 다시 열어 주세요.</div>'
+              : '') +
+            '<div id="inappFb" style="display:none;padding:12px 14px;background:#fef2f2;border-left:3px solid #f87171;border-radius:7px;font-size:13px;color:#7f1d1d;line-height:1.7;">' +
+              '열리지 않았다면 <b>[주소 복사]</b> 를 누른 뒤 ' + (isIOS ? 'Safari' : '크롬') + ' 주소창에 붙여넣어 주세요.<br>' +
+              (isIOS ? '' : '크롬이 없으면 Play 스토어에서 <b>Chrome</b> 을 설치해 주세요.') + '</div>' +
+          '</div>';
+        var attach = function () {
+          if (document.getElementById('inappBlock')) return;
+          (document.body || document.documentElement).appendChild(box);
+          var e1 = document.getElementById('inappExt');
+          if (e1) e1.onclick = function () { window.__inappOpenExt(); };
+          var e2 = document.getElementById('inappCopy');
+          if (e2) e2.onclick = function () { window.__inappCopy(e2); };
+        };
+        if (document.body) attach();
+        else document.addEventListener('DOMContentLoaded', attach);
+      }
+
       // 카카오톡 인앱 — 자동으로 기본 브라우저(크롬·사파리)로 내보냄 (2026-09-23)
       //   카톡 메시지의 주소는 링크 카드로 바뀌고, 누르면 카톡 인앱 브라우저로 열림.
       //   인앱에서는 마이크·음성 인식이 막혀 말하기·녹음이 전부 실패 →

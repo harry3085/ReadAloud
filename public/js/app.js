@@ -4274,20 +4274,8 @@ async function _checkMicSupport(opts = {}) {
     }
   }
 
-  // 4) 삼성 인터넷 — 차단은 아니지만 무음·멈춤이 잦음 → 세션당 1회 Chrome 권유
-  if (needSpeech && /SamsungBrowser/i.test(navigator.userAgent || '')) {
-    let warned = false;
-    try { warned = sessionStorage.getItem('_samsungSpeakWarned') === '1'; } catch (_) {}
-    if (!warned) {
-      try { sessionStorage.setItem('_samsungSpeakWarned', '1'); } catch (_) {}
-      _speakLog('warn:samsung');
-      const go = await _showSrGuideModal({
-        title: '삼성 인터넷은 말소리 인식이 자주 끊겨요',
-        detail: '말해도 인식이 안 되거나 도중에 멈출 수 있어요.\nChrome 으로 접속하면 훨씬 안정적이에요.\n\nChrome 을 열고 주소창에\nraloud.vercel.app 을 입력해 주세요. (다시 로그인 필요)',
-      }, { primary: '그냥 진행', secondary: '돌아가기' });
-      if (!go) return false;
-    }
-  }
+  // 4) 삼성 인터넷 경고 제거 (2026-10-06) — 최근 14일 완료율 95%(56/59, 12명) 로
+  //    크롬(85%, 77/91) 보다 높아 '불안정' 근거가 없었음. 12명에게 매번 뜨던 불필요한 경고.
 
   // (Web Speech 실제 작동 체크는 시간 비용 큼 — 시험 중 onerror 로 처리)
   if (needSpeech) _speakLog('enter');
@@ -5174,6 +5162,16 @@ onAuthStateChanged(auth, async (user)=>{
       if(snap.exists()){
         userProfile = {...snap.data(), uid:user.uid};
         currentUser = user;
+        // 인앱(카톡 등)에서는 사용 불가 → 기록 남긴 뒤 로그아웃 (2026-10-06)
+        //   로그아웃 먼저 하면 users 문서에 쓸 수 없어 학원장 추적이 끊김 → 기록 완료 후 signOut.
+        //   인앱 세션만 지워지고 크롬·Safari 세션은 브라우저별 저장소라 영향 없음.
+        if (window.__INAPP_BLOCK) {
+          _speakLog('block:inapp', window.__INAPP_BLOCK.kakao ? 'kakao' : 'inapp');
+          try { await _speakLogChain; } catch (_) {}
+          try { await signOut(auth); } catch (_) {}
+          currentUser = null; userProfile = null;
+          return;
+        }
         await _loadMyAcademyContext(user, snap.data());
         // 활동 시각 갱신
         localStorage.setItem('lastLoginAt', Date.now().toString());
