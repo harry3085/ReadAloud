@@ -163,35 +163,66 @@
         };
 
         var extLabel = isIOS ? 'Safari 로 열기' : '브라우저로 열기';
+        // 학원 브랜딩 — 로그인 때 저장해 둔 캐시(로그아웃해도 유지). 없으면 LexiAI 기본값.
+        //   학원별로 다른 로고·이름·색이 그대로 적용됨. 캐시 없는 첫 방문자는 LexiAI.
+        var bLogo = '', bName = '', bCp = '';
+        try {
+          bLogo = localStorage.getItem('lexiLogo192') || '';
+          bName = localStorage.getItem('lexiAppName') || '';
+          bCp   = localStorage.getItem('lexiCatchphrase') || '';
+        } catch (_) {}
+        if (!bLogo) bLogo = '/icons/icon-192.png';
+        if (!bName) bName = 'LexiAI';
+        if (!bCp)   bCp   = 'Powered by LexiAI';
+        var esc1 = function (s) {
+          return String(s).replace(/[&<>"]/g, function (c) {
+            return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;';
+          });
+        };
+        // 로그인 화면과 같은 브랜드 색 (branding-presets.js 가 이미 CSS 변수 주입)
+        var grad = 'var(--brand-login-gradient,linear-gradient(160deg,#E8714A,#D85A30))';
+        var cream = 'var(--brand-primary-bg,#FFF0E8)';
+        var noteCss = 'padding:13px 15px;border-radius:11px;font-size:13px;line-height:1.75;margin-bottom:10px;';
         var box = document.createElement('div');
         box.id = 'inappBlock';
         box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;overflow-y:auto;' +
           '-webkit-font-smoothing:antialiased;font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;';
         box.innerHTML =
-          '<div style="max-width:420px;margin:0 auto;padding:34px 22px 28px;">' +
-            '<div style="font-size:40px;text-align:center;margin-bottom:14px;">\uD83C\uDF99\uFE0F</div>' +
-            '<div style="font-size:19px;font-weight:800;text-align:center;color:#dc2626;line-height:1.45;margin-bottom:12px;">' +
-              (isKakao ? '카카오톡 안에서는<br>사용할 수 없어요' : '다른 앱 안에서는<br>사용할 수 없어요') + '</div>' +
-            '<div style="font-size:14px;color:#334155;line-height:1.75;margin-bottom:18px;">' +
-              '마이크와 음성 인식이 막혀 있어서 시험과 학습이 되지 않아요.<br>' +
-              '아래 버튼을 눌러 <b>' + (isIOS ? 'Safari' : '브라우저') + '</b>에서 열어 주세요.</div>' +
-            (isKakao
-              ? '<button id="inappExt" style="width:100%;padding:15px;margin-bottom:9px;background:#0ea5e9;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:800;cursor:pointer;">' + extLabel + '</button>'
-              : '') +
-            '<button id="inappCopy" style="width:100%;padding:13px;margin-bottom:16px;background:#f1f5f9;color:#475569;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">주소 복사</button>' +
-            '<div style="padding:12px 14px;background:#fff7ed;border-left:3px solid #fb923c;border-radius:7px;font-size:13px;color:#7c2d12;line-height:1.7;margin-bottom:12px;">' +
-              '브라우저에서는 <b>처음 한 번 로그인</b>이 필요해요.<br>아이디·비밀번호를 모르면 학원에 물어봐 주세요.</div>' +
-            (isIOS
-              ? '<div style="padding:12px 14px;background:#eff6ff;border-left:3px solid #60a5fa;border-radius:7px;font-size:13px;color:#1e3a8a;line-height:1.7;margin-bottom:12px;">' +
-                '아이폰은 <b>Safari 에서만</b> 말하기가 돼요.<br>다른 브라우저가 열리면 Safari 로 다시 열어 주세요.</div>'
-              : '') +
-            '<div id="inappFb" style="display:none;padding:12px 14px;background:#fef2f2;border-left:3px solid #f87171;border-radius:7px;font-size:13px;color:#7f1d1d;line-height:1.7;">' +
-              '열리지 않았다면 <b>[주소 복사]</b> 를 누른 뒤 ' + (isIOS ? 'Safari' : '크롬') + ' 주소창에 붙여넣어 주세요.<br>' +
-              (isIOS ? '' : '크롬이 없으면 Play 스토어에서 <b>Chrome</b> 을 설치해 주세요.') + '</div>' +
+          '<div style="max-width:460px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;">' +
+            // hero — 로그인 화면과 동일 (로고 68px / 이름 26px / 캐치프레이즈 14px)
+            '<div style="background:' + grad + ';padding:46px 32px 32px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;">' +
+              '<img id="inappLogo" src="' + esc1(bLogo) + '" alt="" style="width:68px;height:68px;border-radius:18px;object-fit:cover;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);">' +
+              '<div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.4px;">' + esc1(bName) + '</div>' +
+              '<div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;">' + esc1(bCp) + '</div>' +
+            '</div>' +
+            '<div style="padding:28px 24px 18px;flex:1;">' +
+              '<div style="font-size:38px;text-align:center;margin-bottom:12px;">\uD83C\uDF99\uFE0F</div>' +
+              '<div style="font-size:20px;font-weight:800;text-align:center;color:#dc2626;line-height:1.45;margin-bottom:12px;letter-spacing:-.3px;">' +
+                (isKakao ? '카카오톡 안에서는<br>사용할 수 없어요' : '다른 앱 안에서는<br>사용할 수 없어요') + '</div>' +
+              '<div style="font-size:14.5px;color:#334155;line-height:1.75;margin-bottom:20px;text-align:center;">' +
+                '마이크와 음성 인식이 막혀 있어서<br>시험과 학습이 되지 않아요.<br>' +
+                '아래 버튼을 눌러 <b style="color:#0f172a;">' + (isIOS ? 'Safari' : '브라우저') + '</b>에서 열어 주세요.</div>' +
+              (isKakao
+                ? '<button id="inappExt" style="width:100%;background:' + grad + ';color:#fff;border:none;border-radius:16px;padding:18px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.14);margin-bottom:10px;">' + extLabel + '</button>'
+                : '') +
+              '<button id="inappCopy" style="width:100%;background:#FFF8F5;color:#9a5b42;border:1.5px solid ' + cream + ';border-radius:16px;padding:15px;font-size:14.5px;font-weight:700;cursor:pointer;margin-bottom:20px;">주소 복사</button>' +
+              '<div style="' + noteCss + 'background:#FFF7ED;border-left:3px solid #FB923C;color:#7C2D12;">' +
+                '브라우저에서는 <b>처음 한 번 로그인</b>이 필요해요.<br>아이디·비밀번호를 모르면 학원에 물어봐 주세요.</div>' +
+              (isIOS
+                ? '<div style="' + noteCss + 'background:#EFF6FF;border-left:3px solid #60A5FA;color:#1E3A8A;">' +
+                  '아이폰은 <b>Safari 에서만</b> 말하기가 돼요.<br>다른 브라우저가 열리면 Safari 로 다시 열어 주세요.</div>'
+                : '') +
+              '<div id="inappFb" style="display:none;' + noteCss + 'background:#FEF2F2;border-left:3px solid #F87171;color:#7F1D1D;">' +
+                '열리지 않았다면 <b>[주소 복사]</b> 를 누른 뒤 ' + (isIOS ? 'Safari' : '크롬') + ' 주소창에 붙여넣어 주세요.<br>' +
+                (isIOS ? '' : '크롬이 없으면 Play 스토어에서 <b>Chrome</b> 을 설치해 주세요.') + '</div>' +
+              '<div class="version" style="text-align:center;font-size:11px;color:#cbd5e1;padding:14px 0 6px;"></div>' +
+            '</div>' +
           '</div>';
         var attach = function () {
           if (document.getElementById('inappBlock')) return;
           (document.body || document.documentElement).appendChild(box);
+          var lg = document.getElementById('inappLogo');
+          if (lg) lg.onerror = function () { this.style.display = 'none'; };
           var e1 = document.getElementById('inappExt');
           if (e1) e1.onclick = function () { window.__inappOpenExt(); };
           var e2 = document.getElementById('inappCopy');
@@ -274,7 +305,7 @@
       <div class="logo-area">
         <img class="app-icon" src="/icons/icon-192.png" alt="LexiAI" onerror="this.style.display='none'">
         <div class="logo-title">LexiAI</div>
-        <div class="logo-sub">큰소리로 말하는 영어 학습</div>
+        <div class="logo-sub">Powered by LexiAI</div>
       </div>
     </div>
     <div class="login-card">
