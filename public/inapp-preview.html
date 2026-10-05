@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>인앱 차단 화면 미리보기</title>
+<!-- 학원 색 프리셋 — 앱과 동일한 CSS 변수 주입 (default 학원 = coral) -->
+<script src="/js/branding-presets.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    background:#f1f5f9;-webkit-font-smoothing:antialiased;
+  }
+  /* 미리보기 전용 툴바 — 실제 화면에는 없음 */
+  .pv-bar{
+    position:sticky;top:0;z-index:10;background:#0f172a;color:#cbd5e1;
+    padding:10px 14px;display:flex;align-items:center;gap:8px;font-size:12px;
+  }
+  .pv-bar b{color:#fff;}
+  .pv-bar button{
+    margin-left:auto;background:#1e293b;color:#e2e8f0;border:1px solid #334155;
+    border-radius:7px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;
+  }
+  .pv-bar button.on{background:#0ea5e9;color:#fff;border-color:#0ea5e9;}
+
+  /* ── 여기부터 실제 화면과 동일 ───────────────────────────── */
+  .screen{
+    min-height:100vh;display:flex;flex-direction:column;background:#fff;
+    max-width:460px;margin:0 auto;
+  }
+  .hero{
+    background:var(--brand-login-gradient,linear-gradient(160deg,#E8714A,#D85A30));
+    padding:46px 32px 32px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;
+  }
+  .hero img{
+    width:68px;height:68px;border-radius:18px;object-fit:cover;
+    margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);
+  }
+  .hero .name{font-size:26px;font-weight:800;color:#fff;letter-spacing:-.4px;}
+  .hero .cp{font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;}
+
+  .body{padding:28px 24px 24px;flex:1;}
+  .mic{font-size:38px;text-align:center;margin-bottom:12px;}
+  .title{
+    font-size:20px;font-weight:800;text-align:center;color:#dc2626;
+    line-height:1.45;margin-bottom:12px;letter-spacing:-.3px;
+  }
+  .desc{font-size:14.5px;color:#334155;line-height:1.75;margin-bottom:20px;text-align:center;}
+  .desc b{color:#0f172a;}
+
+  .btn-main{
+    width:100%;background:var(--brand-login-gradient,linear-gradient(160deg,#E8714A,#D85A30));
+    color:#fff;border:none;border-radius:16px;padding:18px;font-size:17px;font-weight:800;
+    cursor:pointer;box-shadow:0 4px 14px rgba(232,113,74,.35);margin-bottom:10px;
+  }
+  .btn-sub{
+    width:100%;background:#FFF8F5;color:#9a5b42;
+    border:1.5px solid var(--brand-primary-bg,#FFF0E8);
+    border-radius:16px;padding:15px;font-size:14.5px;font-weight:700;cursor:pointer;margin-bottom:20px;
+  }
+  .note{
+    padding:13px 15px;border-radius:11px;font-size:13px;line-height:1.75;margin-bottom:10px;
+  }
+  .note b{font-weight:800;}
+  .note.login{background:#FFF7ED;border-left:3px solid #FB923C;color:#7C2D12;}
+  .note.ios{background:#EFF6FF;border-left:3px solid #60A5FA;color:#1E3A8A;}
+  .note.fail{background:#FEF2F2;border-left:3px solid #F87171;color:#7F1D1D;}
+  .ver{text-align:center;font-size:11px;color:#cbd5e1;padding:18px 0 10px;}
+</style>
+</head>
+<body>
+
+<div class="pv-bar">
+  <b>미리보기</b> — 실제 화면에는 이 검은 줄이 없습니다
+  <button id="tAnd" class="on" onclick="setPlat('and')">안드로이드</button>
+  <button id="tIos" onclick="setPlat('ios')">아이폰</button>
+</div>
+
+<div class="screen">
+  <div class="hero">
+    <img id="logo" src="" alt="">
+    <div class="name" id="aName">큰소리 영어</div>
+    <div class="cp" id="aCp">큰소리로 말하는 영어 학습</div>
+  </div>
+
+  <div class="body">
+    <div class="mic">🎙️</div>
+    <div class="title">카카오톡 안에서는<br>사용할 수 없어요</div>
+    <div class="desc">
+      마이크와 음성 인식이 막혀 있어서<br>시험과 학습이 되지 않아요.<br>
+      아래 버튼을 눌러 <b id="bName">브라우저</b>에서 열어 주세요.
+    </div>
+
+    <button class="btn-main" id="btnExt" onclick="fakeOpen()">브라우저로 열기</button>
+    <button class="btn-sub" id="btnCopy" onclick="fakeCopy(this)">주소 복사</button>
+
+    <div class="note login">
+      브라우저에서는 <b>처음 한 번 로그인</b>이 필요해요.<br>
+      아이디·비밀번호를 모르면 학원에 물어봐 주세요.
+    </div>
+
+    <div class="note ios" id="noteIos" style="display:none;">
+      아이폰은 <b>Safari 에서만</b> 말하기가 돼요.<br>
+      다른 브라우저가 열리면 Safari 로 다시 열어 주세요.
+    </div>
+
+    <div class="note fail" id="noteFail" style="display:none;">
+      열리지 않았다면 <b>[주소 복사]</b> 를 누른 뒤
+      <span id="failBr">크롬</span> 주소창에 붙여넣어 주세요.<br>
+      <span id="failInstall">크롬이 없으면 Play 스토어에서 <b>Chrome</b> 을 설치해 주세요.</span>
+    </div>
+
+    <div class="ver">version 8.2.1</div>
+  </div>
+</div>
+
+<script>
+  // 학원 로고·이름 — 앱이 로그인 시 저장해 둔 캐시 사용. 없으면 default 학원 값
+  var DEF_LOGO = 'https://storage.googleapis.com/readaloud-51113.firebasestorage.app/academies/default/logos/192.png?v=177810643';
+  try {
+    document.getElementById('logo').src  = localStorage.getItem('lexiLogo192') || DEF_LOGO;
+    document.getElementById('aName').textContent = localStorage.getItem('lexiAppName') || '큰소리 영어';
+    document.getElementById('aCp').textContent   = localStorage.getItem('lexiCatchphrase') || '큰소리로 말하는 영어 학습';
+  } catch (_) { document.getElementById('logo').src = DEF_LOGO; }
+  document.getElementById('logo').onerror = function () { this.style.display = 'none'; };
+
+  function setPlat(p) {
+    var ios = p === 'ios';
+    document.getElementById('tIos').className = ios ? 'on' : '';
+    document.getElementById('tAnd').className = ios ? '' : 'on';
+    document.getElementById('btnExt').textContent = ios ? 'Safari 로 열기' : '브라우저로 열기';
+    document.getElementById('bName').textContent  = ios ? 'Safari' : '브라우저';
+    document.getElementById('noteIos').style.display = ios ? '' : 'none';
+    document.getElementById('failBr').textContent = ios ? 'Safari' : '크롬';
+    document.getElementById('failInstall').style.display = ios ? 'none' : '';
+  }
+  // 미리보기용 — 실제로는 브라우저 전환, 2.5초 무반응 시 아래 빨간 안내가 뜸
+  function fakeOpen() { document.getElementById('noteFail').style.display = ''; }
+  function fakeCopy(btn) {
+    try { navigator.clipboard && navigator.clipboard.writeText(location.origin); } catch (_) {}
+    btn.textContent = '주소가 복사됐어요';
+  }
+</script>
+</body>
+</html>
