@@ -76,7 +76,6 @@
   <b>미리보기</b> — 실제 화면에는 이 검은 줄이 없습니다
   <button id="tAnd" class="on" onclick="setPlat('and')">안드로이드</button>
   <button id="tIos" onclick="setPlat('ios')">아이폰</button>
-  <button id="tNew" onclick="setBrand('new')">캐시 없음</button>
 </div>
 
 <div class="screen">
@@ -119,23 +118,12 @@
 
 <script>
   // 학원 로고·이름 — 앱이 로그인 시 저장해 둔 캐시 사용. 없으면 default 학원 값
-  var DEF_LOGO = 'https://storage.googleapis.com/readaloud-51113.firebasestorage.app/academies/default/logos/192.png?v=177810643';
-  try {
-    document.getElementById('logo').src  = localStorage.getItem('lexiLogo192') || DEF_LOGO;
-    document.getElementById('aName').textContent = localStorage.getItem('lexiAppName') || '큰소리 영어';
-    document.getElementById('aCp').textContent   = localStorage.getItem('lexiCatchphrase') || '큰소리로 말하는 영어 학습';
-  } catch (_) { document.getElementById('logo').src = DEF_LOGO; }
+  // 학원 캐시 안 씀 — 실제 화면과 동일하게 LexiAI 기본값 고정
+  document.getElementById('logo').src = '/icons/icon-192.png';
+  document.getElementById('aName').textContent = 'LexiAI';
+  document.getElementById('aCp').textContent = 'Powered by LexiAI';
   document.getElementById('logo').onerror = function () { this.style.display = 'none'; };
 
-  // 브랜딩 상태 토글 — 학원 캐시 있음(기존 학생) / 없음(신규 학생 = LexiAI 기본값)
-  function setBrand(m) {
-    var neu = m === 'new';
-    document.getElementById('tNew').className = neu ? 'on' : '';
-    document.getElementById('logo').style.display = '';
-    document.getElementById('logo').src = neu ? '/icons/icon-192.png' : (localStorage.getItem('lexiLogo192') || DEF_LOGO);
-    document.getElementById('aName').textContent = neu ? 'LexiAI' : (localStorage.getItem('lexiAppName') || '큰소리 영어');
-    document.getElementById('aCp').textContent   = neu ? 'Powered by LexiAI' : (localStorage.getItem('lexiCatchphrase') || '큰소리로 말하는 영어 학습');
-  }
   function setPlat(p) {
     var ios = p === 'ios';
     document.getElementById('tIos').className = ios ? 'on' : '';

@@ -163,25 +163,17 @@
         };
 
         var extLabel = isIOS ? 'Safari 로 열기' : '브라우저로 열기';
-        // 학원 브랜딩 — 로그인 때 저장해 둔 캐시(로그아웃해도 유지). 없으면 LexiAI 기본값.
-        //   학원별로 다른 로고·이름·색이 그대로 적용됨. 캐시 없는 첫 방문자는 LexiAI.
-        var bLogo = '', bName = '', bCp = '';
-        try {
-          bLogo = localStorage.getItem('lexiLogo192') || '';
-          bName = localStorage.getItem('lexiAppName') || '';
-          bCp   = localStorage.getItem('lexiCatchphrase') || '';
-        } catch (_) {}
-        if (!bLogo) bLogo = '/icons/icon-192.png';
-        if (!bName) bName = 'LexiAI';
-        if (!bCp)   bCp   = 'Powered by LexiAI';
-        var esc1 = function (s) {
-          return String(s).replace(/[&<>"]/g, function (c) {
-            return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;';
-          });
-        };
-        // 로그인 화면과 같은 브랜드 색 (branding-presets.js 가 이미 CSS 변수 주입)
-        var grad = 'var(--brand-login-gradient,linear-gradient(160deg,#E8714A,#D85A30))';
-        var cream = 'var(--brand-primary-bg,#FFF0E8)';
+        // 브랜딩 — 학원 캐시를 쓰지 않고 LexiAI 기본값으로 통일 (2026-10-06 결정)
+        //   ① 한 번 보고 지나가는 안내 화면이라 학원 로고의 가치가 낮다
+        //   ② 신규 학생은 어차피 캐시가 없다
+        //   ③ 캐시는 브라우저마다 따로여서, 크롬에서 로그인한 학생의 인앱에는 캐시가 없다
+        //      (학원장 폰 확인: 문성미 접속은 전부 크롬 → 인앱엔 캐시 0)
+        //   → 캐시 유무로 화면이 갈리는 복잡함을 없애고 모두 같은 화면을 본다
+        var bLogo = '/icons/icon-192.png';
+        var bName = 'LexiAI';
+        var bCp = 'Powered by LexiAI';
+        var grad = 'linear-gradient(160deg,#E8714A,#D85A30)';
+        var cream = '#FFF0E8';
         var noteCss = 'padding:13px 15px;border-radius:11px;font-size:13px;line-height:1.75;margin-bottom:10px;';
         var box = document.createElement('div');
         box.id = 'inappBlock';
@@ -191,9 +183,9 @@
           '<div style="max-width:460px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;">' +
             // hero — 로그인 화면과 동일 (로고 68px / 이름 26px / 캐치프레이즈 14px)
             '<div style="background:' + grad + ';padding:46px 32px 32px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;">' +
-              '<img id="inappLogo" src="' + esc1(bLogo) + '" alt="" style="width:68px;height:68px;border-radius:18px;object-fit:cover;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);">' +
-              '<div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.4px;">' + esc1(bName) + '</div>' +
-              '<div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;">' + esc1(bCp) + '</div>' +
+              '<img id="inappLogo" src="' + bLogo + '" alt="" style="width:68px;height:68px;border-radius:18px;object-fit:cover;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.18);">' +
+              '<div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.4px;">' + bName + '</div>' +
+              '<div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;">' + bCp + '</div>' +
             '</div>' +
             '<div style="padding:28px 24px 18px;flex:1;">' +
               '<div style="font-size:38px;text-align:center;margin-bottom:12px;">\uD83C\uDF99\uFE0F</div>' +
