@@ -10012,12 +10012,44 @@ const _CLEANUP_DEFAULT_PRESETS = [
     prompt: `이 본문은 영어 단어장입니다.
 각 항목을 "영단어[Tab]한글해석" 형식의 한 줄로 정리하세요.
 
+【⚠ 절대 순서 규칙 - 최우선】
+각 줄은 반드시 이 순서:
+  [첫 컬럼] 영단어 (알파벳) → Tab 문자(\\t) → [둘째 컬럼] 한글 해석
+
+원본 이미지에서 한글이 왼쪽·영단어가 오른쪽에 배치되어 있어도
+출력은 반드시 영단어를 왼쪽(첫 컬럼)에 배치하세요.
+원본 컬럼 순서를 그대로 따르지 마세요. 항상 영단어 먼저.
+
+❌ 잘못된 예 (순서 뒤집힘 - 절대 X):
+   세련된, 멋진	stylish
+   어울리다	match
+   ~으로 나오다	come in
+
+✅ 올바른 예:
+   stylish	세련된, 멋진
+   match	어울리다
+   come in	~으로 나오다
+
+
+【원문 충실 규칙 - 최우선】
+- 원문(인쇄된 단어-뜻 목록)에 있는 항목만 출력. 원문에 없는 영단어는 절대 새로 만들지 말 것
+  (유의어·동의어·원형·관련 단어로 바꾸거나 추가 금지. 예: 원문이 "selection – 전시품" 이면 그대로 selection / 전시품. exhibit 를 만들어내지 말 것)
+- 영단어 철자와 한글 뜻은 원문 그대로. 한 항목의 뜻을 다른 영단어 줄로 옮기거나 쪼개지 말 것
+  (예: "attend to – ~를 응대하다, 돌보다" 는 한 줄. "take care of – 돌보다" 를 따로 만들지 말 것)
+- 원문 항목은 하나도 빠뜨리지 말 것. 임의로 일부만 고르지 말 것. 원문 순서 유지
+- 손글씨·필기 메모·여백 낙서·동그라미 친 번호·체크박스는 단어가 아니므로 무시 (인쇄된 글자만 사용)
+- 같은 영단어가 두 번 나오면 한 번만 출력
+- 괄호는 짝을 맞춰 원문 그대로 유지 (예: "(사람, 몸 등이) 마른, 가는", "(시간을) 보내다, 쓰다")
+- 한 항목의 뜻이 여러 줄에 걸쳐 있으면 합쳐서 한 줄에 (예: "더 이상 못 참다, 지긋지긋하다")
+- 출력 전에 점검: 출력한 영단어가 모두 원문에 있는가 / 원문 항목 수와 같은가
+
 규칙:
 1. 각 줄: 영단어 → Tab 문자(\\t) → 한글 해석 → 줄바꿈
-2. 주요단어로 선정
+2. 원문에 있는 모든 단어를 빠짐없이 포함 (임의 선별·생략 금지)
 3. 번호·불릿·점선·장식 기호·자리표시 기호 모두 제거:
+   - 자리표시·생략 기호: "…", "..."(말줄임표), "A/B", "sth", "sb"
+   - 단, "~"(틸드)는 생략하지 말것
    - 장식 기호: "1.", "①", "•", ">", 점선
-   - 자리표시·생략 기호: "~"(틸드), "…", "..."(말줄임표), "A/B", "sth", "sb"
    - 영단어 칸과 한글 해석 칸 양쪽 모두에서 반드시 제거
    - 자리표시 기호 자리는 자연스럽게 다듬어 실제 단어/뜻만 남김
    예시:
@@ -10220,8 +10252,34 @@ window.genCleanupActivePage = async () => {
   }
 };
 
+// 단어장 형식(영단어[Tab]뜻) 결과 검증 — AI 가 원문에 없는 단어를 만들거나 중복을 낸 경우 경고
+function _cleanupVocabCheck(original, cleaned) {
+  const lines = String(cleaned || '').split('\n').filter(l => l.trim());
+  const tabLines = lines.filter(l => l.includes('\t'));
+  if (lines.length < 3 || tabLines.length < lines.length * 0.6) return null; // 단어장 형식 아님
+  const tok = s => (String(s).toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || []);
+  const origSet = new Set(tok(original));
+  const unknown = [], seen = new Set(), dups = [];
+  tabLines.forEach(l => {
+    const en = l.split('\t')[0].trim();
+    const missing = tok(en).filter(w => !origSet.has(w));
+    if (missing.length) unknown.push(en);
+    const key = en.toLowerCase().replace(/\s+/g, ' ');
+    if (seen.has(key)) dups.push(en); else seen.add(key);
+  });
+  if (!unknown.length && !dups.length) return null;
+  return { unknown, dups, total: tabLines.length };
+}
+
 // ─── 비교 모달 (좌 원본 / 우 AI 결과 → 적용/취소) ───
 function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetName, model) {
+  const chk = _cleanupVocabCheck(original, cleaned);
+  const warnHtml = chk ? `
+    <div style="margin:12px 22px 0;padding:9px 12px;border:1px solid #f59e0b;background:#fffbeb;border-radius:6px;font-size:12px;line-height:1.6;color:#92400e;">
+      <b>⚠ 확인 필요</b> (결과 ${chk.total}줄)
+      ${chk.unknown.length ? `<div>원문에 없는 단어: ${chk.unknown.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>` : ''}
+      ${chk.dups.length ? `<div>중복 단어: ${chk.dups.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>` : ''}
+    </div>` : '';
   const html = `
   <div style="width:min(1100px,95vw);max-height:88vh;display:flex;flex-direction:column;">
     <div data-drag-handle style="padding:18px 22px;border-bottom:1px solid var(--border);" title="헤더를 마우스로 드래그하여 이동">
@@ -10229,7 +10287,7 @@ function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetNa
       <div style="font-size:12px;color:var(--gray);margin-top:5px;">
         ${esc(pageTitle)} · 프리셋: ${esc(presetName)} · 모델: <code>${esc(model||'')}</code>
       </div>
-    </div>
+    </div>${warnHtml}
     <div style="flex:1;display:flex;gap:10px;padding:16px 22px;overflow:hidden;">
       <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
         <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:6px;">원본</div>
