@@ -68,6 +68,7 @@
 | super 앱 사용량 모니터링 정비 | 베타 후 SuperAdmin Phase B T10 묶음 | `project_super_usage_monitoring_revamp` |
 | 학생 랭킹 빈 상태 | scores Rules 가 isOwner 만 허용 → server API 로 해결 권장 | `project_ranking_visibility` |
 | Gemini 진단봇 (학원장앱 채팅) | Phase 5 후 검토 | `project_gemini_diagnosis_bot` |
+| **AI OCR 정리 후속 보완** (괄호 짝 경고 · 마침표→쉼표 규칙 · Vision 대신 Gemini 이미지 OCR) | 학원장이 "필요하다"고 할 때. 괄호 경고(코드)·마침표 규칙(프롬프트)은 작음 / Gemini OCR 은 저해상도 이미지 한글 누락이 반복될 때 검토 | `project_ai_ocr_cleanup_pipeline` |
 | **Gemini 파라미터 폐기 대응** (thinkingBudget·temperature·topP → thinking_level) | **새 Gemini 모델을 폴백 체인에 넣을 때** (현 모델은 영향 없음). api 6파일 + 스크립트 일괄, 공용 헬퍼화 | `project_gemini_param_deprecation` |
 
 ---
@@ -90,6 +91,7 @@
 
 | 시기 | 내용 |
 |---|---|
+| 2026-10-07 | AI OCR·정리 단어장 정비 — Vision 언어 힌트 ko,en(한글 뜻 누락 해소) · Snapshot 프롬프트 v1~v7(원문 충실·유형 A/B·발음기호/품사 제거·뜻 칸 규칙·~ 유지) · 정리 결과 후처리(없는 단어/중복 제거·복원, 누락·뜻 없음 경고) · 손글씨 촬영 안내 |
 | 2026-10-06 | 카톡 인앱 전면 차단 + 자동 로그아웃 · 차단 화면 앱 양식 · 삼성 인터넷 경고 제거(완료율 95%로 근거 없음) |
 | 2026-10-01 | Firestore 전송량 1차 — 응시 이력 전체 수신 제거, 약 88% 절감 |
 | 2026-09 | 단어 학습(vocab-practice) · 문장시험 청크 학습 · 듣고 선택하기 신규 유형 / iOS 음성 안정화 / 말하기 기기 기록(speakLog) |
