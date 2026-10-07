@@ -88,8 +88,11 @@ module.exports = async function handler(req, res) {
 
     const client = new vision.ImageAnnotatorClient({ credentials });
 
+    // 언어 힌트(ko,en): 영어 단어장의 작은 한글 뜻(품사 아이콘 옆)이 통째로 누락되던 문제 방지
+    // (2026-10-07 실측: 힌트 없음 → 한글 뜻 대부분 미인식 / ko,en → 거의 전부 인식. 영어 위주 페이지는 결과 거의 동일)
     const [result] = await client.documentTextDetection({
       image: { content: imageBase64 },
+      imageContext: { languageHints: ['ko', 'en'] },
     });
 
     const full = result.fullTextAnnotation;
