@@ -10271,34 +10271,104 @@ window.genCleanupActivePage = async () => {
   }
 };
 
-// 단어장 형식(영단어[Tab]뜻) 결과 검증 — AI 가 원문에 없는 단어를 만들거나 중복을 낸 경우 경고
-function _cleanupVocabCheck(original, cleaned) {
-  const lines = String(cleaned || '').split('\n').filter(l => l.trim());
-  const tabLines = lines.filter(l => l.includes('\t'));
-  if (lines.length < 3 || tabLines.length < lines.length * 0.6) return null; // 단어장 형식 아님
-  const tok = s => (String(s).toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || []);
-  const origSet = new Set(tok(original));
-  const unknown = [], seen = new Set(), dups = [];
-  tabLines.forEach(l => {
-    const en = l.split('\t')[0].trim();
-    const missing = tok(en).filter(w => !origSet.has(w));
-    if (missing.length) unknown.push(en);
-    const key = en.toLowerCase().replace(/\s+/g, ' ');
-    if (seen.has(key)) dups.push(en); else seen.add(key);
-  });
-  if (!unknown.length && !dups.length) return null;
-  return { unknown, dups, total: tabLines.length };
+// 단어장 형식(영단어[Tab]뜻) 결과 후처리 — AI 가 규칙을 무시해도 남는 문제를 코드로 방어
+//  - 원문에 없는 영단어 줄 / 중복 줄은 자동 제거 (removed 에 보관 → 모달에서 복원 가능)
+//  - 철자가 원문과 비슷하게 바뀐 줄(accidentally→accidental)은 삭제하지 않고 경고만
+//  - OCR 원문의 '□ 번호 + 영단어' 중 결과에 없는 항목은 누락 의심으로 경고
+function _cleanupEditDist(a, b) {
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
 }
+function _cleanupPostProcess(original, cleaned) {
+  const text0 = String(cleaned || '');
+  const lines = text0.split('\n');
+  const nonEmpty = lines.filter(l => l.trim());
+  const tabCount = nonEmpty.filter(l => l.includes('\t')).length;
+  if (nonEmpty.length < 3 || tabCount < nonEmpty.length * 0.6) {
+    return { isVocab: false, text: text0, removed: [], altered: [], missing: [] }; // 단어장 형식 아님
+  }
+  const tok = s => (String(s).toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || []);
+  const origTokens = [...new Set(tok(original))];
+  const origSet = new Set(origTokens);
+  const isSimilar = w => w.length >= 4 && origTokens.some(t =>
+    t !== w && ((t.length >= 4 && (t.startsWith(w) || w.startsWith(t))) || (w.length >= 5 && _cleanupEditDist(w, t) <= 2)));
+  const keep = [], removed = [], altered = [], seen = new Set();
+  lines.forEach(l => {
+    if (!l.trim() || !l.includes('\t')) { keep.push(l); return; }
+    const en = l.split('\t')[0].trim();
+    const unknown = tok(en).filter(w => !origSet.has(w));
+    if (unknown.length) {
+      if (unknown.every(isSimilar)) altered.push(en);   // 철자만 바뀐 것으로 보임 → 경고만
+      else { removed.push({ line: l, en, reason: '원문에 없는 단어' }); return; }
+    }
+    const key = en.toLowerCase().replace(/[\s~]+/g, ' ').trim();
+    if (key && seen.has(key)) { removed.push({ line: l, en, reason: '중복' }); return; }
+    seen.add(key);
+    keep.push(l);
+  });
+  const outTokSet = new Set(tok(keep.join('\n').split('\n').map(l => l.split('\t')[0]).join(' ')));
+  const missing = [], seenNo = new Set();
+  // 체크박스(□) 가 붙은 번호의 최댓값 + 여유 → 그보다 큰 번호는 OCR 쓰레기로 간주
+  let maxBoxNo = 0;
+  String(original || '').split('\n').forEach(line => {
+    const bm = line.match(/[□☐]\s*(\d{1,3})\s+[A-Za-z]/);
+    if (bm) maxBoxNo = Math.max(maxBoxNo, +bm[1]);
+  });
+  const noLimit = maxBoxNo ? maxBoxNo + 3 : 200;
+  String(original || '').split('\n').forEach(line => {
+    const m = line.match(/(?:^|\s)[□☐]?\s*(\d{1,3})\s+([A-Za-z][A-Za-z'~.\- ]*)/);
+    if (!m) return;
+    const no = +m[1];
+    if (no < 1 || no > noLimit || seenNo.has(no)) return;
+    const words = tok(m[2]).slice(0, 3).filter(w => w.length >= 3);
+    if (!words.length) return;
+    seenNo.add(no);
+    if (!words.some(w => outTokSet.has(w))) missing.push({ no, word: m[2].trim() });
+  });
+  missing.sort((a, b) => a.no - b.no);
+  return { isVocab: true, text: keep.join('\n'), removed, altered, missing };
+}
+
+let _cleanupRemovedRef = [];   // 현재 모달에 표시 중인 자동 제거 목록 (복원 버튼용)
+function _cleanupPPBanner(pp) {
+  if (!pp || !pp.isVocab || (!pp.removed.length && !pp.altered.length && !pp.missing.length)) return '';
+  _cleanupRemovedRef = pp.removed;
+  const rows = [];
+  if (pp.removed.length) {
+    rows.push(`<div><b>자동 제거 ${pp.removed.length}건</b> (복원 가능):
+      ${pp.removed.map((r, i) => r.restored ? '' : `<span style="display:inline-block;margin:2px 6px 2px 0;padding:1px 6px;background:#fff;border:1px solid #fcd34d;border-radius:10px;">
+        <b>${esc(r.en)}</b> <span style="color:#a16207;">${esc(r.reason)}</span>
+        <a href="javascript:void(0)" onclick="cleanupRestoreLine(${i}, this)" style="color:var(--teal);margin-left:3px;">복원</a></span>`).join('')}</div>`);
+  }
+  if (pp.altered.length) rows.push(`<div>철자 변경 의심 (원문과 비교하세요): ${pp.altered.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>`);
+  if (pp.missing.length) rows.push(`<div>누락 의심 (원문에는 있는데 결과에 없음): ${pp.missing.map(m => `<b>${m.no}. ${esc(m.word)}</b>`).join(', ')}</div>`);
+  return `<div style="margin:12px 22px 0;padding:9px 12px;border:1px solid #f59e0b;background:#fffbeb;border-radius:6px;font-size:12px;line-height:1.7;color:#92400e;">
+    <b>확인 필요</b>${rows.join('')}</div>`;
+}
+window.cleanupRestoreLine = (i, el) => {
+  const r = _cleanupRemovedRef[i];
+  if (!r || r.restored) return;
+  const ta = document.getElementById('cleanupCompareEdit') || document.getElementById('cleanupBatchEdit');
+  if (!ta) return;
+  ta.value = ta.value.replace(/\n+$/, '') + '\n' + r.line;
+  r.restored = true;
+  const chip = el?.parentElement;
+  if (chip) chip.remove();
+};
 
 // ─── 비교 모달 (좌 원본 / 우 AI 결과 → 적용/취소) ───
 function _cleanupShowCompareModal(original, cleaned, pageId, pageTitle, presetName, model) {
-  const chk = _cleanupVocabCheck(original, cleaned);
-  const warnHtml = chk ? `
-    <div style="margin:12px 22px 0;padding:9px 12px;border:1px solid #f59e0b;background:#fffbeb;border-radius:6px;font-size:12px;line-height:1.6;color:#92400e;">
-      <b>⚠ 확인 필요</b> (결과 ${chk.total}줄)
-      ${chk.unknown.length ? `<div>원문에 없는 단어: ${chk.unknown.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>` : ''}
-      ${chk.dups.length ? `<div>중복 단어: ${chk.dups.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>` : ''}
-    </div>` : '';
+  const pp = _cleanupPostProcess(original, cleaned);
+  cleaned = pp.text;
+  const warnHtml = _cleanupPPBanner(pp);
   const html = `
   <div style="width:min(1100px,95vw);max-height:88vh;display:flex;flex-direction:column;">
     <div data-drag-handle style="padding:18px 22px;border-bottom:1px solid var(--border);" title="헤더를 마우스로 드래그하여 이동">
@@ -10408,9 +10478,10 @@ window.genCleanupBatch = async () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const pp = _cleanupPostProcess(p.text, data.cleaned);
         _cleanupBatchResults.push({
           pageId: p.id, title: p.title||('Page '+p.serialNumber),
-          original: p.text, cleaned: data.cleaned,
+          original: p.text, cleaned: pp.text, pp,
           applied: false, skipped: false, error: null,
         });
       } else {
@@ -10481,7 +10552,7 @@ function _cleanupRenderBatchResult(presetName) {
            <div style="color:var(--gray);margin-top:8px;font-size:12px;">${esc(cur.error)}</div>
          </div>
        </div>`
-    : `<div style="flex:1;display:flex;gap:10px;padding:16px 22px;overflow:hidden;">
+    : `${(cur.applied || cur.skipped) ? '' : _cleanupPPBanner(cur.pp)}<div style="flex:1;display:flex;gap:10px;padding:16px 22px;overflow:hidden;">
          <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
            <div style="font-size:12px;font-weight:600;color:var(--gray);margin-bottom:6px;">원본</div>
            <textarea readonly style="flex:1;min-height:40vh;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;background:#fafafa;resize:none;">${esc(cur.original)}</textarea>
