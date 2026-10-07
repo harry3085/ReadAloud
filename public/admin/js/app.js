@@ -10086,7 +10086,12 @@ const _CLEANUP_DEFAULT_PRESETS = [
      원문 "acronym [ækrənim]" → 영단어 "acronym"
      원문 "attract [atrekt] 동 끌어당기다, 매력이 있다" → "attract[Tab]끌어당기다, 매력이 있다"
      원문 "everyday [évridèi] 형 매일의" → "everyday[Tab]매일의"
-   발음기호만 있고 한글 뜻이 없는 단어는 뜻 칸을 비워 둠 (발음기호를 뜻으로 쓰지 말 것)
+   (뜻 칸 규칙) 뜻 칸에는 한글 뜻만 쓸 것. 원문에서 한글 뜻을 찾을 수 없는 단어는
+   "영단어[Tab]" 처럼 Tab 뒤를 완전히 비워 둘 것.
+   - 영단어를 뜻 칸에 다시 쓰지 말 것 (잘못된 예: "blame[Tab]blame")
+   - 발음기호·숫자·알파벳·기호(~, (), 77, H 등)를 뜻으로 쓰지 말 것
+   - 뜻을 추측해서 새로 만들지 말 것 (원문에 없는 한글 뜻 생성 금지)
+   올바른 예: "acronym[Tab]" (뜻 없음) / "attract[Tab]끌어당기다, 매력이 있다" (뜻 있음)
 9. 품사 표기 제거: 뜻 앞뒤에 붙은 품사 표시는 출력하지 말 것. 출력은 오직 "영단어[Tab]한글 뜻" 뿐
    - 한글 약식: 동, 형, 명, 부, 전, 접, 대, 감 (예: "동 끌어당기다" → "끌어당기다")
    - 괄호·점 표기: (동), [명], (v.), n., adj., adv., prep., conj., pron., 자동, 타동
@@ -10313,9 +10318,16 @@ function _cleanupPostProcess(original, cleaned) {
   const origSet = new Set(origTokens);
   const isSimilar = w => w.length >= 4 && origTokens.some(t =>
     t !== w && ((t.length >= 4 && (t.startsWith(w) || w.startsWith(t))) || (w.length >= 5 && _cleanupEditDist(w, t) <= 2)));
-  const keep = [], removed = [], altered = [], seen = new Set();
-  lines.forEach(l => {
+  const keep = [], removed = [], altered = [], seen = new Set(), cleared = [];
+  const normW = s => String(s).toLowerCase().replace(/[^a-z가-힣0-9]/g, '');
+  lines.forEach(l0 => {
+    let l = l0;
     if (!l.trim() || !l.includes('\t')) { keep.push(l); return; }
+    const parts0 = l.split('\t');
+    const en0 = parts0[0].trim();
+    const mean0 = parts0.slice(1).join('\t').trim();
+    // 뜻 칸에 영단어를 그대로 반복한 줄(acronym\tacronym) → 뜻 칸 비움
+    if (mean0 && normW(mean0) === normW(en0)) { l = en0 + '\t'; cleared.push(en0); }
     const en = l.split('\t')[0].trim();
     const unknown = tok(en).filter(w => !origSet.has(w));
     if (unknown.length) {
@@ -10323,10 +10335,15 @@ function _cleanupPostProcess(original, cleaned) {
       else { removed.push({ line: l, en, reason: '원문에 없는 단어' }); return; }
     }
     const key = en.toLowerCase().replace(/[\s~]+/g, ' ').trim();
-    if (key && seen.has(key)) { removed.push({ line: l, en, reason: '중복' }); return; }
+    if (key && seen.has(key)) { removed.push({ line: l0, en, reason: '중복' }); return; }
     seen.add(key);
     keep.push(l);
   });
+  // 뜻 칸에 한글이 없는 줄 (OCR 이 뜻을 못 읽은 경우) — 한글 뜻 단어장일 때만 경고
+  const keptTab = keep.filter(l => l.includes('\t'));
+  const hasKo = l => /[가-힣]/.test(l.split('\t').slice(1).join(' '));
+  const noMeaning = (keptTab.filter(hasKo).length >= keptTab.length * 0.3)
+    ? keptTab.filter(l => !hasKo(l)).map(l => l.split('\t')[0].trim()) : [];
   const outTokSet = new Set(tok(keep.join('\n').split('\n').map(l => l.split('\t')[0]).join(' ')));
   const missing = [], seenNo = new Set();
   // 체크박스(□) 가 붙은 번호의 최댓값 + 여유 → 그보다 큰 번호는 OCR 쓰레기로 간주
@@ -10336,6 +10353,7 @@ function _cleanupPostProcess(original, cleaned) {
     if (bm) maxBoxNo = Math.max(maxBoxNo, +bm[1]);
   });
   const noLimit = maxBoxNo ? maxBoxNo + 3 : 200;
+  const cands = [];
   String(original || '').split('\n').forEach(line => {
     const m = line.match(/(?:^|\s)[□☐]?\s*(\d{1,3})\s+([A-Za-z][A-Za-z'~.\- ]*)/);
     if (!m) return;
@@ -10344,15 +10362,19 @@ function _cleanupPostProcess(original, cleaned) {
     const words = tok(m[2]).slice(0, 3).filter(w => w.length >= 3);
     if (!words.length) return;
     seenNo.add(no);
-    if (!words.some(w => outTokSet.has(w))) missing.push({ no, word: m[2].trim() });
+    cands.push({ no, word: m[2].trim(), words });
   });
+  // 번호 목록으로 볼 수 있을 때(후보 8개 이상)만 누락 판정 — 'Page 6 Words' 같은 우연한 매칭 배제
+  if (cands.length >= 8) {
+    cands.forEach(c => { if (!c.words.some(w => outTokSet.has(w))) missing.push({ no: c.no, word: c.word }); });
+  }
   missing.sort((a, b) => a.no - b.no);
-  return { isVocab: true, text: keep.join('\n'), removed, altered, missing };
+  return { isVocab: true, text: keep.join('\n'), removed, altered, missing, cleared, noMeaning };
 }
 
 let _cleanupRemovedRef = [];   // 현재 모달에 표시 중인 자동 제거 목록 (복원 버튼용)
 function _cleanupPPBanner(pp) {
-  if (!pp || !pp.isVocab || (!pp.removed.length && !pp.altered.length && !pp.missing.length)) return '';
+  if (!pp || !pp.isVocab || (!pp.removed.length && !pp.altered.length && !pp.missing.length && !(pp.noMeaning || []).length)) return '';
   _cleanupRemovedRef = pp.removed;
   const rows = [];
   if (pp.removed.length) {
@@ -10362,6 +10384,10 @@ function _cleanupPPBanner(pp) {
         <a href="javascript:void(0)" onclick="cleanupRestoreLine(${i}, this)" style="color:var(--teal);margin-left:3px;">복원</a></span>`).join('')}</div>`);
   }
   if (pp.altered.length) rows.push(`<div>철자 변경 의심 (원문과 비교하세요): ${pp.altered.map(w => `<b>${esc(w)}</b>`).join(', ')}</div>`);
+  if ((pp.noMeaning || []).length) {
+    const nm = pp.noMeaning;
+    rows.push(`<div><b>한글 뜻 없음 ${nm.length}개</b> (원문 OCR 에서 뜻을 읽지 못함 — 직접 입력 필요): ${nm.slice(0, 40).map(w => `<b>${esc(w)}</b>`).join(', ')}${nm.length > 40 ? ' …' : ''}</div>`);
+  }
   if (pp.missing.length) rows.push(`<div>누락 의심 (원문에는 있는데 결과에 없음): ${pp.missing.map(m => `<b>${m.no}. ${esc(m.word)}</b>`).join(', ')}</div>`);
   return `<div style="margin:12px 22px 0;padding:9px 12px;border:1px solid #f59e0b;background:#fffbeb;border-radius:6px;font-size:12px;line-height:1.7;color:#92400e;">
     <b>확인 필요</b>${rows.join('')}</div>`;
