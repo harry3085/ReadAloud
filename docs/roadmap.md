@@ -1,6 +1,6 @@
 # 큰소리 영어 (ReadAloudApp) — 진행 계획
 
-> 최종 갱신 **2026-10-06**
+> 최종 갱신 **2026-10-07**
 >
 > 흩어져 있던 보류 작업을 한곳에 모은 문서. 각 항목은 **트리거**(언제 착수할지)를 갖는다.
 > 날짜로 밀어붙이지 않고 조건이 충족될 때 꺼내 쓴다.
@@ -68,6 +68,7 @@
 | super 앱 사용량 모니터링 정비 | 베타 후 SuperAdmin Phase B T10 묶음 | `project_super_usage_monitoring_revamp` |
 | 학생 랭킹 빈 상태 | scores Rules 가 isOwner 만 허용 → server API 로 해결 권장 | `project_ranking_visibility` |
 | Gemini 진단봇 (학원장앱 채팅) | Phase 5 후 검토 | `project_gemini_diagnosis_bot` |
+| **Gemini 파라미터 폐기 대응** (thinkingBudget·temperature·topP → thinking_level) | **새 Gemini 모델을 폴백 체인에 넣을 때** (현 모델은 영향 없음). api 6파일 + 스크립트 일괄, 공용 헬퍼화 | `project_gemini_param_deprecation` |
 
 ---
 
