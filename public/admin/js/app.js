@@ -8453,6 +8453,22 @@ async function _syncCurrentMonthBilling(studentUid, newPlan, newName) {
         }
       }
 
+      // 활성 + 금액 > 0 인데 이번 달 청구서에 수강료 항목이 아예 없으면 추가
+      // (앱사용료·교재만 먼저 만들어진 청구서에 수강료가 반영되도록)
+      if (newPlan.active && newAmount > 0 && !items.some(it => it.type === 'tuition')) {
+        items.unshift({
+          itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+          type: 'tuition',
+          label: `${mm}월 수강료`,
+          amount: newAmount,
+          channel: 'tuition',
+          paid: false, paidAt: null, paidVia: '', memo: '',
+          addedAt: Date.now(),
+          addedBy: 'system',
+        });
+        changed = true;
+      }
+
       // 비활성/금액 0 → 자동 항목 제거 (다른 항목 있으면 그것만 남김)
       if (!newPlan.active || newAmount <= 0) {
         const before = items.length;
@@ -8483,7 +8499,10 @@ async function _syncCurrentMonthBilling(studentUid, newPlan, newName) {
         changed = true;
       }
 
-      if (changed) await updateDoc(billingDoc.ref, update);
+      if (changed) {
+        await updateDoc(billingDoc.ref, update);
+        if (typeof _billingInvalidateCache === 'function') _billingInvalidateCache(ym);
+      }
     }
   } catch (e) { console.warn('[syncCurrentMonthBilling]', e.message); }
 }
