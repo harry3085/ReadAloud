@@ -4044,6 +4044,31 @@ async function _ensureCurrentMonthBillings() {
       const appFeeAmountFinal = isFinite(perStudentAppFee) && perStudentAppFee >= 0 ? perStudentAppFee : academyAppFee;
 
       if (existing) {
+        // 앱사용료만 자동 생성된 billing 에 수강료가 빠져 있으면 보충
+        // (앱사용료 먼저 생성된 뒤 학생의 자동청구가 켜진 경우). 학원장이 수동 편집한 billing 은 건드리지 않음.
+        const exItems = existing.data.items || [];
+        const tuitionAmt = parseInt(s.tuitionPlan?.amount) || 0;
+        const appOnlyAuto = exItems.length > 0 && exItems.every(i => i.type === 'app' && i.addedBy === 'system');
+        if (s.tuitionPlan?.active && tuitionAmt > 0 && appOnlyAuto) {
+          const tuitionItem = {
+            itemId: crypto.randomUUID ? crypto.randomUUID() : 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+            type: 'tuition',
+            label: `${monthNum}월 수강료`,
+            amount: tuitionAmt,
+            channel: 'tuition',
+            paid: false, paidAt: null, paidVia: '', memo: '',
+            addedAt: Date.now(),
+            addedBy: 'system',
+          };
+          const withTuition = [tuitionItem, ...exItems];
+          await updateDoc(doc(db, 'billings', existing.id), {
+            items: withTuition,
+            totalAmount: withTuition.reduce((sum, i) => sum + (parseInt(i.amount) || 0), 0),
+            updatedAt: serverTimestamp(),
+          });
+          existing.data.items = withTuition;
+          appFeeAdded++;
+        }
         // 이미 있는 billing — app 항목이 아직 없고 청구 필요 시 append
         if (needAppFee && appFeeAmountFinal > 0) {
           const items = (existing.data.items || []);
