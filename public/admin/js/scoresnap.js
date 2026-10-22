@@ -659,6 +659,7 @@
     const reviewCards = (r.answers || []).filter(a => uncertain.has(a.no)).map(a => `
       <div style="border:1px solid #ffc107;background:#fff8e1;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;">
         <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Q${a.no} · ${a.isCorrect ? '✓' : '✗'} · conf ${Math.round((a.confidence||0)*100)}%${a._adminOverride ? ' · <span style="color:#1976d2;">수정됨</span>' : ''}</div>
+        ${a.stem ? `<div style="color:#111;font-weight:700;margin-bottom:2px;word-break:break-word;">${esc(a.stem)}</div>` : ''}
         <div style="color:#555;line-height:1.6;">
           학생답: <b>${esc(a.studentAnswer || '(빈칸)')}</b> &nbsp;→&nbsp;
           정답: <b>${esc(a.correctAnswer || '?')}</b>
@@ -679,6 +680,7 @@
         <button onclick="window._ssToggleAnswer(${idx}, ${a.no}, ${!a.isCorrect})"
           title="클릭 → ${a.isCorrect ? '오답' : '정답'}으로 변경"
           style="width:30px;height:24px;border:1px solid ${a.isCorrect ? '#2e7d32' : '#c62828'};background:${a.isCorrect ? '#e8f5e9' : '#ffebee'};color:${a.isCorrect ? '#2e7d32' : '#c62828'};border-radius:4px;cursor:pointer;font-weight:700;font-size:13px;padding:0;line-height:1;">${a.isCorrect ? '✓' : '✗'}</button>
+        ${a.stem ? `<span title="${esc(a.stem)}" style="width:34%;flex-shrink:0;color:#111;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.stem)}</span>` : ''}
         <span style="flex:1;min-width:0;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.studentAnswer || '(빈칸)')}</span>
         <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
         ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;flex-shrink:0;">수정</span>' : ''}

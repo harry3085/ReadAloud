@@ -115,7 +115,8 @@ ${lines}
 채점 규칙:
 - 정답이 영어(철자·문장)인 문항: 철자가 정확히 일치해야 정답. 대소문자·공백·문장부호만 무시. 철자가 다르면 오답.
 - 정답이 한글(뜻)인 문항: **글자가 같지 않아도 뜻이 같거나 거의 같으면 정답**.
-  · 허용: 조사·어미·띄어쓰기 차이, 사소한 오탈자, 의미가 같은 다른 표현(유의어·풀어쓴 표현), 정답의 여러 뜻 중 하나만 쓴 경우
+  · 허용: 조사·어미·띄어쓰기 차이, 사소한 오탈자, 의미가 같은 다른 표현(유의어·풀어쓴 표현)
+  · 정답에 뜻이 여러 개(쉼표·슬래시 등으로 구분, 예: "층, 겹")이면 **그중 하나만 써도 정답**(알고 있다고 판단)
   · 오답: 뜻이 다른 단어, 반대 뜻, 문제와 무관한 내용, 빈칸
   · 글자가 정확히 같지 않고 **뜻 유사성으로 정답 처리**한 문항은 confidence 를 0.85 이하로 낮춰라(학원장이 검토할 수 있게)
   · 뜻이 비슷한지 애매하면 정답(isCorrect=true)으로 하되 confidence 0.6 이하
@@ -188,13 +189,16 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     } else if (_norm(studentAnswer) && _norm(studentAnswer) === _norm(correctAnswer)) {
       // 글자가 (대소문자·부호 무시하고) 같으면 정답 — AI 오판 방지
       isCorrect = true;
+    } else if (_HANGUL.test(correctAnswer) && correctAnswer.split(/[,;/·、，]/).some(p => _norm(p) && _norm(p) === _norm(studentAnswer))) {
+      // 한글 뜻이 여러 개("층, 겹")면 그중 하나만 써도 정답
+      isCorrect = true;
     } else if (type === 'short' && correctAnswer && !_HANGUL.test(correctAnswer)) {
       // 정답이 영어인 단답 — 철자 정확 일치만 정답 (AI 관대 판정 차단)
       isCorrect = false;
     }
 
     const no = Number.isInteger(a.no) && a.no >= 1 ? a.no : rows.length + 1;
-    rows.push({ no, keyNo, type, studentAnswer, correctAnswer, isCorrect, confidence });
+    rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence });
   });
 
   // 정답지에 있는데 학생 시험지에서 대응되지 않은 문항 → 오답 + 검토 필요
@@ -207,7 +211,7 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     while (usedNos.has(nextNo)) nextNo += 1;
     usedNos.add(nextNo);
     rows.push({
-      no: nextNo, keyNo: k, type: key.type || 'short',
+      no: nextNo, keyNo: k, type: key.type || 'short', stem: String(key.stem || '').trim(),
       studentAnswer: '', correctAnswer: String(key.answer || '').trim(),
       isCorrect: false, confidence: 0.3,
     });
