@@ -655,26 +655,8 @@
     const uncertain = new Set(r.uncertainQuestions || []);
     const dateStr = _fmtDate(new Date());
 
-    // 검토 필요 카드 (confidence 낮음) — AI 가 자신 없는 항목만 별도 강조
-    const reviewCards = (r.answers || []).filter(a => uncertain.has(a.no)).map(a => `
-      <div style="border:1px solid #ffc107;background:#fff8e1;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;">
-        <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Q${a.no} · ${a.isCorrect ? '✓' : '✗'} · conf ${Math.round((a.confidence||0)*100)}%${a._adminOverride ? ' · <span style="color:#1976d2;">수정됨</span>' : ''}</div>
-        ${a.stem ? `<div style="color:#111;font-weight:700;margin-bottom:2px;word-break:break-word;">${esc(a.stem)}</div>` : ''}
-        <div style="color:#555;line-height:1.6;">
-          학생답: <b>${esc(a.studentAnswer || '(빈칸)')}</b> &nbsp;→&nbsp;
-          정답: <b>${esc(a.correctAnswer || '?')}</b>
-        </div>
-        <div style="margin-top:6px;display:flex;gap:6px;">
-          ${a.isCorrect
-            ? `<button onclick="window._ssToggleAnswer(${idx}, ${a.no}, false)" style="font-size:11px;padding:4px 10px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;">✗ 오답으로 수정</button>`
-            : `<button onclick="window._ssToggleAnswer(${idx}, ${a.no}, true)" style="font-size:11px;padding:4px 10px;border:1px solid #2e7d32;background:#fff;color:#2e7d32;border-radius:4px;cursor:pointer;">✓ 정답으로 수정</button>`
-          }
-        </div>
-      </div>
-    `).join('');
-
     // 전체 문항 — ✓/✗ 자체가 토글 버튼 (학원장 직접 수정)
-    const _rowHtml = (a) => `
+    const _rowHtml = (a, showConf) => `
       <div style="display:flex;gap:10px;padding:6px 8px;border-bottom:1px solid #eee;font-size:12px;align-items:center;">
         <span style="width:30px;color:#888;font-weight:700;">Q${a.no}</span>
         <button onclick="window._ssToggleAnswer(${idx}, ${a.no}, ${!a.isCorrect})"
@@ -683,17 +665,21 @@
         ${a.stem ? `<span title="${esc(a.stem)}" style="width:34%;flex-shrink:0;color:#111;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.stem)}</span>` : ''}
         <span style="flex:1;min-width:0;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.studentAnswer || '(빈칸)')}</span>
         <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
+        ${showConf ? `<span title="AI 판정 확신도" style="color:#e65100;font-size:10px;flex-shrink:0;">확신 ${Math.round((a.confidence || 0) * 100)}%</span>` : ''}
         ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;flex-shrink:0;">수정</span>' : ''}
       </div>
     `;
-    // 틀린 문항을 위쪽에 모아 빨리 검토할 수 있게 — 각 그룹 안은 번호순
-    const _wrongAns = (r.answers || []).filter(a => !a.isCorrect);
-    const _rightAns = (r.answers || []).filter(a => a.isCorrect);
+    // 틀린 문항 → 검토(맞게 채점됐지만 애매) → 맞은 문항 순으로 모아 빨리 검토할 수 있게. 각 그룹 안은 번호순
+    const _all = r.answers || [];
+    const _wrongAns = _all.filter(a => !a.isCorrect);
+    const _reviewAns = _all.filter(a => a.isCorrect && uncertain.has(a.no));
+    const _rightAns = _all.filter(a => a.isCorrect && !uncertain.has(a.no));
     const _grpHead = (label, color, bg) =>
       `<div style="padding:6px 8px;font-size:12px;font-weight:700;color:${color};background:${bg};border-bottom:1px solid #eee;">${label}</div>`;
     const allRows =
-      (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개`, '#c62828', '#ffebee') + _wrongAns.map(_rowHtml).join('') : '') +
-      (_rightAns.length ? _grpHead(`✓ 맞은 문항 ${_rightAns.length}개`, '#2e7d32', '#e8f5e9') + _rightAns.map(_rowHtml).join('') : '');
+      (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개`, '#c62828', '#ffebee') + _wrongAns.map(a => _rowHtml(a, false)).join('') : '') +
+      (_reviewAns.length ? _grpHead(`⚠ 검토 필요 ${_reviewAns.length}개 — 맞게 채점했지만 애매해요`, '#e65100', '#fff8e1') + _reviewAns.map(a => _rowHtml(a, true)).join('') : '') +
+      (_rightAns.length ? _grpHead(`✓ 맞은 문항 ${_rightAns.length}개`, '#2e7d32', '#e8f5e9') + _rightAns.map(a => _rowHtml(a, false)).join('') : '');
 
     return `
       <div style="margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:12px;">
@@ -719,13 +705,6 @@
           <div style="font-size:15px;font-weight:700;color:#bf360c;line-height:1.4;margin-top:4px;">${wrongNos.length ? wrongNos.join(', ') : '없음 (만점!)'}</div>
         </div>
       </div>
-
-      ${reviewCards ? `
-        <div style="margin-bottom:18px;">
-          <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:8px;">⚠ 검토 필요 (AI 가 자신 없음)</div>
-          ${reviewCards}
-        </div>
-      ` : ''}
 
       <details style="margin-bottom:6px;" open>
         <summary style="font-size:13px;font-weight:700;color:#333;cursor:pointer;padding:6px 0;">📋 전체 문항 (${total}개) <span style="font-weight:400;color:#888;font-size:11px;">— ✓/✗ 클릭하여 직접 수정 가능</span></summary>
