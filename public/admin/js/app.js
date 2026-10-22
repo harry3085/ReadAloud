@@ -346,7 +346,6 @@ function _applyAdminBranding(acData) {
 
 onAuthStateChanged(auth, async user => {
   if(!user){ window.location.href='/'; return; }
-  const _p0 = performance.now(), _pl = (l)=>console.log('[perf] '+l+' +'+Math.round(performance.now()-_p0)+'ms');
   // super_admin Custom Claims 가진 사용자는 학원장 앱 진입 차단 → /super/ 로 추방.
   // 정상 super_admin 보호 + 옛 admin 계정에 잘못 박힌 super_admin claims 방어.
   try {
@@ -356,16 +355,13 @@ onAuthStateChanged(auth, async user => {
       return;
     }
   } catch(_) {}
-  _pl('토큰확인');
   const snap = await getDoc(doc(db,'users',user.uid));
-  _pl('users문서');
   if(!snap.exists() || snap.data().role !== 'admin'){
     window.location.href='/'; return;
   }
   currentUser = user;
   adminProfile = {uid: user.uid, ...snap.data()};
   await _loadMyAcademyContext(user, snap.data());
-  _pl('학원정보');
   _showAppVersion();  // 헤더 Version 표시 (SW 캐시 질의, fire-and-forget)
   // T1: 학원장 마지막 로그인 시각 기록 (super_admin 제외, 권한 부족 시 silent)
   if (window.MY_ROLE !== 'super_admin' && window.MY_ACADEMY_ID) {
@@ -374,7 +370,6 @@ onAuthStateChanged(auth, async user => {
   }
   document.getElementById('adminName').textContent = adminProfile.name || '관리자';
   await initDashboard();
-  _pl('대시보드 전체');
 });
 
 // ── 로그아웃 ──────────────────────────────────────────
@@ -560,7 +555,6 @@ async function _bigcalFetchTestsLight(academyId, monthStart, monthEnd) {
         format: sv(fl.vocabOptions?.mapValue?.fields?.format),
       };
     });
-    console.log('[perf] 달력 genTests(경량) ' + rows.length + '건');
     return rows;
   } catch (e) { console.warn('[bigcal] REST 실패 → SDK 폴백:', e.message); return null; }
 }
@@ -967,10 +961,8 @@ async function initDashboard(){
   // 통계 보이는 상태면 갱신, 숨김 상태면 skip
   const grid = document.getElementById('dashStatsGrid');
   const statsVisible = grid && grid.style.display !== 'none';
-  const _t0 = performance.now();
-  const _tm = (l, p) => p.finally(() => console.log('[perf] 대시보드 ' + l + ' ' + Math.round(performance.now()-_t0) + 'ms'));
-  const tasks = [_tm('공지', loadDashNotices()), _tm('자료', loadDashHwFiles()), _tm('API사용량', loadApiUsage()), _tm('달력', bigcalInit())];
-  if (statsVisible) tasks.unshift(_tm('통계', loadDashStats()));
+  const tasks = [loadDashNotices(), loadDashHwFiles(), loadApiUsage(), bigcalInit()];
+  if (statsVisible) tasks.unshift(loadDashStats());
   await Promise.all(tasks);
 }
 window.refreshDashboard = initDashboard;
