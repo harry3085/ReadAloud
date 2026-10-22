@@ -13,7 +13,7 @@ const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const {
   buildAnswerKeyPrompt, postProcessAnswerKey,
   buildStudentGradePrompt, postProcessStudentGrade,
-  buildJudgePrompt, applyJudgements,
+  buildJudgePrompt, applyJudgements, finalizeAmbiguity,
 } = require('./_lib/scoresnap-prompt');
 const { setCors } = require('./_lib/cors');
 
@@ -220,6 +220,8 @@ module.exports = async (req, res) => {
     } catch (e) {
       console.warn('[scoresnap-grade] 뜻 판정 예외 — 사진 단계 판정 유지:', e.message);
     }
+    // 애매하면 오답 — 최종 확신도 0.9 미만인 정답은 오답으로 확정
+    processed = finalizeAmbiguity(processed);
     processed.answers.forEach(a => { delete a.needsJudge; });
     return res.status(200).json({
       success: true,

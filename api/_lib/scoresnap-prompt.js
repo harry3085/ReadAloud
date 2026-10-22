@@ -121,8 +121,7 @@ ${lines}
   · 허용: 조사·어미·띄어쓰기 차이, 사소한 오탈자, 의미가 같은 다른 표현(유의어·풀어쓴 표현)
   · 정답에 뜻이 여러 개(쉼표·슬래시 등으로 구분, 예: "층, 겹")이면 **그중 하나만 써도 정답**(알고 있다고 판단)
   · 오답: 뜻이 다른 단어, 반대 뜻, 문제와 무관한 내용, 빈칸
-  · 글자가 정확히 같지 않고 **뜻 유사성으로 정답 처리**한 문항은 confidence 를 0.85 이하로 낮춰라(학원장이 검토할 수 있게)
-  · 뜻이 비슷한지 애매하면 정답(isCorrect=true)으로 하되 confidence 0.6 이하
+  · 뜻이 비슷한지, 또는 글씨를 읽은 것이 맞는지 **애매하면 오답(isCorrect=false)** 으로 하고 confidence 를 0.7 이하로 낮춰라. 글씨가 불분명할 만큼 흐리거나 흘려 쓴 답도 오답
 - MCQ: 학생이 표시한 보기 텍스트가 정답 텍스트와 같으면 정답.
 
 응답 JSON 만 출력. 서문·설명 없이:
@@ -289,6 +288,7 @@ function buildJudgePrompt(items) {
 - 뜻이 다르거나, 반대이거나, 문제와 무관하면 knows=false (모름).
   · false 로 보는 경우: 다른 단어의 뜻을 쓴 경우, 글자가 비슷해도 뜻이 다른 경우(예: 단열 ↔ 온열), 능동·피동이 뒤바뀌어 뜻 방향이 반대인 경우, 정답의 핵심이 빠진 너무 막연한 답
 - 영어 표현의 실제 의미를 기준으로 하되, 제시된 정답 뜻을 우선 참조한다.
+- **애매하면 모름(knows=false)** 으로 판정한다. 뜻을 알고 있다고 분명히 볼 수 있을 때만 true.
 - confidence: 판정 확신도. 확실하면 0.9 이상, 애매하면 0.7 이하.
 
 문항:
@@ -325,7 +325,20 @@ function _recompute(result) {
   return result;
 }
 
+// 최종 정책 — 애매하면 오답. 확신도 0.9 미만인 정답은 오답으로 바꾼다.
+// (AI 도 읽기 애매한 글씨는 채점자도 애매하다 → 정자로 쓰게 하는 효과)
+function finalizeAmbiguity(result) {
+  (result.answers || []).forEach(a => {
+    if (a.isCorrect && a.confidence < 0.9) {
+      a.isCorrect = false;
+      a.ambiguousWrong = true;
+    }
+  });
+  return _recompute(result);
+}
+
 module.exports = {
+  finalizeAmbiguity,
   buildJudgePrompt,
   applyJudgements,
   buildAnswerKeyPrompt,
