@@ -216,9 +216,11 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     } else if (_norm(studentAnswer) && _norm(studentAnswer) === _norm(correctAnswer)) {
       // 글자가 (대소문자·부호 무시하고) 같으면 정답 — AI 오판 방지
       isCorrect = true;
+      if (confidence < 0.95) confidence = 0.95;       // 코드가 확정한 정답은 검토 대상에서 제외
     } else if (_HANGUL.test(correctAnswer) && _answerVariants(correctAnswer).includes(_norm(studentAnswer))) {
       // 한글 뜻이 여러 개("층, 겹")면 그중 하나만 써도 정답. 괄호 부연("종 (생물 분류의…)")은 빼고도 인정
       isCorrect = true;
+      if (confidence < 0.95) confidence = 0.95;       // 코드가 확정한 정답은 검토 대상에서 제외
     } else if (type === 'short' && correctAnswer && !_HANGUL.test(correctAnswer)) {
       // 정답이 영어인 단답 — 철자 정확 일치만 정답 (AI 관대 판정 차단)
       isCorrect = false;
