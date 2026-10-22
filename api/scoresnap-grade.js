@@ -13,6 +13,7 @@ const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const {
   buildAnswerKeyPrompt, postProcessAnswerKey,
   buildStudentGradePrompt, postProcessStudentGrade,
+  buildJudgePrompt, applyJudgements,
 } = require('./_lib/scoresnap-prompt');
 const { setCors } = require('./_lib/cors');
 
@@ -38,18 +39,15 @@ const GEMINI_MODELS = [
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-async function _callVision(model, apiKey, prompt, base64, mimeType, precision = false) {
+async function _callVision(model, apiKey, prompt, base64, mimeType, precision = false, temp = null) {
   const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const parts = [];
+  if (base64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: base64 } });   // 텍스트 전용 호출은 이미지 없음
+  parts.push({ text: prompt });
   const body = {
-    contents: [{
-      role: 'user',
-      parts: [
-        { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64 } },
-        { text: prompt },
-      ],
-    }],
+    contents: [{ role: 'user', parts }],
     generationConfig: {
-      temperature: precision ? 0.1 : 0.2,         // 정밀: 더 보수적
+      temperature: temp !== null ? temp : (precision ? 0.1 : 0.2),         // 정밀: 더 보수적
       topP: 0.95,
       maxOutputTokens: precision ? 16384 : 8192,  // 정밀: 긴 응답 잘림 방지
       responseMimeType: 'application/json',
@@ -87,16 +85,16 @@ function _parseJSON(text) {
 }
 
 // 폴백 체인 실행 — 호출자에 raw text 반환
-async function _callWithFallback(apiKey, prompt, base64, mimeType, precision = false) {
+async function _callWithFallback(apiKey, prompt, base64, mimeType, precision = false, models = GEMINI_MODELS, temp = null) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const isTransient = (s) => s === 503 || s === 429;
   let usedModel = null, rawText = null, usage = null, lastError = null, lastStatus = null;
 
   outer:
-  for (const model of GEMINI_MODELS) {
+  for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const result = await _callVision(model, apiKey, prompt, base64, mimeType, precision);
+        const result = await _callVision(model, apiKey, prompt, base64, mimeType, precision, temp);
         if (result.ok) {
           usedModel = model;
           rawText = result.text;
@@ -121,6 +119,24 @@ async function _callWithFallback(apiKey, prompt, base64, mimeType, precision = f
   }
   if (!rawText) return { ok: false, status: 502, error: lastError || 'All models failed' };
   return { ok: true, usedModel, rawText, usage };
+}
+
+// 뜻 판정 전용 — 사진 없이 텍스트만. 판정에는 가볍고 결정적인 모델을 우선 사용(temperature 0).
+const JUDGE_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+
+async function _judgeMeanings(apiKey, answers) {
+  const items = answers.filter(a => a.needsJudge).map(a => ({
+    id: a.keyNo, stem: a.stem, correct: a.correctAnswer, student: a.studentAnswer,
+  }));
+  if (items.length === 0) return { judged: [], model: null };
+  const r = await _callWithFallback(apiKey, buildJudgePrompt(items), null, null, false, JUDGE_MODELS, 0);
+  if (!r.ok) {
+    console.warn('[scoresnap-grade] 뜻 판정 실패 — 사진 단계 판정 유지:', r.error);
+    return { judged: [], model: null };
+  }
+  const parsed = _parseJSON(r.rawText);
+  const judged = Array.isArray(parsed && parsed.results) ? parsed.results : [];
+  return { judged, model: r.usedModel };
 }
 
 module.exports = async (req, res) => {
@@ -194,11 +210,22 @@ module.exports = async (req, res) => {
       tokenUsage: r.usage,
     });
   } else {
-    const processed = postProcessStudentGrade(parsed, answerKeyQuestions.length, answerKeyQuestions);
+    let processed = postProcessStudentGrade(parsed, answerKeyQuestions.length, answerKeyQuestions);
+    // 글자가 같지 않은 한글 뜻 답은 별도 호출이 "뜻을 아는지"로 일관되게 판정
+    let judgeModel = null;
+    try {
+      const jr = await _judgeMeanings(apiKey, processed.answers);
+      judgeModel = jr.model;
+      if (jr.judged.length) processed = applyJudgements(processed, jr.judged);
+    } catch (e) {
+      console.warn('[scoresnap-grade] 뜻 판정 예외 — 사진 단계 판정 유지:', e.message);
+    }
+    processed.answers.forEach(a => { delete a.needsJudge; });
     return res.status(200).json({
       success: true,
       mode,
       model: r.usedModel,
+      judgeModel,
       ...processed,
       tokenUsage: r.usage,
     });

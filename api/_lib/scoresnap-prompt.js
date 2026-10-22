@@ -224,8 +224,13 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
       isCorrect = false;
     }
 
+    // 글자가 같지 않은 한글 뜻 단답 — 뜻을 아는지는 별도 판정 호출이 일관되게 결정한다
+    const needsJudge = !!studentAnswer && type === 'short' && _HANGUL.test(correctAnswer)
+      && _norm(studentAnswer) !== _norm(correctAnswer)
+      && !_answerVariants(correctAnswer).includes(_norm(studentAnswer));
+
     const no = Number.isInteger(a.no) && a.no >= 1 ? a.no : rows.length + 1;
-    rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence });
+    rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence, needsJudge });
   });
 
   // 정답지에 있는데 학생 시험지에서 대응되지 않은 문항 → 오답 + 검토 필요
@@ -265,7 +270,63 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
   };
 }
 
+// ─── 뜻 판정 (텍스트 전용 2차 호출) ───
+// 사진 없이 (정답, 학생답) 쌍만 보고 "이 단어의 뜻을 알고 있는가" 를 일관되게 판정한다.
+function buildJudgePrompt(items) {
+  const lines = items.map(it =>
+    `${it.id}. 영어: "${it.stem}" | 정답 뜻: "${it.correct}" | 학생 답: "${it.student}"`
+  ).join('\n');
+  return `영어 단어·표현의 한글 뜻을 묻는 시험을 채점한다.
+각 문항에서 학생이 이 영어 표현의 **뜻을 알고 있는지, 완전히 모르는지**만 판정하라.
+
+판정 기준:
+- 표현이 달라도 핵심 뜻이 같거나 매우 가까우면 knows=true (알고 있음).
+  · true 로 보는 경우: 조사·어미·품사형 차이(예: 극도로 ↔ 극심한), 유의어, 풀어쓴 표현, 띄어쓰기·사소한 오탈자·받침 실수, 정답의 여러 뜻 중 일부만 쓴 경우, "~을/~에" 같은 기호·조사 생략
+- 뜻이 다르거나, 반대이거나, 문제와 무관하면 knows=false (모름).
+  · false 로 보는 경우: 다른 단어의 뜻을 쓴 경우, 글자가 비슷해도 뜻이 다른 경우(예: 단열 ↔ 온열), 능동·피동이 뒤바뀌어 뜻 방향이 반대인 경우, 정답의 핵심이 빠진 너무 막연한 답
+- 영어 표현의 실제 의미를 기준으로 하되, 제시된 정답 뜻을 우선 참조한다.
+- confidence: 판정 확신도. 확실하면 0.9 이상, 애매하면 0.7 이하.
+
+문항:
+${lines}
+
+응답 JSON 만 출력. 서문·설명 없이:
+{ "results": [ { "id": 문항 id, "knows": true|false, "confidence": 0.0~1.0 } ] }`;
+}
+
+// 판정 결과 반영 — 판정된 문항만 isCorrect·confidence 를 덮어쓰고 합계를 다시 계산
+function applyJudgements(result, judged) {
+  const byId = new Map();
+  (judged || []).forEach(j => { if (j && Number.isInteger(j.id)) byId.set(j.id, j); });
+  result.answers.forEach(a => {
+    const j = byId.get(a.keyNo);
+    if (a.needsJudge && j && typeof j.knows === 'boolean') {
+      a.isCorrect = j.knows;
+      a.confidence = typeof j.confidence === 'number' ? Math.max(0, Math.min(1, j.confidence)) : 0.8;
+      a.judged = true;
+    }
+  });
+  return _recompute(result);
+}
+
+function _recompute(result) {
+  const answers = result.answers;
+  const uncertain = new Set((result.uncertainQuestions || []).filter(n => {
+    const a = answers.find(x => x.no === n);
+    return a && !a.judged;                       // 판정 호출이 확정한 문항은 AI 자체 불확실 표시를 따르지 않는다
+  }));
+  answers.forEach(a => { if (a.confidence < 0.9) uncertain.add(a.no); else if (a.judged) uncertain.delete(a.no); });
+  result.correctCount = answers.filter(a => a.isCorrect).length;
+  result.totalQuestions = answers.length;
+  result.scorePercent = result.totalQuestions > 0 ? Math.round((result.correctCount / result.totalQuestions) * 100) : 0;
+  result.wrongNumbers = answers.filter(a => !a.isCorrect).map(a => a.no);
+  result.uncertainQuestions = Array.from(uncertain).sort((x, y) => x - y);
+  return result;
+}
+
 module.exports = {
+  buildJudgePrompt,
+  applyJudgements,
   buildAnswerKeyPrompt,
   postProcessAnswerKey,
   buildStudentGradePrompt,
