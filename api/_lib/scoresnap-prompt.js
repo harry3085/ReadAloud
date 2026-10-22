@@ -97,7 +97,8 @@ ${lines}
 
 ★ 가장 중요 — 순서가 다를 수 있다:
 - 학생 시험지는 정답지와 문제 순서가 다르다(랜덤 순서로 인쇄됨). 번호가 같다고 같은 문제가 아니다.
-- 학생 시험지의 각 문항에 인쇄된 문제(영단어·문장·보기 등) 내용을 읽고, 위 정답지 목록에서 **같은 문제**를 찾아 그 K번호를 keyNo 로 적어라. 위치·순서로 짝짓지 말 것.
+- 학생 시험지의 각 문항에 인쇄된 문제(영단어·문장·보기 등)를 **글자 그대로** stemSeen 에 적어라. (서버가 stemSeen 으로 정답지 문항을 찾아 짝짓는다. 가장 중요한 필드)
+- 위 정답지 목록에서 **같은 문제**를 찾아 그 K번호를 keyNo 로도 적어라(보조). 위치·순서로 짝짓지 말 것.
 - 출력 answers 는 **학생 시험지에 인쇄된 번호 순서(no)** 로 작성. no 는 학생 시험지에 인쇄된 번호 그대로.
 - 정답지 목록의 문항 하나는 정확히 한 번만 사용. 학생 시험지에서 찾지 못한 정답지 문항은 answers 에 넣지 말 것(서버가 처리).
 
@@ -129,6 +130,7 @@ ${lines}
   "answers": [
     {
       "no": 학생 시험지에 인쇄된 문항 번호,
+      "stemSeen": "학생 시험지에 인쇄된 영어 문제 그대로 (예: be covered with ~)",
       "keyNo": 대응하는 정답지 문항 번호 (K3 이면 3),
       "type": "mcq" or "short",
       "studentAnswer": "...",
@@ -146,6 +148,15 @@ function _norm(s) {
   return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 }
 const _HANGUL = /[가-힣ㄱ-ㅎㅏ-ㅣ]/;
+
+// 한글 정답을 "인정되는 형태" 목록으로 분해 — 쉼표·슬래시 등으로 나뉜 뜻 각각, 괄호 부연 제거본
+function _answerVariants(correctAnswer) {
+  const c = String(correctAnswer || '');
+  const noParen = c.replace(/\([^)]*\)|（[^）]*）/g, ' ');
+  const out = new Set([c, noParen]);
+  [c, noParen].forEach(t => t.split(/[,;/·、，]/).forEach(p => out.add(p)));
+  return Array.from(out).map(_norm).filter(Boolean);
+}
 
 // 학생 채점 응답 → 정제
 // 순서가 다른 시험지 대응: keyNo 로 정답지 문항을 찾고, 정답·유형은 정답지 값을 기준으로 삼는다.
@@ -169,9 +180,21 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
   const used = new Set();          // 이미 대응된 정답지 문항(keyNo)
   const rows = [];                 // 정제된 학생 문항
 
+  // 영어 문제(stem) 정규화 → 정답지 문항 번호. 같은 stem 이 둘 이상이면 모호하므로 매핑에서 제외
+  const stemMap = new Map();
+  keyQs.forEach((q, idx) => {
+    const k = _norm(q && q.stem);
+    if (!k) return;
+    stemMap.set(k, stemMap.has(k) ? null : idx + 1);
+  });
+
   raw.answers.forEach((a, i) => {
-    // keyNo 누락(옛 응답 형식)이면 배열 위치로 폴백
-    const keyNo = Number.isInteger(a.keyNo) ? a.keyNo : i + 1;
+    // 짝짓기: ① 학생지에 인쇄된 문제(stemSeen)가 정답지 stem 과 일치하면 그 문항(코드가 결정)
+    //        ② 아니면 AI 가 준 keyNo, ③ 그것도 없으면 배열 위치
+    const aiKeyNo = Number.isInteger(a.keyNo) ? a.keyNo : i + 1;
+    const stemKey = stemMap.get(_norm(a.stemSeen));
+    const keyNo = Number.isInteger(stemKey) ? stemKey : aiKeyNo;
+    const remapped = Number.isInteger(stemKey) && stemKey !== aiKeyNo;
     // 범위 밖·중복은 버린다 — 정답지 문항이 남으면 아래에서 빈 슬롯(오답·검토 표시)으로 채움
     if (keyNo < 1 || keyNo > total || used.has(keyNo)) return;
     used.add(keyNo);
@@ -181,6 +204,8 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     const type = key.type || a.type || 'short';
     let isCorrect = a.isCorrect === true;
     let confidence = clamp01(a.confidence);
+    // AI 가 짝을 잘못 짚었다가 코드가 바로잡은 문항 — AI 판정이 엉뚱한 정답 기준이었을 수 있으니 검토 표시
+    if (remapped && confidence > 0.6) confidence = 0.6;
 
     if (!studentAnswer) {
       // 빈칸은 무조건 오답
@@ -189,8 +214,8 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     } else if (_norm(studentAnswer) && _norm(studentAnswer) === _norm(correctAnswer)) {
       // 글자가 (대소문자·부호 무시하고) 같으면 정답 — AI 오판 방지
       isCorrect = true;
-    } else if (_HANGUL.test(correctAnswer) && correctAnswer.split(/[,;/·、，]/).some(p => _norm(p) && _norm(p) === _norm(studentAnswer))) {
-      // 한글 뜻이 여러 개("층, 겹")면 그중 하나만 써도 정답
+    } else if (_HANGUL.test(correctAnswer) && _answerVariants(correctAnswer).includes(_norm(studentAnswer))) {
+      // 한글 뜻이 여러 개("층, 겹")면 그중 하나만 써도 정답. 괄호 부연("종 (생물 분류의…)")은 빼고도 인정
       isCorrect = true;
     } else if (type === 'short' && correctAnswer && !_HANGUL.test(correctAnswer)) {
       // 정답이 영어인 단답 — 철자 정확 일치만 정답 (AI 관대 판정 차단)
