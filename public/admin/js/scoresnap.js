@@ -674,7 +674,7 @@
     `).join('');
 
     // 전체 문항 — ✓/✗ 자체가 토글 버튼 (학원장 직접 수정)
-    const allRows = (r.answers || []).map(a => `
+    const _rowHtml = (a) => `
       <div style="display:flex;gap:10px;padding:6px 8px;border-bottom:1px solid #eee;font-size:12px;align-items:center;">
         <span style="width:30px;color:#888;font-weight:700;">Q${a.no}</span>
         <button onclick="window._ssToggleAnswer(${idx}, ${a.no}, ${!a.isCorrect})"
@@ -685,7 +685,15 @@
         <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
         ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;flex-shrink:0;">수정</span>' : ''}
       </div>
-    `).join('');
+    `;
+    // 틀린 문항을 위쪽에 모아 빨리 검토할 수 있게 — 각 그룹 안은 번호순
+    const _wrongAns = (r.answers || []).filter(a => !a.isCorrect);
+    const _rightAns = (r.answers || []).filter(a => a.isCorrect);
+    const _grpHead = (label, color, bg) =>
+      `<div style="padding:6px 8px;font-size:12px;font-weight:700;color:${color};background:${bg};border-bottom:1px solid #eee;">${label}</div>`;
+    const allRows =
+      (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개`, '#c62828', '#ffebee') + _wrongAns.map(_rowHtml).join('') : '') +
+      (_rightAns.length ? _grpHead(`✓ 맞은 문항 ${_rightAns.length}개`, '#2e7d32', '#e8f5e9') + _rightAns.map(_rowHtml).join('') : '');
 
     return `
       <div style="margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:12px;">
