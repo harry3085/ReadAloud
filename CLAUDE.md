@@ -5451,3 +5451,44 @@ SW v831 → v833 (2 commit `48f7390`·`2fdd8a7`). 학원장 보고 — 학생관
 ### 파일 / SW 캐시
 - `public/admin/js/app.js`: `_ensureCurrentMonthBillings` 수강료 보충 + `_syncCurrentMonthBilling` 누락 추가
 - SW 캐시: `kunsori-v831` → `kunsori-v833`
+
+---
+
+## 2026-10-23: ScoreSnap 채점 종합 개선 + 학원장앱 로딩 개선
+
+SW v833 → v842. 학원장이 실제 학생지 8장(Wordsnap CH3, 랜덤 순서 인쇄)으로 반복 검증하며 정함. 채점 정책·구조 상세는 메모리 `project_scoresnap_grading_rules`.
+
+### 1) ScoreSnap 채점 (`api/scoresnap-grade.js`, `api/_lib/scoresnap-prompt.js`)
+- **이어서보기 확인창이 안 뜨던 버그**: app.js(ES 모듈)의 `showConfirm` 이 `window` 에 없어 scoresnap.js(일반 script)가 확인창을 건너뜀 → `window.showConfirm` 노출.
+- **순서 무시 짝짓기**: 학생지·정답지 문제 순서가 다름. AI keyNo 를 믿으면 일부 문항이 엉뚱한 정답과 짝지어짐(species↔북극) → 학생지에 인쇄된 영어 문제(`stemSeen`)를 코드가 정답지 stem 과 정규화 일치시켜 결정. 번호는 학생지 번호.
+- **빈칸/판독불가 = 오답 확정**(검토 대상 아님), 프롬프트에 빈칸 문항도 응답에 포함·취소선 글자 무시.
+- **뜻 판정 분리**: 글자가 다른 한글 뜻 단답만 별도 텍스트 호출(temperature 0, "뜻을 아는지" 기준)로 일관 판정. 판정 실패 시 사진 단계 판정 유지.
+- **복수 정답**: 쉼표·슬래시·마침표로 구분된 뜻 중 하나만 써도 정답(코드 확정), 괄호 부연 제외본도 인정, 띄어쓰기·부호 무시, 영어 단답은 철자 일치.
+- **애매하면 오답**: 최종 확신도 < 0.9 정답은 오답 확정(`finalizeAmbiguity`). 검토 필요 = 확신도 < 0.9 (AI 자체 `uncertainQuestions` 미사용).
+- **UI**: 전체 문항을 ✗틀린 → ⚠검토 → ✓맞은 그룹으로, 문제(영어) 표시, 틀린 중 애매한 줄은 확신도 표시.
+- **모델 순서**: 정답지·학생지·뜻 판정 모두 `3.1-flash-lite → 2.5-flash`, **2.5-flash-lite 제외**. 같은 사진 실측: 3.1-flash-lite 는 2.5-flash 와 정확도 동일·3배 빠름·3~4배 저렴, 2.5-flash-lite 는 줄바꿈 칸의 둘째 줄을 놓쳐 정답이 잘리고 빈칸을 정답지 값으로 지어냄.
+- **일괄 채점 동시 처리 3 → 5** (실패 카드는 클릭으로 재시도).
+
+### 2) 학원장앱 로딩 (7.4초 → 2.3초)
+- 원인: 대시보드 달력이 이번 달 `genTests` 를 questions 포함 통째로(302건 ≈ 2.6MB) 받아 같은 연결의 작은 조회까지 지연.
+- 수정: 달력 시험 조회를 Firestore REST `runQuery` + `select`(name/mode/testMode/date/vocabOptions.format) 로 경량화(실패 시 SDK 폴백), `lastAdminLoginAt` 기록은 비대기. 진단용 `[perf]` 로그는 제거.
+
+### 작업 규칙 추가 (2026-10-23)
+- **AI 가 준 짝짓기·번호를 그대로 믿지 말고 코드가 검증 가능한 키(인쇄된 문제 텍스트)로 결정** — keyNo 오류가 점수에 직결. AI 는 "읽기", 코드는 "짝짓기·확정 규칙".
+- **판정 기준이 정책이면 프롬프트와 코드 양쪽에 같은 방향으로** — "애매하면 오답" 은 사진 지침·뜻 판정 지침·최종 후처리 3곳을 맞춰야 일관.
+- **AI 가 자체 보고하는 불확실 목록은 신뢰하지 말고 최종 신뢰도로 재계산** — 코드가 확정한 정답까지 검토 대상에 끼어듦.
+- **모델 교체는 같은 실사진으로 정확도·속도·비용을 실측 비교 후** — 모델 이름(lite)이 아니라 세대/구조(생각 토큰, 레이아웃 이해)가 결과를 좌우. 2.5-flash 는 생각 토큰이 출력 한도(8192)와 합산돼 잘림 위험.
+- **Web SDK 는 필드 선택 불가 → 무거운 문서(questions 포함 genTests)는 목록용으로 통째로 받지 말고 REST select 나 요약 사용.**
+- **"ScoreSnap 은 Generator 카운터에 합산"** — 비용은 Generator·OCR 의 3~4배(학생 1명 ≈ 8원, 정답지 ≈ 5원). 사용량에 영향 커지면 카운터 분리(로드맵 트리거 대기).
+- **큰 결과 붙여넣기는 50,000자에서 잘림** — 이상한 학생 1~2명 분만 보내거나 요약본으로.
+
+### 파일 / SW 캐시
+- `api/scoresnap-grade.js`·`api/_lib/scoresnap-prompt.js`: 위 채점 로직 (stem 짝짓기·뜻 판정 호출·애매하면 오답·모델 순서)
+- `public/admin/js/scoresnap.js`: 그룹 표시·문제 표시·동시 5명
+- `public/admin/js/app.js`: `window.showConfirm`, 달력 REST select
+- SW 캐시: `kunsori-v833` → `kunsori-v842`
+
+### 진행률 / 다음 후보
+- ScoreSnap 채점: ~100% (실사용 후 경계 사례 기준 조정 — 얼리다/매년/~을 구성하다/어딘가는 현재 오답으로 일관)
+- 로딩: 남은 직렬 구간(users 문서 → 학원정보 읽기 ≈ 1.4초)은 claims 기반 병렬화 가능하나 보류
+- 다음 후보: ScoreSnap 카운터 분리(트리거 대기), 채점 실패 시 자동 재시도(실패 빈도 관찰 후), 100문항 이상 시험지는 출력 한도 확대
