@@ -369,9 +369,8 @@ onAuthStateChanged(auth, async user => {
   _showAppVersion();  // 헤더 Version 표시 (SW 캐시 질의, fire-and-forget)
   // T1: 학원장 마지막 로그인 시각 기록 (super_admin 제외, 권한 부족 시 silent)
   if (window.MY_ROLE !== 'super_admin' && window.MY_ACADEMY_ID) {
-    try {
-      await updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), { lastAdminLoginAt: serverTimestamp() });
-    } catch(_) { /* rules 미배포 등 무시 */ }
+    // 결과를 기다리지 않는다(대시보드 표시 지연 방지) — 실패해도 무시
+    updateDoc(doc(db, 'academies', window.MY_ACADEMY_ID), { lastAdminLoginAt: serverTimestamp() }).catch(() => { /* rules 미배포 등 무시 */ });
   }
   document.getElementById('adminName').textContent = adminProfile.name || '관리자';
   await initDashboard();
@@ -501,27 +500,69 @@ async function _bigcalFetchTests(year, month, entry) {
   const monthStart = `${ym}-01`;
   const monthEnd = `${ym}-${String(lastDay).padStart(2,'0')}`;
   try {
-    const tSnap = await getDocs(query(
-      collection(db, 'genTests'),
-      where('academyId','==', academyId),
-      where('date','>=', monthStart),
-      where('date','<=', monthEnd),
-      limit(500)
-    ));
-    try { let _b = 0; tSnap.forEach(d => { _b += JSON.stringify(d.data()).length; }); console.log('[perf] 달력 genTests ' + tSnap.size + '건, 약 ' + Math.round(_b/1024) + 'KB'); } catch(_) {}
-    tSnap.forEach(docSnap => {
-      const t = docSnap.data();
-      const date = t.date;
-      if (!date || !entry.events[date]) return;
-      entry.events[date].tests.push({
-        id: docSnap.id,
+    // 필요한 필드(이름·유형·날짜·형식)만 받는다 — genTests 문서는 questions 때문에 무거워 전체 수신 시 수 MB.
+    // Web SDK 는 필드 선택 불가 → Firestore REST runQuery(select) 사용, 실패 시 SDK 로 폴백.
+    let rows = await _bigcalFetchTestsLight(academyId, monthStart, monthEnd);
+    if (!rows) {
+      const tSnap = await getDocs(query(
+        collection(db, 'genTests'),
+        where('academyId','==', academyId),
+        where('date','>=', monthStart),
+        where('date','<=', monthEnd),
+        limit(500)
+      ));
+      rows = tSnap.docs.map(d => { const t = d.data(); return { id: d.id, date: t.date, name: t.name, mode: t.mode || t.testMode, format: t.vocabOptions?.format }; });
+    }
+    rows.forEach(t => {
+      if (!t.date || !entry.events[t.date]) return;
+      entry.events[t.date].tests.push({
+        id: t.id,
         name: t.name || '-',
-        mode: t.mode || t.testMode || 'vocab',
-        speaking: !!(t.vocabOptions?.format === 'speaking'),
+        mode: t.mode || 'vocab',
+        speaking: t.format === 'speaking',
       });
     });
     entry.testsLoaded = true;
   } catch(e) { console.warn('[bigcal] tests:', e); }
+}
+
+// REST runQuery + select 로 달력용 최소 필드만 조회. 실패하면 null (호출부가 SDK 로 폴백).
+async function _bigcalFetchTestsLight(academyId, monthStart, monthEnd) {
+  try {
+    const user = auth.currentUser;
+    if (!user) return null;
+    const token = await user.getIdToken();
+    const f = (path, op, v) => ({ fieldFilter: { field: { fieldPath: path }, op, value: { stringValue: v } } });
+    const body = { structuredQuery: {
+      from: [{ collectionId: 'genTests' }],
+      select: { fields: ['name','mode','testMode','date','vocabOptions.format'].map(fieldPath => ({ fieldPath })) },
+      where: { compositeFilter: { op: 'AND', filters: [
+        f('academyId', 'EQUAL', academyId),
+        f('date', 'GREATER_THAN_OR_EQUAL', monthStart),
+        f('date', 'LESS_THAN_OR_EQUAL', monthEnd),
+      ] } },
+      limit: 500,
+    } };
+    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents:runQuery`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { console.warn('[bigcal] REST', res.status); return null; }
+    const arr = await res.json();
+    const sv = (x) => x && x.stringValue;
+    const rows = arr.filter(r => r.document).map(r => {
+      const d = r.document, fl = d.fields || {};
+      return {
+        id: d.name.split('/').pop(),
+        date: sv(fl.date), name: sv(fl.name),
+        mode: sv(fl.mode) || sv(fl.testMode),
+        format: sv(fl.vocabOptions?.mapValue?.fields?.format),
+      };
+    });
+    console.log('[perf] 달력 genTests(경량) ' + rows.length + '건');
+    return rows;
+  } catch (e) { console.warn('[bigcal] REST 실패 → SDK 폴백:', e.message); return null; }
 }
 
 async function _bigcalFetchBillings(year, month, entry) {
