@@ -256,7 +256,9 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
   const dup = new Set(rows.map(r => r.no)).size !== rows.length;
   const answers = rows.map((r, i) => ({ ...r, no: dup ? i + 1 : r.no }));
 
-  const uncertain = new Set(Array.isArray(raw.uncertainQuestions) ? raw.uncertainQuestions : []);
+  // 검토 필요 = 최종 신뢰도 0.9 미만 문항만. AI 가 자체 보고한 uncertainQuestions 는 쓰지 않는다
+  // (코드가 확정한 정답까지 AI 목록에 끼어 검토 대상으로 남는 문제 방지)
+  const uncertain = new Set();
   answers.forEach(a => { if (a.confidence < 0.9) uncertain.add(a.no); });
   const correctCount = answers.filter(a => a.isCorrect).length;
   const totalQuestions = answers.length;
@@ -313,11 +315,8 @@ function applyJudgements(result, judged) {
 
 function _recompute(result) {
   const answers = result.answers;
-  const uncertain = new Set((result.uncertainQuestions || []).filter(n => {
-    const a = answers.find(x => x.no === n);
-    return a && !a.judged;                       // 판정 호출이 확정한 문항은 AI 자체 불확실 표시를 따르지 않는다
-  }));
-  answers.forEach(a => { if (a.confidence < 0.9) uncertain.add(a.no); else if (a.judged) uncertain.delete(a.no); });
+  const uncertain = new Set();
+  answers.forEach(a => { if (a.confidence < 0.9) uncertain.add(a.no); });
   result.correctCount = answers.filter(a => a.isCorrect).length;
   result.totalQuestions = answers.length;
   result.scorePercent = result.totalQuestions > 0 ? Math.round((result.correctCount / result.totalQuestions) * 100) : 0;
