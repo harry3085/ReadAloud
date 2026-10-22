@@ -674,10 +674,11 @@
     const _wrongAns = _all.filter(a => !a.isCorrect);
     const _reviewAns = _all.filter(a => a.isCorrect && uncertain.has(a.no));
     const _rightAns = _all.filter(a => a.isCorrect && !uncertain.has(a.no));
+    const _wrongUncertain = _wrongAns.filter(a => uncertain.has(a.no)).length;   // 틀렸지만 AI 확신이 낮은 문항
     const _grpHead = (label, color, bg) =>
       `<div style="padding:6px 8px;font-size:12px;font-weight:700;color:${color};background:${bg};border-bottom:1px solid #eee;">${label}</div>`;
     const allRows =
-      (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개`, '#c62828', '#ffebee') + _wrongAns.map(a => _rowHtml(a, false)).join('') : '') +
+      (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개` + (_wrongUncertain ? ` · 그중 판정이 애매한 ${_wrongUncertain}개는 확신도 표시` : ''), '#c62828', '#ffebee') + _wrongAns.map(a => _rowHtml(a, uncertain.has(a.no))).join('') : '') +
       (_reviewAns.length ? _grpHead(`⚠ 검토 필요 ${_reviewAns.length}개 — 맞게 채점했지만 애매해요`, '#e65100', '#fff8e1') + _reviewAns.map(a => _rowHtml(a, true)).join('') : '') +
       (_rightAns.length ? _grpHead(`✓ 맞은 문항 ${_rightAns.length}개`, '#2e7d32', '#e8f5e9') + _rightAns.map(a => _rowHtml(a, false)).join('') : '');
 
