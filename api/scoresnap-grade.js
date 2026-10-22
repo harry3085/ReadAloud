@@ -6,7 +6,9 @@
 // 정책 (No-Storage MVP):
 //   - 결과를 Firestore/Storage 에 저장 X. 응답으로만 반환
 //   - quota: 'generator' 재사용 (베타 동안 AI 호출 통합 카운터)
-//   - 폴백 체인: 2.5-flash → 3.1-flash-lite → 2.5-flash-lite (2026-05-18 재배치)
+//   - 폴백 체인: 3.1-flash-lite → 2.5-flash (2026-10-23 재배치 — 같은 정답지·학생지 실측 비교 결과:
+//     3.1-flash-lite 는 2.5-flash 와 정확도 동일하면서 3배 빠르고 3~4배 저렴. 생각 토큰으로 응답이 잘리는 일도 없음.
+//     2.5-flash-lite 는 줄바꿈된 칸의 둘째 줄을 놓치고(정답 잘림) 빈칸을 정답지 값으로 지어내 채점이 틀어져 제외)
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
@@ -30,12 +32,11 @@ function _ensureAdminApp() {
   });
 }
 
-// Vision OCR — 1순위 2.5-flash 유지(인식 품질). 2·3순위 2026-05-18 재배치:
-// 3.1-flash-lite 우선(신모델·저렴), 2.5-flash-lite 최후.
+// Vision OCR(정답지·학생지) — 2.5-flash-lite 는 일부러 뺐다: 앞 두 모델이 다 실패하면 그럴듯하지만 틀린 채점 결과를
+// 내는 것보다 "채점 실패, 다시 시도" 오류를 내는 편이 안전하다.
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
 ];
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -122,7 +123,7 @@ async function _callWithFallback(apiKey, prompt, base64, mimeType, precision = f
 }
 
 // 뜻 판정 전용 — 사진 없이 텍스트만. 판정에는 가볍고 결정적인 모델을 우선 사용(temperature 0).
-const JUDGE_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+const JUDGE_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash'];
 
 async function _judgeMeanings(apiKey, answers) {
   const items = answers.filter(a => a.needsJudge).map(a => ({
