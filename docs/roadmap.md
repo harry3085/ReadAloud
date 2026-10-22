@@ -69,6 +69,8 @@
 | 학생 랭킹 빈 상태 | scores Rules 가 isOwner 만 허용 → server API 로 해결 권장 | `project_ranking_visibility` |
 | Gemini 진단봇 (학원장앱 채팅) | Phase 5 후 검토 | `project_gemini_diagnosis_bot` |
 | **AI OCR 정리 후속 보완** (괄호 짝 경고 · 마침표→쉼표 규칙 · Vision 대신 Gemini 이미지 OCR) | 학원장이 "필요하다"고 할 때. 괄호 경고(코드)·마침표 규칙(프롬프트)은 작음 / Gemini OCR 은 저해상도 이미지 한글 누락이 반복될 때 검토 | `project_ai_ocr_cleanup_pipeline` |
+| **Vercel `GEMINI_API_KEY` Sensitive 교체** (새 키 발급 → Sensitive 로 재등록 → 옛 키 삭제) | 학원장 요청, 팀원 추가, 키 유출 의심 시. 혼자 사용 중이라 보류 (2026-10-10) | `project_vercel_gemini_key_sensitive` |
+| **ScoreSnap AI 사용량 카운터 분리** (현재 Generator 항목으로 합산) | **ScoreSnap 사용이 AI 사용량(Generator 한도)에 상당한 영향**을 줄 때. 학생 1명 채점 = 1회 / 정답지 1회. 분리 시 quota 종류 추가 + 플랜 byTier 한도 필드 + super 앱 한도 화면 + 학원장 사용량 5분류 → 6분류 | `project_scoresnap_quota_split` |
 | **Gemini 파라미터 폐기 대응** (thinkingBudget·temperature·topP → thinking_level) | **새 Gemini 모델을 폴백 체인에 넣을 때** (현 모델은 영향 없음). api 6파일 + 스크립트 일괄, 공용 헬퍼화 | `project_gemini_param_deprecation` |
 
 ---
@@ -91,6 +93,7 @@
 
 | 시기 | 내용 |
 |---|---|
+| 2026-10-23 | ScoreSnap 채점 개선 — 순서 다른 시험지는 영어 문제(stem) 일치로 짝짓기 · 빈칸/판독불가 오답 확정 · 한글 뜻 별도 판정 호출(뜻을 아는지 기준, 애매하면 오답) · 복수 정답/띄어쓰기/괄호 부연 · 전체 문항 틀린→맞은 그룹 · 이어서보기 확인창(showConfirm window 노출) · 학원장앱 로딩 7.4→2.3초(달력 REST select) |
 | 2026-10-07 | AI OCR·정리 단어장 정비 — Vision 언어 힌트 ko,en(한글 뜻 누락 해소) · Snapshot 프롬프트 v1~v7(원문 충실·유형 A/B·발음기호/품사 제거·뜻 칸 규칙·~ 유지) · 정리 결과 후처리(없는 단어/중복 제거·복원, 누락·뜻 없음 경고) · 손글씨 촬영 안내 |
 | 2026-10-06 | 카톡 인앱 전면 차단 + 자동 로그아웃 · 차단 화면 앱 양식 · 삼성 인터넷 경고 제거(완료율 95%로 근거 없음) |
 | 2026-10-01 | Firestore 전송량 1차 — 응시 이력 전체 수신 제거, 약 88% 절감 |
