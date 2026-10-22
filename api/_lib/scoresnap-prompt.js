@@ -210,9 +210,9 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     if (remapped && confidence > 0.6) confidence = 0.6;
 
     if (!studentAnswer) {
-      // 빈칸은 무조건 오답
+      // 빈칸·판독 불가는 무조건 오답 — 오답으로 확정이라 검토 대상에서 제외(학원장이 ✓/✗ 로 수정 가능)
       isCorrect = false;
-      if (confidence > 0.3) confidence = 0.3;
+      confidence = 1;
     } else if (_norm(studentAnswer) && _norm(studentAnswer) === _norm(correctAnswer)) {
       // 글자가 (대소문자·부호 무시하고) 같으면 정답 — AI 오판 방지
       isCorrect = true;
