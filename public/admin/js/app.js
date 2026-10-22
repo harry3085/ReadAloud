@@ -65,6 +65,7 @@ function showConfirm(title,sub=''){
     cancel.onclick=()=>done(false);
   });
 }
+window.showConfirm=showConfirm;  // scoresnap.js(비모듈 스크립트)가 사용
 
 // 입력 검증 실패·중요 경고용 — confirmModal 재사용, Cancel 버튼은 숨김
 function showAlert(title, sub=''){
