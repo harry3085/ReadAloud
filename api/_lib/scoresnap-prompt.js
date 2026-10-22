@@ -155,7 +155,8 @@ function _answerVariants(correctAnswer) {
   const c = String(correctAnswer || '');
   const noParen = c.replace(/\([^)]*\)|（[^）]*）/g, ' ');
   const out = new Set([c, noParen]);
-  [c, noParen].forEach(t => t.split(/[,;/·、，]/).forEach(p => out.add(p)));
+  // 구분 기호: 쉼표·슬래시 등 + 마침표(OCR 이 쉼표를 마침표로 읽거나 정답지가 마침표로 구분한 경우)
+  [c, noParen].forEach(t => t.split(/[,;/·、，.。]/).forEach(p => out.add(p)));
   return Array.from(out).map(_norm).filter(Boolean);
 }
 
