@@ -444,8 +444,8 @@
     _renderAnswerKeyReview();
   };
 
-  // ─── 일괄 채점 — 동시 호출 3개 throttle ───
-  const BATCH_CONCURRENCY = 3;
+  // ─── 일괄 채점 — 동시 호출 5개 throttle ───
+  const BATCH_CONCURRENCY = 5;
 
   window._ssStartBatchGrade = async function () {
     const list = _state.students || [];
