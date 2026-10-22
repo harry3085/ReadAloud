@@ -194,7 +194,7 @@ module.exports = async (req, res) => {
       tokenUsage: r.usage,
     });
   } else {
-    const processed = postProcessStudentGrade(parsed, answerKeyQuestions.length);
+    const processed = postProcessStudentGrade(parsed, answerKeyQuestions.length, answerKeyQuestions);
     return res.status(200).json({
       success: true,
       mode,

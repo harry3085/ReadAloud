@@ -72,39 +72,54 @@ function postProcessAnswerKey(raw) {
 }
 
 // ─── 학생 답안지 채점 프롬프트 (정답지 + 학생 답안 비교) ───
-// 정답지에서 추출된 questions 를 텍스트로 명시 + 학생 답안지 이미지 첨부.
-// 시험지 레이아웃이 같으니 위치 매칭 자연스러움.
+// 정답지 questions 를 K번호로 나열 + 학생 답안지 이미지 첨부.
+// ★ 정답지와 학생 시험지는 문제 순서가 서로 다를 수 있다(랜덤 순서 인쇄).
+//   → 위치가 아니라 "문제 내용(영단어·문장·보기)"으로 정답지 문항(K번호)을 찾아 대응시킨다.
+//   → 번호(no)는 학생 시험지에 인쇄된 번호를 따른다.
 function buildStudentGradePrompt(answerKeyQuestions) {
   const lines = (answerKeyQuestions || []).map((q, i) => {
-    const n = i + 1;
+    const k = `K${i + 1}`;
     if (q.type === 'mcq') {
       const choices = (q.choices || []).map((c, j) => {
         const mark = ['①', '②', '③', '④', '⑤'][j] || `(${j + 1})`;
         return `${mark} ${c}`;
       }).join(' ');
-      return `Q${n} [MCQ] "${q.stem}"\n   ${choices}\n   → 정답 텍스트: "${q.answer}"`;
+      return `${k} [MCQ] "${q.stem}"\n   ${choices}\n   → 정답 텍스트: "${q.answer}"`;
     }
-    return `Q${n} [SHORT] "${q.stem}" → 정답: "${q.answer}"`;
+    return `${k} [SHORT] "${q.stem}" → 정답: "${q.answer}"`;
   }).join('\n\n');
 
   return `첨부: 학생 답안지 한 장 (사진).
 
-시험 구조 (정답지에서 이미 추출됨):
+정답지 문항 목록 (K번호 = 정답지 기준 식별자):
 
 ${lines}
 
+★ 가장 중요 — 순서가 다를 수 있다:
+- 학생 시험지는 정답지와 문제 순서가 다르다(랜덤 순서로 인쇄됨). 번호가 같다고 같은 문제가 아니다.
+- 학생 시험지의 각 문항에 인쇄된 문제(영단어·문장·보기 등) 내용을 읽고, 위 정답지 목록에서 **같은 문제**를 찾아 그 K번호를 keyNo 로 적어라. 위치·순서로 짝짓지 말 것.
+- 출력 answers 는 **학생 시험지에 인쇄된 번호 순서(no)** 로 작성. no 는 학생 시험지에 인쇄된 번호 그대로.
+- 정답지 목록의 문항 하나는 정확히 한 번만 사용. 학생 시험지에서 찾지 못한 정답지 문항은 answers 에 넣지 말 것(서버가 처리).
+
 작업:
 1. 시험지 헤더의 "이름:" 옆에 학생이 쓴 손글씨 이름 추출
-2. 각 문항에서 학생 답만 추출해서 정답과 비교
+2. 각 문항에서 학생이 쓴 답만 추출 → 그 문항에 해당하는 정답지 문항(keyNo)의 정답과 비교해 채점
 
-규칙:
+추출 규칙:
 - 학생 이름: 손글씨 그대로 (한글·영문). 빈칸·판독 불가면 빈 문자열
-- MCQ: 학생이 동그라미·체크·V 표시 친 보기의 텍스트 추출 (인쇄된 보기 텍스트 그대로). 선지 위치보다 텍스트 매칭이 우선
+- MCQ: 학생이 동그라미·체크·V 표시 친 보기의 텍스트 추출 (인쇄된 보기 텍스트 그대로). 선지 위치(①②)보다 텍스트가 우선 (보기 순서도 다를 수 있음)
 - SHORT: 학생이 줄 위에 손글씨로 적은 글자 그대로 추출
-- 단답 채점: 대소문자 무시, 공백·문장부호 무시, 동의어 X (정답과 정확 일치)
-- 학생이 아무것도 안 썼거나 판독 불가하면 studentAnswer 빈 문자열, confidence 0.3 이하
 - 정답이 위에 명시돼 있다고 그걸 학생 답으로 넘기지 말 것
-- questions 수와 정확히 일치하는 answers 배열 반환
+- 학생이 아무것도 안 썼거나 판독 불가하면 studentAnswer 는 빈 문자열, isCorrect=false, confidence 0.3 이하 (**빈칸은 무조건 오답**)
+
+채점 규칙:
+- 정답이 영어(철자·문장)인 문항: 철자가 정확히 일치해야 정답. 대소문자·공백·문장부호만 무시. 철자가 다르면 오답.
+- 정답이 한글(뜻)인 문항: **글자가 같지 않아도 뜻이 같거나 거의 같으면 정답**.
+  · 허용: 조사·어미·띄어쓰기 차이, 사소한 오탈자, 의미가 같은 다른 표현(유의어·풀어쓴 표현), 정답의 여러 뜻 중 하나만 쓴 경우
+  · 오답: 뜻이 다른 단어, 반대 뜻, 문제와 무관한 내용, 빈칸
+  · 글자가 정확히 같지 않고 **뜻 유사성으로 정답 처리**한 문항은 confidence 를 0.85 이하로 낮춰라(학원장이 검토할 수 있게)
+  · 뜻이 비슷한지 애매하면 정답(isCorrect=true)으로 하되 confidence 0.6 이하
+- MCQ: 학생이 표시한 보기 텍스트가 정답 텍스트와 같으면 정답.
 
 응답 JSON 만 출력. 서문·설명 없이:
 
@@ -112,7 +127,8 @@ ${lines}
   "studentName": "추출된 학생 이름 (없으면 빈 문자열)",
   "answers": [
     {
-      "no": 1,
+      "no": 학생 시험지에 인쇄된 문항 번호,
+      "keyNo": 대응하는 정답지 문항 번호 (K3 이면 3),
       "type": "mcq" or "short",
       "studentAnswer": "...",
       "correctAnswer": "...",
@@ -120,12 +136,20 @@ ${lines}
       "confidence": 0.0~1.0
     }
   ],
-  "uncertainQuestions": [confidence 0.8 미만 문항 번호]
+  "uncertainQuestions": [confidence 0.8 미만 문항의 no]
 }`;
 }
 
-// 학생 채점 응답 → 정제 (기존 postProcessGradingResult 와 동일하되 studentName 보존)
-function postProcessStudentGrade(raw, expectedCount) {
+// 비교용 정규화 — 대소문자·공백·문장부호 무시 (한글·영문·숫자만 남김)
+function _norm(s) {
+  return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+const _HANGUL = /[가-힣ㄱ-ㅎㅏ-ㅣ]/;
+
+// 학생 채점 응답 → 정제
+// 순서가 다른 시험지 대응: keyNo 로 정답지 문항을 찾고, 정답·유형은 정답지 값을 기준으로 삼는다.
+function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
+  const keyQs = Array.isArray(answerKeyQuestions) ? answerKeyQuestions : [];
   if (!raw || !Array.isArray(raw.answers)) {
     return {
       studentName: '',
@@ -139,28 +163,61 @@ function postProcessStudentGrade(raw, expectedCount) {
     };
   }
 
-  let answers = raw.answers.slice(0, expectedCount || raw.answers.length);
-  while (expectedCount && answers.length < expectedCount) {
-    answers.push({
-      no: answers.length + 1,
-      type: 'short',
-      studentAnswer: '',
-      correctAnswer: '',
-      isCorrect: false,
-      confidence: 0.3,
+  const total = expectedCount || keyQs.length || raw.answers.length;
+  const clamp01 = (v) => (typeof v === 'number' ? Math.max(0, Math.min(1, v)) : 0.5);
+  const used = new Set();          // 이미 대응된 정답지 문항(keyNo)
+  const rows = [];                 // 정제된 학생 문항
+
+  raw.answers.forEach((a, i) => {
+    // keyNo 누락(옛 응답 형식)이면 배열 위치로 폴백
+    const keyNo = Number.isInteger(a.keyNo) ? a.keyNo : i + 1;
+    // 범위 밖·중복은 버린다 — 정답지 문항이 남으면 아래에서 빈 슬롯(오답·검토 표시)으로 채움
+    if (keyNo < 1 || keyNo > total || used.has(keyNo)) return;
+    used.add(keyNo);
+    const key = keyQs[keyNo - 1] || {};
+    const studentAnswer = String(a.studentAnswer || '').trim();
+    const correctAnswer = String(key.answer || a.correctAnswer || '').trim();
+    const type = key.type || a.type || 'short';
+    let isCorrect = a.isCorrect === true;
+    let confidence = clamp01(a.confidence);
+
+    if (!studentAnswer) {
+      // 빈칸은 무조건 오답
+      isCorrect = false;
+      if (confidence > 0.3) confidence = 0.3;
+    } else if (_norm(studentAnswer) && _norm(studentAnswer) === _norm(correctAnswer)) {
+      // 글자가 (대소문자·부호 무시하고) 같으면 정답 — AI 오판 방지
+      isCorrect = true;
+    } else if (type === 'short' && correctAnswer && !_HANGUL.test(correctAnswer)) {
+      // 정답이 영어인 단답 — 철자 정확 일치만 정답 (AI 관대 판정 차단)
+      isCorrect = false;
+    }
+
+    const no = Number.isInteger(a.no) && a.no >= 1 ? a.no : rows.length + 1;
+    rows.push({ no, keyNo, type, studentAnswer, correctAnswer, isCorrect, confidence });
+  });
+
+  // 정답지에 있는데 학생 시험지에서 대응되지 않은 문항 → 오답 + 검토 필요
+  const usedNos = new Set(rows.map(r => r.no));
+  let nextNo = rows.reduce((m, r) => Math.max(m, r.no), 0);
+  for (let k = 1; k <= total; k++) {
+    if (used.has(k)) continue;
+    const key = keyQs[k - 1] || {};
+    nextNo += 1;
+    while (usedNos.has(nextNo)) nextNo += 1;
+    usedNos.add(nextNo);
+    rows.push({
+      no: nextNo, keyNo: k, type: key.type || 'short',
+      studentAnswer: '', correctAnswer: String(key.answer || '').trim(),
+      isCorrect: false, confidence: 0.3,
     });
   }
-  answers = answers.map((a, i) => ({
-    no: i + 1,
-    type: a.type || 'short',
-    studentAnswer: String(a.studentAnswer || '').trim(),
-    correctAnswer: String(a.correctAnswer || '').trim(),
-    isCorrect: a.isCorrect === true,
-    confidence: typeof a.confidence === 'number' ? Math.max(0, Math.min(1, a.confidence)) : 0.5,
-  }));
-  answers.forEach(a => {
-    if (!a.studentAnswer && a.confidence > 0.5) a.confidence = 0.3;
-  });
+
+  // 학생 시험지 번호 순으로 정렬. no 가 겹치면 순서대로 재번호
+  rows.sort((x, y) => x.no - y.no);
+  const dup = new Set(rows.map(r => r.no)).size !== rows.length;
+  const answers = rows.map((r, i) => ({ ...r, no: dup ? i + 1 : r.no }));
+
   const uncertain = new Set(Array.isArray(raw.uncertainQuestions) ? raw.uncertainQuestions : []);
   answers.forEach(a => { if (a.confidence < 0.9) uncertain.add(a.no); });
   const correctCount = answers.filter(a => a.isCorrect).length;
@@ -173,7 +230,7 @@ function postProcessStudentGrade(raw, expectedCount) {
     totalQuestions,
     scorePercent: totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0,
     wrongNumbers: answers.filter(a => !a.isCorrect).map(a => a.no),
-    uncertainQuestions: Array.from(uncertain).sort((a, b) => a - b),
+    uncertainQuestions: Array.from(uncertain).filter(n => answers.some(a => a.no === n)).sort((a, b) => a - b),
   };
 }
 
