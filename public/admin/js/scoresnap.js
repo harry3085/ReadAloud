@@ -672,6 +672,17 @@
   }
 
   // ─── T7-B. 정답지 촬영 화면 ───
+  function _layoutPickHtml() {
+    const cur = _state.layoutHint || 'numbered';
+    return [['auto', '자동'], ['numbered', '번호형'], ['table', '표 형식']].map(([v, l]) =>
+      `<button onclick="window._ssSetLayoutHint('${v}')" style="flex:1;padding:10px 6px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:${cur === v ? 700 : 500};border:1px solid ${cur === v ? 'var(--c-brand,#E8714A)' : '#444'};background:${cur === v ? 'var(--c-brand,#E8714A)' : 'rgba(255,255,255,0.06)'};color:#fff;">${l}</button>`).join('');
+  }
+  window._ssSetLayoutHint = function (v) {
+    _state.layoutHint = v;
+    const el = document.getElementById('ssLayoutPick');
+    if (el) el.innerHTML = _layoutPickHtml();
+  };
+
   function _renderAnswerKeyCapture() {
     _state.phase = 'answerKey-capture';
     _setHeader('📋 ScoreSnap · 1단계: 정답지 촬영');
@@ -694,6 +705,11 @@
         <div style="font-size:14px;color:#bbb;text-align:center;line-height:1.5;">
           정답이 포함된 시험지 1장 촬영
           ${precision ? '<br><span style="font-size:11px;color:#ffc107;">정밀 모드 — 해상도·정확도 ↑, 응답 +3~5초</span>' : ''}
+        </div>
+        <div style="width:100%;max-width:420px;">
+          <div style="font-size:12px;color:#999;margin-bottom:6px;text-align:center;">시험지 형태</div>
+          <div id="ssLayoutPick" style="display:flex;gap:6px;">${_layoutPickHtml()}</div>
+          <div style="font-size:11px;color:#777;margin-top:6px;line-height:1.5;text-align:center;">번호형: 번호 한 줄에 문제 하나 (여러 단·영한 혼합·단어|뜻 목록 포함)<br>표 형식: 한 줄에 칸이 여러 개 (불규칙동사표 등)</div>
         </div>
         <input id="ssAkCamIn" type="file" accept="image/*" capture="environment" style="display:none;">
         <input id="ssAkGalIn" type="file" accept="image/*" style="display:none;">
@@ -758,6 +774,7 @@
           imageBase64: processed.base64,
           imageMimeType: processed.mimeType,
           precision,
+          layoutHint: _state.layoutHint || 'numbered',
         }),
       });
       const data = await r.json().catch(() => ({}));

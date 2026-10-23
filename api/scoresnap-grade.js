@@ -152,6 +152,7 @@ module.exports = async (req, res) => {
   let body;
   try { body = req.body || {}; } catch (_) { return res.status(400).json({ error: '요청 형식 오류' }); }
   const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions, precision, answerKeyMeta } = body;
+  const layoutHint = body.layoutHint === 'numbered' || body.layoutHint === 'table' ? body.layoutHint : 'auto';   // 학원장이 정답지 올릴 때 고른 형태
   const isTable = !!(answerKeyMeta && answerKeyMeta.layout === 'table' && answerKeyMeta.givenColumn && Array.isArray(answerKeyMeta.answerColumns) && answerKeyMeta.answerColumns.length);
 
   if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
@@ -174,7 +175,7 @@ module.exports = async (req, res) => {
   // ── 모드별 프롬프트 + 호출 ──
   let prompt;
   if (mode === 'answerKey') {
-    prompt = buildAnswerKeyPrompt();
+    prompt = buildAnswerKeyPrompt({ forceNumbered: layoutHint === 'numbered', forceTable: layoutHint === 'table' });
   } else {
     if (!Array.isArray(answerKeyQuestions) || answerKeyQuestions.length === 0) {
       return res.status(400).json({ error: '정답지 questions 필요 (mode=student)' });
@@ -204,17 +205,20 @@ module.exports = async (req, res) => {
   }
 
   if (mode === 'answerKey') {
-    let processed = postProcessAnswerKey(parsed);
+    if (layoutHint === 'numbered') parsed.layout = 'numbered';
+    let processed = postProcessAnswerKey(parsed, { forceTable: layoutHint === 'table', forceNumbered: layoutHint === 'numbered' });
+    if (layoutHint === 'numbered' && !(processed.questions || []).length) processed._tableRejected = true;   // 번호형으로 골랐는데 비면 재시도
+    if (layoutHint === 'table' && !(processed.questions || []).length) processed = { testName: processed.testName, questions: [], error: '표를 읽지 못했어요. 번호형으로 바꿔 다시 시도하거나 다시 촬영해 주세요' };
     // 머리글 줄 없는 번호 목록을 표로 잘못 판단한 경우 — 번호형으로 한 번 더 읽기
     if (processed._tableRejected) {
       // AI 가 번호형 지시를 어기고 다시 표로 답하면(questions 가 빔) 최대 3회까지 재시도
       let fixed = null;
-      for (let t = 0; t < 3 && !fixed; t++) {
+      for (let t = 0; t < 3 && !(fixed && fixed.questions.length); t++) {
         const r2 = await _callWithFallback(apiKey, buildAnswerKeyPrompt({ forceNumbered: true }), imageBase64, imageMimeType || 'image/jpeg', precision === true);
         const p2 = r2.ok ? _parseJSON(r2.rawText) : null;
-        if (p2 && Array.isArray(p2.questions) && p2.questions.length) { p2.layout = 'numbered'; fixed = postProcessAnswerKey(p2); }
+        if (p2) { p2.layout = 'numbered'; fixed = postProcessAnswerKey(p2, { forceNumbered: true }); }
       }
-      processed = fixed || { testName: processed.testName, questions: [], error: '정답지를 읽지 못했어요. 다시 촬영해 주세요' };
+      processed = (fixed && fixed.questions.length) ? fixed : { testName: processed.testName, questions: [], error: '정답지를 읽지 못했어요. 다시 촬영해 주세요' };
     }
     delete processed._tableRejected;
     return res.status(200).json({

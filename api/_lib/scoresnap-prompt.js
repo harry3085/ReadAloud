@@ -9,7 +9,10 @@
 // 학원장이 인쇄한 정답지(답지 보기 모드) 1 장을 보고 문제·정답 추출.
 function buildAnswerKeyPrompt(opts) {
   const forceNumbered = !!(opts && opts.forceNumbered);
-  const forceNote = forceNumbered
+  const forceTable = !!(opts && opts.forceTable);
+  const forceNote = forceTable
+    ? '★★ 이 시험지는 표 형식(layout "table")이다. 열 이름이 적힌 줄을 columns 로, 줄마다 칸 내용을 rows 로 담고 layout 은 반드시 "table" 로 응답하라. 학생에게 인쇄돼 주어지는 열을 givenColumn 으로 정하라.' + String.fromCharCode(10) + String.fromCharCode(10)
+    : forceNumbered
     ? '★★ 이 시험지는 번호형(layout "numbered")이다. 표 형식이 아니다. 모든 문항을 questions 에 담고 layout 은 반드시 "numbered" 로 응답하라. (여러 단으로 나뉜 번호 목록·영어↔한글이 섞인 문제도 번호형이다)' + String.fromCharCode(10) + String.fromCharCode(10)
     : '';
   const forceTail = forceNumbered
@@ -100,8 +103,32 @@ function _flattenKeyTable(table) {
   return { givenColumn: given, answerColumns, questions };
 }
 
-function postProcessAnswerKey(raw) {
-  if (raw && raw.layout === 'table') {
+// 번호형으로 지정했는데 AI 가 표 모양(columns·rows)으로만 답한 경우 — 두 열(문제|정답)이면 그대로 번호형 문항으로 변환
+function _rowsToNumbered(raw) {
+  const t = (raw && raw.table) || raw || {};
+  const cols = (Array.isArray(t.columns) ? t.columns : []).map(c => String(c || '').trim()).filter(c => c && !/^(번호|no\.?|#)$/i.test(c));
+  const rows = Array.isArray(t.rows) ? t.rows : [];
+  if (cols.length < 2 || rows.length < 2) return null;
+  const given = cols.includes(String(t.givenColumn || '').trim()) ? String(t.givenColumn).trim() : cols[0];
+  const ans = cols.find(c => c !== given);
+  const qs = [];
+  rows.forEach(row => {
+    const cells = (row && row.cells) || row || {};
+    const stem = String(cells[given] == null ? '' : cells[given]).trim();
+    if (!stem) return;
+    qs.push({ no: qs.length + 1, type: 'short', stem, choices: [], answerIdx: -1, answer: String(cells[ans] == null ? '' : cells[ans]).trim(), confidence: 0.9 });
+  });
+  return qs.length >= 2 ? qs : null;
+}
+
+function postProcessAnswerKey(raw, opts) {
+  const forceTable = !!(opts && opts.forceTable);
+  if (opts && opts.forceNumbered && raw && !(Array.isArray(raw.questions) && raw.questions.length)) {
+    const qs = _rowsToNumbered(raw);
+    if (qs) return { testName: String(raw.testName || '').trim(), layout: 'numbered', questions: qs };
+  }
+  if (forceTable && raw && !raw.layout && raw.table) raw.layout = 'table';
+  if (raw && raw.layout === 'table' && !forceTable) {
     // 머리글 줄이 없거나 열이 2개 미만이면 표가 아니라 번호형을 잘못 판단한 것 → 호출부가 번호형으로 다시 읽도록 표시
     const t = raw.table || {};
     const hdr = raw.hasHeaderRow != null ? raw.hasHeaderRow : t.hasHeaderRow;
