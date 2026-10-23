@@ -132,6 +132,20 @@
     return other || '시험';
   }
 
+  // ScoreSnap 전체화면(z-index 99999) 위에서 보이는 토스트 — 앱 기본 토스트는 오버레이 뒤에 가려진다
+  let _ssToastEl = null, _ssToastTimer = 0;
+  function _ssToast(msg) {
+    if (!_ssToastEl) {
+      _ssToastEl = document.createElement('div');
+      _ssToastEl.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);max-width:88vw;background:rgba(40,40,40,0.96);color:#fff;border:1px solid #666;padding:10px 16px;border-radius:10px;font-size:13px;z-index:100003;box-shadow:0 4px 16px rgba(0,0,0,0.5);text-align:center;pointer-events:none;';
+      document.body.appendChild(_ssToastEl);
+    }
+    _ssToastEl.textContent = msg;
+    _ssToastEl.style.display = 'block';
+    clearTimeout(_ssToastTimer);
+    _ssToastTimer = setTimeout(() => { if (_ssToastEl) _ssToastEl.style.display = 'none'; }, 3500);
+  }
+
   // ─── 서버 저장(폰·PC 동기화, 5일 보관) ───
   const _fmtAgo = (ms) => {
     const m = Math.max(1, Math.round((Date.now() - ms) / 60000));
@@ -184,7 +198,7 @@
             await window._ssStore.deleteSession(t.dataset.del);
             sessions = sessions.filter(x => x.id !== t.dataset.del);
             draw();
-          } catch (err) { if (typeof window.showToast === 'function') window.showToast('삭제 실패: ' + (err && err.message)); }
+          } catch (err) { _ssToast('삭제 실패: ' + (err && err.message)); }
         }
       };
       draw();
@@ -193,7 +207,7 @@
   }
 
   async function _ssOpenServerSession(sid) {
-    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    const toast = (m) => _ssToast(m);
     try {
       const data = await window._ssStore.loadSession(sid);
       _state = {
@@ -222,10 +236,10 @@
       _state.students = data.students.map(x => ({
         status: 'done', result: x.result, image: null, error: null, docId: x.docId, imagePath: x.imagePath || '',
       })).concat(pending);
-      if (typeof window.showToast === 'function') window.showToast('✅ 새로고침 완료');
+      _ssToast('✅ 새로고침 완료');
       _renderResultGrid();
     } catch (e) {
-      if (typeof window.showToast === 'function') window.showToast('새로고침 실패: ' + (e && e.message));
+      _ssToast('새로고침 실패: ' + (e && e.message));
     }
   };
 
@@ -252,10 +266,10 @@
     try {
       await window._ssStore.deleteSession(_state.sid);
       _clearSession();
-      if (typeof window.showToast === 'function') window.showToast('삭제했어요');
+      _ssToast('삭제했어요');
       closeScoreSnap();
     } catch (e) {
-      if (typeof window.showToast === 'function') window.showToast('삭제 실패: ' + (e && e.message));
+      _ssToast('삭제 실패: ' + (e && e.message));
     }
   };
 
@@ -305,9 +319,9 @@
     let url = x.image?.dataUrl || '';
     if (!url && x.imagePath) {
       try { url = await window._ssStore.getImageUrl(x.imagePath); }
-      catch (e) { if (typeof window.showToast === 'function') window.showToast('사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
+      catch (e) { _ssToast('사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
     }
-    if (!url) { if (typeof window.showToast === 'function') window.showToast('저장된 사진이 없어요'); return; }
+    if (!url) { _ssToast('저장된 사진이 없어요'); return; }
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
     ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
@@ -322,7 +336,7 @@
     if (!url) {
       if (!x.imagePath) throw new Error('저장된 사진이 없어요');
       const remote = await window._ssStore.getImageUrl(x.imagePath);
-      const blob = await (await fetch(remote)).blob();     // 버킷 CORS 허용 필요 (raloud.vercel.app)
+      const blob = await (await fetch(remote, { cache: 'reload' })).blob();   // 이전에 <img> 로 캐시된(CORS 헤더 없는) 응답 재사용 방지     // 버킷 CORS 허용 필요 (raloud.vercel.app)
       url = URL.createObjectURL(blob);
     }
     const img = new Image();
@@ -389,7 +403,7 @@
   }
 
   window._ssShowMarkedPhoto = async function (idx) {
-    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    const toast = (m) => _ssToast(m);
     const x = _state.students?.[idx];
     if (!x?.result) return;
     toast('마킹 사진 만드는 중...');
@@ -1259,7 +1273,7 @@
   // 이미지를 클립보드에 복사 → 카톡 PC 대화창에서 Ctrl+V. 클릭(사용자 동작) 안에서 write 를 바로 호출하고
   // 이미지 생성은 Promise 로 넘긴다(생성이 오래 걸려도 사용자 동작 인정 유지).
   window._ssCopyStudentImage = async function (idx) {
-    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    const toast = (m) => _ssToast(m);
     if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
       toast('이 브라우저는 이미지 복사를 지원하지 않아요 — PNG 다운로드를 사용하세요');
       return;
