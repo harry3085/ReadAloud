@@ -55,7 +55,8 @@ function buildAnswerKeyPrompt(opts) {
 응답 JSON 만 출력. 서문·설명 없이:
 
 {
-  "layout": "numbered" or "table",
+  "hasHeaderRow": true 또는 false,   // 가장 먼저 판단: 데이터 줄 바로 위에 열 이름만 모은 줄(예: 뜻|현재|과거)이 인쇄돼 있으면 true. 제목·이름란만 있고 바로 번호 목록이 시작되면 false
+  "layout": "numbered" or "table",   // hasHeaderRow 가 false 면 반드시 "numbered" (이때 table 필드는 쓰지 말고 모든 문항을 questions 에 담는다)
   "table": { "hasHeaderRow": true, "columns": [], "givenColumn": "", "rows": [] },     // layout 이 table 일 때만 채움. numbered 면 생략
   "testName": "시험명 (헤더에서 추출, 없으면 빈 문자열)",
   "questions": [
@@ -102,7 +103,8 @@ function postProcessAnswerKey(raw) {
   if (raw && raw.layout === 'table') {
     // 머리글 줄이 없거나 열이 2개 미만이면 표가 아니라 번호형을 잘못 판단한 것 → 호출부가 번호형으로 다시 읽도록 표시
     const t = raw.table || {};
-    if (t.hasHeaderRow !== true || !Array.isArray(t.columns) || t.columns.length < 2 || !Array.isArray(t.rows) || t.rows.length < 2) {
+    const hdr = raw.hasHeaderRow != null ? raw.hasHeaderRow : t.hasHeaderRow;
+    if (hdr !== true || !Array.isArray(t.columns) || t.columns.length < 2 || !Array.isArray(t.rows) || t.rows.length < 2) {
       return { testName: String(raw.testName || '').trim(), questions: [], _tableRejected: true };
     }
   }
