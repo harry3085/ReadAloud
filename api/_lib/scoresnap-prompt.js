@@ -74,7 +74,9 @@ function buildAnswerKeyPrompt(opts) {
 function _flattenKeyTable(table) {
   const cols = (table.columns || []).map(c => String(c || '').trim()).filter(Boolean);
   let given = String(table.givenColumn || '').trim();
-  if (!cols.includes(given)) given = cols.includes('현재') ? '현재' : (cols[0] || '');
+  // 기준 칸은 AI 추정이 흔들리므로(같은 표를 '뜻' 또는 '현재' 로 답함), 불규칙동사표처럼 '현재' 열이 있으면 항상 '현재' 로 고정
+  if (cols.includes('현재')) given = '현재';
+  else if (!cols.includes(given)) given = cols[0] || '';
   const answerColumns = cols.filter(c => c !== given);
   const questions = [];
   (table.rows || []).forEach((row, ri) => {
