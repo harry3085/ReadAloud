@@ -120,7 +120,45 @@
     `;
     document.body.appendChild(ov);
     document.getElementById('ssClose').onclick = closeScoreSnap;
+    _ssPushHist();
   }
+
+  // ─── 폰 하단 [뒤로가기] = 앱 종료가 아니라 ScoreSnap 안에서 한 단계 앞으로 ───
+  let _ssHistOn = false, _ssIgnorePop = 0;
+  function _ssPushHist() {
+    if (_ssHistOn) return;
+    try { history.pushState({ ss: 1 }, ''); _ssHistOn = true; } catch (_) {}
+  }
+  function _ssPopHist() {
+    if (!_ssHistOn) return;
+    _ssHistOn = false; _ssIgnorePop++;
+    try { history.back(); } catch (_) { _ssIgnorePop--; }
+  }
+  // 한 단계 뒤로. true = ScoreSnap 에 계속 머뭄, false = ScoreSnap 종료
+  function _ssGoBack() {
+    // 위에 떠 있는 보조 창(사진 보기·마킹 사진·채점 기록 목록)부터 닫기
+    const subs = document.querySelectorAll('[data-ss-sub]');
+    if (subs.length) {
+      const top = subs[subs.length - 1];
+      if (typeof top._ssCancel === 'function') top._ssCancel(); else top.remove();
+      return true;
+    }
+    switch (_state.phase) {
+      case 'student-detail': window._ssCloseStudentDetail(); return true;
+      case 'student-capture':
+        if (_state.answerKey?.questions?.length) { window._ssBackToAnswerKey(); return true; }
+        _renderAnswerKeyCapture(); return true;
+      case 'answerKey-review': _renderAnswerKeyCapture(); return true;
+      case 'answerKey-ocr': case 'batch-grading': return true;    // 처리 중에는 그대로
+      case 'result-grid': default: closeScoreSnap(); return false;  // 결과·정답지 촬영 첫 화면에서는 종료 (기록은 서버 저장됨)
+    }
+  }
+  window.addEventListener('popstate', () => {
+    if (_ssIgnorePop > 0) { _ssIgnorePop--; return; }
+    if (!document.getElementById('scoreSnapOverlay')) return;
+    _ssHistOn = false;
+    if (_ssGoBack()) _ssPushHist();
+  });
 
   // 시험명 — 학생 답안지 헤더 기준. 그 학생에서 못 읽었으면 정답지 → 다른 학생 순으로 폴백
   function _testNameOf(r) {
@@ -158,8 +196,10 @@
   function _ssShowSessionPicker(sessions) {
     return new Promise((resolve) => {
       const ov = document.createElement('div');
+      ov.setAttribute('data-ss-sub', '1');
       ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;';
       const done = (r) => { ov.remove(); resolve(r); };
+      ov._ssCancel = () => done({ action: 'cancel' });
       const draw = () => {
         ov.innerHTML = `
           <div style="background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:12px;width:min(520px,100%);max-height:86vh;display:flex;flex-direction:column;">
@@ -325,6 +365,7 @@
     }
     if (!url) { _ssToast('저장된 사진이 없어요'); return; }
     const ov = document.createElement('div');
+    ov.setAttribute('data-ss-sub', '1');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
     ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
     ov.onclick = () => ov.remove();
@@ -427,6 +468,7 @@
     const safe = v => String(v).replace(/[\\/:*?"<>|]/g, '_');
     const fname = `${safe(x.result.studentName || '학생' + (idx + 1))}_${safe(_testNameOf(x.result))}_채점.png`;
     const ov = document.createElement('div');
+    ov.setAttribute('data-ss-sub', '1');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.94);z-index:100001;display:flex;flex-direction:column;';
     ov.innerHTML = `
       <div style="flex:1;overflow:auto;padding:12px;display:flex;"><img src="${url}" alt="" style="max-width:100%;height:auto;margin:auto;display:block;"></div>
@@ -456,6 +498,7 @@
   };
 
   function closeScoreSnap() {
+    _ssPopHist();
     _releaseCamera();
     document.getElementById('scoreSnapOverlay')?.remove();
     _state = {};
