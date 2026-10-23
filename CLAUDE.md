@@ -5492,3 +5492,28 @@ SW v833 → v842. 학원장이 실제 학생지 8장(Wordsnap CH3, 랜덤 순서
 - ScoreSnap 채점: ~100% (실사용 후 경계 사례 기준 조정 — 얼리다/매년/~을 구성하다/어딘가는 현재 오답으로 일관)
 - 로딩: 남은 직렬 구간(users 문서 → 학원정보 읽기 ≈ 1.4초)은 claims 기반 병렬화 가능하나 보류
 - 다음 후보: ScoreSnap 카운터 분리(트리거 대기), 채점 실패 시 자동 재시도(실패 빈도 관찰 후), 100문항 이상 시험지는 출력 한도 확대
+
+---
+
+## 2026-10-23 (이어서): ScoreSnap 서버 저장(폰·PC 동기화) + 마킹 사진
+
+SW v842 → v849. 폰에서 채점 → PC 에서 확인, 학생에게 틀린 문항 V 마킹 사진 전달.
+
+### 서버 저장 (5일 보관)
+- `scoresnapSessions/{sid}` (메타·목록용) + `/key/answerKey` + `/students/{id}` (result·idx·imagePath). Storage `scoresnap/{academyId}/{sid}/{id}.jpg`
+- 하위 컬렉션 조회는 `where('academyId','==',MY)` 정적 제약 필수(Rules). 인덱스 `(academyId, createdAt DESC)` 배포됨
+- 5일 삭제: 이미지는 GCS lifecycle(`scripts/admin/set-scoresnap-lifecycle.js`), 문서는 목록 열 때 만료분 최대 5건씩 정리
+- 브리지 `window._ssStore`(app.js) ↔ scoresnap.js. 새 채점은 `_syncToServer`(직렬 큐), 수정은 `_markDirty`(1.2초 디바운스)
+- 열 때 세션 선택 창, [↻ 새로고침]·[📂 채점 기록]·[🗑 삭제]. 서버 실패 시 localStorage 폴백 유지
+
+### 마킹 사진 (✔ 마킹)
+- 번호·"점수:" 라벨 위치 = Vision OCR 단어 좌표(`api/ocr.js` `wordBoxes:true`). **AI(Gemini) 좌표는 부정확**(줄 아래로 밀림·문항 누락) → 폐기. 번호는 `n.`(점 붙은 토큰) 우선, 머리글 "총 43문항" 오인 방지로 y>15% 폴백
+- 위치는 `result.markPos`(정규화 좌표)로 저장 → 이후 ✓/✗ 수정은 OCR 없이 즉시 반영. 첫 1회만 OCR 쿼터 소모
+- 브라우저 canvas 로 V(번호 왼쪽, 큰 글씨)·점수(점수칸 오른쪽) 합성 → PNG 저장/클립보드 복사
+
+### 작업 규칙 추가
+- **Storage 사진을 canvas 로 쓰려면 버킷 CORS 필요** — `raloud.vercel.app`/localhost:3000 GET 허용 설정함(2026-10-23, 코드: `bucket.setCorsConfiguration`). 새 도메인 도입 시 origin 추가
+- **같은 URL 을 `<img>` 로 먼저 로드하면 CORS 헤더 없는 응답이 캐시됨** → 이후 fetch 가 CORS 오류. `fetch(url,{cache:'reload'})`
+- **ScoreSnap 오버레이(z-index 99999) 안에서는 앱 `showToast` 가 가려짐** → 자체 `_ssToast`(z 100003) 사용
+- **글자 위치가 필요하면 AI 좌표가 아니라 OCR 좌표** — 인쇄된 번호는 Vision 이 픽셀 단위로 정확
+- 시험용 스크립트: `scripts/diag/scoresnap-marks-prototype.js`(저장된 학생 사진에 V 합성)
