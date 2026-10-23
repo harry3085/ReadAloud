@@ -650,6 +650,7 @@
       </div>
       <div style="padding:12px 18px;border-top:1px solid #333;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;flex-shrink:0;">
         <button onclick="window._ssDownloadStudentPng(${idx})" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📥 PNG 다운로드</button>
+        <button onclick="window._ssCopyStudentImage(${idx})" title="이미지를 복사해서 카카오톡 대화창에 Ctrl+V 로 붙여넣기" style="background:#fee500;color:#191919;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 이미지 복사 (카톡 붙여넣기)</button>
         ${idx > 0 ? `<button onclick="window._ssOpenStudentDetail(${idx - 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">← 이전</button>` : ''}
         ${idx < _state.students.length - 1 ? `<button onclick="window._ssOpenStudentDetail(${idx + 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">다음 →</button>` : ''}
       </div>
@@ -847,36 +848,31 @@
     return _html2canvasLoading;
   }
 
-  window._ssDownloadStudentPng = async function (idx) {
+  // 상세 카드 → canvas (다운로드·복사 공용). 이름 input 현재값을 캡처에 반영
+  async function _ssCaptureStudentCanvas(idx) {
     const card = document.getElementById('ssDetailCard');
-    if (!card) return;
     const s = _state.students?.[idx];
-    if (!s?.result) return;
-    // 이름 input 현재값 보존 + value 속성 박아 캡처에 반영
+    if (!card || !s?.result) throw new Error('캡처할 화면이 없어요');
     const nameIn = document.getElementById('ssDetailNameIn');
     if (nameIn) {
       s.result.studentName = nameIn.value || '';
       nameIn.setAttribute('value', nameIn.value || '');
     }
+    await _ensureHtml2Canvas();
+    return window.html2canvas(card, { backgroundColor: '#ffffff', scale: 2, logging: false, useCORS: true });
+  }
+
+  window._ssDownloadStudentPng = async function (idx) {
+    const s = _state.students?.[idx];
+    if (!s?.result) return;
     try {
-      await _ensureHtml2Canvas();
-    } catch (e) {
-      if (typeof window.showAlert === 'function') window.showAlert('PNG 라이브러리 로드 실패', e.message);
-      return;
-    }
-    try {
-      const canvas = await window.html2canvas(card, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-      });
+      const canvas = await _ssCaptureStudentCanvas(idx);
       canvas.toBlob(blob => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const safe = v => String(v).replace(/[\\/:*?"<>|]/g, '_');
         const name = safe(s.result.studentName || `student_${idx + 1}`);
-        const title = safe(_testNameOf(_state.students?.[idx]?.result) || 'test');
+        const title = safe(_testNameOf(s.result) || 'test');
         const date = _fmtDate(new Date()).replace(/[: ]/g, '_');
         const a = document.createElement('a');
         a.href = url;
@@ -888,6 +884,30 @@
       }, 'image/png');
     } catch (e) {
       if (typeof window.showAlert === 'function') window.showAlert('PNG 생성 실패', e.message);
+    }
+  };
+
+  // 이미지를 클립보드에 복사 → 카톡 PC 대화창에서 Ctrl+V. 클릭(사용자 동작) 안에서 write 를 바로 호출하고
+  // 이미지 생성은 Promise 로 넘긴다(생성이 오래 걸려도 사용자 동작 인정 유지).
+  window._ssCopyStudentImage = async function (idx) {
+    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
+      toast('이 브라우저는 이미지 복사를 지원하지 않아요 — PNG 다운로드를 사용하세요');
+      return;
+    }
+    const blobPromise = (async () => {
+      const canvas = await _ssCaptureStudentCanvas(idx);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('이미지 생성 실패');
+      return blob;
+    })();
+    try {
+      toast('이미지 복사 중...');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+      toast('✅ 복사됨 — 카카오톡 대화창에서 Ctrl+V 로 붙여넣으세요');
+    } catch (e) {
+      console.warn('[scoresnap] 이미지 복사 실패:', e && e.message);
+      toast('복사에 실패했어요 — PNG 다운로드를 사용하세요');
     }
   };
 
