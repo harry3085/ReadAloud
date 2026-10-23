@@ -18895,8 +18895,9 @@ async function _ssDeleteSessionImpl(sid) {
   const aid = _ssAid();
   const stSnap = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', aid)));
   for (const d of stSnap.docs) {
-    const path = d.data().imagePath;
+    const path = d.data().imagePath, mpath = d.data().markPath;
     if (path) { try { await deleteObject(ref(storage, path)); } catch (_) { /* 이미 만료 삭제 */ } }
+    if (mpath) { try { await deleteObject(ref(storage, mpath)); } catch (_) {} }
     await deleteDoc(d.ref);
   }
   try { await deleteDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey')); } catch (_) {}
@@ -18977,6 +18978,16 @@ window._ssStore = {
   },
 
   async getImageUrl(path) { return await getDownloadURL(ref(storage, path)); },
+
+  // 마킹 사진(틀린 문항 V + 점수) 저장 — 같은 틀린 문항·점수(markKey)면 다시 만들지 않고 이것을 사용
+  async saveMark(sid, docId, blob, markKey, missing) {
+    const aid = _ssAid();
+    const path = `scoresnap/${aid}/${sid}/${docId}_mark.jpg`;
+    const task = uploadBytesResumable(ref(storage, path), blob, { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
+    await new Promise((res, rej) => task.on('state_changed', null, rej, res));
+    await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { markPath: path, markKey, markMissing: missing || 0 });
+    return path;
+  },
 
   async deleteSession(sid) { await _ssDeleteSessionImpl(sid); },
 };

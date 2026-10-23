@@ -272,6 +272,7 @@
         students: data.students.map(x => ({
           status: 'done', result: x.result, image: null, error: null,
           docId: x.docId, imagePath: x.imagePath || '', _idx: x.idx,
+          markPath: x.markPath || '', markKey: x.markKey || '', markMissing: x.markMissing || 0,
         })),
       };
       _renderOverlay();
@@ -293,6 +294,7 @@
       _state.answerKey = data.answerKey;
       _state.students = data.students.map(x => ({
         status: 'done', result: x.result, image: null, error: null, docId: x.docId, imagePath: x.imagePath || '',
+        markPath: x.markPath || '', markKey: x.markKey || '', markMissing: x.markMissing || 0,
       })).concat(pending);
       _ssToast('✅ 새로고침 완료');
       _renderResultGrid();
@@ -478,9 +480,33 @@
       if (x._markCache && x._markCache.key === key) {
         out = { canvas: x._markCache.canvas, missing: x._markCache.missing };
       } else {
-        const img = await _ssLoadImageEl(x);
-        const pos = await _ssEnsureMarkPos(x, img);
-        out = _ssDrawMarks(img, x, pos);
+        // 서버에 저장된 마킹 사진이 있고 틀린 문항·점수가 같으면 그것을 사용
+        if (x.markPath && x.markKey === key && window._ssStore) {
+          try {
+            const blob = await (await fetch(await window._ssStore.getImageUrl(x.markPath), { cache: 'reload' })).blob();
+            const bu = URL.createObjectURL(blob);
+            const mi = new Image();
+            await new Promise((res, rej) => { mi.onload = res; mi.onerror = rej; mi.src = bu; });
+            const mc = document.createElement('canvas'); mc.width = mi.naturalWidth; mc.height = mi.naturalHeight;
+            mc.getContext('2d').drawImage(mi, 0, 0);
+            out = { canvas: mc, missing: x.markMissing || 0 };
+          } catch (e) { console.warn('[scoresnap] 저장된 마킹 사진 불러오기 실패 → 새로 만듦:', e && e.message); }
+        }
+        if (!out) {
+          const img = await _ssLoadImageEl(x);
+          const pos = await _ssEnsureMarkPos(x, img);
+          out = _ssDrawMarks(img, x, pos);
+          // 서버에 저장 (사진이 이미 올라가 있는 학생만, 실패해도 무시)
+          if (window._ssStore && _state.sid && x.docId) {
+            const sid = _state.sid, cv = out.canvas, miss = out.missing;
+            cv.toBlob(b => {
+              if (!b) return;
+              window._ssStore.saveMark(sid, x.docId, b, key, miss)
+                .then(path => { x.markPath = path; x.markKey = key; x.markMissing = miss; })
+                .catch(e => console.warn('[scoresnap] 마킹 사진 서버 저장 실패:', e && e.message));
+            }, 'image/jpeg', 0.92);
+          }
+        }
         x._markCache = { key, canvas: out.canvas, missing: out.missing };
       }
     } catch (e) {
