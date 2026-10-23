@@ -5517,3 +5517,18 @@ SW v842 → v849. 폰에서 채점 → PC 에서 확인, 학생에게 틀린 문
 - **ScoreSnap 오버레이(z-index 99999) 안에서는 앱 `showToast` 가 가려짐** → 자체 `_ssToast`(z 100003) 사용
 - **글자 위치가 필요하면 AI 좌표가 아니라 OCR 좌표** — 인쇄된 번호는 Vision 이 픽셀 단위로 정확
 - 시험용 스크립트: `scripts/diag/scoresnap-marks-prototype.js`(저장된 학생 사진에 V 합성)
+
+### 2026-10-23 (이어서 2): ScoreSnap 표 형식 시험지 + 정답지 서버 저장 + 뒤로가기 (SW v850 → v860)
+
+- **표 형식 시험지 자동 구분** — 정답지를 읽을 때 `layout: numbered | table`. 표(예: 불규칙동사표 뜻|현재|과거|과거분사)는 **칸 하나 = 1문항**으로 펼침(`stem="leave [과거]"`). 기존 stem 짝짓기·뜻 판정·애매하면 오답 규칙을 그대로 재사용. 코드: `_flattenKeyTable`·`buildStudentTablePrompt`·`studentTableToRaw`(`api/_lib/scoresnap-prompt.js`), `answerKeyMeta`(`api/scoresnap-grade.js`)
+- **틀린 칸마다 V** — Vision 전체 단어 좌표(`api/ocr.js allWords:true`)로 열 머리글+기준 칸 위치 계산. **OCR 이 '과거분사'를 '과거'+'분사'로 쪼개 읽음** → 긴 이름부터 연속 두 단어 이어 붙임. V 크기는 줄 높이 중앙값으로 통일
+- **정답지 서버 저장(PC→폰)** — 정답지 확정 시 세션 생성, 폰에서 [채점 기록]→열기→학생지 촬영. 학생 0명 세션은 촬영 화면으로 진입
+- **마킹 사진 서버 저장** — 틀린 문항·점수(markKey)가 같으면 저장본 재사용
+- **뒤로가기** — ScoreSnap 은 깊어질 때(클릭 안)마다 history 한 칸, 뒤로가기는 한 칸씩 되돌림(뒤로가기 처리 중 다시 쌓으면 브라우저가 건너뜀). 학원장앱은 첫 터치 때 guard 3칸, 대시보드에서 '한 번 더 누르면 종료'. 로그인 페이지→학원장앱 이동은 `location.replace`
+- **뜻 판정 보강** — 자동사/타동사 두 뜻이 있는 단어(hide 숨다/숨기다)는 어느 쪽이든 정답, 수동·능동 반대(surround/be surrounded by)는 오답. 표 형식 읽기에서 줄 그은 글자 제외 강화
+
+### 작업 규칙 추가
+- **history.pushState 는 사용자 동작 안에서** — popstate 핸들러 안에서 다시 쌓으면 '사용자 동작 없이 쌓은 기록'으로 건너뛰어 앱이 종료됨. 쌓지 않은 칸을 반납하려고 history.back() 하면 앱을 벗어남(로그인 페이지/무한 로딩) → 쌓은 경우에만 반납
+- **OCR 이 한 단어를 쪼갤 수 있음** — 위치로 열을 찾을 땐 연속 단어 이어 붙임 후보를 함께 검사
+- **서버에서 연 기록은 사진이 메모리에 없음** — 사진이 있다고 가정하는 렌더(`s.image.dataUrl`)는 조용히 터짐. 채점 완료 학생과 새 사진을 구분
+- 시험용 스크립트: `scripts/diag/scoresnap-table-prototype.js`
