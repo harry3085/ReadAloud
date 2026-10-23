@@ -218,7 +218,7 @@
       ov._ssCancel = () => { ov.remove(); resolve({ action: 'cancel' }); };
       const draw = () => {
         ov.innerHTML = `
-          <div style="background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:12px;width:min(520px,100%);max-height:86vh;display:flex;flex-direction:column;">
+          <div style="background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:12px;width:min(760px,100%);max-height:86vh;display:flex;flex-direction:column;">
             <div style="padding:16px 18px;border-bottom:1px solid #333;">
               <div style="font-size:15px;font-weight:700;">ScoreSnap — 채점 기록</div>
               <div style="font-size:11px;color:#888;margin-top:3px;">폰·PC 어디서든 열 수 있어요 · 5일 뒤 자동 삭제</div>
@@ -227,7 +227,7 @@
               ${sessions.length ? sessions.map(x => `
                 <div style="display:flex;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid #2a2a2a;">
                   <div data-open="${esc(x.id)}" style="flex:1;min-width:0;cursor:pointer;">
-                    <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.testName || '시험')}</div>
+                    <div style="font-size:13px;font-weight:600;line-height:1.4;word-break:break-word;">${esc(x.testName || '시험')}</div>
                     <div style="font-size:11px;color:#888;margin-top:2px;">${esc(_fmtAgo(x.createdAtMs))} · ${x.studentCount ? x.studentCount + '명 채점' : '<span style="color:#ffc107;">정답지만 저장 · 채점 대기</span>'} · ${x.questionCount || 0}문항</div>
                   </div>
                   <button data-open="${esc(x.id)}" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">열기</button>
