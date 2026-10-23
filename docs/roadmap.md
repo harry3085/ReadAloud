@@ -70,6 +70,7 @@
 | Gemini 진단봇 (학원장앱 채팅) | Phase 5 후 검토 | `project_gemini_diagnosis_bot` |
 | **AI OCR 정리 후속 보완** (괄호 짝 경고 · 마침표→쉼표 규칙 · Vision 대신 Gemini 이미지 OCR) | 학원장이 "필요하다"고 할 때. 괄호 경고(코드)·마침표 규칙(프롬프트)은 작음 / Gemini OCR 은 저해상도 이미지 한글 누락이 반복될 때 검토 | `project_ai_ocr_cleanup_pipeline` |
 | **Vercel `GEMINI_API_KEY` Sensitive 교체** (새 키 발급 → Sensitive 로 재등록 → 옛 키 삭제) | 학원장 요청, 팀원 추가, 키 유출 의심 시. 혼자 사용 중이라 보류 (2026-10-10) | `project_vercel_gemini_key_sensitive` |
+| **ScoreSnap 정답지 자동 찾기** (학생 답안지 먼저 → 머리글 제목을 Vision OCR 로 읽어 같은 제목의 문제세트(없으면 출제 시험)를 정답으로 사용) | 현재 방식(정답지 사진)을 써 보고 학원장이 검토하자고 할 때. 1단계 = 단어시험(영↔한)만, 후보 확인 목록 + 못 찾으면 정답지 사진 폴백, 인쇄 후 세트 수정 시 어긋남 안내 | `project_scoresnap_answerkey_from_set` |
 | **ScoreSnap AI 사용량 카운터 분리** (현재 Generator 항목으로 합산) | **ScoreSnap 사용이 AI 사용량(Generator 한도)에 상당한 영향**을 줄 때. 학생 1명 채점 = 1회 / 정답지 1회. 분리 시 quota 종류 추가 + 플랜 byTier 한도 필드 + super 앱 한도 화면 + 학원장 사용량 5분류 → 6분류 | `project_scoresnap_quota_split` |
 | **Gemini 파라미터 폐기 대응** (thinkingBudget·temperature·topP → thinking_level) | **새 Gemini 모델을 폴백 체인에 넣을 때** (현 모델은 영향 없음). api 6파일 + 스크립트 일괄, 공용 헬퍼화 | `project_gemini_param_deprecation` |
 
