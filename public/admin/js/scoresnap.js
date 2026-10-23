@@ -138,7 +138,7 @@
     try { history.go(-n); } catch (_) { _ssIgnorePop--; }
   }
   // 보조 창(사진 보기·마킹 사진·채점 기록): 열 때 한 칸, 화면 안 버튼으로 닫을 때는 그 칸을 조용히 반납
-  function _ssPushSub(ov) { _ssPush(); ov._ssPushed = true; }
+  function _ssPushSub(ov) { const before = _ssDepth; _ssPush(); ov._ssPushed = _ssDepth > before; }   // 오버레이가 없으면(처음 진입 목록) 쌓지 않음 → 닫을 때 history.back() 도 안 함
   function _ssSubRemove(ov) {
     ov.remove();
     if (ov._ssPushed) { ov._ssPushed = false; _ssDepth = Math.max(0, _ssDepth - 1); _ssIgnorePop++; try { history.back(); } catch (_) { _ssIgnorePop--; } }
