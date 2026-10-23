@@ -18979,6 +18979,18 @@ window._ssStore = {
 
   async getImageUrl(path) { return await getDownloadURL(ref(storage, path)); },
 
+  // 정답지만 다시 올린 경우 — 세션의 정답지를 교체 (학생 사진·기록은 그대로)
+  async updateKey(sid, answerKey, precision) {
+    const aid = _ssAid();
+    await setDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey'), {
+      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision,
+    });
+    await updateDoc(doc(db, 'scoresnapSessions', sid), {
+      testName: String((answerKey && answerKey.testName) || ''),
+      questionCount: ((answerKey && answerKey.questions) || []).length,
+    });
+  },
+
   // 마킹 사진(틀린 문항 V + 점수) 저장 — 같은 틀린 문항·점수(markKey)면 다시 만들지 않고 이것을 사용
   async saveMark(sid, docId, blob, markKey, missing) {
     const aid = _ssAid();

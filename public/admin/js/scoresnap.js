@@ -164,6 +164,10 @@
         else _renderAnswerKeyCapture();
         break;
       case 'answerKey-ocr': case 'batch-grading': _ssPush(); break;      // 처리 중에는 그대로
+      case 'answerKey-capture': case 'answerKey-review':
+        if (_ssCancelReKey()) break;                                      // 정답지 다시 올리기 취소 → 결과 목록
+        if (_state.phase === 'answerKey-review') _renderAnswerKeyCapture(); else closeScoreSnap();
+        break;
       default: closeScoreSnap();
     }
   }
@@ -871,7 +875,63 @@
   };
 
   // 정답지 확정 → 학생 답안 단계
+  // ─── 정답지만 다시 올리기 (학생 사진은 그대로, 새 정답지로 재채점) ───
+  window._ssReplaceAnswerKey = async function () {
+    const n = (_state.students || []).filter(x => x.status === 'done' && (x.image || x.imagePath)).length;
+    if (!n) { _ssToast('다시 채점할 학생 사진이 없어요'); return; }
+    const ok = typeof window.showConfirm === 'function'
+      ? await window.showConfirm('정답지 다시 올리기', `정답지를 새로 촬영하고, 이 기록의 학생 ${n}명을 새 정답지로 다시 채점해요.\n(학생당 AI 채점 1회 사용 · 이름 수정은 유지, ✓/✗ 직접 수정은 초기화)`) : true;
+    if (!ok) return;
+    _state._reKey = true;
+    _state._prevKey = _state.answerKey;
+    _state._prevPrecision = _state.precision;
+    _state.answerKey = null; _state.answerKeyImage = null;
+    _renderAnswerKeyCapture();
+    _ssPush();
+  };
+
+  // 정답지 다시 올리기를 취소하고 결과 목록으로
+  function _ssCancelReKey() {
+    if (!_state._reKey) return false;
+    _state._reKey = false;
+    if (_state._prevKey) _state.answerKey = _state._prevKey;
+    if (_state._prevPrecision != null) _state.precision = _state._prevPrecision;
+    _state._prevKey = null;
+    _renderResultGrid();
+    return true;
+  }
+
+  // 서버에만 있는 사진을 채점용 {base64, mimeType, dataUrl} 로
+  async function _ssStudentImageForGrade(x) {
+    if (x.image && x.image.base64) return x.image;
+    if (!x.imagePath) throw new Error('저장된 사진이 없어요');
+    const blob = await (await fetch(await window._ssStore.getImageUrl(x.imagePath), { cache: 'reload' })).blob();
+    const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+    return { base64: String(dataUrl).split(',')[1] || '', mimeType: 'image/jpeg', dataUrl, sizeKB: Math.round(blob.size / 1024) };
+  }
+
   window._ssAkConfirm = function () {
+    if (_state._reKey && _state.answerKey?.questions?.length) {
+      _state._reKey = false; _state._prevKey = null;
+      // 서버 정답지 교체 + 학생 전원 재채점 (사진 있는 학생만)
+      if (window._ssStore && _state.sid) {
+        window._ssStore.updateKey(_state.sid, _state.answerKey, _state.precision === true)
+          .catch(e => console.warn('[scoresnap] 정답지 서버 교체 실패:', e && e.message));
+      }
+      (_state.students || []).forEach(x => {
+        if (x.image || x.imagePath) {
+          x._oldName = x.result && x.result.studentName;
+          x.status = 'pending'; x.error = null;
+          x._markCache = null; x.markPath = ''; x.markKey = '';
+        }
+      });
+      window._ssStartBatchGrade();
+      return;
+    }
+    return _ssAkConfirmFresh();
+  };
+
+  function _ssAkConfirmFresh() {
     if (!_state.answerKey?.questions?.length) return;
     _state.students = [];
     // 정답지를 서버에 바로 저장 — PC 에서 정답지를 올리고 폰에서 [채점 기록]을 열어 학생지 촬영
@@ -1046,7 +1106,11 @@
         if (s.status === 'done') { done++; update(); continue; }
         s.status = 'grading';
         try {
-          s.result = await _gradeOneStudent(s.image);
+          if (!s.image) s.image = await _ssStudentImageForGrade(s);      // 서버에서 연 기록 — 사진을 내려받아 채점
+          const res = await _gradeOneStudent(s.image);
+          if (s._oldName) { res.studentName = s._oldName; s._oldName = null; }   // 정답지 교체 재채점은 학원장이 고친 이름 유지
+          s.result = res;
+          s._dirty = true;                                               // 서버 결과 갱신 (docId 있으면 update)
           s.status = 'done';
         } catch (e) {
           s.error = e.message || '채점 실패';
@@ -1133,6 +1197,7 @@
           <button onclick="window._ssOpenSessionList()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;">📂 채점 기록</button>
           <button onclick="window._ssDeleteCurrentSession()" title="이 채점 기록 삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>` : ''}
           <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">+ 답안지 추가</button>
+          <button onclick="window._ssReplaceAnswerKey()" title="정답지를 다시 촬영해 이 기록의 학생들을 새 정답지로 다시 채점" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">📋 정답지 다시 올리기</button>
           <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">종료</button>
         </div>
       </div>
