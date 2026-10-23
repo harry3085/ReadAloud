@@ -14420,6 +14420,7 @@ window.qsRenameSet = async (setId) => {
     });
     showToast('✓ 이름 변경됨');
     // 캐시 surgical 갱신 — 현재 화면 상태(선택 Book·정렬·스크롤) 유지 (qsDeleteSet 패턴)
+    _tpSyncSetCache(setId, { name: trimmed });
     const patch = (arr) => arr.forEach(x => { if (x.id === setId) x.name = trimmed; });
     patch(_qsList);
     Object.keys(_qsSetsByBook).forEach(k => {
@@ -15301,6 +15302,7 @@ window.qsSaveEdits = async () => {
     // Book 폴더가 바뀐 경우 _qsSetsByBook 의 옛/새 폴더 양쪽 동기화
     const setId = st.setId;
     const apply = (arr) => arr.forEach(x => { if (x.id === setId) Object.assign(x, patch); });
+    _tpSyncSetCache(setId, patch);
     apply(_qsList);
     Object.keys(_qsSetsByBook).forEach(k => {
       if (Array.isArray(_qsSetsByBook[k])) apply(_qsSetsByBook[k]);
@@ -15836,6 +15838,15 @@ async function _tpLazyFetchFolder(bookId) {
   } finally {
     _tpLoadingFolder = null;
   }
+}
+
+// 문제세트 수정·이름변경 후 시험관리(출제) 캐시에도 반영 — 안 하면 출제 화면에 옛 문제 수·옛 문제가 남음
+function _tpSyncSetCache(setId, patch) {
+  Object.keys(_tpSetsByFolder).forEach(k => {
+    if (Array.isArray(_tpSetsByFolder[k])) _tpSetsByFolder[k].forEach(x => { if (x.id === setId) Object.assign(x, patch); });
+  });
+  _tpSets.forEach(x => { if (x.id === setId) Object.assign(x, patch); });
+  if (_activeTestType && typeof _tpRender === 'function') { try { _tpRender(); } catch (_) {} }
 }
 
 // 시험관리 sets 캐시 무효화 (sets 삭제 후 등)
