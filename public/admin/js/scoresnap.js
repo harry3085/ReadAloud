@@ -857,12 +857,16 @@
           ${_buildStudentDetailHtml(s, idx)}
         </div>
       </div>
-      <div style="padding:12px 18px;border-top:1px solid #333;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;flex-shrink:0;">
-        <button onclick="window._ssDownloadStudentPng(${idx})" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📥 PNG 다운로드</button>
-        ${(s.image?.dataUrl || s.imagePath) ? `<button onclick="window._ssViewStudentImage(${idx})" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid #666;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📷 답안지 사진</button>` : ''}
-        <button onclick="window._ssCopyStudentImage(${idx})" title="이미지를 복사해서 카카오톡 대화창에 Ctrl+V 로 붙여넣기" style="background:#fee500;color:#191919;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 이미지 복사 (카톡 붙여넣기)</button>
-        ${idx > 0 ? `<button onclick="window._ssOpenStudentDetail(${idx - 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">← 이전</button>` : ''}
-        ${idx < _state.students.length - 1 ? `<button onclick="window._ssOpenStudentDetail(${idx + 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">다음 →</button>` : ''}
+      <div style="padding:10px 12px;border-top:1px solid #333;display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
+        <div style="display:flex;gap:6px;">
+          <button onclick="window._ssDownloadStudentPng(${idx})" style="flex:1;background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📥 PNG</button>
+          ${(s.image?.dataUrl || s.imagePath) ? `<button onclick="window._ssViewStudentImage(${idx})" style="flex:1;background:rgba(255,255,255,0.12);color:#fff;border:1px solid #666;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📷 사진</button>` : ''}
+          <button onclick="window._ssCopyStudentImage(${idx})" title="이미지를 복사해서 카카오톡 대화창에 Ctrl+V 로 붙여넣기" style="flex:1.4;background:#fee500;color:#191919;border:none;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📋 복사 (카톡)</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${idx > 0 ? `<button onclick="window._ssOpenStudentDetail(${idx - 1})" style="flex:1;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 6px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;">← 이전</button>` : ''}
+          ${idx < _state.students.length - 1 ? `<button onclick="window._ssOpenStudentDetail(${idx + 1})" style="flex:1;background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 6px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;">다음 →</button>` : ''}
+        </div>
       </div>
     `;
   };
