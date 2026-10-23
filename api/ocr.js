@@ -61,7 +61,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { idToken, imageBase64, mimeType } = req.body;
+    const { idToken, imageBase64, mimeType, wordBoxes } = req.body;
 
     // 인증 + OCR 월 쿼터 (T2/T3 5분류 분리)
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ocr' });
@@ -96,6 +96,22 @@ module.exports = async function handler(req, res) {
     });
 
     const full = result.fullTextAnnotation;
+
+    // ScoreSnap 마킹용 — 문항 번호('12.')·'점수' 라벨의 위치만 돌려줌 (좌표는 이미지 크기 대비 0~1)
+    if (wordBoxes === true) {
+      const page = (full && full.pages && full.pages[0]) || null;
+      const W = (page && page.width) || 0, H = (page && page.height) || 0;
+      const words = [];
+      for (const b of (page && page.blocks) || []) for (const p of b.paragraphs || []) for (const w of p.words || []) {
+        const t = (w.symbols || []).map(x => x.text).join('');
+        if (!/^\d{1,3}\.?$/.test(t) && !/^점수:?$/.test(t)) continue;
+        const v = (w.boundingBox && w.boundingBox.vertices) || [];
+        const xs = v.map(a => a.x || 0), ys = v.map(a => a.y || 0);
+        words.push({ t, x1: Math.min(...xs) / W, x2: Math.max(...xs) / W, y1: Math.min(...ys) / H, y2: Math.max(...ys) / H });
+      }
+      return res.status(200).json({ success: true, words, width: W, height: H, provider: 'google-vision' });
+    }
+
     if (!full) {
       return res.status(200).json({ success: true, text: '', confidence: 0, blockCount: 0, provider: 'google-vision' });
     }

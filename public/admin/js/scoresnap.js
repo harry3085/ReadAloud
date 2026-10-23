@@ -315,6 +315,129 @@
     document.body.appendChild(ov);
   };
 
+  // ─── 마킹 사진: 학생 답안지 사진 위에 틀린 문항 V + 점수칸 점수 ───
+  // 번호·점수칸 위치는 Vision OCR(학생당 1회, 결과에 markPos 로 저장). 이후 ✓/✗ 수정은 OCR 없이 즉시 반영.
+  async function _ssLoadImageEl(x) {
+    let url = x.image?.dataUrl || '';
+    if (!url) {
+      if (!x.imagePath) throw new Error('저장된 사진이 없어요');
+      const remote = await window._ssStore.getImageUrl(x.imagePath);
+      const blob = await (await fetch(remote)).blob();     // 버킷 CORS 허용 필요 (raloud.vercel.app)
+      url = URL.createObjectURL(blob);
+    }
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('사진을 읽을 수 없어요')); img.src = url; });
+    return img;
+  }
+
+  async function _ssEnsureMarkPos(x, img) {
+    if (x.result.markPos && x.result.markPos.nums) return x.result.markPos;
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    const base64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const idToken = await window._ssGetIdToken();
+    const r = await fetch('/api/ocr', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.words) throw new Error(j.error || '번호 위치를 읽지 못했어요');
+    const total = x.result.totalQuestions || 0;
+    const nums = {};
+    for (let n = 1; n <= total; n++) {
+      let c1 = j.words.filter(w => w.t === n + '.');
+      if (!c1.length) c1 = j.words.filter(w => w.t === String(n) && w.y1 > 0.15);
+      if (c1.length) { const w = c1.sort((a, b) => a.x1 - b.x1)[0]; nums[n] = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 }; }
+    }
+    const lab = j.words.filter(w => /^점수:?$/.test(w.t) && w.y1 < 0.25).sort((a, b) => b.x1 - a.x1)[0];
+    x.result.markPos = { nums, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
+    _saveSession();
+    _markDirty(_state.students.indexOf(x));
+    return x.result.markPos;
+  }
+
+  function _ssDrawMarks(img, x, pos) {
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.fillStyle = 'rgba(225,20,20,0.92)';
+    g.textBaseline = 'alphabetic';
+    const wrong = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no);
+    let missing = 0;
+    for (const n of wrong) {
+      const p = pos.nums[n];
+      if (!p) { missing++; continue; }
+      const h = (p.y2 - p.y1) * H;
+      const size = Math.max(42, h * 4.2);
+      g.font = `900 ${size}px Arial, sans-serif`;
+      g.textAlign = 'center';
+      g.fillText('V', p.x1 * W - size * 0.05, ((p.y1 + p.y2) / 2) * H + size * 0.36);
+    }
+    const r = x.result;
+    const txt = `${r.correctCount}/${r.totalQuestions}`;
+    let sx, sy, sf;
+    if (pos.label) {
+      const lh = (pos.label.y2 - pos.label.y1) * H;
+      sf = Math.max(30, lh * 2.2); sx = pos.label.x2 * W + 14; sy = pos.label.y2 * H + 2;
+    } else { sf = H * 0.04; sx = W * 0.8; sy = H * 0.12; }
+    g.font = `900 ${sf}px Arial, sans-serif`;
+    g.textAlign = 'left';
+    g.fillText(txt, sx, sy);
+    return { canvas: c, missing };
+  }
+
+  window._ssShowMarkedPhoto = async function (idx) {
+    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    const x = _state.students?.[idx];
+    if (!x?.result) return;
+    toast('마킹 사진 만드는 중...');
+    let out;
+    try {
+      const nameIn = document.getElementById('ssDetailNameIn');
+      if (nameIn) x.result.studentName = nameIn.value || '';
+      const img = await _ssLoadImageEl(x);
+      const pos = await _ssEnsureMarkPos(x, img);
+      out = _ssDrawMarks(img, x, pos);
+    } catch (e) {
+      console.warn('[scoresnap] 마킹 사진 실패:', e && e.message);
+      toast('마킹 사진을 만들 수 없어요: ' + (e && e.message));
+      return;
+    }
+    const url = out.canvas.toDataURL('image/png');
+    const blobP = new Promise(r => out.canvas.toBlob(r, 'image/png'));
+    const safe = v => String(v).replace(/[\\/:*?"<>|]/g, '_');
+    const fname = `${safe(x.result.studentName || '학생' + (idx + 1))}_${safe(_testNameOf(x.result))}_채점.png`;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.94);z-index:100001;display:flex;flex-direction:column;';
+    ov.innerHTML = `
+      <div style="flex:1;overflow:auto;padding:12px;display:flex;"><img src="${url}" alt="" style="max-width:100%;height:auto;margin:auto;display:block;"></div>
+      ${out.missing ? `<div style="padding:6px 12px;font-size:11px;color:#ffcc80;text-align:center;">⚠ 번호 위치를 못 찾은 문항 ${out.missing}개는 V가 빠졌어요</div>` : ''}
+      <div style="padding:10px 12px;border-top:1px solid #333;display:flex;gap:6px;">
+        <button data-act="dl" style="flex:1;background:var(--c-brand,#E8714A);color:#fff;border:none;padding:11px 6px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">📥 PNG 저장</button>
+        <button data-act="cp" style="flex:1.3;background:#fee500;color:#191919;border:none;padding:11px 6px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">📋 복사 (카톡)</button>
+        <button data-act="x" style="flex:0.7;background:rgba(255,255,255,0.1);color:#fff;border:1px solid #555;padding:11px 6px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;">닫기</button>
+      </div>`;
+    ov.onclick = async (e) => {
+      const b = e.target.closest('button[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'x') return ov.remove();
+      if (b.dataset.act === 'dl') {
+        const blob = await blobP;
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = u; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(u), 1000);
+      } else if (b.dataset.act === 'cp') {
+        if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') return toast('이 브라우저는 이미지 복사를 지원하지 않아요 — PNG 저장을 사용하세요');
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobP })]); toast('✅ 복사됨 — 카카오톡에서 붙여넣으세요'); }
+        catch (err) { toast('복사에 실패했어요 — PNG 저장을 사용하세요'); }
+      }
+    };
+    document.body.appendChild(ov);
+  };
+
   function closeScoreSnap() {
     _releaseCamera();
     document.getElementById('scoreSnapOverlay')?.remove();
@@ -860,7 +983,8 @@
       <div style="padding:10px 12px;border-top:1px solid #333;display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
         <div style="display:flex;gap:6px;">
           <button onclick="window._ssDownloadStudentPng(${idx})" style="flex:1;background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📥 PNG</button>
-          ${(s.image?.dataUrl || s.imagePath) ? `<button onclick="window._ssViewStudentImage(${idx})" style="flex:1;background:rgba(255,255,255,0.12);color:#fff;border:1px solid #666;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📷 사진</button>` : ''}
+          ${(s.image?.dataUrl || s.imagePath) ? `<button onclick="window._ssViewStudentImage(${idx})" style="flex:1;background:rgba(255,255,255,0.12);color:#fff;border:1px solid #666;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📷 사진</button>
+          <button onclick="window._ssShowMarkedPhoto(${idx})" title="틀린 문항에 V 표시 + 점수를 넣은 답안지 사진" style="flex:1;background:#c62828;color:#fff;border:none;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">✔ 마킹</button>` : ''}
           <button onclick="window._ssCopyStudentImage(${idx})" title="이미지를 복사해서 카카오톡 대화창에 Ctrl+V 로 붙여넣기" style="flex:1.4;background:#fee500;color:#191919;border:none;padding:10px 6px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📋 복사 (카톡)</button>
         </div>
         <div style="display:flex;gap:6px;">
