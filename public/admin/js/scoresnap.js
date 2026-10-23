@@ -692,6 +692,8 @@
     if (!body) return;
     const k = _state.answerKey;
     const precision = _state.precision === true;
+    const pendN = (_state.students || []).filter(x => x.status !== 'done').length;
+    const doneN = (_state.students || []).length - pendN;
     const precisionBadge = precision
       ? '<span style="display:inline-block;background:#5a3a1a;color:#ffc107;border:1px solid #ffc107;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin-left:6px;">🎯 정밀</span>'
       : '';
@@ -699,7 +701,7 @@
     body.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid #333;flex-shrink:0;">
         <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${k.questions.length}문항 ${precisionBadge}</div>
-        <div style="font-size:11px;color:#888;margin-top:3px;">학생 답안지 여러 장 추가 후 [🚀 일괄 채점] 누르세요. 이름란의 손글씨로 학생 자동 구분.</div>
+        <div style="font-size:11px;color:#888;margin-top:3px;">학생 답안지 여러 장 추가 후 [🚀 일괄 채점] 누르세요. 이름란의 손글씨로 학생 자동 구분.${doneN ? ` <span style="color:#6a9;">· 이미 채점된 ${doneN}명은 그대로 유지돼요 (채점 후 결과 목록에 함께 표시)</span>` : ''}</div>
       </div>
       <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex-shrink:0;">
         <input id="ssStCamIn" type="file" accept="image/*" capture="environment" style="display:none;">
@@ -723,11 +725,11 @@
       </div>
       <div style="padding:14px 18px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:10px;flex-wrap:wrap;">
         <button onclick="window._ssBackToAnswerKey()" style="background:transparent;color:#bbb;border:1px solid #444;padding:10px 16px;border-radius:6px;font-size:12px;cursor:pointer;">← 정답지 검토로</button>
-        <div style="flex:1;text-align:center;font-size:12px;color:#888;" id="ssStCount">${_state.students.length}장 추가됨</div>
+        <div style="flex:1;text-align:center;font-size:12px;color:#888;" id="ssStCount">${pendN}장 추가됨</div>
         <button id="ssStGradeBtn" onclick="window._ssStartBatchGrade()"
-          ${_state.students.length === 0 ? 'disabled' : ''}
-          style="background:${_state.students.length === 0 ? '#444' : 'var(--c-brand,#E8714A)'};color:#fff;border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:${_state.students.length === 0 ? 'not-allowed' : 'pointer'};${_state.students.length === 0 ? 'opacity:0.5;' : ''}">
-          🚀 일괄 채점 (${_state.students.length}명)
+          ${pendN === 0 ? 'disabled' : ''}
+          style="background:${pendN === 0 ? '#444' : 'var(--c-brand,#E8714A)'};color:#fff;border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:${pendN === 0 ? 'not-allowed' : 'pointer'};${pendN === 0 ? 'opacity:0.5;' : ''}">
+          🚀 일괄 채점 (${pendN}명)
         </button>
       </div>
     `;
@@ -740,7 +742,7 @@
   }
 
   function _buildStudentThumbsHtml() {
-    const list = _state.students || [];
+    const list = (_state.students || []).map((x, i) => ({ x, i })).filter(o => o.x.status !== 'done' && o.x.image);
     if (list.length === 0) {
       return `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#666;text-align:center;gap:14px;padding:40px;">
@@ -753,15 +755,15 @@
         </div>
       `;
     }
-    const rows = list.map((s, i) => `
+    const rows = list.map((o, n) => { const s = o.x, i = o.i; return `
       <div style="position:relative;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;">
         <img src="${s.image.dataUrl}" alt="" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#000;">
-        <div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;">${i + 1}</div>
+        <div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:11px;padding:2px 6px;border-radius:3px;">${n + 1}</div>
         <button onclick="window._ssStRemove(${i})" title="삭제"
           style="position:absolute;top:4px;right:4px;background:rgba(220,38,38,0.85);color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>
         <div style="font-size:10px;color:#888;padding:4px 6px;text-align:center;">${s.image.sizeKB} KB</div>
       </div>
-    `).join('');
+    `; }).join('');
     return `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
         ${rows}
@@ -818,9 +820,9 @@
 
   window._ssStartBatchGrade = async function () {
     const list = _state.students || [];
-    if (list.length === 0) return;
+    if (!list.some(x => x.status !== 'done')) return;
     _state.phase = 'batch-grading';
-    _setHeader(`🚀 ScoreSnap · 일괄 채점 (${list.length}명)`);
+    _setHeader(`🚀 ScoreSnap · 일괄 채점 (${list.filter(x => x.status !== 'done').length}명)`);
     _renderBatchProgress();
 
     let done = 0;
