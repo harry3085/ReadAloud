@@ -100,6 +100,7 @@ ${lines}
 - 학생 시험지의 각 문항에 인쇄된 문제(영단어·문장·보기 등)를 **글자 그대로** stemSeen 에 적어라. (서버가 stemSeen 으로 정답지 문항을 찾아 짝짓는다. 가장 중요한 필드)
 - 위 정답지 목록에서 **같은 문제**를 찾아 그 K번호를 keyNo 로도 적어라(보조). 위치·순서로 짝짓지 말 것.
 - 출력 answers 는 **학생 시험지에 인쇄된 번호 순서(no)** 로 작성. no 는 학생 시험지에 인쇄된 번호 그대로.
+- **문제 수는 학생 시험지 기준이다.** 정답지 목록이 학생 시험지보다 문항이 많거나(같은 문제가 중복 등재되어 있을 수 있다) 일부가 학생지에 없을 수 있다. 학생 시험지에 인쇄된 문항만 answers 에 적고, 정답지에만 있는 문항은 만들어 내지 말 것.
 - 정답지 목록의 문항 하나는 정확히 한 번만 사용.
 - ★ 학생이 답을 쓰지 않은 **빈칸 문항도 반드시 answers 에 포함**한다(그 문항의 번호·stemSeen 을 읽고 studentAnswer 는 빈 문자열). 학생 시험지에 인쇄된 모든 번호 행을 빠짐없이 적을 것 — 총 ${(answerKeyQuestions || []).length}문항.
 
@@ -140,6 +141,7 @@ ${lines}
       "confidence": 0.0~1.0
     }
   ],
+  "printedCount": 학생 시험지에 인쇄된 전체 문항 수(마지막 번호),
   "uncertainQuestions": [confidence 0.8 미만 문항의 no]
 }`;
 }
@@ -183,18 +185,25 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
   const rows = [];                 // 정제된 학생 문항
 
   // 영어 문제(stem) 정규화 → 정답지 문항 번호. 같은 stem 이 둘 이상이면 모호하므로 매핑에서 제외
-  const stemMap = new Map();
+  const stemMap = new Map();       // stem → [keyNo, ...]  (같은 문제가 정답지에 중복 등재돼도 안전하게 짝지음)
   keyQs.forEach((q, idx) => {
     const k = _norm(q && q.stem);
     if (!k) return;
-    stemMap.set(k, stemMap.has(k) ? null : idx + 1);
+    if (!stemMap.has(k)) stemMap.set(k, []);
+    stemMap.get(k).push(idx + 1);
   });
 
   raw.answers.forEach((a, i) => {
     // 짝짓기: ① 학생지에 인쇄된 문제(stemSeen)가 정답지 stem 과 일치하면 그 문항(코드가 결정)
     //        ② 아니면 AI 가 준 keyNo, ③ 그것도 없으면 배열 위치
     const aiKeyNo = Number.isInteger(a.keyNo) ? a.keyNo : i + 1;
-    const stemKey = stemMap.get(_norm(a.stemSeen));
+    // 같은 stem 이 여러 개면 아직 안 쓴 첫 번째 정답지 문항. 전부 이미 쓰였으면 중복 응답 → 버림
+    const cands = stemMap.get(_norm(a.stemSeen));
+    let stemKey = null;
+    if (cands && cands.length) {
+      stemKey = cands.find(c => !used.has(c));
+      if (stemKey === undefined) return;
+    }
     const keyNo = Number.isInteger(stemKey) ? stemKey : aiKeyNo;
     const remapped = Number.isInteger(stemKey) && stemKey !== aiKeyNo;
     // 범위 밖·중복은 버린다 — 정답지 문항이 남으면 아래에서 빈 슬롯(오답·검토 표시)으로 채움
@@ -235,20 +244,29 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
     rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence, needsJudge });
   });
 
-  // 정답지에 있는데 학생 시험지에서 대응되지 않은 문항 → 오답 + 검토 필요
-  const usedNos = new Set(rows.map(r => r.no));
-  let nextNo = rows.reduce((m, r) => Math.max(m, r.no), 0);
-  for (let k = 1; k <= total; k++) {
-    if (used.has(k)) continue;
-    const key = keyQs[k - 1] || {};
-    nextNo += 1;
-    while (usedNos.has(nextNo)) nextNo += 1;
-    usedNos.add(nextNo);
-    rows.push({
-      no: nextNo, keyNo: k, type: key.type || 'short', stem: String(key.stem || '').trim(),
-      studentAnswer: '', correctAnswer: String(key.answer || '').trim(),
-      isCorrect: false, confidence: 0.3,
-    });
+  // 문제 수는 학생 시험지 기준 — 정답지에만 있는 문항은 만들지 않는다(정답지가 더 길거나 중복 등재돼도 안전).
+  // 다만 AI 가 학생지의 일부 행을 응답에서 빠뜨린 경우만, 학생지 전체 문항 수(printedCount)와 번호 공백으로 찾아
+  // 빈 슬롯(오답·검토 표시)으로 채운다. printedCount 가 비정상(정답지 문항 수 초과)이면 무시.
+  const maxNo0 = rows.reduce((m, r) => Math.max(m, r.no), 0);
+  const pc0 = Number.isInteger(raw.printedCount) ? raw.printedCount : 0;
+  // printedCount 는 정답지 문항 수(또는 응답 번호)를 넘지 않는 값만 신뢰 — 엉뚱한 값이면 무시
+  const pcValid = pc0 >= 1 && pc0 <= Math.max(maxNo0, keyQs.length || 0);
+  // 학생지 마지막 번호를 넘는 행은 AI 가 정답지에 이끌려 만들어 낸 것(예: 정답지에 같은 문제가 중복 등재) → 버린다
+  if (pcValid) {
+    for (let i = rows.length - 1; i >= 0; i--) { if (rows[i].no > pc0) rows.splice(i, 1); }
+  }
+  const maxNo = rows.reduce((m, r) => Math.max(m, r.no), 0);
+  const printed = pcValid ? Math.max(maxNo, pc0) : maxNo;
+  const haveNos = new Set(rows.map(r => r.no));
+  const noDup = haveNos.size === rows.length;     // 번호가 겹치면(재번호 대상) 공백 계산이 무의미
+  if (noDup) {
+    for (let n = 1; n <= printed; n++) {
+      if (haveNos.has(n)) continue;
+      rows.push({
+        no: n, keyNo: null, type: 'short', stem: '', studentAnswer: '', correctAnswer: '',
+        isCorrect: false, confidence: 0.3,
+      });
+    }
   }
 
   // 학생 시험지 번호 순으로 정렬. no 가 겹치면 순서대로 재번호
