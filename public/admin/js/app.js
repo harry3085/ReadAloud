@@ -1061,7 +1061,7 @@ async function loadApiUsage(){
     const items = [
       { label: 'OCR',         dailyKeys: ['ocr'],             monthCounter: 'ocrCallsThisMonth',           limitField: 'ocrPerMonth' },
       { label: 'Cleanup',     dailyKeys: ['cleanup-ocr'],     monthCounter: 'cleanupCallsThisMonth',       limitField: 'cleanupPerMonth' },
-      { label: 'Generator',   dailyKeys: ['generate-quiz'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
+      { label: 'Generator',   dailyKeys: ['generate-quiz', 'scoresnap-grade'],   monthCounter: 'generatorCallsThisMonth',     limitField: 'generatorPerMonth' },
       { label: '녹음숙제',     dailyKeys: ['check-recording'], monthCounter: 'recordingCallsThisMonth',     limitField: 'recordingPerMonth' },
       { label: '성장리포트',   dailyKeys: ['growth-report'],   monthCounter: 'growthReportCallsThisMonth',  limitField: 'growthReportPerMonth' },
     ];
@@ -1173,7 +1173,7 @@ async function loadQuotaUsage(){
     const items = [
       { label: 'OCR',         counter: 'ocrCallsThisMonth',          limitField: 'ocrPerMonth',           color: '#0ea5e9', darkColor: '#0369a1', dailyKey: 'ocr' },
       { label: 'Cleanup',     counter: 'cleanupCallsThisMonth',      limitField: 'cleanupPerMonth',       color: '#06b6d4', darkColor: '#0e7490', dailyKey: 'cleanup-ocr' },
-      { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth',     color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz' },
+      { label: 'Generator',   counter: 'generatorCallsThisMonth',    limitField: 'generatorPerMonth',     color: '#f59e0b', darkColor: '#b45309', dailyKey: 'generate-quiz', extraKey: 'scoresnap-grade', extraLabel: 'ScoreSnap', extraColor: '#ec4899', extraDark: '#be185d' },
       { label: '녹음숙제',     counter: 'recordingCallsThisMonth',    limitField: 'recordingPerMonth',     color: '#8b5cf6', darkColor: '#6d28d9', dailyKey: 'check-recording' },
       { label: '성장리포트',   counter: 'growthReportCallsThisMonth', limitField: 'growthReportPerMonth',  color: '#10b981', darkColor: '#047857', dailyKey: 'growth-report' },
     ];
@@ -1210,16 +1210,19 @@ async function loadQuotaUsage(){
     };
     const chartData = {};
     items.forEach(it => {
-      const dayCounts = curSnaps.map(snap => _cntFromSnap(snap, it.dailyKey));
+      const baseCounts = curSnaps.map(snap => _cntFromSnap(snap, it.dailyKey));
+      // 같은 카운터에 합산되는 다른 호출(Generator ← ScoreSnap)은 막대에 쌓아 올려 색으로 구분
+      const extraCounts = it.extraKey ? curSnaps.map(snap => _cntFromSnap(snap, it.extraKey)) : null;
+      const dayCounts = extraCounts ? baseCounts.map((v, i) => v + extraCounts[i]) : baseCounts;
       let acc = 0;
       const cumulative = dayCounts.slice(0, today).map(v => { acc += v; return acc; });
-      const prevMonthTotal = prevSnaps.reduce((s, snap) => s + _cntFromSnap(snap, it.dailyKey), 0);
-      chartData[it.dailyKey] = { dayCounts, cumulative, prevMonthTotal };
+      const prevMonthTotal = prevSnaps.reduce((s, snap) => s + _cntFromSnap(snap, it.dailyKey) + (it.extraKey ? _cntFromSnap(snap, it.extraKey) : 0), 0);
+      chartData[it.dailyKey] = { dayCounts, extraCounts, baseSum: baseCounts.reduce((a, b) => a + b, 0), extraSum: extraCounts ? extraCounts.reduce((a, b) => a + b, 0) : 0, cumulative, prevMonthTotal };
     });
 
     // SVG 차트 — 당월 일별 막대 (우측 Y) + 누적 직선 (좌측 Y) + 한도 점선 + 전월 종착선
     // viewBox 600×60, 좌측 Y = 누적/한도/전월, 우측 Y = 일별 막대
-    const _renderUsageSvgChart = ({ dayCounts, cumulative, limit, prevMonthTotal }, color, darkColor) => {
+    const _renderUsageSvgChart = ({ dayCounts, extraCounts, cumulative, limit, prevMonthTotal }, color, darkColor, extraColor) => {
       const W = 600, H = 60, PAD_L = 32, PAD_R = 32, PAD_T = 6, PAD_B = 12;
       const cw = W - PAD_L - PAD_R;
       const ch = H - PAD_T - PAD_B;
@@ -1241,7 +1244,11 @@ async function loadQuotaUsage(){
         const h = ch * (v / maxRight);
         const y = PAD_T + ch - h;
         const isToday = day === today;
-        const rect = `<rect x="${xLeft(day) + inset}" y="${y}" width="${narrowBarW}" height="${h}" fill="${color}" opacity="${isToday ? 0.7 : 0.4}"/>`;
+        const ex = extraCounts ? (extraCounts[i] || 0) : 0;
+        const exH = ch * (ex / maxRight);
+        // 아래: 기본 호출 색 / 위: 추가 합산 호출(ScoreSnap) 색
+        const rect = `<rect x="${xLeft(day) + inset}" y="${y + exH}" width="${narrowBarW}" height="${h - exH}" fill="${color}" opacity="${isToday ? 0.7 : 0.4}"/>`
+          + (ex > 0 ? `<rect x="${xLeft(day) + inset}" y="${y}" width="${narrowBarW}" height="${exH}" fill="${extraColor || color}" opacity="${isToday ? 0.9 : 0.65}"/>` : '');
         // 막대 위 일별 수치 (PAD_T 위로 안 잘리게 가드)
         const lblY = Math.max(PAD_T + 2, y - 1);
         const lbl = `<text x="${xCenter(day)}" y="${lblY}" font-size="4" fill="${darkColor || color}" text-anchor="middle" font-weight="600">${v}</text>`;
@@ -1325,7 +1332,7 @@ async function loadQuotaUsage(){
       return `
         <div style="margin-bottom:24px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:4px;">
-            <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}</span>
+            <span style="font-weight:600;">${item.label}${isOverride ? ' <span style="color:#0ea5e9;font-size:11px;">(override)</span>' : ''}${item.extraKey ? ` <span style="font-size:11px;font-weight:400;color:var(--gray);"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${item.color};margin:0 3px 0 6px;"></span>문제 생성 <b style="color:var(--text);">${(cd.baseSum || 0).toLocaleString()}</b><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${item.extraColor};margin:0 3px 0 8px;"></span>${item.extraLabel} <b style="color:var(--text);">${(cd.extraSum || 0).toLocaleString()}</b></span>` : ''}</span>
             <span style="color:${labelColor};"><b>${current.toLocaleString()}</b> / <span style="color:var(--gray);font-size:11px;">${limDisplay}</span> · 전월 <b style="color:var(--text);">${cd.prevMonthTotal.toLocaleString()}</b></span>
           </div>
           <div style="background:#eee;height:14px;border-radius:7px;overflow:hidden;">
@@ -1334,7 +1341,7 @@ async function loadQuotaUsage(){
           ${!isUnlimited && percent >= 95 ? `<div style="font-size:11px;color:#dc2626;margin-top:3px;">⚠ 한도 ${Math.round(percent)}% 도달 — 곧 차단됩니다</div>`
             : !isUnlimited && percent >= 80 ? `<div style="font-size:11px;color:#f59e0b;margin-top:3px;">한도 ${Math.round(percent)}% 도달</div>`
             : ''}
-          ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color, item.darkColor)}
+          ${_renderUsageSvgChart({ dayCounts: cd.dayCounts, extraCounts: cd.extraCounts, cumulative: cd.cumulative, limit, prevMonthTotal: cd.prevMonthTotal }, item.color, item.darkColor, item.extraColor)}
         </div>
       `;
     }).join('') + (() => {
