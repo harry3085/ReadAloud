@@ -172,7 +172,7 @@
                 <div style="display:flex;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid #2a2a2a;">
                   <div data-open="${esc(x.id)}" style="flex:1;min-width:0;cursor:pointer;">
                     <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.testName || '시험')}</div>
-                    <div style="font-size:11px;color:#888;margin-top:2px;">${esc(_fmtAgo(x.createdAtMs))} · ${x.studentCount || 0}명 · ${x.questionCount || 0}문항</div>
+                    <div style="font-size:11px;color:#888;margin-top:2px;">${esc(_fmtAgo(x.createdAtMs))} · ${x.studentCount ? x.studentCount + '명 채점' : '<span style="color:#ffc107;">정답지만 저장 · 채점 대기</span>'} · ${x.questionCount || 0}문항</div>
                   </div>
                   <button data-open="${esc(x.id)}" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">열기</button>
                   <button data-del="${esc(x.id)}" title="삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>
@@ -218,7 +218,8 @@
         })),
       };
       _renderOverlay();
-      _renderResultGrid();
+      if (!_state.students.length) _renderStudentCapture();   // 정답지만 저장된 세션 → 학생지 촬영부터
+      else _renderResultGrid();
     } catch (e) {
       toast('채점 기록을 열 수 없어요: ' + (e && e.message));
       closeScoreSnap();
@@ -281,6 +282,7 @@
     const st = _state;
     _syncChain = _syncChain.then(async () => {
       try {
+        if (st._sidPromise) await st._sidPromise;
         if (!st.answerKey?.questions?.length) return;
         const list = st.students || [];
         if (!list.some(x => x.status === 'done' && x.result)) return;
@@ -380,11 +382,12 @@
     g.textBaseline = 'alphabetic';
     const wrong = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no);
     let missing = 0;
+    const hs = Object.values(pos.nums).map(p => (p.y2 - p.y1) * H).sort((a, b) => a - b);
+    const medH = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
+    const size = Math.max(42, medH * 4.2);        // 모든 V 를 같은 크기로
     for (const n of wrong) {
       const p = pos.nums[n];
       if (!p) { missing++; continue; }
-      const h = (p.y2 - p.y1) * H;
-      const size = Math.max(42, h * 4.2);
       g.font = `900 ${size}px Arial, sans-serif`;
       g.textAlign = 'center';
       g.fillText('V', p.x1 * W - size * 0.05, ((p.y1 + p.y2) / 2) * H + size * 0.36);
@@ -642,7 +645,16 @@
     _renderAnswerKeyReview();
   };
 
+  function _ssDropEmptySession() {
+    const sid = _state.sid;
+    if (sid && window._ssStore && !(_state.students || []).some(x => x.status === 'done')) {
+      window._ssStore.deleteSession(sid).catch(() => {});
+      _state.sid = null; _state._sidPromise = null;
+    }
+  }
+
   window._ssAkRestart = function () {
+    _ssDropEmptySession();
     _state.answerKey = null;
     _state.answerKeyImage = null;
     _state.precision = false;  // 다시 촬영은 기본 모드로
@@ -651,6 +663,7 @@
 
   // 정밀 모드로 재촬영 — 해상도 + maxTokens + temperature 조정
   window._ssAkPrecisionRetry = function () {
+    _ssDropEmptySession();
     _state.answerKey = null;
     _state.answerKeyImage = null;
     _state.precision = true;
@@ -661,6 +674,13 @@
   window._ssAkConfirm = function () {
     if (!_state.answerKey?.questions?.length) return;
     _state.students = [];
+    // 정답지를 서버에 바로 저장 — PC 에서 정답지를 올리고 폰에서 [채점 기록]을 열어 학생지 촬영
+    if (window._ssStore && !_state.sid) {
+      const st = _state;
+      st._sidPromise = window._ssStore.createSession(st.answerKey, st.precision === true)
+        .then(id => { st.sid = id; _ssToast('☁ 정답지 저장됨 — 폰에서 [채점 기록]을 열어 이어서 채점할 수 있어요'); })
+        .catch(e => { console.warn('[scoresnap] 정답지 서버 저장 실패:', e && e.message); });
+    }
     _renderStudentCapture();
   };
 
