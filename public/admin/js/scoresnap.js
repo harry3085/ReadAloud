@@ -882,16 +882,19 @@
 
     // 전체 문항 — ✓/✗ 자체가 토글 버튼 (학원장 직접 수정)
     const _rowHtml = (a, showConf) => `
-      <div style="display:flex;gap:10px;padding:6px 8px;border-bottom:1px solid #eee;font-size:12px;align-items:center;">
-        <span style="width:30px;color:#888;font-weight:700;">Q${a.no}</span>
+      <div style="display:grid;grid-template-columns:34px 30px 1fr;gap:8px;padding:8px;border-bottom:1px solid #eee;font-size:12px;align-items:start;">
+        <span style="color:#888;font-weight:700;line-height:24px;">Q${a.no}</span>
         <button onclick="window._ssToggleAnswer(${idx}, ${a.no}, ${!a.isCorrect})"
           title="클릭 → ${a.isCorrect ? '오답' : '정답'}으로 변경"
           style="width:30px;height:24px;border:1px solid ${a.isCorrect ? '#2e7d32' : '#c62828'};background:${a.isCorrect ? '#e8f5e9' : '#ffebee'};color:${a.isCorrect ? '#2e7d32' : '#c62828'};border-radius:4px;cursor:pointer;font-weight:700;font-size:13px;padding:0;line-height:1;">${a.isCorrect ? '✓' : '✗'}</button>
-        ${a.stem ? `<span title="${esc(a.stem)}" style="width:34%;flex-shrink:0;color:#111;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.stem)}</span>` : ''}
-        <span style="flex:1;min-width:0;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.studentAnswer || '(빈칸)')}</span>
-        <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span>
-        ${showConf ? `<span title="AI 판정 확신도" style="color:#e65100;font-size:10px;flex-shrink:0;">확신 ${Math.round((a.confidence || 0) * 100)}%</span>` : ''}
-        ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;flex-shrink:0;">수정</span>' : ''}
+        <div style="min-width:0;line-height:1.5;">
+          <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;">
+            <span style="color:#111;font-weight:700;font-size:13px;word-break:break-word;">${esc(a.stem || '')}</span>
+            ${showConf ? `<span title="AI 판정 확신도" style="color:#e65100;font-size:10px;">확신 ${Math.round((a.confidence || 0) * 100)}%</span>` : ''}
+            ${a._adminOverride ? '<span style="color:#1976d2;font-size:10px;">수정</span>' : ''}
+          </div>
+          <div style="color:#333;word-break:break-word;">${esc(a.studentAnswer || '(빈칸)')} <span style="color:#888;font-size:11px;">→ ${esc(a.correctAnswer || '?')}</span></div>
+        </div>
       </div>
     `;
     // 틀린 문항 → 검토(맞게 채점됐지만 애매) → 맞은 문항 순으로 모아 빨리 검토할 수 있게. 각 그룹 안은 번호순
@@ -905,7 +908,8 @@
     const allRows =
       (_wrongAns.length ? _grpHead(`✗ 틀린 문항 ${_wrongAns.length}개` + (_wrongUncertain ? ` · 그중 판정이 애매한 ${_wrongUncertain}개는 확신도 표시` : ''), '#c62828', '#ffebee') + _wrongAns.map(a => _rowHtml(a, uncertain.has(a.no))).join('') : '') +
       (_reviewAns.length ? _grpHead(`⚠ 검토 필요 ${_reviewAns.length}개 — 맞게 채점했지만 애매해요`, '#e65100', '#fff8e1') + _reviewAns.map(a => _rowHtml(a, true)).join('') : '') +
-      (_rightAns.length ? _grpHead(`✓ 맞은 문항 ${_rightAns.length}개`, '#2e7d32', '#e8f5e9') + _rightAns.map(a => _rowHtml(a, false)).join('') : '');
+      (_rightAns.length ? `<details ${_state.rightOpen ? 'open' : ''} ontoggle="window._ssRightOpen(this.open)"><summary style="padding:8px;font-size:12px;font-weight:700;color:#2e7d32;background:#e8f5e9;border-bottom:1px solid #eee;cursor:pointer;">✓ 맞은 문항 ${_rightAns.length}개 <span style="font-weight:400;color:#689f38;">— 눌러서 펼치기</span></summary>` + _rightAns.map(a => _rowHtml(a, false)).join('') + '</details>' : '');
+    const _nOverride = _all.filter(a => a._adminOverride).length;
 
     return `
       <div style="margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:12px;">
@@ -934,6 +938,7 @@
 
       <details style="margin-bottom:6px;" open>
         <summary style="font-size:13px;font-weight:700;color:#333;cursor:pointer;padding:6px 0;">📋 전체 문항 (${total}개) <span style="font-weight:400;color:#888;font-size:11px;">— ✓/✗ 클릭하여 직접 수정 가능</span></summary>
+        ${_nOverride ? `<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#e3f2fd;border-radius:6px;font-size:12px;color:#1565c0;"><span>직접 수정한 문항 ${_nOverride}개</span><button onclick="window._ssResetOverrides(${idx})" style="background:#1976d2;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">↩ AI 채점으로 되돌리기</button></div>` : ''}
         <div style="margin-top:8px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
           ${allRows}
         </div>
@@ -954,6 +959,30 @@
   window._ssCloseStudentDetail = function () {
     _state.detailIdx = null;
     _renderResultGrid();
+  };
+
+  window._ssRightOpen = function (open) { _state.rightOpen = !!open; };
+
+  // 직접 수정한 ✓/✗ 를 전부 AI 채점 결과로 되돌림
+  window._ssResetOverrides = function (idx) {
+    const s = _state.students?.[idx];
+    if (!s?.result || !Array.isArray(s.result.answers)) return;
+    s.result.answers.forEach(a => {
+      if (a._adminOverride && typeof a._aiIsCorrect === 'boolean') {
+        a.isCorrect = a._aiIsCorrect;
+        a._adminOverride = false;
+      }
+    });
+    s.result.correctCount = s.result.answers.filter(x => x.isCorrect).length;
+    s.result.scorePercent = s.result.totalQuestions > 0
+      ? Math.round((s.result.correctCount / s.result.totalQuestions) * 100) : 0;
+    s.result.wrongNumbers = s.result.answers.filter(x => !x.isCorrect).map(x => x.no);
+    const nameIn = document.getElementById('ssDetailNameIn');
+    if (nameIn) s.result.studentName = nameIn.value || '';
+    _saveSession();
+    _markDirty(idx);
+    const card = document.getElementById('ssDetailCard');
+    if (card) card.innerHTML = _buildStudentDetailHtml(s, idx);
   };
 
   window._ssBackToStudentCapture = function () {
