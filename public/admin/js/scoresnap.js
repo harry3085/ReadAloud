@@ -55,7 +55,7 @@
       const cont = (typeof window.showConfirm === 'function')
         ? await window.showConfirm(
             'ScoreSnap — 이전 채점 결과',
-            `${minutesAgo}분 전 채점한 "${prev.answerKey?.testName || '시험'}" (${prev.students?.length || 0}명) 이어서 보시겠어요?\n\n[확인] 이어서 / [취소] 새로 시작 (이전 결과 삭제)`
+            `${minutesAgo}분 전 채점한 "${(prev.students || []).map(x => x.result?.testName).find(Boolean) || prev.answerKey?.testName || '시험'}" (${prev.students?.length || 0}명) 이어서 보시겠어요?\n\n[확인] 이어서 / [취소] 새로 시작 (이전 결과 삭제)`
           )
         : true;
       if (cont) {
@@ -101,6 +101,16 @@
     `;
     document.body.appendChild(ov);
     document.getElementById('ssClose').onclick = closeScoreSnap;
+  }
+
+  // 시험명 — 학생 답안지 헤더 기준. 그 학생에서 못 읽었으면 정답지 → 다른 학생 순으로 폴백
+  function _testNameOf(r) {
+    const own = String((r && r.testName) || '').trim();
+    if (own) return own;
+    const k = String((_state.answerKey && _state.answerKey.testName) || '').trim();
+    if (k) return k;
+    const other = (_state.students || []).map(x => String((x.result && x.result.testName) || '').trim()).find(Boolean);
+    return other || '시험';
   }
 
   function closeScoreSnap() {
@@ -536,7 +546,7 @@
   function _renderResultGrid() {
     _state.phase = 'result-grid';
     _saveSession();  // 진입 시점에 항상 최신 결과 localStorage 백업
-    _setHeader(`📊 ScoreSnap · 결과 (${_state.answerKey?.testName || '시험'})`);
+    _setHeader(`📊 ScoreSnap · 결과 (${_testNameOf(null)})`);
     const body = document.getElementById('ssBody');
     if (!body) return;
     const list = _state.students || [];
@@ -546,7 +556,7 @@
     body.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:14px;font-weight:600;color:#fff;">채점 완료 · ${esc(_state.answerKey?.testName || '시험')}</div>
+          <div style="font-size:14px;font-weight:600;color:#fff;">채점 완료 · ${esc(_testNameOf(null))}</div>
           <div style="font-size:11px;color:#888;margin-top:2px;">총 ${list.length}명 · ✓ ${done}명 성공${failed > 0 ? ` · <span style="color:#ff8a80;">✗ ${failed}명 실패</span>` : ''} · 카드 클릭 → 상세</div>
         </div>
         <div style="display:flex;gap:6px;">
@@ -685,7 +695,7 @@
     return `
       <div style="margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:12px;">
         <div style="font-size:11px;color:#888;">${esc(window.MY_ACADEMY_NAME || '')}</div>
-        <div style="font-size:17px;font-weight:800;color:#111;margin-top:2px;line-height:1.4;word-break:keep-all;">${esc(_state.answerKey?.testName || '시험')}</div>
+        <div style="font-size:17px;font-weight:800;color:#111;margin-top:2px;line-height:1.4;word-break:keep-all;">${esc(_testNameOf(r))}</div>
         <div style="font-size:11px;color:#555;margin-top:4px;">총 ${total}문항 · 채점일 ${esc(dateStr)}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 12px;border:1px solid #999;border-radius:6px;background:#fff;">
           <span style="font-size:13px;color:#555;font-weight:600;flex-shrink:0;">학생:</span>
@@ -866,7 +876,7 @@
         const url = URL.createObjectURL(blob);
         const safe = v => String(v).replace(/[\\/:*?"<>|]/g, '_');
         const name = safe(s.result.studentName || `student_${idx + 1}`);
-        const title = safe(_state.answerKey?.testName || 'test');
+        const title = safe(_testNameOf(_state.students?.[idx]?.result) || 'test');
         const date = _fmtDate(new Date()).replace(/[: ]/g, '_');
         const a = document.createElement('a');
         a.href = url;

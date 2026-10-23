@@ -105,7 +105,7 @@ ${lines}
 - ★ 학생이 답을 쓰지 않은 **빈칸 문항도 반드시 answers 에 포함**한다(그 문항의 번호·stemSeen 을 읽고 studentAnswer 는 빈 문자열). 학생 시험지에 인쇄된 모든 번호 행을 빠짐없이 적을 것 — 총 ${(answerKeyQuestions || []).length}문항.
 
 작업:
-1. 시험지 헤더의 "이름:" 옆에 학생이 쓴 손글씨 이름 추출
+1. 시험지 헤더의 "이름:" 옆에 학생이 쓴 손글씨 이름 추출. 헤더에 **인쇄된 시험명**(제목)도 그대로 추출
 2. 각 문항에서 학생이 쓴 답만 추출 → 그 문항에 해당하는 정답지 문항(keyNo)의 정답과 비교해 채점
 
 추출 규칙:
@@ -129,6 +129,7 @@ ${lines}
 
 {
   "studentName": "추출된 학생 이름 (없으면 빈 문자열)",
+  "testName": "학생 시험지 헤더에 인쇄된 시험명 (없으면 빈 문자열)",
   "answers": [
     {
       "no": 학생 시험지에 인쇄된 문항 번호,
@@ -169,6 +170,7 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
   if (!raw || !Array.isArray(raw.answers)) {
     return {
       studentName: '',
+      testName: '',
       answers: [],
       correctCount: 0,
       totalQuestions: expectedCount || 0,
@@ -283,6 +285,7 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
 
   return {
     studentName: String(raw.studentName || '').trim(),
+    testName: String(raw.testName || '').trim(),
     answers,
     correctCount,
     totalQuestions,
