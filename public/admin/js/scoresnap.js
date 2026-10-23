@@ -439,8 +439,28 @@
       });
       if (best) { head[name] = best.box; best.idx.forEach(i => usedIdx.add(i)); }
     });
-    const missingHead = cols.filter(n => !head[n]);
-    if (missingHead.length) throw new Error('표의 열 머리글을 못 찾았어요: ' + missingHead.join(', '));
+    // OCR 이 머리글 글자를 다르게 읽은 경우(예: 한 글자 '뜻' 을 다른 글자로) — 머리글 줄에 남은 단어로 한 칸 보충
+    let missingHead = cols.filter(n => !head[n]);
+    const foundCols = cols.filter(n => head[n]);
+    const bandWords = [];
+    if (foundCols.length) {
+      const ys = foundCols.map(n => cy(head[n])).sort((a, b) => a - b);
+      const hy = ys[Math.floor(ys.length / 2)];
+      const usedX = foundCols.map(n => cx(head[n]));
+      W.forEach((w, i) => { if (Math.abs(cy(w) - hy) < 0.02) bandWords.push({ w, i }); });
+      if (missingHead.length === 1) {
+        const cand = bandWords.filter(o => !usedIdx.has(o.i) && usedX.every(x => Math.abs(cx(o.w) - x) > 0.06));
+        if (cand.length) {
+          const pick = cand.sort((a, b) => (b.w.x2 - b.w.x1) - (a.w.x2 - a.w.x1))[0];
+          head[missingHead[0]] = pick.w; usedIdx.add(pick.i);
+          missingHead = [];
+        }
+      }
+    }
+    if (missingHead.length) {
+      console.warn('[scoresnap] 표 머리글 못 찾음:', missingHead, '| 머리글 줄에서 읽힌 글자:', bandWords.map(o => o.w.t).join(' '));
+      throw new Error('표의 열 머리글을 못 찾았어요: ' + missingHead.join(', ') + (bandWords.length ? ` (읽힌 글자: ${bandWords.map(o => o.w.t).join(' ')})` : ''));
+    }
     const hxs = cols.map(n => cx(head[n])).sort((a, b) => a - b);
     const halfOf = (name) => {
       const i = hxs.indexOf(cx(head[name]));
