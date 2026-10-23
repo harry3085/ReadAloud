@@ -61,7 +61,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { idToken, imageBase64, mimeType, wordBoxes } = req.body;
+    const { idToken, imageBase64, mimeType, wordBoxes, allWords } = req.body;
 
     // 인증 + OCR 월 쿼터 (T2/T3 5분류 분리)
     const q = await verifyAndCheckQuota({ idToken, quotaKind: 'ocr' });
@@ -104,7 +104,9 @@ module.exports = async function handler(req, res) {
       const words = [];
       for (const b of (page && page.blocks) || []) for (const p of b.paragraphs || []) for (const w of p.words || []) {
         const t = (w.symbols || []).map(x => x.text).join('');
-        if (!/^\d{1,3}\.?$/.test(t) && !/^점수:?$/.test(t)) continue;
+        // allWords(표 형식 시험지): 열 머리글·기준 칸 위치를 찾으려고 모든 단어를 돌려줌 (최대 1500개)
+        if (!allWords && !/^\d{1,3}\.?$/.test(t) && !/^점수:?$/.test(t)) continue;
+        if (words.length >= 1500) break;
         const v = (w.boundingBox && w.boundingBox.vertices) || [];
         const xs = v.map(a => a.x || 0), ys = v.map(a => a.y || 0);
         words.push({ t, x1: Math.min(...xs) / W, x2: Math.max(...xs) / W, y1: Math.min(...ys) / H, y2: Math.max(...ys) / H });

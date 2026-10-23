@@ -407,7 +407,69 @@
     return img;
   }
 
+  async function _ssEnsureMarkPosTable(x, img) {
+    if (x.result.markPos && x.result.markPos.cells) return x.result.markPos;
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    const base64 = c.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const idToken = await window._ssGetIdToken();
+    const r = await fetch('/api/ocr', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true, allWords: true }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.words) throw new Error(j.error || '칸 위치를 읽지 못했어요');
+    const W = j.words, cx = w => (w.x1 + w.x2) / 2, cy = w => (w.y1 + w.y2) / 2;
+    const givenCol = x.result.givenColumn || '';
+    const cols = [givenCol].concat(x.result.answerColumns || []).filter(Boolean);
+    // 열 머리글: 긴 이름부터 찾는다 — OCR 이 '과거분사' 를 '과거'+'분사' 두 단어로 쪼개 읽는 경우가 있어
+    // 연속한 두 단어를 이어 붙인 것도 인정하고, 그렇게 쓰인 단어는 짧은 이름('과거')이 다시 쓰지 못하게 한다.
+    const head = {}, usedIdx = new Set();
+    cols.slice().sort((a, b) => b.length - a.length).forEach(name => {
+      let best = null;
+      W.forEach((w, i) => {
+        if (usedIdx.has(i)) return;
+        if (w.t === name) { if (!best || w.y1 < best.box.y1) best = { box: w, idx: [i] }; return; }
+        const nx = W[i + 1];
+        if (nx && !usedIdx.has(i + 1) && w.t + nx.t === name && Math.abs(cy(w) - cy(nx)) < 0.012 && nx.x1 - w.x2 < 0.05) {
+          const box = { x1: Math.min(w.x1, nx.x1), x2: Math.max(w.x2, nx.x2), y1: Math.min(w.y1, nx.y1), y2: Math.max(w.y2, nx.y2) };
+          if (!best || box.y1 < best.box.y1) best = { box, idx: [i, i + 1] };
+        }
+      });
+      if (best) { head[name] = best.box; best.idx.forEach(i => usedIdx.add(i)); }
+    });
+    const missingHead = cols.filter(n => !head[n]);
+    if (missingHead.length) throw new Error('표의 열 머리글을 못 찾았어요: ' + missingHead.join(', '));
+    const hxs = cols.map(n => cx(head[n])).sort((a, b) => a - b);
+    const halfOf = (name) => {
+      const i = hxs.indexOf(cx(head[name]));
+      const d = [hxs[i - 1] != null ? cx(head[name]) - hxs[i - 1] : Infinity, hxs[i + 1] != null ? hxs[i + 1] - cx(head[name]) : Infinity];
+      const m = Math.min(d[0], d[1]);
+      return (isFinite(m) ? m : 0.2) / 2;
+    };
+    const headBottom = Math.max(...cols.map(n => head[n].y2));
+    const givenX = cx(head[givenCol]);
+    const cells = {};
+    (x.result.answers || []).forEach(a => {
+      if (!a.col || !a.given) return;
+      // 기준 칸 단어: 줄 안에서 기준 열 머리글 x 에 가장 가까운 같은 글자(대소문자 무시)
+      const g = String(a.given).toLowerCase();
+      const cand = W.filter(w => String(w.t).toLowerCase() === g && w.y1 > headBottom)
+        .sort((p1, p2) => Math.abs(cx(p1) - givenX) - Math.abs(cx(p2) - givenX))[0];
+      if (!cand || !head[a.col]) return;
+      cells[a.no] = { x: cx(head[a.col]) - halfOf(a.col) * 0.9,   // 칸 왼쪽 가장자리 (글씨를 가리지 않게)
+           y: cy(cand), h: cand.y2 - cand.y1 };
+    });
+    const lab = W.filter(w => /^점수:?$/.test(w.t) && w.y1 < 0.25).sort((a, b) => b.x1 - a.x1)[0];
+    x.result.markPos = { cells, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
+    _saveSession();
+    _markDirty(_state.students.indexOf(x));
+    return x.result.markPos;
+  }
+
   async function _ssEnsureMarkPos(x, img) {
+    if (x.result.layout === 'table') return _ssEnsureMarkPosTable(x, img);
     if (x.result.markPos && x.result.markPos.nums) return x.result.markPos;
     const c = document.createElement('canvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
@@ -442,6 +504,29 @@
     g.fillStyle = 'rgba(225,20,20,0.92)';
     g.textBaseline = 'alphabetic';
     const wrong = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no);
+    if (pos.cells) {
+      // 표 형식 — 틀린 칸마다 V (칸 왼쪽). 크기는 모두 같게(줄 높이 중앙값 기준)
+      const hs2 = Object.values(pos.cells).map(c => c.h * H).sort((a, b) => a - b);
+      const med2 = hs2.length ? hs2[Math.floor(hs2.length / 2)] : 0;
+      const size2 = Math.max(36, med2 * 3.2);
+      g.font = `900 ${size2}px Arial, sans-serif`;
+      g.textAlign = 'center';
+      let miss2 = 0;
+      for (const a of (x.result.answers || []).filter(a => !a.isCorrect)) {
+        const c = pos.cells[a.no];
+        if (!c) { miss2++; continue; }
+        g.fillText('V', c.x * W, c.y * H + size2 * 0.36);
+      }
+      const r2 = x.result;
+      let sx2, sy2, sf2;
+      if (pos.label) {
+        sf2 = Math.max(30, (pos.label.y2 - pos.label.y1) * H * 2.2); sx2 = pos.label.x2 * W + 14; sy2 = pos.label.y2 * H + 2;
+      } else { sf2 = H * 0.035; sx2 = W * 0.78; sy2 = H * 0.04; }
+      g.font = `900 ${sf2}px Arial, sans-serif`;
+      g.textAlign = 'left';
+      g.fillText(`${r2.correctCount}/${r2.totalQuestions}`, sx2, sy2);
+      return { canvas: c, missing: miss2 };
+    }
     let missing = 0;
     const hs = Object.values(pos.nums).map(p => (p.y2 - p.y1) * H).sort((a, b) => a - b);
     const medH = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
@@ -678,7 +763,7 @@
     body.innerHTML = `
       <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:12px;flex-wrap:wrap;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${qs.length}문항 인식됨 ${_state.precision === true ? '<span style="font-size:10px;color:#ffc107;font-weight:400;">🎯 정밀</span>' : ''}</div>
+          <div style="font-size:14px;font-weight:600;color:#fff;">${esc(k.testName || '시험')} · ${qs.length}문항 인식됨${k.layout === 'table' ? ` <span style="font-size:11px;color:#6a9;font-weight:400;">(표 형식 · ${k.givenColumn} 보고 ${(k.answerColumns || []).join('·')} 쓰기, 칸마다 1문항)</span>` : ''} ${_state.precision === true ? '<span style="font-size:10px;color:#ffc107;font-weight:400;">🎯 정밀</span>' : ''}</div>
           <div style="font-size:11px;color:#888;margin-top:2px;">정답만 직접 수정 가능. 보기·문제 텍스트 인식 부족하면 [🎯 정밀 모드] 재촬영</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
@@ -968,6 +1053,9 @@
         imageBase64: image.base64,
         imageMimeType: image.mimeType,
         answerKeyQuestions: _state.answerKey.questions,
+        answerKeyMeta: _state.answerKey.layout === 'table'
+          ? { layout: 'table', givenColumn: _state.answerKey.givenColumn, answerColumns: _state.answerKey.answerColumns }
+          : null,
         precision: _state.precision === true,
       }),
     });

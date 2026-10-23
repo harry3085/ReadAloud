@@ -15,6 +15,7 @@ const { verifyAndCheckQuota, incrementUsage } = require('./_lib/quota');
 const {
   buildAnswerKeyPrompt, postProcessAnswerKey,
   buildStudentGradePrompt, postProcessStudentGrade,
+  buildStudentTablePrompt, studentTableToRaw,
   buildJudgePrompt, applyJudgements, finalizeAmbiguity,
 } = require('./_lib/scoresnap-prompt');
 const { setCors } = require('./_lib/cors');
@@ -150,7 +151,8 @@ module.exports = async (req, res) => {
 
   let body;
   try { body = req.body || {}; } catch (_) { return res.status(400).json({ error: '요청 형식 오류' }); }
-  const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions, precision } = body;
+  const { idToken, mode, imageBase64, imageMimeType, answerKeyQuestions, precision, answerKeyMeta } = body;
+  const isTable = !!(answerKeyMeta && answerKeyMeta.layout === 'table' && answerKeyMeta.givenColumn && Array.isArray(answerKeyMeta.answerColumns) && answerKeyMeta.answerColumns.length);
 
   if (!idToken) return res.status(401).json({ error: '인증 토큰 필요' });
   if (mode !== 'answerKey' && mode !== 'student') {
@@ -177,7 +179,7 @@ module.exports = async (req, res) => {
     if (!Array.isArray(answerKeyQuestions) || answerKeyQuestions.length === 0) {
       return res.status(400).json({ error: '정답지 questions 필요 (mode=student)' });
     }
-    prompt = buildStudentGradePrompt(answerKeyQuestions);
+    prompt = isTable ? buildStudentTablePrompt(answerKeyMeta) : buildStudentGradePrompt(answerKeyQuestions);
   }
 
   const r = await _callWithFallback(apiKey, prompt, imageBase64, imageMimeType || 'image/jpeg', precision === true);
@@ -211,7 +213,8 @@ module.exports = async (req, res) => {
       tokenUsage: r.usage,
     });
   } else {
-    let processed = postProcessStudentGrade(parsed, answerKeyQuestions.length, answerKeyQuestions);
+    let processed = postProcessStudentGrade(isTable ? studentTableToRaw(parsed, answerKeyMeta) : parsed, answerKeyQuestions.length, answerKeyQuestions);
+    if (isTable) { processed.layout = 'table'; processed.givenColumn = answerKeyMeta.givenColumn; processed.answerColumns = answerKeyMeta.answerColumns; }
     // 글자가 같지 않은 한글 뜻 답은 별도 호출이 "뜻을 아는지"로 일관되게 판정
     let judgeModel = null;
     try {

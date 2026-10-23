@@ -33,9 +33,20 @@ function buildAnswerKeyPrompt() {
 - 문항이 분명히 N개 있는데 일부 읽지 못하면 빈 슬롯 채움 (no 보존)
 - 시험지 헤더의 시험명·학원명도 추출 (선택)
 
+★ 시험지 형식 구분 (layout):
+- 일반 시험지: 번호 한 줄에 문제 하나 + 정답 하나 → layout "numbered" (기본). 위 형식대로 questions 에 담는다.
+- **표 형식 시험지**: 한 번호(행)에 여러 칸이 있는 표 (예: 불규칙동사표 — 뜻 | 현재 | 과거 | 과거분사). 학생에게는 기준이 되는 한 칸(예: 현재형)만 인쇄하고 나머지 칸을 채우게 하는 시험지.
+  → layout "table". questions 는 빈 배열 [] 로 두고, 대신 table 에 담는다:
+  · columns: 표의 열 이름을 왼쪽에서 오른쪽 순서로 (예: ["뜻","현재","과거","과거분사"])
+  · givenColumn: 학생에게 주어지는(인쇄되는) 기준 열. 영어 기본형·현재형처럼 시험 문제가 되는 열 (불규칙동사표면 "현재")
+  · rows: 각 줄 [{ "no": 번호, "cells": { "뜻": "...", "현재": "...", "과거": "...", "과거분사": "..." } }]
+  · 모든 칸을 정답지에 인쇄된 그대로 읽는다 (빈 칸이 있으면 "")
+
 응답 JSON 만 출력. 서문·설명 없이:
 
 {
+  "layout": "numbered" or "table",
+  "table": { "columns": [], "givenColumn": "", "rows": [] },     // layout 이 table 일 때만 채움. numbered 면 생략
   "testName": "시험명 (헤더에서 추출, 없으면 빈 문자열)",
   "questions": [
     {
@@ -52,7 +63,40 @@ function buildAnswerKeyPrompt() {
 }
 
 // 정답지 OCR 응답 → 정제
+// 표 형식 정답지 → 칸 하나가 한 문항인 questions 로 펼침. stem = "기준값 [열이름]" (예: "leave [과거]")
+function _flattenKeyTable(table) {
+  const cols = (table.columns || []).map(c => String(c || '').trim()).filter(Boolean);
+  let given = String(table.givenColumn || '').trim();
+  if (!cols.includes(given)) given = cols.includes('현재') ? '현재' : (cols[0] || '');
+  const answerColumns = cols.filter(c => c !== given);
+  const questions = [];
+  (table.rows || []).forEach((row, ri) => {
+    const cells = (row && row.cells) || {};
+    const g = String(cells[given] || '').trim();
+    if (!g) return;
+    answerColumns.forEach(col => {
+      questions.push({
+        no: questions.length + 1, type: 'short',
+        stem: `${g} [${col}]`, choices: [], answerIdx: -1,
+        answer: String(cells[col] || '').trim(), confidence: 0.9,
+        row: Number.isInteger(row.no) ? row.no : ri + 1, col, given: g,
+      });
+    });
+  });
+  return { givenColumn: given, answerColumns, questions };
+}
+
 function postProcessAnswerKey(raw) {
+  if (raw && raw.layout === 'table' && raw.table && Array.isArray(raw.table.rows) && raw.table.rows.length) {
+    const f = _flattenKeyTable(raw.table);
+    if (f.questions.length) {
+      return {
+        testName: String(raw.testName || '').trim(),
+        layout: 'table', givenColumn: f.givenColumn, answerColumns: f.answerColumns,
+        questions: f.questions,
+      };
+    }
+  }
   if (!raw || !Array.isArray(raw.questions)) {
     return { testName: '', questions: [], error: '응답 형식 오류' };
   }
@@ -145,6 +189,58 @@ ${lines}
   "printedCount": 학생 시험지에 인쇄된 전체 문항 수(마지막 번호),
   "uncertainQuestions": [confidence 0.8 미만 문항의 no]
 }`;
+}
+
+// ─── 표 형식 학생 답안지 ───
+// 한 줄에 칸이 여러 개(뜻·과거·과거분사). 기준 칸(givenColumn)은 인쇄돼 있고 나머지 칸을 학생이 손으로 썼다.
+function buildStudentTablePrompt(meta) {
+  const given = meta.givenColumn;
+  const cols = meta.answerColumns || [];
+  const list = cols.map(c => `"${c}"`).join(', ');
+  return `첨부: 학생이 푼 표 형식 시험지 한 장 (사진).
+
+표의 열: ${[...cols.slice(0, 0), given, ...cols].join(' / ')}  (순서는 사진을 따를 것)
+- "${given}" 열은 **인쇄된** 글자 (학생이 쓴 것이 아님)
+- ${list} 열은 학생이 **손으로 쓴 답**
+
+작업: 표의 각 줄(번호)마다 인쇄된 "${given}" 값과, 학생이 쓴 ${list} 칸의 글자를 그대로 읽어라.
+- 학생이 쓴 글자는 **철자가 틀려도 보이는 그대로** 적는다 (교정·추측 금지)
+- 줄을 그어 지운(취소선) 글자는 무시하고 지우지 않은 최종 답만 읽는다
+- 비어 있으면 ""
+- 헤더의 이름란에 학생이 쓴 손글씨 이름, 인쇄된 시험명도 읽는다
+- 모든 줄을 빠짐없이 (사진에 보이는 순서대로)
+- conf: 그 줄 손글씨 판독 확신도 (또렷하면 0.95, 흐리거나 애매하면 0.7 이하)
+
+응답 JSON 만 출력. 서문·설명 없이:
+{
+  "studentName": "...",
+  "testName": "...",
+  "rows": [ { "no": 줄 번호, "given": "인쇄된 ${given} 값", "cells": { ${cols.map(c => `"${c}": "학생이 쓴 글자"`).join(', ')} }, "conf": 0.0~1.0 } ]
+}`;
+}
+
+// 표 형식 학생 응답 → 칸 단위 answers 로 펼쳐 기존 채점(postProcessStudentGrade)에 태움
+function studentTableToRaw(raw, meta) {
+  const cols = meta.answerColumns || [];
+  const rows = Array.isArray(raw && raw.rows) ? raw.rows : [];
+  const answers = [];
+  rows.forEach((row, ri) => {
+    const cells = (row && row.cells) || {};
+    const g = String((row && row.given) || '').trim();
+    cols.forEach((col, ci) => {
+      answers.push({
+        no: ri * cols.length + ci + 1,
+        stemSeen: `${g} [${col}]`,
+        studentAnswer: String(cells[col] == null ? '' : cells[col]),
+        isCorrect: false,
+        confidence: typeof row.conf === 'number' ? row.conf : 0.85,
+      });
+    });
+  });
+  return {
+    studentName: raw && raw.studentName, testName: raw && raw.testName,
+    answers, printedCount: rows.length * cols.length,
+  };
 }
 
 // 비교용 정규화 — 대소문자·공백·문장부호 무시 (한글·영문·숫자만 남김)
@@ -243,7 +339,8 @@ function postProcessStudentGrade(raw, expectedCount, answerKeyQuestions) {
       && !_answerVariants(correctAnswer).includes(_norm(studentAnswer));
 
     const no = Number.isInteger(a.no) && a.no >= 1 ? a.no : rows.length + 1;
-    rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence, needsJudge });
+    const extra = key.col ? { col: key.col, given: key.given, row: key.row } : {};
+    rows.push({ no, keyNo, type, stem: String(key.stem || '').trim(), studentAnswer, correctAnswer, isCorrect, confidence, needsJudge, ...extra });
   });
 
   // 문제 수는 학생 시험지 기준 — 정답지에만 있는 문항은 만들지 않는다(정답지가 더 길거나 중복 등재돼도 안전).
@@ -360,6 +457,8 @@ function finalizeAmbiguity(result) {
 }
 
 module.exports = {
+  buildStudentTablePrompt,
+  studentTableToRaw,
   finalizeAmbiguity,
   buildJudgePrompt,
   applyJudgements,
