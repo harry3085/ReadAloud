@@ -470,7 +470,6 @@
     const toast = (m) => _ssToast(m);
     const x = _state.students?.[idx];
     if (!x?.result) return;
-    toast('마킹 사진 만드는 중...');
     let out;
     try {
       const nameIn = document.getElementById('ssDetailNameIn');
@@ -480,6 +479,7 @@
       if (x._markCache && x._markCache.key === key) {
         out = { canvas: x._markCache.canvas, missing: x._markCache.missing };
       } else {
+        toast(x.markPath && x.markKey === key ? '저장된 마킹 사진 불러오는 중...' : '마킹 사진 만드는 중... (처음 한 번만)');
         // 서버에 저장된 마킹 사진이 있고 틀린 문항·점수가 같으면 그것을 사용
         if (x.markPath && x.markKey === key && window._ssStore) {
           try {
