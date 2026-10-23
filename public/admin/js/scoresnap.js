@@ -540,7 +540,7 @@
 
   async function _ssEnsureMarkPos(x, img) {
     if (x.result.layout === 'table') return _ssEnsureMarkPosTable(x, img);
-    if (x.result.markPos && x.result.markPos.nums) return x.result.markPos;
+    if (x.result.markPos && x.result.markPos.nums && x.result.markPos.v === 2) return x.result.markPos;   // v2: 머리글(출제일 등)의 숫자 제외
     const c = document.createElement('canvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
     c.getContext('2d').drawImage(img, 0, 0);
@@ -554,13 +554,16 @@
     if (!r.ok || !j.words) throw new Error(j.error || '번호 위치를 읽지 못했어요');
     const total = x.result.totalQuestions || 0;
     const nums = {};
+    // 본문 시작 높이: 왼쪽 가장자리의 '번호.' 중 가장 위 — 머리글의 출제일(2026. 10. 23.) 같은 숫자를 문항 번호로 오인하지 않도록
+    const leftNums = j.words.filter(w => /^\d{1,3}\.$/.test(w.t) && w.x1 < 0.15 && w.y1 > 0.08);
+    const bodyTop = leftNums.length ? Math.min(...leftNums.map(w => w.y1)) - 0.02 : 0.15;
     for (let n = 1; n <= total; n++) {
-      let c1 = j.words.filter(w => w.t === n + '.');
-      if (!c1.length) c1 = j.words.filter(w => w.t === String(n) && w.y1 > 0.15);
+      let c1 = j.words.filter(w => w.t === n + '.' && w.y1 >= bodyTop);
+      if (!c1.length) c1 = j.words.filter(w => w.t === String(n) && w.y1 > Math.max(0.15, bodyTop));
       if (c1.length) { const w = c1.sort((a, b) => a.x1 - b.x1)[0]; nums[n] = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 }; }
     }
     const lab = j.words.filter(w => /^점수:?$/.test(w.t) && w.y1 < 0.25).sort((a, b) => b.x1 - a.x1)[0];
-    x.result.markPos = { nums, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
+    x.result.markPos = { v: 2, nums, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
     _saveSession();
     _markDirty(_state.students.indexOf(x));
     return x.result.markPos;
@@ -630,7 +633,7 @@
       const nameIn = document.getElementById('ssDetailNameIn');
       if (nameIn) x.result.studentName = nameIn.value || '';
       // 틀린 문항·점수가 그대로면 이전에 만든 마킹 사진을 재사용 (사진 다시 받기·OCR·그리기 생략)
-      const key = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no).join(',') + '|' + x.result.correctCount + '/' + x.result.totalQuestions;
+      const key = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no).join(',') + '|' + x.result.correctCount + '/' + x.result.totalQuestions + '|v2';   // v2: 번호 위치 계산 개선 — 이전에 저장된 마킹 사진은 재생성
       if (x._markCache && x._markCache.key === key) {
         out = { canvas: x._markCache.canvas, missing: x._markCache.missing };
       } else {
