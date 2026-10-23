@@ -272,7 +272,7 @@
     try {
       const data = await window._ssStore.loadSession(sid);
       _state = {
-        phase: 'init', sid, precision: data.precision === true, answerKey: data.answerKey,
+        phase: 'init', sid, precision: data.precision === true, answerKey: data.answerKey, keyImagePath: data.keyImagePath || '',
         students: data.students.map(x => ({
           status: 'done', result: x.result, image: null, error: null,
           docId: x.docId, imagePath: x.imagePath || '', _idx: x.idx,
@@ -296,6 +296,7 @@
     try {
       const data = await window._ssStore.loadSession(sid);
       _state.answerKey = data.answerKey;
+      _state.keyImagePath = data.keyImagePath || '';
       _state.students = data.students.map(x => ({
         status: 'done', result: x.result, image: null, error: null, docId: x.docId, imagePath: x.imagePath || '',
         markPath: x.markPath || '', markKey: x.markKey || '', markMissing: x.markMissing || 0,
@@ -349,7 +350,7 @@
         if (!st.answerKey?.questions?.length) return;
         const list = st.students || [];
         if (!list.some(x => x.status === 'done' && x.result)) return;
-        if (!st.sid) st.sid = await window._ssStore.createSession(st.answerKey, st.precision === true);
+        if (!st.sid) st.sid = await window._ssStore.createSession(st.answerKey, st.precision === true, st.answerKeyImage);
         for (let i = 0; i < list.length; i++) {
           const x = list[i];
           if (x.status !== 'done' || !x.result) continue;
@@ -378,6 +379,23 @@
   }
 
   // 답안지 사진 보기 (로컬 사진이 있으면 그것, 없으면 서버에서)
+  // 정답지 사진 보기 — 방금 올린 건 메모리, 서버에서 연 기록은 저장된 사진
+  window._ssViewKeyImage = async function () {
+    let url = _state.answerKeyImage?.dataUrl || '';
+    if (!url && _state.keyImagePath) {
+      try { url = await window._ssStore.getImageUrl(_state.keyImagePath); }
+      catch (e) { _ssToast('정답지 사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
+    }
+    if (!url) { _ssToast('저장된 정답지 사진이 없어요 (이전에 만든 기록은 사진이 저장되지 않았어요)'); return; }
+    const ov = document.createElement('div');
+    ov.setAttribute('data-ss-sub', '1');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
+    ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
+    ov.onclick = () => _ssSubRemove(ov);
+    document.body.appendChild(ov);
+    _ssPushSub(ov);
+  };
+
   window._ssViewStudentImage = async function (idx) {
     const x = _state.students?.[idx];
     if (!x) return;
@@ -821,6 +839,7 @@
           <div style="font-size:11px;color:#888;margin-top:2px;">정답만 직접 수정 가능. 보기·문제 텍스트 인식 부족하면 [🎯 정밀 모드] 재촬영</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button onclick="window._ssViewKeyImage()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;">🖼 정답지 보기</button>
           <button onclick="window._ssAkRestart()" style="background:transparent;color:#bbb;border:1px solid #444;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;">🔄 다시 촬영</button>
           ${_state.precision === true
             ? ''
@@ -945,7 +964,7 @@
       _state._reKey = false; _state._prevKey = null;
       // 서버 정답지 교체 + 학생 전원 재채점 (사진 있는 학생만)
       if (window._ssStore && _state.sid) {
-        window._ssStore.updateKey(_state.sid, _state.answerKey, _state.precision === true)
+        window._ssStore.updateKey(_state.sid, _state.answerKey, _state.precision === true, _state.answerKeyImage)
           .catch(e => console.warn('[scoresnap] 정답지 서버 교체 실패:', e && e.message));
       }
       (_state.students || []).forEach(x => {
@@ -967,7 +986,7 @@
     // 정답지를 서버에 바로 저장 — PC 에서 정답지를 올리고 폰에서 [채점 기록]을 열어 학생지 촬영
     if (window._ssStore && !_state.sid) {
       const st = _state;
-      st._sidPromise = window._ssStore.createSession(st.answerKey, st.precision === true)
+      st._sidPromise = window._ssStore.createSession(st.answerKey, st.precision === true, st.answerKeyImage)
         .then(id => { st.sid = id; _ssToast('☁ 정답지 저장됨 — 폰에서 [채점 기록]을 열어 이어서 채점할 수 있어요'); })
         .catch(e => { console.warn('[scoresnap] 정답지 서버 저장 실패:', e && e.message); });
     }
@@ -1227,6 +1246,7 @@
           <button onclick="window._ssOpenSessionList()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;">📂 채점 기록</button>
           <button onclick="window._ssDeleteCurrentSession()" title="이 채점 기록 삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>` : ''}
           <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">+ 답안지 추가</button>
+          <button onclick="window._ssViewKeyImage()" title="정답지 사진 보기" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">🖼 정답지 보기</button>
           <button onclick="window._ssReplaceAnswerKey()" title="정답지를 다시 촬영해 이 기록의 학생들을 새 정답지로 다시 채점" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">📋 정답지 다시 올리기</button>
           <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">종료</button>
         </div>

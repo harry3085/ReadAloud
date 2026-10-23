@@ -18934,7 +18934,19 @@ async function _ssDeleteSessionImpl(sid) {
 }
 
 window._ssStore = {
-  async createSession(answerKey, precision) {
+  // 정답지 사진 보관 (정답지 보기용, 실패해도 채점에는 영향 없음)
+  async _uploadKeyImage(sid, image) {
+    if (!image || !image.base64) return '';
+    try {
+      const path = `scoresnap/${_ssAid()}/${sid}/key.jpg`;
+      const task = uploadBytesResumable(ref(storage, path), _ssB64ToBlob(image.base64, image.mimeType),
+        { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
+      await new Promise((res, rej) => task.on('state_changed', null, rej, res));
+      return path;
+    } catch (e) { console.warn('[scoresnap] 정답지 사진 업로드 실패:', e && e.message); return ''; }
+  },
+
+  async createSession(answerKey, precision, keyImage) {
     if (!currentUser) throw new Error('로그인 정보 없음');
     const aid = _ssAid();
     const sref = doc(collection(db, 'scoresnapSessions'));
@@ -18945,8 +18957,9 @@ window._ssStore = {
       questionCount: ((answerKey && answerKey.questions) || []).length,
       studentCount: 0, precision: !!precision,
     });
+    const keyImagePath = await window._ssStore._uploadKeyImage(sref.id, keyImage);
     await setDoc(doc(db, 'scoresnapSessions', sref.id, 'key', 'answerKey'), {
-      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision,
+      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision, keyImagePath,
     });
     return sref.id;
   },
@@ -19003,16 +19016,17 @@ window._ssStore = {
     ]);
     if (!keySnap.exists()) throw new Error('채점 기록을 찾을 수 없어요 (보관 기간이 지났을 수 있어요)');
     const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0));
-    return { answerKey: keySnap.data().answerKey, precision: !!keySnap.data().precision, students };
+    return { answerKey: keySnap.data().answerKey, precision: !!keySnap.data().precision, keyImagePath: keySnap.data().keyImagePath || '', students };
   },
 
   async getImageUrl(path) { return await getDownloadURL(ref(storage, path)); },
 
   // 정답지만 다시 올린 경우 — 세션의 정답지를 교체 (학생 사진·기록은 그대로)
-  async updateKey(sid, answerKey, precision) {
+  async updateKey(sid, answerKey, precision, keyImage) {
     const aid = _ssAid();
+    const keyImagePath = await window._ssStore._uploadKeyImage(sid, keyImage);
     await setDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey'), {
-      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision,
+      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision, keyImagePath,
     });
     await updateDoc(doc(db, 'scoresnapSessions', sid), {
       testName: String((answerKey && answerKey.testName) || ''),
