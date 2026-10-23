@@ -380,6 +380,33 @@ window.doLogout = async() => {
   window.location.href = '/';
 };
 
+// ── 뒤로가기 보호 (폰) ──────────────────────────────────
+// 첫 터치 때 history 를 몇 칸 쌓아 두고(사용자 동작 안에서 쌓아야 브라우저가 건너뛰지 않음), 뒤로가기를 누르면
+// 다른 페이지 → 대시보드, 대시보드 → '한 번 더 누르면 종료', 2초 안에 한 번 더 → 앱 밖으로.
+let _admGuard = 0, _admArmed = false, _admArmTimer = 0;
+function _admPushGuards() {
+  if (_admGuard > 0) return;
+  try { for (let i = 0; i < 3; i++) history.pushState({ adm: 1 }, ''); _admGuard = 3; } catch (_) {}
+}
+['click', 'touchend'].forEach(t => document.addEventListener(t, _admPushGuards, { once: true, capture: true }));
+window.addEventListener('popstate', ev => {
+  setTimeout(() => {                                   // ScoreSnap 이 자기 뒤로가기를 먼저 표시하도록 한 틱 뒤에 판단
+    if (ev._ssHandled || document.getElementById('scoreSnapOverlay')) return;
+    if (_admGuard <= 0) return;
+    _admGuard--;
+    if (currentPage !== 'dashboard') { window.goPage('dashboard'); return; }
+    if (!_admArmed) {
+      _admArmed = true;
+      showToast('한 번 더 누르면 종료됩니다');
+      clearTimeout(_admArmTimer);
+      _admArmTimer = setTimeout(() => { _admArmed = false; }, 2000);
+      return;
+    }
+    const n = _admGuard; _admGuard = 0;                 // 두 번째 → 남은 칸과 현재 칸을 넘어 앱 밖으로
+    history.go(-(n + 1));
+  }, 0);
+});
+
 // ── 페이지 전환 ─────────────────────────────────────
 const pageLabels = {
   dashboard:'초기화면', class:'클래스 관리',

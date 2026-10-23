@@ -167,9 +167,10 @@
       default: closeScoreSnap();
     }
   }
-  window.addEventListener('popstate', () => {
-    if (_ssIgnorePop > 0) { _ssIgnorePop--; return; }
+  window.addEventListener('popstate', (ev) => {
+    if (_ssIgnorePop > 0) { _ssIgnorePop--; ev._ssHandled = true; return; }
     if (!document.getElementById('scoreSnapOverlay')) return;
+    ev._ssHandled = true;
     _ssDepth = Math.max(0, _ssDepth - 1);
     if (_ssDepth === 0) { closeScoreSnap(); return; }     // 첫 칸까지 소진 → ScoreSnap 종료 (학원장앱으로)
     _ssGoBack();

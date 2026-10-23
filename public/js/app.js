@@ -338,7 +338,7 @@ window.doLogin = async () => {
     } else if(profile.role==='admin'){
       // PC 관리자 앱으로 이동
       localStorage.setItem('adminProfile', JSON.stringify({...profile, uid: profileUid}));
-      window.location.href = '/admin/';
+      window.location.replace('/admin/');
     } else {
       document.getElementById('greetName').textContent=profile.name+' 님';
       await loadHomeData();
@@ -5177,7 +5177,7 @@ onAuthStateChanged(auth, async (user)=>{
         localStorage.setItem('lastLoginAt', Date.now().toString());
         if(userProfile.role==='admin'){
           localStorage.setItem('adminProfile', JSON.stringify(userProfile));
-          window.location.href = '/admin/';
+          window.location.replace('/admin/');
           return;
         } else {
           const greetEl = document.getElementById('greetName');
