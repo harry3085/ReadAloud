@@ -5532,3 +5532,20 @@ SW v842 → v849. 폰에서 채점 → PC 에서 확인, 학생에게 틀린 문
 - **OCR 이 한 단어를 쪼갤 수 있음** — 위치로 열을 찾을 땐 연속 단어 이어 붙임 후보를 함께 검사
 - **서버에서 연 기록은 사진이 메모리에 없음** — 사진이 있다고 가정하는 렌더(`s.image.dataUrl`)는 조용히 터짐. 채점 완료 학생과 새 사진을 구분
 - 시험용 스크립트: `scripts/diag/scoresnap-table-prototype.js`
+
+### 2026-10-23 (이어서 3): ScoreSnap 정답지 형태 선택·다시 올리기·정답지 보기 외 (SW v861 → v868)
+
+- **[📋 정답지 다시 올리기]** — 결과 목록 헤더. 정답지만 새로 촬영 → `_ssStore.updateKey` 로 서버 교체 → 사진 있는 학생 전원 재채점(이름 수정 유지, ✓/✗ 수정·마킹 캐시 초기화). 서버 사진은 `_ssStudentImageForGrade` 로 내려받아 채점. 뒤로가기는 `_ssCancelReKey`
+- **정답지 올릴 때 시험지 형태 선택** — 번호형(기본)·표 형식·자동 (`_state.layoutHint` → 요청 `layoutHint`). 번호형: 프롬프트에서 표 항목 제거 + 비면 최대 3회 재시도 + AI가 표 모양(columns·rows)으로 답해도 `_rowsToNumbered` 로 변환. 표 형식: `forceTable`(머리글 검사 생략)
+- **번호형/표 자동 판별 보강** — 응답 최상단 `hasHeaderRow` 먼저 판단(false 면 numbered). 채울 칸(번호 열 제외)이 2개 미만(단어|뜻 목록)이면 표가 아니라 번호형으로 즉시 변환(AI 재호출 없음). 판별은 서버 코드(`postProcessAnswerKey`)가 최종 확정
+- **[🖼 정답지 보기]** — 정답지 사진을 `scoresnap/{aid}/{sid}/key.jpg` 로 보관(key 문서 `keyImagePath`), 결과 목록·정답지 검토 화면 버튼. 이전에 만든 기록은 사진 없음
+- **시험지 프리뷰 [화면 복사]** — `tpCopyPreview`(html2canvas 지연 로드 → PNG 클립보드). ScoreSnap 정답지 촬영 화면에서 Ctrl+V 붙여넣기(`paste` 리스너, phase 'answerKey-capture' 일 때만)
+- **확인 모달 z-index** — `#confirmModal` 9000 → 100010 (ScoreSnap 오버레이 99999 뒤에 깔려 `showConfirm` 이 안 보였음)
+- **문제세트 수정·이름변경 후 시험관리 캐시** — `_tpSyncSetCache` 로 `_tpSetsByFolder` 갱신(안 하면 출제 화면에 옛 문제 수·옛 문제가 남음)
+- **AI 사용량** — Generator 막대에 ScoreSnap 쌓기(주황=문제 생성, 분홍=ScoreSnap), 제목줄에 항목별 합계, 대시보드 일사용량 포함. 호출 수: 학생 1회·정답지 1회(서버 내부 재시도·뜻 판정은 미계상), 마킹 사진 첫 생성 시 OCR 1회
+
+### 작업 규칙 추가
+- **AI 응답은 필드끼리 모순될 수 있음** — `hasHeaderRow:false` 인데 `layout:"table"` 로 답함. 판단 질문을 먼저 따로 받고 코드가 그 값으로 분기. 프롬프트로 지시해도 어기면 서버가 응답 모양을 보고 변환
+- **서버 호출 재현은 실제 파라미터(topP·이미지/텍스트 순서)와 반복 횟수로** — 단발 로컬 테스트는 8번 중 3번 나는 실패를 놓침
+- **`showConfirm` 등 앱 공용 모달은 전체화면 오버레이(z-index 99999) 안에서 가려질 수 있음** — 오버레이를 쓰는 화면은 모달 z-index 확인
+- **목록 캐시가 둘 이상(`_qs*`·`_tp*`)이면 수정 후 양쪽 모두 갱신**
