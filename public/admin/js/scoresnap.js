@@ -396,6 +396,34 @@
     _ssPushSub(ov);
   };
 
+  // 정답 목록 다시 보기 (읽기 전용) — 채점 중에도 인식된 문제·정답을 확인
+  window._ssViewKeyList = function () {
+    const k = _state.answerKey || {};
+    const qs = k.questions || [];
+    if (!qs.length) { _ssToast('정답 목록이 없어요'); return; }
+    const rows = qs.map(q => `
+      <div style="display:flex;gap:10px;align-items:baseline;padding:7px 4px;border-bottom:1px solid #2a2a2a;">
+        <span style="flex:0 0 34px;font-size:12px;color:#888;text-align:right;">${esc(String(q.no))}</span>
+        <span style="flex:1;font-size:13px;color:#ddd;word-break:break-word;">${esc(q.stem) || '<span style="color:#666;">(문제 없음)</span>'}${q.type === 'mcq' && Array.isArray(q.choices) && q.choices.length ? `<div style="font-size:11px;color:#999;margin-top:2px;">${q.choices.map((c, j) => `${['①','②','③','④','⑤'][j] || j + 1} ${esc(c)}`).join(' &nbsp; ')}</div>` : ''}</span>
+        <span style="flex:1;font-size:13px;color:#7ddc8a;font-weight:600;word-break:break-word;">${esc(q.answer || '')}</span>
+      </div>`).join('');
+    const ov = document.createElement('div');
+    ov.setAttribute('data-ss-sub', '1');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;padding:16px;';
+    ov.innerHTML = `
+      <div style="max-width:820px;margin:0 auto;background:#141414;border:1px solid #333;border-radius:10px;padding:14px 16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-size:14px;font-weight:700;color:#fff;">${esc(k.testName || '시험')} · 정답 ${qs.length}문항</div>
+          <button data-close style="background:transparent;border:none;color:#fff;font-size:28px;cursor:pointer;line-height:1;">×</button>
+        </div>
+        <div style="display:flex;gap:10px;padding:0 4px 6px;border-bottom:1px solid #444;font-size:11px;color:#888;"><span style="flex:0 0 34px;text-align:right;">번호</span><span style="flex:1;">문제</span><span style="flex:1;">정답</span></div>
+        ${rows}
+      </div>`;
+    ov.onclick = (e) => { if (e.target === ov || e.target.hasAttribute('data-close')) _ssSubRemove(ov); };
+    document.body.appendChild(ov);
+    _ssPushSub(ov);
+  };
+
   window._ssViewStudentImage = async function (idx) {
     const x = _state.students?.[idx];
     if (!x) return;
@@ -1246,6 +1274,7 @@
           <button onclick="window._ssOpenSessionList()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;">📂 채점 기록</button>
           <button onclick="window._ssDeleteCurrentSession()" title="이 채점 기록 삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>` : ''}
           <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">+ 답안지 추가</button>
+          <button onclick="window._ssViewKeyList()" title="인식된 정답 목록 보기" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">📋 정답 목록</button>
           <button onclick="window._ssViewKeyImage()" title="정답지 사진 보기" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">🖼 정답지 보기</button>
           <button onclick="window._ssReplaceAnswerKey()" title="정답지를 다시 촬영해 이 기록의 학생들을 새 정답지로 다시 채점" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">📋 정답지 다시 올리기</button>
           <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">종료</button>
