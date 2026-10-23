@@ -666,6 +666,18 @@
   }
   window.closeScoreSnap = closeScoreSnap;
 
+  // 클립보드 이미지 붙여넣기(Ctrl+V) — 정답지 촬영 화면에서 시험지 프리뷰 복사본을 바로 입력
+  document.addEventListener('paste', (e) => {
+    if (_state.phase !== 'answerKey-capture' || !document.getElementById('ssAkBody')) return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.kind === 'file' && /^image\//.test(it.type)) {
+        const f = it.getAsFile();
+        if (f) { e.preventDefault(); _handleAnswerKeyFile(f); return; }
+      }
+    }
+  });
+
   function _setHeader(text) {
     const el = document.getElementById('ssHeaderTitle');
     if (el) el.textContent = text;
@@ -721,6 +733,7 @@
           style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #444;padding:10px 24px;border-radius:8px;font-size:13px;cursor:pointer;">
           🖼 갤러리에서 선택
         </button>
+        <div style="font-size:11px;color:#777;text-align:center;line-height:1.5;">PC: 시험지 프리뷰의 [화면 복사]로 복사한 이미지를 여기서 <b style="color:#aaa;">Ctrl+V</b> 로 바로 붙여넣을 수 있어요</div>
       </div>
     `;
     const camIn = document.getElementById('ssAkCamIn');

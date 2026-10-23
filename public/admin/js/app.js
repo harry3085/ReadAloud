@@ -17327,6 +17327,7 @@ window.tpOpenPrintModal = () => {
             <option value="landscape">A4 가로</option>
           </select>
           <button class="btn btn-secondary" onclick="closeModal()" style="font-size:12px;">취소</button>
+          <button class="btn btn-secondary" onclick="tpCopyPreview(this)" style="font-size:12px;" title="프리뷰를 이미지로 복사 — ScoreSnap 정답지 입력 화면에서 Ctrl+V 로 붙여넣기">${iconSvg('clipboard')} 화면 복사</button>
           <button class="btn btn-primary" onclick="tpPrintNow()" style="font-size:12px;font-weight:700;">🖨 인쇄</button>
         </div>
       </div>
@@ -17989,6 +17990,34 @@ window.tpPrintResetStyle = () => {
   if (l) l.value = _TP_PRINT_DEFAULTS.lineHeight;
   if (g) g.value = _TP_PRINT_DEFAULTS.qGap;
   tpPrintRefreshPreview();
+};
+
+// 프리뷰를 이미지로 클립보드에 복사 (ScoreSnap 정답지 입력에 붙여넣기용)
+window.tpCopyPreview = async (btn) => {
+  const area = document.getElementById('tpPrintArea');
+  if (!area || !area.innerHTML.trim()) { showToast('복사할 프리뷰가 없습니다'); return; }
+  if (!navigator.clipboard || typeof ClipboardItem === 'undefined') { showToast('이 브라우저는 이미지 복사를 지원하지 않습니다'); return; }
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = '복사 중...'; }
+  try {
+    if (!window.html2canvas) {
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        sc.onload = res; sc.onerror = () => rej(new Error('이미지 도구를 불러오지 못했습니다'));
+        document.head.appendChild(sc);
+      });
+    }
+    const canvas = await window.html2canvas(area, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('이미지 변환 실패');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    showToast('프리뷰 이미지를 복사했습니다. ScoreSnap 정답지 화면에서 Ctrl+V');
+  } catch (e) {
+    showToast('복사 실패: ' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
 };
 
 window.tpPrintNow = () => {
