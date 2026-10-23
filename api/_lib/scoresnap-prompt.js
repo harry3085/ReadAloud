@@ -7,8 +7,12 @@
 
 // ─── 정답지 OCR 프롬프트 ───
 // 학원장이 인쇄한 정답지(답지 보기 모드) 1 장을 보고 문제·정답 추출.
-function buildAnswerKeyPrompt() {
-  return `첨부: 정답이 표시된 시험지 1장 (인쇄지, 활자).
+function buildAnswerKeyPrompt(opts) {
+  const forceNumbered = !!(opts && opts.forceNumbered);
+  const forceNote = forceNumbered
+    ? '★★ 이 시험지는 번호형(layout "numbered")이다. 표 형식이 아니다. 모든 문항을 questions 에 담고 layout 은 반드시 "numbered" 로 응답하라. (여러 단으로 나뉜 번호 목록·영어↔한글이 섞인 문제도 번호형이다)' + String.fromCharCode(10) + String.fromCharCode(10)
+    : '';
+  return `${forceNote}첨부: 정답이 표시된 시험지 1장 (인쇄지, 활자).
 
 작업: 시험지 전체를 읽어 각 문항의 번호·문제·유형·정답·MCQ 보기 전부를 추출.
 
@@ -35,8 +39,11 @@ function buildAnswerKeyPrompt() {
 
 ★ 시험지 형식 구분 (layout):
 - 일반 시험지: 번호 한 줄에 문제 하나 + 정답 하나 → layout "numbered" (기본). 위 형식대로 questions 에 담는다.
-- **표 형식 시험지**: 한 번호(행)에 여러 칸이 있는 표 (예: 불규칙동사표 — 뜻 | 현재 | 과거 | 과거분사). 학생에게는 기준이 되는 한 칸(예: 현재형)만 인쇄하고 나머지 칸을 채우게 하는 시험지.
+  · **다음은 모두 "numbered"**: 번호 목록이 여러 단(좌우로 2~4개 묶음)으로 나뉜 시험지 / 줄마다 영어↔한글 방향이 섞여 있는 시험지 / 번호·문제·정답이 한 줄에 나란히 있는 시험지. 열 머리글이 없는 목록은 표가 아니다.
+- **표 형식 시험지**: **표 맨 위에 열 이름이 인쇄된 머리글 줄이 있고**(예: 뜻 | 현재 | 과거 | 과거분사), 한 번호(행)에 여러 칸이 있는 표. 학생에게는 기준이 되는 한 칸(예: 현재형)만 인쇄하고 나머지 칸을 채우게 하는 시험지.
+  **머리글 줄이 없으면 표가 아니다 → numbered.**
   → layout "table". questions 는 빈 배열 [] 로 두고, 대신 table 에 담는다:
+  · hasHeaderRow: 열 이름이 적힌 머리글 줄이 실제로 인쇄돼 있으면 true
   · columns: 표의 열 이름을 왼쪽에서 오른쪽 순서로 (예: ["뜻","현재","과거","과거분사"])
   · givenColumn: 학생에게 주어지는(인쇄되는) 기준 열. 영어 기본형·현재형처럼 시험 문제가 되는 열 (불규칙동사표면 "현재")
   · rows: 각 줄 [{ "no": 번호, "cells": { "뜻": "...", "현재": "...", "과거": "...", "과거분사": "..." } }]
@@ -46,7 +53,7 @@ function buildAnswerKeyPrompt() {
 
 {
   "layout": "numbered" or "table",
-  "table": { "columns": [], "givenColumn": "", "rows": [] },     // layout 이 table 일 때만 채움. numbered 면 생략
+  "table": { "hasHeaderRow": true, "columns": [], "givenColumn": "", "rows": [] },     // layout 이 table 일 때만 채움. numbered 면 생략
   "testName": "시험명 (헤더에서 추출, 없으면 빈 문자열)",
   "questions": [
     {
@@ -87,6 +94,13 @@ function _flattenKeyTable(table) {
 }
 
 function postProcessAnswerKey(raw) {
+  if (raw && raw.layout === 'table') {
+    // 머리글 줄이 없거나 열이 2개 미만이면 표가 아니라 번호형을 잘못 판단한 것 → 호출부가 번호형으로 다시 읽도록 표시
+    const t = raw.table || {};
+    if (t.hasHeaderRow !== true || !Array.isArray(t.columns) || t.columns.length < 2 || !Array.isArray(t.rows) || t.rows.length < 2) {
+      return { testName: String(raw.testName || '').trim(), questions: [], _tableRejected: true };
+    }
+  }
   if (raw && raw.layout === 'table' && raw.table && Array.isArray(raw.table.rows) && raw.table.rows.length) {
     const f = _flattenKeyTable(raw.table);
     if (f.questions.length) {

@@ -204,7 +204,15 @@ module.exports = async (req, res) => {
   }
 
   if (mode === 'answerKey') {
-    const processed = postProcessAnswerKey(parsed);
+    let processed = postProcessAnswerKey(parsed);
+    // 머리글 줄 없는 번호 목록을 표로 잘못 판단한 경우 — 번호형으로 한 번 더 읽기
+    if (processed._tableRejected) {
+      const r2 = await _callWithFallback(apiKey, buildAnswerKeyPrompt({ forceNumbered: true }), imageBase64, imageMimeType || 'image/jpeg', precision === true);
+      const p2 = r2.ok ? _parseJSON(r2.rawText) : null;
+      if (p2) { p2.layout = 'numbered'; processed = postProcessAnswerKey(p2); }
+      else processed = { testName: processed.testName, questions: [], error: '정답지를 읽지 못했어요. 다시 촬영해 주세요' };
+    }
+    delete processed._tableRejected;
     return res.status(200).json({
       success: true,
       mode,
