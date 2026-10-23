@@ -473,9 +473,16 @@
     try {
       const nameIn = document.getElementById('ssDetailNameIn');
       if (nameIn) x.result.studentName = nameIn.value || '';
-      const img = await _ssLoadImageEl(x);
-      const pos = await _ssEnsureMarkPos(x, img);
-      out = _ssDrawMarks(img, x, pos);
+      // 틀린 문항·점수가 그대로면 이전에 만든 마킹 사진을 재사용 (사진 다시 받기·OCR·그리기 생략)
+      const key = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no).join(',') + '|' + x.result.correctCount + '/' + x.result.totalQuestions;
+      if (x._markCache && x._markCache.key === key) {
+        out = { canvas: x._markCache.canvas, missing: x._markCache.missing };
+      } else {
+        const img = await _ssLoadImageEl(x);
+        const pos = await _ssEnsureMarkPos(x, img);
+        out = _ssDrawMarks(img, x, pos);
+        x._markCache = { key, canvas: out.canvas, missing: out.missing };
+      }
     } catch (e) {
       console.warn('[scoresnap] 마킹 사진 실패:', e && e.message);
       toast('마킹 사진을 만들 수 없어요: ' + (e && e.message));
