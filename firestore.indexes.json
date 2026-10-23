@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "scoresnapSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "billings",
       "queryScope": "COLLECTION",
       "fields": [

@@ -85,6 +85,24 @@ service firebase.storage {
                    );
     }
 
+    // ── ScoreSnap 채점 답안지 사진 (폰·PC 동기화, 5일 보관) ─────
+    // 경로: scoresnap/{academyId}/{sessionId}/{studentDocId}.jpg
+    // GCS Lifecycle Rule 로 5일 후 자동 삭제 (set-scoresnap-lifecycle.js)
+    // 쓰기: 자기 학원 학원장(Custom Claims)만, 이미지 5MB 이하
+    match /scoresnap/{academyId}/{allPaths=**} {
+      allow read: if request.auth != null
+                  && (request.auth.token.role == 'super_admin'
+                      || (request.auth.token.role == 'academy_admin' && request.auth.token.academyId == academyId));
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*')
+                   && (request.auth.token.role == 'super_admin'
+                       || (request.auth.token.role == 'academy_admin' && request.auth.token.academyId == academyId));
+      allow delete: if request.auth != null
+                    && (request.auth.token.role == 'super_admin'
+                        || (request.auth.token.role == 'academy_admin' && request.auth.token.academyId == academyId));
+    }
+
     // ── 기타 ─────────────────────────────────────────────────
     // 로그인 사용자 읽기 허용, 쓰기는 명시된 경로만
     match /{allPaths=**} {

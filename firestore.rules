@@ -216,6 +216,21 @@ service cloud.firestore {
       }
     }
 
+    // ── ScoreSnap 채점 세션 (폰·PC 동기화, 5일 보관) ───────────
+    // 학원장 전용. 세션 메타 + 하위 key(정답지)/students(학생 결과). 이미지는 Storage scoresnap/{academyId}/...
+    // 하위 컬렉션 목록 조회는 where('academyId','==',내학원) 정적 제약이 있어야 Rules 가 통과시킨다.
+    match /scoresnapSessions/{sid} {
+      allow read: if isAdminOfMyAcademy();
+      allow create: if isAdminCreatingForMyAcademy();
+      allow update, delete: if isAdminOfMyAcademy();
+
+      match /{sub}/{docId} {
+        allow read: if isAdminOfMyAcademy();
+        allow create: if isAdminCreatingForMyAcademy();
+        allow update, delete: if isAdminOfMyAcademy();
+      }
+    }
+
     // collectionGroup query 용 wildcard 매칭 (학생앱 홈 badge / 시험 유형 진입 batch fetch)
     // resource.data.uid 매칭 — Firestore Rules-aware queries 가 클라의 where('uid','==',myUid) 정적 매칭 인식
     // 단일 doc read 는 부모 nested 룰이 잡으므로 collectionGroup query 만 이 룰 사용

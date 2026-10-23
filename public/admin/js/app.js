@@ -18847,6 +18847,113 @@ window._ssGetIdToken = async function () {
   return await currentUser.getIdToken();
 };
 
+// ─── ScoreSnap 서버 저장 — 폰·PC 동기화, 5일 보관 ─────────────────
+// scoresnapSessions/{sid}            세션 메타 (academyId·createdAt·testName·studentCount …) — 목록용으로 가볍게
+// scoresnapSessions/{sid}/key/answerKey   정답지 (academyId + answerKey)
+// scoresnapSessions/{sid}/students/{id}   학생 결과 (academyId·idx·result·imagePath)
+// Storage scoresnap/{academyId}/{sid}/{id}.jpg  답안지 사진 (GCS lifecycle 5일 자동 삭제)
+// 하위 컬렉션 조회는 where('academyId','==',내학원) 정적 제약 필수 (Rules 통과 조건).
+// 5일 지난 세션은 목록을 열 때 정리(최대 5건씩). 이미지는 lifecycle 이 따로 지운다.
+const _SS_KEEP_MS = 5 * 24 * 3600 * 1000;
+const _ssAid = () => window.MY_ACADEMY_ID || 'default';
+const _ssClean = (o) => JSON.parse(JSON.stringify(o ?? null));      // undefined 제거 (Firestore setDoc 거부 방지)
+function _ssB64ToBlob(b64, mime) {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new Blob([u8], { type: mime || 'image/jpeg' });
+}
+
+async function _ssDeleteSessionImpl(sid) {
+  const aid = _ssAid();
+  const stSnap = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', aid)));
+  for (const d of stSnap.docs) {
+    const path = d.data().imagePath;
+    if (path) { try { await deleteObject(ref(storage, path)); } catch (_) { /* 이미 만료 삭제 */ } }
+    await deleteDoc(d.ref);
+  }
+  try { await deleteDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey')); } catch (_) {}
+  await deleteDoc(doc(db, 'scoresnapSessions', sid));
+}
+
+window._ssStore = {
+  async createSession(answerKey, precision) {
+    if (!currentUser) throw new Error('로그인 정보 없음');
+    const aid = _ssAid();
+    const sref = doc(collection(db, 'scoresnapSessions'));
+    await setDoc(sref, {
+      academyId: aid, createdBy: currentUser.uid, createdAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + _SS_KEEP_MS),
+      testName: String((answerKey && answerKey.testName) || ''),
+      questionCount: ((answerKey && answerKey.questions) || []).length,
+      studentCount: 0, precision: !!precision,
+    });
+    await setDoc(doc(db, 'scoresnapSessions', sref.id, 'key', 'answerKey'), {
+      academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision,
+    });
+    return sref.id;
+  },
+
+  // st: { docId?, idx, result, image?, imagePath? } → { docId, imagePath }
+  async saveStudent(sid, st) {
+    const aid = _ssAid();
+    const col = collection(db, 'scoresnapSessions', sid, 'students');
+    const dref = st.docId ? doc(col, st.docId) : doc(col);
+    let imagePath = st.imagePath || '';
+    if (!imagePath && st.image && st.image.base64) {
+      try {
+        const path = `scoresnap/${aid}/${sid}/${dref.id}.jpg`;
+        const task = uploadBytesResumable(ref(storage, path), _ssB64ToBlob(st.image.base64, st.image.mimeType),
+          { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
+        await new Promise((res, rej) => task.on('state_changed', null, rej, res));
+        imagePath = path;
+      } catch (e) { console.warn('[scoresnap] 이미지 업로드 실패:', e && e.message); }
+    }
+    await setDoc(dref, {
+      academyId: aid, idx: st.idx, result: _ssClean(st.result), imagePath, updatedAt: serverTimestamp(),
+    }, { merge: true });
+    if (!st.docId) updateDoc(doc(db, 'scoresnapSessions', sid), { studentCount: increment(1) }).catch(() => {});
+    return { docId: dref.id, imagePath };
+  },
+
+  async updateStudentResult(sid, docId, result) {
+    await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), {
+      result: _ssClean(result), updatedAt: serverTimestamp(),
+    });
+  },
+
+  async listSessions() {
+    const aid = _ssAid();
+    const cutoff = new Date(Date.now() - _SS_KEEP_MS);
+    const snap = await getDocs(query(collection(db, 'scoresnapSessions'),
+      where('academyId', '==', aid), where('createdAt', '>=', cutoff), orderBy('createdAt', 'desc'), limit(30)));
+    // 만료분 정리 — 목록과 무관하게 백그라운드 (실패 무시)
+    getDocs(query(collection(db, 'scoresnapSessions'),
+      where('academyId', '==', aid), where('createdAt', '<', cutoff), orderBy('createdAt', 'desc'), limit(5)))
+      .then(old => Promise.all(old.docs.map(d => _ssDeleteSessionImpl(d.id).catch(() => {}))))
+      .catch(() => {});
+    return snap.docs.map(d => {
+      const v = d.data();
+      return { id: d.id, ...v, createdAtMs: (v.createdAt && v.createdAt.toMillis) ? v.createdAt.toMillis() : 0 };
+    });
+  },
+
+  async loadSession(sid) {
+    const aid = _ssAid();
+    const [keySnap, stSnap] = await Promise.all([
+      getDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey')),
+      getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', aid))),
+    ]);
+    if (!keySnap.exists()) throw new Error('채점 기록을 찾을 수 없어요 (보관 기간이 지났을 수 있어요)');
+    const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0));
+    return { answerKey: keySnap.data().answerKey, precision: !!keySnap.data().precision, students };
+  },
+
+  async getImageUrl(path) { return await getDownloadURL(ref(storage, path)); },
+
+  async deleteSession(sid) { await _ssDeleteSessionImpl(sid); },
+};
+
 // ═══════════════════════════════════════════════════════════════
 // 진도체크 — 학생별 / 시험별 탭. 학생별이 기본.
 // ═══════════════════════════════════════════════════════════════

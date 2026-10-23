@@ -48,6 +48,25 @@
 
   // ─── 풀스크린 오버레이 + 진입 ───
   window.openScoreSnap = async function () {
+    // 서버에 저장된 채점 기록(5일 보관, 폰·PC 공유)이 있으면 선택 창
+    if (window._ssStore) {
+      let sessions = [];
+      try { sessions = await window._ssStore.listSessions(); } catch (e) { console.warn('[scoresnap] 기록 목록 실패:', e && e.message); }
+      if (sessions.length) {
+        const pick = await _ssShowSessionPicker(sessions);
+        if (pick.action === 'cancel') return;
+        if (pick.action === 'open') {
+          _renderOverlay();
+          await _ssOpenServerSession(pick.sid);
+          return;
+        }
+        _clearSession();
+        _state = { phase: 'init', answerKey: null, students: [] };
+        _renderOverlay();
+        _renderAnswerKeyCapture();
+        return;
+      }
+    }
     // 직전 세션 (localStorage) 있으면 이어서 보기 분기
     const prev = _loadSession();
     if (prev) {
@@ -112,6 +131,189 @@
     const other = (_state.students || []).map(x => String((x.result && x.result.testName) || '').trim()).find(Boolean);
     return other || '시험';
   }
+
+  // ─── 서버 저장(폰·PC 동기화, 5일 보관) ───
+  const _fmtAgo = (ms) => {
+    const m = Math.max(1, Math.round((Date.now() - ms) / 60000));
+    if (m < 60) return `${m}분 전`;
+    if (m < 1440) return `${Math.round(m / 60)}시간 전`;
+    return `${Math.round(m / 1440)}일 전`;
+  };
+
+  // 채점 기록 선택 창 → { action:'open', sid } | { action:'new' } | { action:'cancel' }
+  function _ssShowSessionPicker(sessions) {
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;';
+      const done = (r) => { ov.remove(); resolve(r); };
+      const draw = () => {
+        ov.innerHTML = `
+          <div style="background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:12px;width:min(520px,100%);max-height:86vh;display:flex;flex-direction:column;">
+            <div style="padding:16px 18px;border-bottom:1px solid #333;">
+              <div style="font-size:15px;font-weight:700;">ScoreSnap — 채점 기록</div>
+              <div style="font-size:11px;color:#888;margin-top:3px;">폰·PC 어디서든 열 수 있어요 · 5일 뒤 자동 삭제</div>
+            </div>
+            <div style="padding:10px 14px;overflow-y:auto;flex:1;">
+              ${sessions.length ? sessions.map(x => `
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid #2a2a2a;">
+                  <div data-open="${esc(x.id)}" style="flex:1;min-width:0;cursor:pointer;">
+                    <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.testName || '시험')}</div>
+                    <div style="font-size:11px;color:#888;margin-top:2px;">${esc(_fmtAgo(x.createdAtMs))} · ${x.studentCount || 0}명 · ${x.questionCount || 0}문항</div>
+                  </div>
+                  <button data-open="${esc(x.id)}" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">열기</button>
+                  <button data-del="${esc(x.id)}" title="삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>
+                </div>`).join('') : '<div style="color:#888;text-align:center;padding:24px;">기록 없음</div>'}
+            </div>
+            <div style="padding:12px 14px;border-top:1px solid #333;display:flex;gap:8px;justify-content:flex-end;">
+              <button data-cancel="1" style="background:transparent;color:#bbb;border:1px solid #444;padding:9px 16px;border-radius:8px;font-size:13px;cursor:pointer;">닫기</button>
+              <button data-new="1" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid #666;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">+ 새로 채점</button>
+            </div>
+          </div>`;
+      };
+      ov.onclick = async (e) => {
+        const t = e.target.closest('[data-open],[data-del],[data-new],[data-cancel]');
+        if (!t) return;
+        if (t.dataset.open) return done({ action: 'open', sid: t.dataset.open });
+        if (t.dataset.new) return done({ action: 'new' });
+        if (t.dataset.cancel) return done({ action: 'cancel' });
+        if (t.dataset.del) {
+          const ok = typeof window.showConfirm === 'function'
+            ? await window.showConfirm('채점 기록 삭제', '이 채점 기록과 답안지 사진을 삭제할까요?\n(폰·PC 모두에서 사라져요)') : true;
+          if (!ok) return;
+          try {
+            await window._ssStore.deleteSession(t.dataset.del);
+            sessions = sessions.filter(x => x.id !== t.dataset.del);
+            draw();
+          } catch (err) { if (typeof window.showToast === 'function') window.showToast('삭제 실패: ' + (err && err.message)); }
+        }
+      };
+      draw();
+      document.body.appendChild(ov);
+    });
+  }
+
+  async function _ssOpenServerSession(sid) {
+    const toast = (m) => (typeof window.showToast === 'function' ? window.showToast(m) : null);
+    try {
+      const data = await window._ssStore.loadSession(sid);
+      _state = {
+        phase: 'init', sid, precision: data.precision === true, answerKey: data.answerKey,
+        students: data.students.map(x => ({
+          status: 'done', result: x.result, image: null, error: null,
+          docId: x.docId, imagePath: x.imagePath || '', _idx: x.idx,
+        })),
+      };
+      _renderOverlay();
+      _renderResultGrid();
+    } catch (e) {
+      toast('채점 기록을 열 수 없어요: ' + (e && e.message));
+      closeScoreSnap();
+    }
+  }
+
+  // 새로고침 — 폰에서 방금 채점한 결과를 PC 에서 다시 불러오기
+  window._ssRefreshFromServer = async function () {
+    if (!_state.sid) return;
+    const sid = _state.sid;
+    const pending = (_state.students || []).filter(x => x.status !== 'done');   // 아직 채점 안 된(추가 중) 학생은 유지
+    try {
+      const data = await window._ssStore.loadSession(sid);
+      _state.answerKey = data.answerKey;
+      _state.students = data.students.map(x => ({
+        status: 'done', result: x.result, image: null, error: null, docId: x.docId, imagePath: x.imagePath || '',
+      })).concat(pending);
+      if (typeof window.showToast === 'function') window.showToast('✅ 새로고침 완료');
+      _renderResultGrid();
+    } catch (e) {
+      if (typeof window.showToast === 'function') window.showToast('새로고침 실패: ' + (e && e.message));
+    }
+  };
+
+  window._ssOpenSessionList = async function () {
+    let sessions = [];
+    try { sessions = await window._ssStore.listSessions(); } catch (e) { /* 아래에서 빈 목록 처리 */ }
+    const pick = await _ssShowSessionPicker(sessions);
+    if (pick.action === 'open') {
+      _releaseCamera();
+      await _ssOpenServerSession(pick.sid);
+    } else if (pick.action === 'new') {
+      _releaseCamera();
+      _clearSession();
+      _state = { phase: 'init', answerKey: null, students: [] };
+      _renderAnswerKeyCapture();
+    }
+  };
+
+  window._ssDeleteCurrentSession = async function () {
+    if (!_state.sid) return;
+    const ok = typeof window.showConfirm === 'function'
+      ? await window.showConfirm('채점 기록 삭제', '이 채점 기록과 답안지 사진을 삭제할까요?\n(폰·PC 모두에서 사라져요)') : true;
+    if (!ok) return;
+    try {
+      await window._ssStore.deleteSession(_state.sid);
+      _clearSession();
+      if (typeof window.showToast === 'function') window.showToast('삭제했어요');
+      closeScoreSnap();
+    } catch (e) {
+      if (typeof window.showToast === 'function') window.showToast('삭제 실패: ' + (e && e.message));
+    }
+  };
+
+  // 서버로 올리기 — 순차 실행(중복 저장 방지). 새 학생은 사진과 함께, 수정된 학생은 결과만
+  let _syncChain = Promise.resolve();
+  let _syncTimer = 0;
+  function _syncToServer() {
+    if (!window._ssStore) return;
+    const st = _state;
+    _syncChain = _syncChain.then(async () => {
+      try {
+        if (!st.answerKey?.questions?.length) return;
+        const list = st.students || [];
+        if (!list.some(x => x.status === 'done' && x.result)) return;
+        if (!st.sid) st.sid = await window._ssStore.createSession(st.answerKey, st.precision === true);
+        for (let i = 0; i < list.length; i++) {
+          const x = list[i];
+          if (x.status !== 'done' || !x.result) continue;
+          if (!x.docId) {
+            const r = await window._ssStore.saveStudent(st.sid, { idx: i, result: x.result, image: x.image });
+            x.docId = r.docId; x.imagePath = r.imagePath; x._dirty = false;
+          } else if (x._dirty) {
+            x._dirty = false;
+            await window._ssStore.updateStudentResult(st.sid, x.docId, x.result);
+          }
+        }
+        const el = document.getElementById('ssSyncNote');
+        if (el && _state === st) el.textContent = '☁ 서버 저장됨 · 5일 보관 (폰·PC 공유)';
+      } catch (e) {
+        console.warn('[scoresnap] 서버 저장 실패:', e && e.message);
+        const el = document.getElementById('ssSyncNote');
+        if (el && _state === st) el.textContent = '⚠ 서버 저장 실패 — 이 기기에만 보관돼요';
+      }
+    });
+  }
+  function _markDirty(idx) {
+    const x = _state.students?.[idx];
+    if (x) x._dirty = true;
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(_syncToServer, 1200);
+  }
+
+  // 답안지 사진 보기 (로컬 사진이 있으면 그것, 없으면 서버에서)
+  window._ssViewStudentImage = async function (idx) {
+    const x = _state.students?.[idx];
+    if (!x) return;
+    let url = x.image?.dataUrl || '';
+    if (!url && x.imagePath) {
+      try { url = await window._ssStore.getImageUrl(x.imagePath); }
+      catch (e) { if (typeof window.showToast === 'function') window.showToast('사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
+    }
+    if (!url) { if (typeof window.showToast === 'function') window.showToast('저장된 사진이 없어요'); return; }
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
+    ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
+  };
 
   function closeScoreSnap() {
     _releaseCamera();
@@ -481,6 +683,7 @@
       while (cursor < list.length) {
         const myIdx = cursor++;
         const s = list[myIdx];
+        if (s.status === 'done') { done++; update(); continue; }
         s.status = 'grading';
         try {
           s.result = await _gradeOneStudent(s.image);
@@ -546,6 +749,7 @@
   function _renderResultGrid() {
     _state.phase = 'result-grid';
     _saveSession();  // 진입 시점에 항상 최신 결과 localStorage 백업
+    _syncToServer(); // 서버(폰·PC 공유, 5일 보관)에도 저장
     _setHeader(`📊 ScoreSnap · 결과 (${_testNameOf(null)})`);
     const body = document.getElementById('ssBody');
     if (!body) return;
@@ -558,8 +762,13 @@
         <div style="min-width:0;flex:1;">
           <div style="font-size:14px;font-weight:600;color:#fff;">채점 완료 · ${esc(_testNameOf(null))}</div>
           <div style="font-size:11px;color:#888;margin-top:2px;">총 ${list.length}명 · ✓ ${done}명 성공${failed > 0 ? ` · <span style="color:#ff8a80;">✗ ${failed}명 실패</span>` : ''} · 카드 클릭 → 상세</div>
+          <div id="ssSyncNote" style="font-size:10px;color:#6a9;margin-top:2px;">${window._ssStore ? '☁ 서버에 저장 중…' : ''}</div>
         </div>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${window._ssStore ? `
+          <button onclick="window._ssRefreshFromServer()" title="폰에서 채점한 결과를 다시 불러오기" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;">↻ 새로고침</button>
+          <button onclick="window._ssOpenSessionList()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;">📂 채점 기록</button>
+          <button onclick="window._ssDeleteCurrentSession()" title="이 채점 기록 삭제" style="background:transparent;color:#ff8a80;border:1px solid #553;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑</button>` : ''}
           <button onclick="window._ssBackToStudentCapture()" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">+ 답안지 추가</button>
           <button onclick="window.closeScoreSnap()" style="background:transparent;color:#bbb;border:1px solid #444;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">종료</button>
         </div>
@@ -650,6 +859,7 @@
       </div>
       <div style="padding:12px 18px;border-top:1px solid #333;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;flex-shrink:0;">
         <button onclick="window._ssDownloadStudentPng(${idx})" style="background:var(--c-brand,#E8714A);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📥 PNG 다운로드</button>
+        ${(s.image?.dataUrl || s.imagePath) ? `<button onclick="window._ssViewStudentImage(${idx})" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid #666;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📷 답안지 사진</button>` : ''}
         <button onclick="window._ssCopyStudentImage(${idx})" title="이미지를 복사해서 카카오톡 대화창에 Ctrl+V 로 붙여넣기" style="background:#fee500;color:#191919;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 이미지 복사 (카톡 붙여넣기)</button>
         ${idx > 0 ? `<button onclick="window._ssOpenStudentDetail(${idx - 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">← 이전</button>` : ''}
         ${idx < _state.students.length - 1 ? `<button onclick="window._ssOpenStudentDetail(${idx + 1})" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid #555;padding:10px 18px;border-radius:8px;font-size:13px;cursor:pointer;">다음 →</button>` : ''}
@@ -752,6 +962,7 @@
     if (!s?.result) return;
     s.result.studentName = String(val || '').trim();
     _saveSession();
+    _markDirty(idx);
   };
 
   // 학원장 정답 토글 — 자동 localStorage 저장
@@ -776,6 +987,7 @@
     const nameIn = document.getElementById('ssDetailNameIn');
     if (nameIn) s.result.studentName = nameIn.value || '';
     _saveSession();
+    _markDirty(idx);
     // 카드만 재렌더
     const card = document.getElementById('ssDetailCard');
     if (card) card.innerHTML = _buildStudentDetailHtml(s, idx);
