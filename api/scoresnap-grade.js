@@ -207,10 +207,14 @@ module.exports = async (req, res) => {
     let processed = postProcessAnswerKey(parsed);
     // 머리글 줄 없는 번호 목록을 표로 잘못 판단한 경우 — 번호형으로 한 번 더 읽기
     if (processed._tableRejected) {
-      const r2 = await _callWithFallback(apiKey, buildAnswerKeyPrompt({ forceNumbered: true }), imageBase64, imageMimeType || 'image/jpeg', precision === true);
-      const p2 = r2.ok ? _parseJSON(r2.rawText) : null;
-      if (p2) { p2.layout = 'numbered'; processed = postProcessAnswerKey(p2); }
-      else processed = { testName: processed.testName, questions: [], error: '정답지를 읽지 못했어요. 다시 촬영해 주세요' };
+      // AI 가 번호형 지시를 어기고 다시 표로 답하면(questions 가 빔) 최대 3회까지 재시도
+      let fixed = null;
+      for (let t = 0; t < 3 && !fixed; t++) {
+        const r2 = await _callWithFallback(apiKey, buildAnswerKeyPrompt({ forceNumbered: true }), imageBase64, imageMimeType || 'image/jpeg', precision === true);
+        const p2 = r2.ok ? _parseJSON(r2.rawText) : null;
+        if (p2 && Array.isArray(p2.questions) && p2.questions.length) { p2.layout = 'numbered'; fixed = postProcessAnswerKey(p2); }
+      }
+      processed = fixed || { testName: processed.testName, questions: [], error: '정답지를 읽지 못했어요. 다시 촬영해 주세요' };
     }
     delete processed._tableRejected;
     return res.status(200).json({

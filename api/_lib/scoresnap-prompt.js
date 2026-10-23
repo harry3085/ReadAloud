@@ -12,6 +12,9 @@ function buildAnswerKeyPrompt(opts) {
   const forceNote = forceNumbered
     ? '★★ 이 시험지는 번호형(layout "numbered")이다. 표 형식이 아니다. 모든 문항을 questions 에 담고 layout 은 반드시 "numbered" 로 응답하라. (여러 단으로 나뉜 번호 목록·영어↔한글이 섞인 문제도 번호형이다)' + String.fromCharCode(10) + String.fromCharCode(10)
     : '';
+  const forceTail = forceNumbered
+    ? String.fromCharCode(10) + String.fromCharCode(10) + '★★ 다시 강조: layout 은 "numbered", "table" 필드는 쓰지 말고, 모든 문항(번호·문제·정답)을 questions 배열에 담아라. questions 가 비어 있으면 안 된다.'
+    : '';
   return `${forceNote}첨부: 정답이 표시된 시험지 1장 (인쇄지, 활자).
 
 작업: 시험지 전체를 읽어 각 문항의 번호·문제·유형·정답·MCQ 보기 전부를 추출.
@@ -66,7 +69,7 @@ function buildAnswerKeyPrompt(opts) {
       "confidence": 0.0~1.0
     }
   ]
-}`;
+}`+forceTail;
 }
 
 // 정답지 OCR 응답 → 정제
