@@ -161,7 +161,7 @@ $running = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction 
 if (-not $running) {
   $log = Join-Path $dir 'worker.log'
   if ((Test-Path $log) -and ((Get-Item $log).Length -gt 2MB)) { Remove-Item $log -Force }
-  Start-Process -FilePath (Join-Path $dir 'node\node.exe') -ArgumentList 'worker.js --auto-exit' -WorkingDirectory $wdir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'worker.err.log')
+  Start-Process -FilePath (Join-Path $dir 'node\node.exe') -ArgumentList 'worker.js' -WorkingDirectory $wdir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'worker.err.log')
 }
 if ($Open) { Start-Process 'https://raloud.vercel.app/ss' }
 '@
@@ -204,8 +204,17 @@ try {
   $lnk2.TargetPath = $loginBat; $lnk2.WorkingDirectory = $InstallDir; $lnk2.Save()
   Ok '바탕화면에 "ScoreSnap" 아이콘(시작+앱 열기)과 "Claude Code 로그인" 아이콘을 만들었어요.'
 } catch { Warn ('바로가기를 만들지 못했어요: ' + $_.Exception.Message) }
-# 예전 설치에서 등록된 PC 켤 때 자동 실행은 제거
-try { if (Get-ScheduledTask -TaskName 'ScoreSnapWorker' -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName 'ScoreSnapWorker' -Confirm:$false; Ok '예전의 자동 실행 등록을 해제했어요. (이제 아이콘을 누를 때만 실행돼요)' } } catch {}
+# PC를 켜고 로그인하면 창 없이 자동 시작 (폰으로 언제든 쓸 수 있도록). 꺼져 있으면 10분마다 다시 켠다 (인터넷이 늦게 잡힌 경우 대비)
+if (-not $NoTask) {
+  try {
+    $act = New-ScheduledTaskAction -Execute (Join-Path $env:WINDIR 'System32\wscript.exe') -Argument ('"' + (Join-Path $InstallDir 'start.vbs') + '"')
+    $trg1 = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $trg2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 10) -RepetitionDuration (New-TimeSpan -Days 3650)
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName 'ScoreSnapWorker' -Action $act -Trigger @($trg1, $trg2) -Settings $set -Force | Out-Null
+    Ok 'PC를 켜고 로그인하면 창 없이 자동으로 시작되도록 등록했어요. (꺼져 있으면 10분마다 다시 켜요)'
+  } catch { Warn ('자동 실행 등록에 실패했어요. 바탕화면 ScoreSnap 아이콘으로 직접 시작해 주세요: ' + $_.Exception.Message) }
+}
 if (-not $NoStart) { Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + (Join-Path $InstallDir 'start.vbs') + '" open'); Ok '채점 프로그램을 시작하고 앱을 열었어요. (창 없이 백그라운드에서 돌아요)' }
 
 # ─── 결과 요약 ───
@@ -218,5 +227,5 @@ foreach ($s in $summary) {
 }
 $bad = @($summary | Where-Object { $_[0] -eq 'BAD' }).Count
 Write-Host ''
-if ($bad -eq 0) { Write-Host '설치가 끝났어요! 앞으로는 바탕화면의 ScoreSnap 아이콘만 누르면 돼요. 앱 상단에 "PC 켜짐"이 보이면 정상이에요. (안 보이면 새로고침)' -ForegroundColor Green }
+if ($bad -eq 0) { Write-Host '설치가 끝났어요! 앞으로는 PC를 켜면 자동으로 돌고, 바탕화면의 ScoreSnap 아이콘은 앱을 여는 데 써요. 앱 상단에 "PC 켜짐"이 보이면 정상이에요. (안 보이면 새로고침)' -ForegroundColor Green }
 else { Write-Host ('위 [실패] 항목을 해결한 뒤 이 설치 파일을 다시 실행해 주세요. (' + $bad + '건)') -ForegroundColor Red }
