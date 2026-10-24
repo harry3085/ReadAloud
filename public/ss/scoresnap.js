@@ -1496,12 +1496,64 @@
             ${uiBtn({ size: 'sm', label: '맞춤', onclick: 'window._pcZoom(0)' })}${uiIconBtn('maximize', '전체 화면', { box: true, onclick: `window._ssOpenMarked(${idx}, _state.pcPhotoMode || 'orig')` })}
           </div>
           <div class="ss-pc__photobox" id="ssPcPhotoBox"></div>
+          <div class="ss-chat" id="ssChat"></div>
         </div>
       </div>`;
     _renderDetailBody(idx);
     _pcWireResize(document.getElementById('ssPcRs3'), 'pcp');
     _pcPhoto();
+    _pcRenderChat();
   }
+
+  // ─── 채점 질문 채팅 (PC 사진 아래) — 학원 PC 의 Claude 가 답안지 사진을 다시 보고 답한다 ───
+  const _CHAT_HINTS = ['틀린 문항이 맞는지 다시 봐줘', '애매한 문항이 왜 애매해?', '이름이 맞게 읽혔어?'];
+  function _chatList(x) { if (!_state.chat) _state.chat = {}; return (_state.chat[x.docId] = _state.chat[x.docId] || []); }
+  function _pcRenderChat() {
+    const el = document.getElementById('ssChat'); if (!el) return;
+    const x = _state.students && _state.students[_state.detailIdx]; if (!x || !x.result) { el.innerHTML = ''; return; }
+    const msgs = _chatList(x), idx = _state.detailIdx;
+    const body = msgs.map((m, i) => m.role === 'user'
+      ? `<div class="ss-chat__m ss-chat__m--me">${esc(m.text)}</div>`
+      : `<div class="ss-chat__m">${m.pending ? '<span class="ss-spinner ss-spinner--sm"></span> 사진을 다시 보는 중…' : esc(m.text).replace(/\n/g, '<br>')}${(m.corrections || []).map((c, k) => {
+          const a = (x.result.answers || []).find(q => q.no === c.no);
+          const done = a && a.isCorrect === c.isCorrect;
+          return `<div class="ss-chat__fix"><span>${c.no}번 → <b>${c.isCorrect ? '정답' : '오답'}</b>${c.reason ? ' · ' + esc(c.reason) : ''}</span>${done ? uiChip('적용됨', 'ok') : `<button class="ss-btn ss-btn--sm ss-btn--primary" onclick="window._chatApply(${idx}, ${c.no}, ${c.isCorrect})">수정 적용</button>`}</div>`;
+        }).join('')}</div>`).join('');
+    el.innerHTML = `<div class="ss-chat__head"><b>채점 질문</b><span class="ss-sub">학원 PC의 Claude가 이 학생 사진을 다시 보고 답해요</span></div>
+      <div class="ss-chat__list" id="ssChatList">${body || `<div class="ss-sub" style="padding:6px 2px;">예) “5번이 왜 오답이야?” — 사진과 채점 결과를 보고 설명하고, 잘못됐으면 정정을 제안해요.</div><div class="ss-chat__hints">${_CHAT_HINTS.map(h => `<button class="ss-pill" data-hint="${esc(h)}">${esc(h)}</button>`).join('')}</div>`}</div>
+      <form class="ss-chat__form" id="ssChatForm"><input class="ss-input" id="ssChatIn" type="text" placeholder="질문을 입력하세요" autocomplete="off"><button class="ss-btn ss-btn--primary" type="submit">보내기</button></form>`;
+    const lst = document.getElementById('ssChatList'); lst.scrollTop = lst.scrollHeight;
+    document.getElementById('ssChatForm').onsubmit = (e) => { e.preventDefault(); const inp = document.getElementById('ssChatIn'); const t = inp.value.trim(); if (t) { inp.value = ''; window._chatSend(t); } };
+    el.querySelectorAll('[data-hint]').forEach(b => { b.onclick = () => window._chatSend(b.dataset.hint); });
+  }
+  window._chatSend = async function (text) {
+    const idx = _state.detailIdx, x = _state.students && _state.students[idx];
+    if (!x || !x.result) return;
+    if (!x.imagePath) { _ssToast('이 학생은 저장된 사진이 없어서 질문할 수 없어요'); return; }
+    const msgs = _chatList(x);
+    if (msgs.some(m => m.pending)) { _ssToast('이전 답변을 기다리는 중이에요'); return; }
+    const history = msgs.filter(m => !m.pending).map(m => ({ role: m.role, text: m.text }));
+    msgs.push({ role: 'user', text });
+    const ai = { role: 'ai', text: '', pending: true }; msgs.push(ai);
+    _pcRenderChat();
+    try {
+      const r = x.result;
+      const out = await _store().ask(x.imagePath, {
+        question: text, history,
+        context: { testName: _testNameOf(r), studentName: r.studentName || '', correct: r.correctCount, total: r.totalQuestions,
+          answers: (r.answers || []).map(a => ({ no: a.no, stem: a.stem, studentAnswer: a.studentAnswer, correctAnswer: a.correctAnswer, isCorrect: a.isCorrect, confidence: a.confidence })) },
+      });
+      ai.pending = false; ai.text = out.answer || '(답변이 비어 있어요)'; ai.corrections = out.corrections || [];
+    } catch (e) { ai.pending = false; ai.text = '답변을 받지 못했어요: ' + (e && e.message); }
+    if (_state.students && _state.students[_state.detailIdx] === x) _pcRenderChat();
+  };
+  // 정정 제안 적용 = 해당 문항의 정답/오답 표시를 바꿈 (직접 수정과 동일하게 저장·마킹 갱신)
+  window._chatApply = function (idx, no, isCorrect) {
+    const s = _state.students && _state.students[idx]; if (!s || !s.result) return;
+    const a = (s.result.answers || []).find(q => q.no === no);
+    if (a && a.isCorrect !== isCorrect) window._ssToggleAnswer(idx, no);
+    _pcRenderChat();
+  };
 
   async function _pcPhoto() {
     const idx = _state.detailIdx, box = document.getElementById('ssPcPhotoBox');

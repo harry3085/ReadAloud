@@ -82,6 +82,28 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
       return onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', _ssAid()), where('kind', '==', 'worker')),
         (snap) => cb(snap.docs.map(d => d.data())), () => cb([]));
     },
+    // 채점 질문: 학원 PC 의 Claude 가 답안지 사진을 다시 보고 답한다 (최대 5분 대기)
+    async ask(imagePath, payload) {
+      const aid = _ssAid();
+      const jref = doc(collection(db, 'scoresnapSessions'));
+      await setDoc(jref, {
+        academyId: aid, kind: 'job', keyStatus: 'job', needsWork: true, status: 'queued',
+        createdBy: getUid(), createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + 3600 * 1000),
+        jobType: 'ask', imagePath, payload: _ssClean(payload),
+      });
+      return await new Promise((resolve, reject) => {
+        let unsub = null;
+        const timer = setTimeout(() => { unsub && unsub(); deleteDoc(jref).catch(() => {}); reject(new Error('PC 채점 프로그램 응답이 없어요 (5분)')); }, 5 * 60 * 1000);
+        unsub = onSnapshot(jref, (d) => {
+          const j = d.data(); if (!j) return;
+          if (j.status === 'done' || j.status === 'error') {
+            clearTimeout(timer); unsub();
+            deleteDoc(jref).catch(() => {});
+            if (j.status === 'error') reject(new Error(j.error || '답변을 만들지 못했어요')); else resolve(j.result || {});
+          }
+        }, (e) => { clearTimeout(timer); reject(e); });
+      });
+    },
     // 카톡 보냄 표시 (sent=false 면 해제)
     async markSent(sid, docId, sent) {
       await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { kakaoSentAt: sent ? serverTimestamp() : deleteField() });

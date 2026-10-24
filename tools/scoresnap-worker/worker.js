@@ -161,6 +161,25 @@ async function gradeStudent(imagePath, key) {
   });
 }
 
+// ─── 학원장 질문 답변: 답안지 사진을 다시 보고 채점 근거를 설명하거나 정정을 제안 ───
+async function answerQuestion(imagePath, payload) {
+  const ctx = payload.context || {};
+  const hist = (payload.history || []).slice(-6).map(h => (h.role === 'user' ? '학원장: ' : '답변: ') + String(h.text || '').slice(0, 600)).join('\n');
+  const prompt = IMG_HEAD.replace('아래 지시대로 처리하라.', '아래 질문에 답하라.') +
+    `이 사진은 학생 답안지다. 아래는 이 사진에 대한 채점 결과다(시험: ${ctx.testName || ''}, 학생: ${ctx.studentName || '이름 미상'}, ${ctx.correct}/${ctx.total}).\n` +
+    JSON.stringify(ctx.answers || []) + '\n\n' +
+    (hist ? '지금까지의 대화:\n' + hist + '\n\n' : '') +
+    '학원장의 질문: ' + String(payload.question || '').slice(0, 1000) + '\n\n' +
+    '규칙: 사진을 다시 확인해서 근거를 한국어로 간결하게(5문장 이내) 답하라. 채점 규칙은 "뜻을 알면 정답, 철자는 영어 단답만 일치, 애매하면 오답"이다. ' +
+    '채점이 잘못됐다고 판단되는 문항이 있으면 corrections 에 넣어라(문항 번호 no, 정답이면 isCorrect true, 이유 reason). 확신이 없으면 넣지 마라.\n' +
+    '출력 JSON: {"answer": "답변 문장", "corrections": [{"no": 5, "isCorrect": true, "reason": "..."}]}';
+  return withImage(imagePath, async (dir) => {
+    const j = await askJson(prompt, dir, 2);
+    return { answer: String(j.answer || '').slice(0, 2000), corrections: (Array.isArray(j.corrections) ? j.corrections : [])
+      .filter(c => c && typeof c.no === 'number' && typeof c.isCorrect === 'boolean').slice(0, 20).map(c => ({ no: c.no, isCorrect: c.isCorrect, reason: String(c.reason || '').slice(0, 200) })) };
+  });
+}
+
 // ─── 마킹용 위치 찾기 (Google Vision 대신 Claude) — 지시문·검증은 marks.js ───
 async function findMarkWords(imagePath, payload) {
   return withImage(imagePath, async (dir) => {
@@ -260,10 +279,13 @@ async function handleJob(jd) {
   const j = jd.data();
   if (j.jobType === 'student' && j.payload && j.payload.target) { await handleStudentJob(jd); return true; }
   const t0 = Date.now();
-  log(`[${jd.id}] ${j.jobType === 'key' ? '정답지 읽는 중...' : j.jobType === 'ocr' ? '마킹 위치 찾는 중...' : '학생 채점 중...'}`);
+  log(`[${jd.id}] ${j.jobType === 'key' ? '정답지 읽는 중...' : j.jobType === 'ocr' ? '마킹 위치 찾는 중...' : j.jobType === 'ask' ? '질문 답변 중...' : '학생 채점 중...'}`);
   try {
     let result;
-    if (j.jobType === 'ocr') {
+    if (j.jobType === 'ask') {
+      result = await answerQuestion(j.imagePath, j.payload || {});
+      log(`  → 답변 완료 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
+    } else if (j.jobType === 'ocr') {
       result = await findMarkWords(j.imagePath, j.payload);
       log(`  → 번호 위치 ${result.words.length}개 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
     } else if (j.jobType === 'key') {
