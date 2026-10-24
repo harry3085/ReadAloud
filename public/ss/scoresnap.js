@@ -299,7 +299,7 @@
         break;
       case 'pc': _ssPush(); break;
       case 'answerKey-ocr': _ssPush(); break;                              // 읽는 중에는 그대로 (취소 링크 사용)
-      case 'answerKey-review': _renderAnswerKeyCapture(); break;
+      case 'answerKey-review': if (_state._editKey) { _cancelKeyEdit(); break; } _renderAnswerKeyCapture(); break;
       case 'answerKey-capture':
         if (_ssCancelReKey()) break;
         _renderHome(); break;
@@ -582,13 +582,13 @@
         <b style="margin-top:14px;display:block;">다음 단계</b>
         <p>[정답지 확정]을 누르면 이 기록이 서버에 저장돼요. 이어서 폰으로 답안지를 찍거나, PC에서 파일을 끌어다 놓거나 <span class="ss-kbd">Ctrl+V</span> 로 올릴 수 있어요.</p>
         <p>확정하면 폰 카메라로 QR을 찍어 이 기록을 바로 열 수 있어요.</p></aside></div>` : ''}
-      ${uiActionBar(`<div style="flex:1;"><button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="ssAkOk"${qs.length ? '' : ' disabled'}><span>${re ? '정답지 확정하고 다시 채점' : '정답지 확정하고 답안지 찍기'}</span>${iconSvg('chevron-right', 'ss-ic--sm')}</button><div class="ss-sub" style="text-align:center;margin-top:8px;">확정하면 다른 기기에서도 이 정답지로 이어서 채점할 수 있어요</div></div>`)}`;
+      ${uiActionBar(`<div style="flex:1;"><button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="ssAkOk"${qs.length ? '' : ' disabled'}><span>${_state._editKey ? '정답 수정 저장 · 점수 다시 계산' : re ? '정답지 확정하고 다시 채점' : '정답지 확정하고 답안지 찍기'}</span>${iconSvg('chevron-right', 'ss-ic--sm')}</button><div class="ss-sub" style="text-align:center;margin-top:8px;">확정하면 다른 기기에서도 이 정답지로 이어서 채점할 수 있어요</div></div>`)}`;
     document.getElementById('ssAkOk').onclick = () => window._ssAkConfirm();
     document.getElementById('ssAkThumb').onclick = () => window._ssViewKeyImage();
     document.getElementById('ssAkTitle').oninput = (e) => { _state.answerKey.testName = e.target.value; };
     body.querySelectorAll('[data-tab]').forEach(b => { b.onclick = () => { _state.akTab = b.dataset.tab; _renderAnswerKeyReview(); }; });
     const all = document.getElementById('ssAkAll'); if (all) all.onclick = () => { _state.akTab = 'all'; _renderAnswerKeyReview(); };
-    document.getElementById('ssAkMore').onclick = () => _ssSheet([
+    document.getElementById('ssAkMore').onclick = () => _state._editKey ? _ssSheet([{ label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() }]) : _ssSheet([
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
       { label: '다시 촬영', icon: 'camera', fn: () => window._ssAkRestart() },
       ...(_state.precision === true ? [] : [{ label: '정밀하게 다시 읽기', icon: 'refresh', fn: () => window._ssAkPrecisionRetry() }]),
@@ -649,10 +649,68 @@
     return true;
   }
 
+  // ─── 정답지 확인·수정 (채점 후에도 정답을 고치고 학생 점수를 다시 계산) ───
+  window._ssEditKey = async function () {
+    if (!_state.sid || !_state.answerKey) return;
+    _state._editKey = true;
+    _state._keyBefore = JSON.parse(JSON.stringify(_state.answerKey));
+    _state.answerKeyImage = null;
+    if (_state.keyImagePath) { try { _state.answerKeyImage = { dataUrl: await _store().getImageUrl(_state.keyImagePath) }; } catch (_) {} }
+    _state.akTab = 'all';
+    _ssPush();
+    _renderAnswerKeyReview();
+  };
+  function _cancelKeyEdit() {
+    if (_state._keyBefore) _state.answerKey = _state._keyBefore;
+    _state._editKey = false; _state._keyBefore = null; _state.answerKeyImage = null;
+    _renderResultGrid();
+  }
+  // 글자·띄어쓰기·부호 무시, 쉼표/슬래시/세미콜론으로 나뉜 복수 정답 중 하나면 일치
+  function _ansMatch(stu, cor) {
+    const n = (t) => String(t || '').toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.,;:!?'"~\-·]/g, '');
+    const a = n(stu); if (!a) return false;
+    return String(cor || '').split(/[,/;]/).some(alt => { const b = n(alt); return b && b === a; });
+  }
+  async function _applyKeyEdit() {
+    const k = _state.answerKey, before = _state._keyBefore, sid = _state.sid, st = _store();
+    const changed = new Set();
+    (k.questions || []).forEach(q => { const o = (before.questions || []).find(x => x.no === q.no); if (o && String(o.answer || '').trim() !== String(q.answer || '').trim()) changed.add(q.no); });
+    _renderBusy('정답을 저장하고 점수를 다시 계산하는 중…', 1);
+    try { await st.updateKey(sid, k, _state.precision === true, null); }
+    catch (e) { _ssToast('정답 저장 실패: ' + (e && e.message)); _renderAnswerKeyReview(); return; }
+    const newAns = new Map((k.questions || []).map(q => [q.no, q.answer]));
+    let nStu = 0, nFlag = 0;
+    for (const x of (_state.students || [])) {
+      if (x.status !== 'done' || !x.result) continue;
+      const r = x.result; let touched = false;
+      (r.answers || []).forEach(a => {
+        const kn = a.keyNo != null ? a.keyNo : a.no;
+        if (!changed.has(kn)) return;
+        a.correctAnswer = newAns.get(kn) || a.correctAnswer;
+        const ok = _ansMatch(a.studentAnswer, a.correctAnswer);
+        a.isCorrect = ok; a._aiIsCorrect = ok; a._adminOverride = false; touched = true;
+        if (!ok && String(a.studentAnswer || '').trim()) {          // 뜻이 같은 다른 표현일 수 있어 사람이 확인하도록 표시
+          r.uncertainQuestions = Array.from(new Set([...(r.uncertainQuestions || []), a.no])); r.checked = false; nFlag++;
+        } else if (ok) { r.uncertainQuestions = (r.uncertainQuestions || []).filter(n => n !== a.no); }
+      });
+      if (!touched) continue;
+      _recalc(r); x._markCache = null; x.markPath = ''; x.markKey = ''; nStu++;
+      try { await st.updateStudentResult(sid, x.docId, r); } catch (e) { console.warn('[scoresnap] 학생 갱신 실패:', e && e.message); }
+    }
+    try {
+      const done = (_state.students || []).filter(s => s.status === 'done' && s.result);
+      await st.patchSession(sid, { studentCount: done.length, avgScore: done.length ? Math.round(done.reduce((a, s) => a + _pctOf(s.result), 0) / done.length) : 0, needCheck: done.filter(_needsCheck).length });
+    } catch (_) {}
+    _state._editKey = false; _state._keyBefore = null; _state.answerKeyImage = null;
+    _renderResultGrid();
+    _ssToast(changed.size ? `정답 ${changed.size}개를 고쳤어요 · 학생 ${nStu}명 점수를 다시 계산${nFlag ? ` (뜻이 다른 답 ${nFlag}건은 '애매'로 표시 — 확인하세요)` : ''}` : '변경된 정답이 없어요');
+  }
+
   window._ssAkConfirm = async function () {
     const k = _state.answerKey;
     if (!k || !(k.questions || []).length) return;
     const st = _store();
+    if (_state._editKey) { await _applyKeyEdit(); return; }
     if (_state._reKey) {
       _state._reKey = false; _state._prevKey = null;
       const sid = _state.sid;
@@ -872,6 +930,7 @@
     document.getElementById('ssRsMore').onclick = () => _ssSheet([
       { label: '폰으로 열기 (QR)', icon: 'camera', fn: () => window._ssShowQr() },
       { label: '카톡 연속 전송', icon: 'share', fn: () => window._ssOpenKakao() },
+      { label: '정답지 확인·수정', icon: 'edit', fn: () => window._ssEditKey() },
       { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
       { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },
@@ -1479,6 +1538,7 @@
     document.getElementById('ssPcAdd').onclick = () => window._ssBackToStudentCapture();
     document.getElementById('ssPcMore').onclick = () => _ssSheet([
       { label: '폰으로 열기 (QR)', icon: 'camera', fn: () => window._ssShowQr() },
+      { label: '정답지 확인·수정', icon: 'edit', fn: () => window._ssEditKey() },
       { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
       { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },

@@ -217,7 +217,8 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
     // 정답지만 다시 올린 경우 — 세션의 정답지를 교체 (학생 사진·기록은 그대로)
     async updateKey(sid, answerKey, precision, keyImage) {
       const aid = _ssAid();
-      const keyImagePath = await store._uploadKeyImage(sid, keyImage);
+      let keyImagePath = await store._uploadKeyImage(sid, keyImage);
+      if (!keyImage) { try { keyImagePath = ((await getDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey'))).data() || {}).keyImagePath || ''; } catch (_) {} }   // 사진을 새로 올리지 않으면 기존 경로 유지
       await setDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey'), {
         academyId: aid, answerKey: _ssClean(answerKey), precision: !!precision, keyImagePath,
       });
