@@ -1,6 +1,6 @@
 // ScoreSnap 서버 저장소 — 전용앱(/ss/) 전용 — 학원앱과 코드는 분리돼 있고 같은 서버 데이터(scoresnapSessions)만 쓴다.
 // 사용: window._ssStore = createScoreSnapStore({ db, storage, getUid: () => uid, getAid: () => academyId });
-import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 export function createScoreSnapStore({ db, storage, getUid, getAid }) {
@@ -35,6 +35,54 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
   }
 
   const store = {
+    // ─── 채점 대기열 (PC 채점 프로그램이 처리) ───────────────────────
+    // 학생 사진을 올리면 곧바로 서버에 '채점 대기' 학생 기록으로 저장하고 작업(job)을 만든다.
+    // PC 가 결과를 그 학생 기록에 직접 써 넣으므로 화면을 닫아도 채점은 계속된다.
+    // 학생 기록 status: 'queued'(대기) → 'grading'(채점 중) → 'done' | 'error'
+    newStudentId(sid) { return doc(collection(db, 'scoresnapSessions', sid, 'students')).id; },
+    async queueStudent(sid, { docId, idx, image, answerKey }) {
+      const aid = _ssAid();
+      const col = collection(db, 'scoresnapSessions', sid, 'students');
+      const dref = docId ? doc(col, docId) : doc(col);
+      const path = `scoresnap/${aid}/${sid}/${dref.id}.jpg`;
+      const task = uploadBytesResumable(ref(storage, path), _ssB64ToBlob(image.base64, image.mimeType),
+        { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
+      await new Promise((res, rej) => task.on('state_changed', null, rej, res));
+      await setDoc(dref, { academyId: aid, idx, imagePath: path, status: 'queued', error: '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      await store._createGradeJob(sid, dref.id, path, answerKey, '');
+      return { docId: dref.id, imagePath: path };
+    },
+    // 다시 채점(실패 재시도·정답지 교체): 기존 학생 기록을 대기로 되돌리고 작업을 새로 만든다. keepName: 학원장이 고친 이름 유지
+    async requeueStudent(sid, docId, imagePath, answerKey, keepName) {
+      await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { status: 'queued', error: '', markPath: '', markKey: '', updatedAt: serverTimestamp() });
+      await store._createGradeJob(sid, docId, imagePath, answerKey, keepName || '');
+    },
+    async _createGradeJob(sid, docId, imagePath, answerKey, keepName) {
+      const aid = _ssAid();
+      const jref = doc(collection(db, 'scoresnapSessions'));
+      const meta = answerKey || {};
+      await setDoc(jref, {
+        academyId: aid, kind: 'job', keyStatus: 'job', needsWork: true, status: 'queued',
+        createdBy: getUid(), createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + _SS_KEEP_MS),
+        jobType: 'student', imagePath,
+        payload: _ssClean({
+          answerKey: { questions: meta.questions, layout: meta.layout, givenColumn: meta.givenColumn, answerColumns: meta.answerColumns },
+          target: { sid, docId, keepName },
+        }),
+      });
+    },
+    // 학생 기록 실시간 구독 (사진이 올라오고 채점이 끝나는 대로 화면이 갱신됨). 해제 함수를 돌려준다
+    watchStudents(sid, cb, onErr) {
+      return onSnapshot(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', _ssAid())),
+        (snap) => cb(snap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0))),
+        (e) => { if (onErr) onErr(e); });
+    },
+    async patchSession(sid, fields) { await updateDoc(doc(db, 'scoresnapSessions', sid), _ssClean(fields)); },
+    async deleteStudent(sid, docId, imagePath, markPath) {
+      for (const p of [imagePath, markPath]) { if (p) { try { await deleteObject(ref(storage, p)); } catch (_) {} } }
+      await deleteDoc(doc(db, 'scoresnapSessions', sid, 'students', docId));
+    },
+
     // 정답지 사진 보관 (정답지 보기용, 실패해도 채점에는 영향 없음)
     async _uploadKeyImage(sid, image) {
       if (!image || !image.base64) return '';
@@ -116,7 +164,7 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
         getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', aid))),
       ]);
       if (!keySnap.exists()) throw new Error('채점 기록을 찾을 수 없어요 (보관 기간이 지났을 수 있어요)');
-      const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).filter(x => x.result).sort((a, b) => (a.idx || 0) - (b.idx || 0));   // 채점 전(대기·오류) 학생은 전용앱에서만
+      const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0));   // 채점 전(대기·오류) 학생은 전용앱에서만
       return { answerKey: keySnap.data().answerKey, precision: !!keySnap.data().precision, keyImagePath: keySnap.data().keyImagePath || '', students };
     },
 

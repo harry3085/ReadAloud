@@ -12,7 +12,7 @@ const { spawn } = require('child_process');
 const { initializeApp } = require('firebase/app');
 const { getAuth, signInWithEmailAndPassword, signInWithCustomToken } = require('firebase/auth');
 const {
-  getFirestore, collection, doc, query, where, getDocs, getDoc, updateDoc, runTransaction,
+  getFirestore, collection, doc, query, where, getDocs, getDoc, updateDoc, deleteDoc, runTransaction,
   onSnapshot, serverTimestamp,
 } = require('firebase/firestore');
 const { getStorage, ref, getDownloadURL } = require('firebase/storage');
@@ -216,14 +216,49 @@ async function claim(refDoc, fromStatuses, statusField, toStatus) {
   });
 }
 
+// 학생 채점 결과를 학생 기록에 직접 써 넣은 뒤 기록 목록용 요약(채점 인원·평균·확인 필요)을 갱신
+async function refreshSessionMeta(sid) {
+  const all = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', AID)));
+  const done = all.docs.map(d => d.data()).filter(x => x.status === 'done' && x.result);
+  const pct = (r) => r.totalQuestions > 0 ? Math.round((r.correctCount / r.totalQuestions) * 100) : 0;
+  const avg = done.length ? Math.round(done.reduce((a, x) => a + pct(x.result), 0) / done.length) : 0;
+  const check = done.filter(x => (x.result.uncertainQuestions || []).length > 0 || !String(x.result.studentName || '').trim()).length;
+  await updateDoc(sessRef(sid), { studentCount: done.length, avgScore: avg, needCheck: check, workerSeenAt: serverTimestamp() });
+}
+
 // 전용앱(/ss/)이 올린 작업 한 건 처리
-//   job = { kind:'job', jobType:'key'|'student', status:'queued', imagePath, payload, needsWork:true }
-//   key     : payload { layoutHint }                     → result = 정답지(questions…)
-//   student : payload { answerKey:{questions,layout,…} } → result = 채점 결과
+//   job = { kind:'job', jobType:'key'|'student'|'ocr', status:'queued', imagePath, payload, needsWork:true }
+//   key     : payload { layoutHint }                     → result = 정답지(questions…)      — 화면이 기다렸다가 받아 간다
+//   ocr     : payload { total } | { table }              → result = 글자 위치 목록          — 화면이 기다렸다가 받아 간다
+//   student : payload { answerKey, target:{sid,docId,keepName} }
+//             → 결과를 그 학생 기록(students/{docId})에 직접 써 넣는다. 화면을 닫아도 채점은 계속된다.
+async function handleStudentJob(jd) {
+  const j = jd.data();
+  const { sid, docId, keepName } = j.payload.target;
+  const stRef = doc(db, 'scoresnapSessions', sid, 'students', docId);
+  const t0 = Date.now();
+  log(`[${sid}/${docId}] 학생 채점 중...`);
+  const exists = (await getDoc(stRef)).exists();
+  if (!exists) { log('  학생 기록이 이미 없어요 — 건너뜀'); await deleteDoc(jd.ref); return; }
+  await updateDoc(stRef, { status: 'grading', error: '', startedAt: serverTimestamp() });
+  try {
+    const result = await gradeStudent(j.imagePath, j.payload.answerKey);
+    if (keepName) result.studentName = keepName;     // 정답지 교체 재채점은 학원장이 고친 이름 유지
+    await updateDoc(stRef, { result: clean(result), status: 'done', error: '', gradeMs: Date.now() - t0, updatedAt: serverTimestamp() });
+    log(`  → ${result.studentName || '(이름 없음)'} ${result.correctCount}/${result.totalQuestions} (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
+  } catch (e) {
+    log('  실패:', e.message);
+    await updateDoc(stRef, { status: 'error', error: String(e.message || e).slice(0, 300), updatedAt: serverTimestamp() });
+  }
+  await deleteDoc(jd.ref);
+  await refreshSessionMeta(sid).catch(err => log('  기록 요약 갱신 실패:', err.message));
+}
+
 async function handleJob(jd) {
   const ok = await claim(jd.ref, ['queued'], 'status', 'working');
   if (!ok) return false;
   const j = jd.data();
+  if (j.jobType === 'student' && j.payload && j.payload.target) { await handleStudentJob(jd); return true; }
   const t0 = Date.now();
   log(`[${jd.id}] ${j.jobType === 'key' ? '정답지 읽는 중...' : j.jobType === 'ocr' ? '마킹 위치 찾는 중...' : '학생 채점 중...'}`);
   try {

@@ -185,6 +185,7 @@ $('btnLogin').onclick = doLogin;
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 try { $('uid').value = localStorage.getItem('ssUser') || ''; } catch (_) {}
 $('btnLogout').onclick = async () => { await signOut(auth); };
+window.addEventListener('ss-logout', async () => { await signOut(auth); });
 $('btnOpen').onclick = () => openSS();
 
 function loadScoreSnapScript() {
