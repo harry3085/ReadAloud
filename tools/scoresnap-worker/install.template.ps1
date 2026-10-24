@@ -150,8 +150,31 @@ elseif ($failLine) {
   Say ('  ' + $cfgPath)
 } else { Bad '학원 서버 확인 결과를 읽지 못했어요.' }
 
-# ─── 7. 바로가기·자동 실행·시작 ───
-Step 7 '바로가기와 자동 실행'
+# ─── 7. 바로가기 (아이콘 하나로 시작 + 브라우저 열기) ───
+Step 7 '바탕화면 아이콘 만들기'
+# 채점 프로그램은 PC를 켤 때 자동으로 돌리지 않는다. 바탕화면 아이콘을 누를 때만 (창 없이) 시작하고 앱을 연다.
+$startPs1 = @'
+param([switch]$Open)
+$dir = $PSScriptRoot
+$wdir = Join-Path $dir 'app\tools\scoresnap-worker'
+$running = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dir) }
+if (-not $running) {
+  $log = Join-Path $dir 'worker.log'
+  if ((Test-Path $log) -and ((Get-Item $log).Length -gt 2MB)) { Remove-Item $log -Force }
+  Start-Process -FilePath (Join-Path $dir 'node\node.exe') -ArgumentList 'worker.js' -WorkingDirectory $wdir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'worker.err.log')
+}
+if ($Open) { Start-Process 'https://raloud.vercel.app/ss' }
+'@
+[IO.File]::WriteAllText((Join-Path $InstallDir 'start-worker.ps1'), $startPs1, (New-Object Text.UTF8Encoding($false)))
+$startVbs = @'
+Set sh = CreateObject("WScript.Shell")
+d = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+a = ""
+If WScript.Arguments.Count > 0 Then a = " -Open"
+sh.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & d & "\start-worker.ps1""" & a, 0, False
+'@
+[IO.File]::WriteAllText((Join-Path $InstallDir 'start.vbs'), $startVbs, (New-Object Text.UTF8Encoding($false)))
+# 문제 확인용: 창을 띄워 직접 실행 / 중지
 $run = @'
 @echo off
 chcp 65001 >nul
@@ -170,26 +193,20 @@ echo stopped.
 pause
 '@
 [IO.File]::WriteAllText((Join-Path $InstallDir 'stop.bat'), $stop, (New-Object Text.UTF8Encoding($false)))
-$runBat = Join-Path $InstallDir 'run.bat'
 try {
   $desktop = [Environment]::GetFolderPath('Desktop')
   $ws = New-Object -ComObject WScript.Shell
-  $lnk = $ws.CreateShortcut((Join-Path $desktop 'ScoreSnap PC 채점 프로그램.lnk'))
-  $lnk.TargetPath = $runBat; $lnk.WorkingDirectory = $InstallDir; $lnk.WindowStyle = 7; $lnk.Save()
+  Remove-Item (Join-Path $desktop 'ScoreSnap PC 채점 프로그램.lnk') -ErrorAction SilentlyContinue   # 옛 아이콘 정리
+  $lnk = $ws.CreateShortcut((Join-Path $desktop 'ScoreSnap.lnk'))
+  $lnk.TargetPath = (Join-Path $env:WINDIR 'System32\wscript.exe'); $lnk.Arguments = '"' + (Join-Path $InstallDir 'start.vbs') + '" open'
+  $lnk.WorkingDirectory = $InstallDir; $lnk.Description = 'ScoreSnap: 채점 프로그램을 시작하고 앱을 엽니다'; $lnk.Save()
   $lnk2 = $ws.CreateShortcut((Join-Path $desktop 'Claude Code 로그인.lnk'))
   $lnk2.TargetPath = $loginBat; $lnk2.WorkingDirectory = $InstallDir; $lnk2.Save()
-  Ok '바탕화면에 바로가기를 만들었어요. (채점 프로그램 / Claude Code 로그인)'
+  Ok '바탕화면에 "ScoreSnap" 아이콘(시작+앱 열기)과 "Claude Code 로그인" 아이콘을 만들었어요.'
 } catch { Warn ('바로가기를 만들지 못했어요: ' + $_.Exception.Message) }
-if (-not $NoTask) {
-  try {
-    $act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c start "ScoreSnap" /min "' + $runBat + '"')
-    $trg = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName 'ScoreSnapWorker' -Action $act -Trigger $trg -Settings $set -Force | Out-Null
-    Ok 'PC를 켜고 로그인하면 자동으로 시작되도록 등록했어요.'
-  } catch { Warn ('자동 실행 등록에 실패했어요. 바탕화면 바로가기로 직접 실행해 주세요: ' + $_.Exception.Message) }
-}
-if (-not $NoStart) { Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c start "ScoreSnap" /min "' + $runBat + '"'); Ok '채점 프로그램을 시작했어요. (작업표시줄에 최소화된 "ScoreSnap" 창이 보여요. 닫지 마세요)' }
+# 예전 설치에서 등록된 PC 켤 때 자동 실행은 제거
+try { if (Get-ScheduledTask -TaskName 'ScoreSnapWorker' -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName 'ScoreSnapWorker' -Confirm:$false; Ok '예전의 자동 실행 등록을 해제했어요. (이제 아이콘을 누를 때만 실행돼요)' } } catch {}
+if (-not $NoStart) { Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + (Join-Path $InstallDir 'start.vbs') + '" open'); Ok '채점 프로그램을 시작하고 앱을 열었어요. (창 없이 백그라운드에서 돌아요)' }
 
 # ─── 결과 요약 ───
 Write-Host ''
@@ -201,5 +218,5 @@ foreach ($s in $summary) {
 }
 $bad = @($summary | Where-Object { $_[0] -eq 'BAD' }).Count
 Write-Host ''
-if ($bad -eq 0) { Write-Host '설치가 끝났어요! 앱(raloud.vercel.app/ss) 상단에 "PC 켜짐"이 보이는지 확인해 주세요. (안 보이면 새로고침)' -ForegroundColor Green }
+if ($bad -eq 0) { Write-Host '설치가 끝났어요! 앞으로는 바탕화면의 ScoreSnap 아이콘만 누르면 돼요. 앱 상단에 "PC 켜짐"이 보이면 정상이에요. (안 보이면 새로고침)' -ForegroundColor Green }
 else { Write-Host ('위 [실패] 항목을 해결한 뒤 이 설치 파일을 다시 실행해 주세요. (' + $bad + '건)') -ForegroundColor Red }

@@ -58,7 +58,7 @@ fs.writeFileSync(path.join(OUT, '읽어보세요.txt'), [
   '   (Claude 데스크탑이 없으면 먼저 https://claude.ai/download 에서 설치·로그인하고 Code 기능을 한 번 열어 두세요)',
   '4. 끝나면 앱(raloud.vercel.app/ss) 상단에 "PC 켜짐"이 보입니다.',
   '',
-  '- PC 를 켜고 로그인하면 자동으로 시작됩니다 (작업표시줄에 최소화).',
+  '- 바탕화면 ScoreSnap 아이콘을 누르면 채점 프로그램이 (창 없이) 시작되고 앱이 열립니다. PC 켤 때 자동 실행은 하지 않습니다.',
   '- 중지: 설치 폴더(%LOCALAPPDATA%\\ScoreSnapWorker)의 stop.bat',
   '- 업데이트: 새 패키지의 설치.bat 을 다시 실행하면 로그인 정보는 그대로 두고 프로그램만 교체합니다.',
   '- 필요한 것: 학원 PC 에 Claude Code 가 설치·로그인되어 있어야 합니다. 절전 모드는 꺼 두세요.',
