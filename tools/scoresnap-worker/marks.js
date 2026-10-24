@@ -45,4 +45,45 @@ function tableToWords(j, meta) {
   return words;
 }
 
-module.exports = { buildNumbersPrompt, buildTablePrompt, numbersToWords, tableToWords };
+
+// ─── 찾은 글자 위치 → 앱(public/ss/scoresnap.js)이 저장하는 markPos 형식 (앱의 _ssEnsureMarkPos / _ssEnsureMarkPosTable 과 같은 모양) ───
+function numbersMarkPos(words) {
+  const nums = {};
+  let lab = null;
+  for (const w of words || []) {
+    const m = /^(\d{1,3})\.$/.exec(w.t);
+    if (m) nums[Number(m[1])] = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
+    else if (/^점수:?$/.test(w.t)) lab = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
+  }
+  return Object.keys(nums).length ? { v: 2, engine: 'pc', nums, label: lab } : null;
+}
+
+// 표 형식: 문항(no)마다 V 를 찍을 칸의 위치. key.questions 의 { no, col, given } 로 계산한다.
+function tableMarkPos(words, key) {
+  const W = words || [], cx = w => (w.x1 + w.x2) / 2, cy = w => (w.y1 + w.y2) / 2;
+  const cols = [key.givenColumn].concat(key.answerColumns || []).filter(Boolean);
+  const head = {};
+  cols.forEach(name => { const h = W.filter(w => w.t === name).sort((a, b) => a.y1 - b.y1)[0]; if (h) head[name] = h; });
+  if (cols.some(n => !head[n])) return null;
+  const hxs = cols.map(n => cx(head[n])).sort((a, b) => a - b);
+  const halfOf = (name) => {
+    const i = hxs.indexOf(cx(head[name]));
+    const d = [hxs[i - 1] != null ? cx(head[name]) - hxs[i - 1] : Infinity, hxs[i + 1] != null ? hxs[i + 1] - cx(head[name]) : Infinity];
+    const mn = Math.min(d[0], d[1]);
+    return (isFinite(mn) ? mn : 0.2) / 2;
+  };
+  const headBottom = Math.max(...cols.map(n => head[n].y2));
+  const givenX = cx(head[key.givenColumn]);
+  const cells = {};
+  (key.questions || []).forEach(q => {
+    if (!q.col || !q.given || !head[q.col]) return;
+    const g = String(q.given).toLowerCase();
+    const cand = W.filter(w => String(w.t).toLowerCase() === g && w.y1 > headBottom).sort((p1, p2) => Math.abs(cx(p1) - givenX) - Math.abs(cx(p2) - givenX))[0];
+    if (!cand) return;
+    cells[q.no] = { x: cx(head[q.col]) - halfOf(q.col) * 0.9, y: cy(cand), h: cand.y2 - cand.y1 };
+  });
+  const lab = W.filter(w => /^점수:?$/.test(w.t) && w.y1 < 0.25).sort((a, b) => b.x1 - a.x1)[0];
+  return Object.keys(cells).length ? { cells, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null } : null;
+}
+
+module.exports = { buildNumbersPrompt, buildTablePrompt, numbersToWords, tableToWords, numbersMarkPos, tableMarkPos };

@@ -317,18 +317,6 @@ async function refreshSessionMeta(sid) {
 //   ocr     : payload { total } | { table }              → result = 글자 위치 목록          — 화면이 기다렸다가 받아 간다
 //   student : payload { answerKey, target:{sid,docId,keepName} }
 //             → 결과를 그 학생 기록(students/{docId})에 직접 써 넣는다. 화면을 닫아도 채점은 계속된다.
-// 찾은 글자 위치 → 앱이 저장하는 markPos 형식 (앱의 _ssEnsureMarkPos 와 같은 모양: v2, engine 'pc')
-function markPosFromWords(words) {
-  const nums = {};
-  let lab = null;
-  for (const w of words || []) {
-    const m = /^(\d{1,3})\.$/.exec(w.t);
-    if (m) { nums[Number(m[1])] = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 }; }
-    else if (/^점수:?$/.test(w.t)) lab = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
-  }
-  return Object.keys(nums).length ? { v: 2, engine: 'pc', nums, label: lab } : null;
-}
-
 async function handleStudentJob(jd) {
   const j = jd.data();
   const { sid, docId, keepName } = j.payload.target;
@@ -339,11 +327,16 @@ async function handleStudentJob(jd) {
   if (!exists) { log('  학생 기록이 이미 없어요 — 건너뜀'); await deleteDoc(jd.ref); return; }
   await updateDoc(stRef, { status: 'grading', error: '', startedAt: serverTimestamp() });
   try {
-    // 번호형 시험지는 채점과 동시에 마킹 위치(번호·점수칸)도 미리 찾아 둔다 → 나중에 마킹 사진을 열 때 기다리지 않음 (표 형식은 채점 결과가 필요해 건너뜀)
+    // 채점과 동시에 마킹 위치(번호형: 번호·점수칸 / 표: 칸 위치)도 미리 찾아 둔다 → 나중에 마킹 사진을 열 때 기다리지 않음
     const key = j.payload.answerKey || {};
-    const preMark = key.layout === 'table' ? Promise.resolve(null)
-      : findMarkWords(j.imagePath, { total: (key.questions || []).length })
-        .then(r => markPosFromWords(r.words)).catch(e => { log('  마킹 위치 미리 찾기 실패(나중에 필요할 때 다시 찾음):', e.message); return null; });
+    const isTableKey = key.layout === 'table' && key.givenColumn && Array.isArray(key.answerColumns) && key.answerColumns.length;
+    const tableMeta = isTableKey ? {
+      columns: [key.givenColumn].concat(key.answerColumns), givenColumn: key.givenColumn,
+      givens: Array.from(new Set((key.questions || []).map(q => q.given).filter(Boolean))),
+    } : null;
+    const preMark = findMarkWords(j.imagePath, tableMeta ? { table: tableMeta } : { total: (key.questions || []).length })
+      .then(r => tableMeta ? M.tableMarkPos(r.words, key) : M.numbersMarkPos(r.words))
+      .catch(e => { log('  마킹 위치 미리 찾기 실패(나중에 필요할 때 다시 찾음):', e.message); return null; });
     const result = await gradeStudent(j.imagePath, j.payload.answerKey);
     if (keepName) result.studentName = keepName;     // 정답지 교체 재채점은 학원장이 고친 이름 유지
     const mp = await preMark;
