@@ -133,6 +133,87 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-vmode { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:var(--sub); }
 .ss-vmode select { height:36px; border:1px solid var(--border); border-radius:10px; padding:0 10px; background:#fff; font-size:14px; }
 
+/* ── 2단계: 폰 흐름 화면 공용 ───────────────────────────── */
+.ss-scroll { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.ss-col { width:100%; max-width:720px; margin:0 auto; }
+.ss-brandwrap { flex-shrink:0; background:var(--brand); color:#fff; padding:16px 16px 18px; }
+.ss-brandwrap__row { display:flex; align-items:flex-start; gap:12px; }
+.ss-iconbtn--onbrand { background:rgba(255,255,255,.22); color:#fff; border-radius:14px; }
+.ss-iconbtn--onbrand:hover { background:rgba(255,255,255,.32); }
+.ss-pccard { background:#fff; color:var(--text); border-radius:var(--radius); padding:12px 16px; display:flex; align-items:center; gap:12px; margin-top:14px; }
+.ss-pccard b { display:block; font-size:16px; } .ss-pccard small { color:var(--sub); font-size:13px; }
+.ss-bigcard { width:100%; display:flex; align-items:center; gap:16px; text-align:left; padding:18px; background:var(--surface); border:1px solid var(--border); border-radius:20px; color:var(--text); }
+.ss-bigcard:hover { background:#fafafa; }
+.ss-bigcard__ic { width:60px; height:60px; border-radius:16px; background:var(--brand-bg); color:var(--brand); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ss-bigcard__ic .ss-ic { width:32px; height:32px; }
+.ss-sec { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin:22px 4px 10px; }
+.ss-sec b { font-size:18px; }
+.ss-hint { font-size:13px; color:var(--sub); padding:8px 4px 0; }
+.ss-link { background:none; border:none; padding:6px 4px; font-size:14px; color:var(--sub); text-decoration:underline; }
+.ss-link--on { color:var(--brand-dark); font-weight:700; }
+.ss-choices { display:flex; gap:10px; }
+.ss-dashed--grow { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:340px; margin:14px 0 0; }
+.ss-dashed__ic { width:64px; height:64px; border-radius:18px; background:var(--brand-bg); color:var(--brand); display:flex; align-items:center; justify-content:center; }
+.ss-dashed__ic .ss-ic { width:32px; height:32px; }
+.ss-dashed h3 { margin:6px 0 0; font-size:20px; color:var(--text); }
+.ss-dashed p { margin:0; font-size:14px; line-height:1.6; }
+.ss-center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:30px; text-align:center; }
+.ss-grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.ss-cell { position:relative; background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; text-align:left; padding:0; color:inherit; }
+.ss-cell__img { aspect-ratio:3/4; background:#e8eaed center/cover no-repeat; position:relative; }
+.ss-cell__no { position:absolute; top:8px; left:8px; min-width:26px; height:26px; padding:0 7px; border-radius:8px; background:rgba(60,64,67,.88); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.ss-cell__x { position:absolute; top:6px; right:6px; width:32px; height:32px; border-radius:50%; border:none; background:rgba(60,64,67,.8); color:#fff; display:flex; align-items:center; justify-content:center; padding:0; }
+.ss-cell__x .ss-ic { width:16px; height:16px; }
+.ss-cell__info { padding:8px 10px 10px; font-size:13px; line-height:1.4; min-height:58px; }
+.ss-cell__info b { display:block; font-size:16px; }
+.ss-tone-ok { color:var(--ok); } .ss-tone-warn { color:var(--warn); } .ss-tone-bad { color:var(--bad); } .ss-tone-brand { color:var(--brand-dark); }
+.ss-progress { padding:16px; }
+.ss-progress__head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:10px; }
+.ss-progress__head b { font-size:18px; }
+.ss-rank { width:34px; text-align:center; color:var(--sub); font-weight:700; flex-shrink:0; }
+.ss-name { font-size:17px; font-weight:800; }
+.ss-pts { text-align:right; flex-shrink:0; } .ss-pts b { display:block; font-size:22px; font-weight:800; line-height:1.1; } .ss-pts small { color:var(--sub); font-size:13px; }
+.ss-ans { display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line); background:var(--surface); }
+.ss-ans:last-child { border-bottom:0; }
+.ss-ans__no { width:30px; color:var(--sub); font-weight:800; text-align:center; flex-shrink:0; }
+.ss-ans__main { flex:1; min-width:0; }
+.ss-ans__stem { font-size:17px; font-weight:800; word-break:break-word; }
+.ss-ans__line { font-size:15px; margin-top:2px; word-break:break-word; }
+.ss-strike { color:var(--bad); text-decoration:line-through; }
+.ss-correct { color:var(--ok); font-weight:700; }
+.ss-toggle { width:48px; height:48px; border-radius:12px; border:1px solid var(--bad-bd); background:var(--bad-bg); color:var(--bad); display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; }
+.ss-toggle--ok { border-color:#b7dcb9; background:var(--ok-bg); color:var(--ok); }
+.ss-toggle .ss-ic { width:26px; height:26px; stroke-width:2.6; }
+.ss-banner { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; background:#e3f2fd; color:#1565c0; border-radius:12px; font-size:14px; }
+.ss-akrow { padding:12px 14px; border-bottom:1px solid var(--line); background:var(--surface); }
+.ss-akrow:last-child { border-bottom:0; }
+.ss-akrow__top { display:flex; align-items:center; gap:12px; }
+.ss-akrow__top .no { width:30px; font-weight:800; color:var(--sub); } .ss-akrow__top .stem { flex:1; min-width:0; font-size:17px; font-weight:800; word-break:break-word; }
+.ss-akrow__ans { display:flex; align-items:center; gap:10px; margin-top:8px; padding-left:42px; } .ss-akrow__ans label { color:var(--sub); font-size:13px; width:34px; }
+.ss-akrow--warn { background:var(--warn-bg); }
+.ss-thumbbtn { width:72px; height:72px; border-radius:12px; border:1px solid var(--border); background:#e8eaed center/cover no-repeat; color:var(--sub); display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; }
+.ss-thumbbtn .ss-ic { width:30px; height:30px; }
+.ss-scrim { position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; }
+.ss-sheet { width:100%; max-width:520px; background:var(--surface); border-radius:20px 20px 0 0; padding:8px 0 calc(10px + env(safe-area-inset-bottom)); box-shadow:0 -8px 30px rgba(0,0,0,.2); }
+.ss-sheet__item { display:flex; align-items:center; gap:14px; width:100%; min-height:54px; padding:0 22px; border:none; background:none; font-size:16px; color:var(--text); text-align:left; }
+.ss-sheet__item:hover { background:#f6f6f6; } .ss-sheet__item--danger { color:var(--bad); }
+.ss-sheet__title { padding:12px 22px 6px; font-size:13px; color:var(--sub); font-weight:700; }
+/* 마킹 사진 보기 (어두운 전체 화면) */
+.ss-vw { position:fixed; inset:0; z-index:100001; background:var(--viewer); color:#fff; display:flex; flex-direction:column; font-family:var(--font); }
+.ss-vw__head { display:flex; align-items:center; gap:10px; padding:8px 12px; flex-shrink:0; }
+.ss-vw__head .t { flex:1; min-width:0; } .ss-vw__head .t b { display:block; font-size:18px; } .ss-vw__head .t small { color:#c4c7c5; font-size:13px; }
+.ss-vw__head .ss-iconbtn { color:#fff; } .ss-vw__head .ss-iconbtn:hover { background:rgba(255,255,255,.12); }
+.ss-vw .ss-tabs { background:#3c4043; } .ss-vw .ss-tab { color:#e8eaed; } .ss-vw .ss-tab--on { background:#fff; color:#222; }
+.ss-vw__stage { flex:1; min-height:0; position:relative; overflow:hidden; touch-action:none; background:#000; }
+.ss-vw__stage img { position:absolute; left:0; top:0; transform-origin:0 0; user-select:none; -webkit-user-drag:none; max-width:none; }
+.ss-vw__tip { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); background:rgba(60,64,67,.92); color:#fff; padding:10px 18px; border-radius:20px; font-size:14px; pointer-events:none; white-space:nowrap; }
+.ss-vw__chips { display:flex; align-items:center; gap:8px; padding:10px 12px 2px; overflow-x:auto; flex-shrink:0; }
+.ss-vw__chips span { color:#c4c7c5; font-size:14px; flex-shrink:0; }
+.ss-vw__chip { flex-shrink:0; min-width:46px; height:46px; padding:0 14px; border-radius:23px; border:1px solid #6d4b3e; background:#4a3127; color:#ffb599; font-size:17px; font-weight:800; }
+.ss-vw__bar { display:flex; gap:10px; padding:10px 12px calc(12px + env(safe-area-inset-bottom)); flex-shrink:0; }
+.ss-vw__bar .ss-btn { background:#3c4043; border-color:#3c4043; color:#fff; } .ss-vw__bar .ss-btn--primary { background:var(--brand); border-color:var(--brand); flex:1; }
+.ss-vw__bar .ss-btn:disabled { opacity:.35; }
+
 /* ─────────────────────────────────────────────────────────────
    임시 변환 규칙 — 아직 새 디자인으로 다시 만들지 않은 옛 화면(어두운 색이 인라인으로 박혀 있음)을
    밝은 테마로 보이게 한다. 2~5단계에서 화면을 새로 만들 때마다 해당 화면은 이 규칙이 필요 없어지고,
