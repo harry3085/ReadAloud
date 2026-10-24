@@ -308,7 +308,11 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pc__c2 .ss-chip { padding:1px 7px; font-size:11px; }
 .ss-pc__c2 .ss-pc__h .ss-btn { height:38px; }
 
-/* 왼쪽 열 제목 영역을 더 진한 배경으로 구분 */
-.ss-pc__c1 > .ss-pc__h, .ss-pc__c2 > .ss-pc__h { background:#dde1e6; border-bottom:1px solid #c6ccd3; }
-.ss-pc__c2 > .ss-pc__h:last-child { border-top:1px solid #c6ccd3; }
-.ss-pc__c2 .ss-pc__h .ss-stat { background:#f4f6f8; }
+/* 선택된 시험(기록) 제목을 진하게 */
+.ss-pc__c1 .ss-row--on { background:var(--brand); box-shadow:none; color:#fff; }
+.ss-pc__c1 .ss-row--on:hover { background:var(--brand-dark); }
+.ss-pc__c1 .ss-row--on .ss-title, .ss-pc__c1 .ss-row--on .ss-sub { color:#fff; }
+.ss-pc__c1 .ss-row--on .ss-chip { background:#fff; }
+.ss-pill { white-space:nowrap; }
+.ss-pc__c2 .ss-pill { padding:0 10px; }
+.ss-pc__c2 .ss-pc__h .ss-iconbtn { width:34px; height:34px; min-width:0; }

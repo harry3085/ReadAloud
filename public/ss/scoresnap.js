@@ -1442,12 +1442,11 @@
       return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b> ${_hasMark(s) ? uiChip('마킹', 'brand') : ''}${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     el.innerHTML = `
-      <div class="ss-pc__h" style="display:flex;align-items:center;gap:6px;"><b class="ss-grow" style="font-size:17px;word-break:break-word;">${esc(_testNameOf(null))}</b>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div>
-      <div class="ss-pc__h" style="padding-top:0;"><div class="ss-stats">
+      <div class="ss-pc__h"><div class="ss-stats">
         <div class="ss-stat"><small>평균</small><b>${avg}<span style="font-size:14px;">점</span></b></div>
         <div class="ss-stat"><small>채점</small><b>${done.length}<span style="font-size:14px;">명</span></b></div>
         <button class="ss-stat ss-stat--warn" style="text-align:left;border:1px solid var(--warn-bd);${_state.onlyCheck ? 'outline:2px solid var(--warn);' : ''}" onclick="window._ssToggleOnlyCheck()"><small>확인</small><b>${nCheck}<span style="font-size:14px;">명</span></b></button></div>
-        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">${[['order', '찍은 순서'], ['low', '낮은 점수'], ['name', '이름']].map(([v, l]) => `<button class="ss-pill${sort === v ? ' ss-pill--on' : ''}" onclick="window._ssSetSort('${v}')">${l}</button>`).join('')}</div></div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">${[['order', '순서'], ['low', '낮은 점수'], ['name', '이름']].map(([v, l]) => `<button class="ss-pill${sort === v ? ' ss-pill--on' : ''}" onclick="window._ssSetSort('${v}')">${l}</button>`).join('')}<span class="ss-grow"></span>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div></div>
       <div class="ss-pc__scroll" id="ssPcStuScroll"><div class="ss-list" style="border-radius:0;border-left:0;border-right:0;">${rowHtml || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">표시할 학생이 없어요.</div></div>'}</div></div>
       <div class="ss-pc__h" style="border-top:1px solid var(--border);display:grid;gap:8px;">${uiBtn({ kind: 'primary', block: true, icon: 'share', label: `카톡 연속 전송 (${done.length}명)`, onclick: 'window._ssOpenKakao()', disabled: !done.length })}${uiBtn({ block: true, icon: 'plus', label: '답안지 더 추가', id: 'ssPcAdd' })}</div>`;
     const sc = document.getElementById('ssPcStuScroll'); if (sc) { sc.scrollTop = prevTop; }
