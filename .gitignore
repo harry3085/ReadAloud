@@ -57,3 +57,4 @@ test-*.ps1
 scripts/diag/
 # ScoreSnap PC worker login (do not commit)
 tools/scoresnap-worker/config.json
+dist/

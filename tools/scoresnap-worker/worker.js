@@ -51,6 +51,11 @@ function findClaude() {
       if (fs.existsSync(p)) return p;
     }
   } catch (_) {}
+  // npm 으로 설치한 Claude Code (claude.cmd) — 설치 안내에 따라 PATH 에 없어도 찾는다
+  const npmBin = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+  if (fs.existsSync(npmBin)) return npmBin;
+  const shim = path.join(process.env.APPDATA || '', 'npm', 'claude.cmd');
+  if (fs.existsSync(shim)) return shim;
   return 'claude';
 }
 const CLAUDE = findClaude();
@@ -59,7 +64,10 @@ function runClaude(prompt, cwd) {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--allowedTools', 'Read', '--output-format', 'json'];
     if (CFG.model) args.push('--model', CFG.model);
-    const child = spawn(CLAUDE, args, { cwd, windowsHide: true });
+    const viaShell = /\.(cmd|bat)$/i.test(CLAUDE) || CLAUDE === 'claude';   // .cmd 는 셸을 거쳐야 실행됨
+    const child = viaShell
+      ? spawn('cmd.exe', ['/d', '/s', '/c', '""' + CLAUDE + '" ' + args.join(' ') + '"'], { cwd, windowsHide: true, windowsVerbatimArguments: true })
+      : spawn(CLAUDE, args, { cwd, windowsHide: true });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error('Claude 응답 시간 초과 (4분)')); }, 4 * 60 * 1000);
     child.stdout.on('data', d => { out += d; });
