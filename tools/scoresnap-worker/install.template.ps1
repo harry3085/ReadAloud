@@ -161,7 +161,7 @@ $running = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction 
 if (-not $running) {
   $log = Join-Path $dir 'worker.log'
   if ((Test-Path $log) -and ((Get-Item $log).Length -gt 2MB)) { Remove-Item $log -Force }
-  Start-Process -FilePath (Join-Path $dir 'node\node.exe') -ArgumentList 'worker.js' -WorkingDirectory $wdir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'worker.err.log')
+  Start-Process -FilePath (Join-Path $dir 'node\node.exe') -ArgumentList 'worker.js --auto-exit' -WorkingDirectory $wdir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError (Join-Path $dir 'worker.err.log')
 }
 if ($Open) { Start-Process 'https://raloud.vercel.app/ss' }
 '@

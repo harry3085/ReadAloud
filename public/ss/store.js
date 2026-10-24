@@ -82,6 +82,11 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
       return onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', _ssAid()), where('kind', '==', 'worker')),
         (snap) => cb(snap.docs.map(d => d.data())), (e) => { if (onErr) onErr(e); else cb([]); });
     },
+    // 앱이 열려 있다는 신호 — PC 채점 프로그램이 앱이 닫히면 스스로 종료하는 데 쓴다 (목록에는 안 나옴: keyStatus 'presence')
+    async pingApp() {
+      const aid = _ssAid();
+      await setDoc(doc(db, 'scoresnapSessions', 'app_' + aid), { academyId: aid, kind: 'presence', keyStatus: 'presence', lastOpen: serverTimestamp() });
+    },
     // 채점 질문: 학원 PC 의 Claude 가 답안지 사진을 다시 보고 답한다 (최대 5분 대기)
     async ask(imagePath, payload) {
       const aid = _ssAid();

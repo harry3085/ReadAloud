@@ -427,6 +427,22 @@ if (process.argv.includes('--check')) {
     () => { pump(); }, (e) => log('실시간 연결 오류:', e.message));
   setInterval(pump, 60 * 1000);
   heartbeat(); setInterval(heartbeat, 30 * 1000);
+  // --auto-exit: 앱(브라우저)이 닫혀 4분 넘게 신호가 없고 할 일이 없으면 스스로 종료 (앱과 한 몸처럼 동작)
+  if (process.argv.includes('--auto-exit')) {
+    let lastVal = null, lastChange = Date.now();   // 값이 바뀐 시각은 이 PC 시계로 기록 (시계가 달라도 안전)
+    setInterval(async () => {
+      try {
+        const d = await getDoc(doc(db, 'scoresnapSessions', 'app_' + AID));
+        const v = d.exists() && d.data().lastOpen && d.data().lastOpen.toMillis ? d.data().lastOpen.toMillis() : 0;
+        if (v !== lastVal) { lastVal = v; lastChange = Date.now(); }
+      } catch (_) { lastChange = Date.now(); return; }   // 연결 문제일 때는 끄지 않음
+      if (Date.now() - lastChange > 4 * 60 * 1000 && !hbBusy && hbQueued === 0) {
+        log('앱이 닫혀 있어 채점 프로그램을 종료합니다.');
+        try { await deleteDoc(doc(db, 'scoresnapSessions', HB_ID)); } catch (_) {}
+        process.exit(0);
+      }
+    }, 30 * 1000);
+  }
   log('대기 중 — 전용앱에서 채점을 요청하면 처리합니다. (이 창을 닫으면 채점이 멈춥니다)');
   pump();
 })().catch(e => { console.error('시작 실패:', e.message); process.exit(1); });

@@ -221,7 +221,7 @@
 
   // ─── 진입·바깥틀 ───
   // PC 채점 프로그램 상태 — worker 가 30초마다 갱신, 2분 넘게 없으면 꺼짐으로 본다
-  let _workerRows = [], _workerTimer = 0, _workerUnsub = null, _workerSeen = {};
+  let _workerRows = [], _workerTimer = 0, _workerUnsub = null, _workerSeen = {}, _pingTimer = 0;
   function _computeWorker() {
     const now = Date.now();
     // 이 기기 시계가 어긋나 있어도 맞도록: 신호 값이 '바뀌는 것'을 이 기기 시계로 기록해 두고, 그것도 함께 본다
@@ -251,6 +251,11 @@
       setTimeout(() => { if (document.getElementById('scoreSnapOverlay')) _startWorkerWatch(); }, 5000);
     });
     if (!_workerTimer) _workerTimer = setInterval(_computeWorker, 20000);
+    // 앱이 열려 있는 동안 30초마다 신호 — 앱을 닫으면 PC 채점 프로그램도 몇 분 뒤 스스로 꺼진다
+    if (!_pingTimer) {
+      const ping = () => { try { const p = _store() && _store().pingApp && _store().pingApp(); if (p && p.catch) p.catch(() => {}); } catch (_) {} };
+      ping(); _pingTimer = setInterval(ping, 30000);
+    }
   }
   // 앱을 다시 보게 되면(탭 전환·절전 복귀) 상태를 새로 받는다
   document.addEventListener('visibilitychange', () => {
@@ -258,7 +263,7 @@
     if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; }
     _startWorkerWatch();
   });
-  function _stopWorkerWatch() { if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; } clearInterval(_workerTimer); _workerTimer = 0; window._ssWorker = null; }
+  function _stopWorkerWatch() { if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; } clearInterval(_workerTimer); _workerTimer = 0; clearInterval(_pingTimer); _pingTimer = 0; window._ssWorker = null; }
 
   // 기록 바로 열기 (/ss/?sid=xxx — QR)
   window._ssOpenBySid = function (sid) { return _ssOpenServerSession(sid, {}); };
