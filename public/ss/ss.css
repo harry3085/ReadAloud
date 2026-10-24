@@ -1,0 +1,133 @@
+/* ScoreSnap 전용앱(/ss/) 디자인 기준 — docs/scoresnap-ss-redesign.md 2장
+   밝은 회색 바탕 + 코랄. 이모지 없이 SVG 아이콘. 터치 대상 44px 이상. */
+
+:root {
+  --brand:#E8714A; --brand-dark:#D85A30; --brand-bg:#FEF2EC;
+  --bg:#f4f6f8; --surface:#fff; --text:#222; --sub:#5f6368; --border:#e0e0e0; --line:#eee;
+  --ok:#2e7d32; --ok-bg:#e8f5e9; --bad:#c62828; --bad-bg:#ffebee; --bad-bd:#f1b0b0;
+  --warn:#b45309; --warn-bg:#fff7e6; --warn-bd:#f5c26b;
+  --viewer:#1c1d1f;
+  --c-brand:#E8714A;                      /* 옛 화면 코드가 쓰는 이름 */
+  --radius:14px; --btn-h:52px; --touch:44px;
+  --font:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; }
+body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); font-size:15px; line-height:1.5; -webkit-text-size-adjust:100%; }
+.ss-app button, .ss-app input, .ss-app textarea, .ss-app select { font-family:inherit; }
+.ss-app button { cursor:pointer; }
+.hidden { display:none !important; }
+
+/* 아이콘 */
+.ss-ic { width:22px; height:22px; flex-shrink:0; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; vertical-align:middle; }
+.ss-ic--sm { width:18px; height:18px; } .ss-ic--lg { width:28px; height:28px; }
+
+/* 버튼 */
+.ss-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:var(--touch); padding:0 18px; border-radius:12px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:14px; font-weight:600; white-space:nowrap; }
+.ss-btn:hover { background:#fafafa; }
+.ss-btn--primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:700; }
+.ss-btn--primary:hover { background:var(--brand-dark); border-color:var(--brand-dark); }
+.ss-btn--lg { min-height:var(--btn-h); border-radius:var(--radius); font-size:16px; }
+.ss-btn--sm { min-height:36px; padding:0 12px; font-size:13px; border-radius:10px; }
+.ss-btn--danger { color:var(--bad); border-color:var(--bad-bd); }
+.ss-btn--block { width:100%; }
+.ss-btn:disabled, .ss-btn[disabled] { opacity:.45; cursor:default; }
+.ss-iconbtn { width:var(--touch); height:var(--touch); display:inline-flex; align-items:center; justify-content:center; border:none; background:transparent; color:var(--text); border-radius:12px; padding:0; }
+.ss-iconbtn:hover { background:rgba(0,0,0,.05); }
+.ss-iconbtn--box { border:1px solid var(--border); background:var(--surface); }
+
+/* 카드·행 */
+.ss-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+.ss-card--pad { padding:16px; }
+.ss-list { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+.ss-row { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); background:var(--surface); width:100%; text-align:left; border-left:0; border-right:0; border-top:0; color:inherit; }
+.ss-row:last-child { border-bottom:0; }
+.ss-row--tap { cursor:pointer; } .ss-row--tap:hover { background:#fafafa; }
+.ss-row--on { background:var(--brand-bg); box-shadow:inset 3px 0 0 var(--brand); }
+.ss-grow { flex:1; min-width:0; }
+.ss-title { font-size:16px; font-weight:700; }
+.ss-sub { font-size:13px; color:var(--sub); }
+.ss-muted { color:var(--sub); }
+
+/* 칩·배지 */
+.ss-chip { display:inline-flex; align-items:center; gap:4px; height:26px; padding:0 10px; border-radius:13px; font-size:12px; font-weight:700; background:#f1f3f4; color:var(--sub); white-space:nowrap; }
+.ss-chip--warn { background:var(--warn-bg); color:var(--warn); } .ss-chip--ok { background:var(--ok-bg); color:var(--ok); }
+.ss-chip--bad { background:var(--bad-bg); color:var(--bad); } .ss-chip--brand { background:var(--brand-bg); color:var(--brand-dark); }
+.ss-pill { display:inline-flex; align-items:center; gap:6px; height:40px; padding:0 16px; border-radius:20px; border:1px solid var(--border); background:var(--surface); font-size:14px; font-weight:600; }
+.ss-pill--on { background:#222; border-color:#222; color:#fff; }
+
+/* 점수 색 */
+.ss-score { font-weight:800; } .ss-score--ok { color:var(--ok); } .ss-score--warn { color:var(--warn); } .ss-score--bad { color:var(--bad); }
+
+/* 탭·세그먼트 */
+.ss-tabs { display:flex; gap:4px; padding:4px; background:#eceff1; border-radius:12px; }
+.ss-tab { flex:1; min-height:40px; border:none; border-radius:9px; background:transparent; font-size:14px; font-weight:700; color:var(--sub); padding:0 10px; }
+.ss-tab--on { background:var(--surface); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.ss-tab--bad.ss-tab--on, .ss-tab--bad { } .ss-tab[data-tone="bad"] { color:var(--bad); } .ss-tab[data-tone="warn"] { color:var(--warn); } .ss-tab[data-tone="ok"] { color:var(--ok); }
+.ss-choice { flex:1; text-align:left; padding:14px; border-radius:var(--radius); border:2px solid var(--border); background:var(--surface); color:var(--text); }
+.ss-choice b { display:block; font-size:16px; margin-bottom:4px; } .ss-choice span { font-size:13px; color:var(--sub); line-height:1.5; }
+.ss-choice--on { border-color:var(--brand); background:var(--brand-bg); } .ss-choice--on b { color:var(--brand-dark); }
+
+/* 입력 */
+.ss-input { width:100%; min-height:var(--touch); padding:0 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font-size:15px; }
+.ss-input:focus { outline:2px solid var(--brand); outline-offset:-1px; border-color:var(--brand); }
+.ss-input--line { border:0; border-bottom:2px solid var(--border); border-radius:0; padding:0 2px; background:transparent; font-weight:700; }
+.ss-input--line:focus { outline:none; border-bottom-color:var(--brand); }
+
+/* 화면 틀 */
+.ss-overlay { position:fixed; inset:0; z-index:99999; display:flex; flex-direction:column; background:var(--bg); color:var(--text); font-family:var(--font); }
+.ss-header { flex-shrink:0; display:flex; align-items:center; gap:8px; min-height:60px; padding:6px 12px; background:var(--surface); border-bottom:1px solid var(--border); }
+.ss-header__title { flex:1; min-width:0; font-size:18px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ss-header__sub { font-size:12px; font-weight:500; color:var(--sub); }
+.ss-brandbar { flex-shrink:0; background:var(--brand); color:#fff; padding:14px 16px; display:flex; align-items:center; gap:12px; }
+.ss-brandbar__title { font-size:22px; font-weight:800; } .ss-brandbar__sub { font-size:14px; opacity:.95; }
+.ss-body { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
+.ss-pad { padding:16px; }
+.ss-actionbar { flex-shrink:0; display:flex; gap:10px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:var(--surface); border-top:1px solid var(--border); }
+.ss-actionbar .ss-btn--primary { flex:1; }
+.ss-steps { flex-shrink:0; display:flex; gap:8px; padding:6px 16px 10px; background:var(--surface); border-bottom:1px solid var(--border); }
+.ss-steps__item { flex:1; font-size:13px; color:var(--sub); } .ss-steps__item::before { content:''; display:block; height:4px; border-radius:2px; background:#e0e0e0; margin-bottom:6px; }
+.ss-steps__item--done::before, .ss-steps__item--on::before { background:var(--brand); } .ss-steps__item--on { color:var(--brand-dark); font-weight:800; }
+.ss-status { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; }
+.ss-dot { width:10px; height:10px; border-radius:50%; background:#9aa0a6; flex-shrink:0; } .ss-dot--ok { background:var(--ok); }
+.ss-spinner { width:32px; height:32px; border:4px solid #e0e0e0; border-top-color:var(--brand); border-radius:50%; animation:ssSpin 1s linear infinite; }
+@keyframes ssSpin { to { transform:rotate(360deg); } }
+.ss-bar { height:10px; border-radius:5px; background:#e8eaed; overflow:hidden; } .ss-bar > i { display:block; height:100%; background:var(--brand); border-radius:5px; transition:width .3s; }
+.ss-dashed { border:2px dashed #f2b8a2; border-radius:20px; background:var(--surface); text-align:center; padding:28px 18px; color:var(--sub); }
+.ss-dashed.over { background:var(--brand-bg); border-color:var(--brand); }
+.ss-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.ss-stat { background:#f1f3f4; border-radius:12px; padding:10px 12px; } .ss-stat small { display:block; font-size:12px; color:var(--sub); } .ss-stat b { font-size:24px; }
+.ss-stat--warn { background:var(--warn-bg); border:1px solid var(--warn-bd); } .ss-stat--warn small, .ss-stat--warn b { color:var(--warn); }
+.ss-kbd { display:inline-block; padding:2px 8px; border-radius:8px; background:#f1f3f4; color:var(--sub); font-size:13px; }
+
+/* 어두운 사진 보기 (사진 전체 화면만 어둡게) */
+.ss-viewer { background:var(--viewer); color:#fff; }
+
+/* 폭 */
+@media (min-width:1024px) { .ss-only-phone { display:none !important; } }
+@media (max-width:1023px) { .ss-only-pc { display:none !important; } }
+
+/* ─────────────────────────────────────────────────────────────
+   임시 변환 규칙 — 아직 새 디자인으로 다시 만들지 않은 옛 화면(어두운 색이 인라인으로 박혀 있음)을
+   밝은 테마로 보이게 한다. 2~5단계에서 화면을 새로 만들 때마다 해당 화면은 이 규칙이 필요 없어지고,
+   마지막 단계에서 이 구역을 통째로 지운다. (.ss-compat 가 붙은 화면 바깥틀·기록 선택 창에만 적용 — 사진 보기 창은 어둡게 유지)
+   ───────────────────────────────────────────────────────────── */
+.ss-compat [style*="background:#1a1a1a"], .ss-compat [style*="background:#141414"], .ss-compat [style*="background:#2a2a2a"],
+.ss-compat [style*="background:#2a1a1a"], .ss-compat [style*="background:#191919"] { background:var(--surface) !important; }
+.ss-compat [style*="background:#0a0a0a"], .ss-compat [style*="background:#111"] { background:var(--bg) !important; }
+.ss-compat [style*="background:rgba(255,255,255,0.08)"], .ss-compat [style*="background:rgba(255,255,255,0.1)"],
+.ss-compat [style*="background:rgba(255,255,255,0.12)"] { background:var(--surface) !important; border-color:var(--border) !important; }
+.ss-compat [style*="color:#fff"]:not([style*="background:var(--c-brand"]):not([style*="background:#c62828"]):not([style*="background:#1976d2"]):not([style*="background:rgba(220,38,38"]):not([style*="background:#2e7d32"]) { color:var(--text) !important; }
+.ss-compat [style*="color:#bbb"], .ss-compat [style*="color:#aaa"], .ss-compat [style*="color:#999"], .ss-compat [style*="color:#888"],
+.ss-compat [style*="color:#777"], .ss-compat [style*="color:#666"], .ss-compat [style*="color:#555"], .ss-compat [style*="color:#ccc"],
+.ss-compat [style*="color:#ddd"] { color:var(--sub) !important; }
+.ss-compat [style*="solid #333"], .ss-compat [style*="solid #444"], .ss-compat [style*="solid #555"], .ss-compat [style*="solid #666"],
+.ss-compat [style*="solid #2a2a2a"], .ss-compat [style*="solid #553"], .ss-compat [style*="solid #5a3030"] { border-color:var(--border) !important; }
+.ss-compat [style*="color:#ffc107"], .ss-compat [style*="color:#ffcc80"] { color:var(--warn) !important; }
+.ss-compat [style*="background:#5a3a1a"] { background:var(--warn-bg) !important; }
+.ss-compat [style*="solid #ffc107"] { border-color:var(--warn-bd) !important; }
+.ss-compat [style*="color:#ff8a80"] { color:var(--bad) !important; }
+.ss-compat [style*="color:#7ddc8a"], .ss-compat [style*="color:#6a9"] { color:var(--ok) !important; }
+.ss-compat [style*="border-top-color:var(--c-brand"] { border-color:#e0e0e0 !important; border-top-color:var(--brand) !important; }

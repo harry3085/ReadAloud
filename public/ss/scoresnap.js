@@ -28,6 +28,66 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // ─── 디자인 기준: 아이콘 + 공용 UI 조각 (스타일은 ss.css 의 .ss-* 클래스) ───
+  // 이모지 대신 stroke SVG (Lucide 풍, viewBox 24, stroke-width 2, currentColor)
+  const _SS_ICONS = {
+    'camera': '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    'image': '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+    'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+    'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+    'chevron-up': '<path d="m18 15-6-6-6 6"/>',
+    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+    'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    'minus': '<path d="M5 12h14"/>',
+    'more': '<circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/><circle cx="5" cy="12" r="1.2"/>',
+    'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'refresh': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+    'share': '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>',
+    'pen': '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+    'maximize': '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+    'file-check': '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/>',
+    'list': '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+    'trash': '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+    'alert': '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  };
+  function iconSvg(name, cls) {
+    return `<svg class="ss-ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${_SS_ICONS[name] || ''}</svg>`;
+  }
+  // 점수 색: 80점 이상 초록, 60~79 노랑, 60 미만 빨강
+  function _uiScoreTone(pct) { return pct >= 80 ? 'ok' : pct >= 60 ? 'warn' : 'bad'; }
+  // 버튼. kind: 'primary' | 'danger' | '' · size: 'lg' | 'sm' · data: { key: value } → data-key (사용자 문자열은 여기에 넣고 esc 처리됨)
+  function uiBtn(o) {
+    const cls = ['ss-btn', o.kind ? 'ss-btn--' + o.kind : '', o.size ? 'ss-btn--' + o.size : '', o.block ? 'ss-btn--block' : ''].filter(Boolean).join(' ');
+    const data = Object.keys(o.data || {}).map(k => ` data-${k}="${esc(o.data[k])}"`).join('');
+    return `<button class="${cls}"${o.id ? ` id="${o.id}"` : ''}${o.onclick ? ` onclick="${o.onclick}"` : ''}${o.disabled ? ' disabled' : ''}${data}>${o.icon ? iconSvg(o.icon, 'ss-ic--sm') : ''}${o.label ? `<span>${esc(o.label)}</span>` : ''}</button>`;
+  }
+  function uiIconBtn(icon, label, o) {
+    o = o || {};
+    const data = Object.keys(o.data || {}).map(k => ` data-${k}="${esc(o.data[k])}"`).join('');
+    return `<button class="ss-iconbtn${o.box ? ' ss-iconbtn--box' : ''}" aria-label="${esc(label)}"${o.id ? ` id="${o.id}"` : ''}${o.onclick ? ` onclick="${o.onclick}"` : ''}${o.disabled ? ' disabled' : ''}${data}>${iconSvg(icon)}</button>`;
+  }
+  function uiChip(text, tone) { return `<span class="ss-chip${tone ? ' ss-chip--' + tone : ''}">${esc(text)}</span>`; }
+  // 탭. items: [{ id, label, tone?: 'bad'|'warn'|'ok', on? }]  → 클릭은 호출한 쪽이 .ss-tab[data-tab] 로 처리
+  function uiTabs(items) {
+    return `<div class="ss-tabs">${items.map(t => `<button class="ss-tab${t.on ? ' ss-tab--on' : ''}"${t.tone ? ` data-tone="${t.tone}"` : ''} data-tab="${esc(t.id)}">${esc(t.label)}</button>`).join('')}</div>`;
+  }
+  // 하단 고정 액션바. 주 동작 1개(+보조 1~2개) — 인자는 uiBtn 으로 만든 html
+  function uiActionBar(primaryHtml, secondaryHtml) { return `<div class="ss-actionbar">${secondaryHtml || ''}${primaryHtml || ''}</div>`; }
+  // 단계 막대. step: 1(정답지) 2(답안지) 3(결과)
+  function uiSteps(step) {
+    return `<div class="ss-steps">${['정답지', '답안지', '결과'].map((l, i) => `<div class="ss-steps__item${i + 1 === step ? ' ss-steps__item--on' : i + 1 < step ? ' ss-steps__item--done' : ''}">${i + 1} ${l}</div>`).join('')}</div>`;
+  }
+  // 화면 상단 흰 헤더. o: { title, sub, back: 'onclick 문자열', right: html }
+  function uiHeader(o) {
+    return `<header class="ss-header">${o.back ? uiIconBtn('chevron-left', '뒤로', { onclick: o.back }) : ''}<div class="ss-header__title">${esc(o.title)}${o.sub ? `<div class="ss-header__sub">${esc(o.sub)}</div>` : ''}</div>${o.right || ''}</header>`;
+  }
+  window._ssUi = { iconSvg, uiBtn, uiIconBtn, uiChip, uiTabs, uiActionBar, uiSteps, uiHeader, scoreTone: _uiScoreTone };
+
   // ─── T2. 헤더 진입점 ───
   let _ssEntrypointBound = false;
   window._ssBindEntrypoint = function () {
@@ -104,19 +164,13 @@
     if (document.getElementById('scoreSnapOverlay')) return;
     const ov = document.createElement('div');
     ov.id = 'scoreSnapOverlay';
-    ov.style.cssText = [
-      'position:fixed', 'inset:0',
-      'background:#111', 'color:#fff',
-      'z-index:99999',
-      'display:flex', 'flex-direction:column',
-      'font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif',
-    ].join(';');
+    ov.className = 'ss-overlay ss-compat';
     ov.innerHTML = `
-      <div style="padding:14px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-        <span id="ssHeaderTitle" style="font-size:16px;font-weight:700;">📷 ScoreSnap</span>
-        <button id="ssClose" aria-label="닫기" style="background:transparent;border:none;color:#fff;font-size:28px;cursor:pointer;line-height:1;padding:0 6px;">×</button>
-      </div>
-      <div id="ssBody" style="flex:1;overflow:auto;display:flex;flex-direction:column;"></div>
+      <header class="ss-header">
+        <span id="ssHeaderTitle" class="ss-header__title">ScoreSnap</span>
+        <button id="ssClose" class="ss-iconbtn" aria-label="닫기">${iconSvg('x')}</button>
+      </header>
+      <div id="ssBody" class="ss-body"></div>
     `;
     document.body.appendChild(ov);
     document.getElementById('ssClose').onclick = closeScoreSnap;
@@ -217,6 +271,7 @@
     return new Promise((resolve) => {
       const ov = document.createElement('div');
       ov.setAttribute('data-ss-sub', '1');
+      ov.className = 'ss-compat';
       ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;';
       const done = (r) => { _ssSubRemove(ov); resolve(r); };
       ov._ssCancel = () => { ov.remove(); resolve({ action: 'cancel' }); };
@@ -736,7 +791,7 @@
 
   function _setHeader(text) {
     const el = document.getElementById('ssHeaderTitle');
-    if (el) el.textContent = text;
+    if (el) el.textContent = String(text || '').replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '').replace(/\s+/g, ' ').trim();
   }
 
   // ─── T7-B. 정답지 촬영 화면 ───

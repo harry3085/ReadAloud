@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#0e0e0e">
+<meta name="theme-color" content="#E8714A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="ScoreSnap">
@@ -12,48 +12,42 @@
 <link rel="icon" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <title>ScoreSnap</title>
+<link rel="stylesheet" href="/ss/ss.css">
 <style>
-  :root { --c-brand:#E8714A; }
-  * { box-sizing: border-box; }
-  html, body { margin:0; height:100%; background:#0e0e0e; color:#eee; font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; font-size:15px; }
-  button { font-family:inherit; cursor:pointer; }
   .center { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .box { width:100%; max-width:360px; background:#181818; border:1px solid #2c2c2c; border-radius:14px; padding:26px 22px; }
-  .box h1 { margin:0 0 4px; font-size:22px; }
-  .box .sub { color:#999; font-size:13px; margin-bottom:18px; line-height:1.5; }
-  .box input { width:100%; padding:12px; margin-bottom:10px; background:#0a0a0a; border:1px solid #444; border-radius:8px; color:#fff; font-size:15px; font-family:inherit; }
-  .btn { width:100%; padding:13px; border:none; border-radius:10px; background:var(--c-brand); color:#fff; font-size:15px; font-weight:700; }
-  .btn.ghost { background:rgba(255,255,255,0.08); border:1px solid #555; font-weight:500; margin-top:10px; }
-  .err { color:#ff8a80; font-size:13px; min-height:18px; margin-bottom:8px; }
-  .hidden { display:none !important; }
-  #pcBanner { position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:100050; background:#2b2410; color:#ffd966; border:1px solid #6b5a1c; padding:8px 14px; border-radius:20px; font-size:12px; max-width:92vw; text-align:center; }
+  .login-box { width:100%; max-width:380px; padding:28px 24px; }
+  .login-box h1 { margin:0 0 4px; font-size:26px; font-weight:800; color:var(--brand-dark); }
+  .login-box .ss-input { margin-bottom:10px; min-height:50px; }
+  .err { color:var(--bad); font-size:13px; min-height:18px; margin-bottom:8px; }
+  #pcBanner { position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:100050; background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn-bd);
+    padding:8px 14px; border-radius:20px; font-size:12px; font-weight:600; max-width:92vw; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.12); }
 </style>
 </head>
-<body>
+<body class="ss-app">
 
 <!-- 로그인 -->
 <div id="loginView" class="center hidden">
-  <div class="box">
+  <div class="ss-card login-box">
     <h1>ScoreSnap</h1>
-    <div class="sub">학원장 계정으로 로그인하세요.<br>한 번 로그인하면 이 기기에서는 계속 유지돼요.</div>
-    <input id="uid" type="text" placeholder="아이디" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password">
+    <div class="ss-sub" style="margin-bottom:18px;">학원장 계정으로 로그인하세요.<br>한 번 로그인하면 이 기기에서는 계속 유지돼요.</div>
+    <input id="uid" class="ss-input" type="text" placeholder="아이디" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input id="pw" class="ss-input" type="password" placeholder="비밀번호" autocomplete="current-password">
     <div class="err" id="loginErr"></div>
-    <button class="btn" id="btnLogin">로그인</button>
+    <button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="btnLogin">로그인</button>
   </div>
 </div>
 
-<!-- 홈 (ScoreSnap 을 닫았을 때) -->
+<!-- 홈 (ScoreSnap 을 닫았을 때) — 2단계에서 기록 목록 홈으로 대체 -->
 <div id="homeView" class="center hidden">
-  <div class="box" style="text-align:center;">
+  <div class="ss-card login-box" style="text-align:center;">
     <h1>ScoreSnap</h1>
-    <div class="sub" id="homeSub"></div>
-    <button class="btn" id="btnOpen">ScoreSnap 열기</button>
-    <button class="btn ghost" id="btnLogout">로그아웃</button>
+    <div class="ss-sub" style="margin-bottom:18px;" id="homeSub"></div>
+    <button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="btnOpen">ScoreSnap 열기</button>
+    <button class="ss-btn ss-btn--lg ss-btn--block" id="btnLogout" style="margin-top:10px;">로그아웃</button>
   </div>
 </div>
 
-<div id="boot" class="center"><div class="sub" style="color:#999;">불러오는 중…</div></div>
+<div id="boot" class="center"><div class="ss-spinner"></div></div>
 <div id="pcBanner" class="hidden"></div>
 
 <script type="module">
