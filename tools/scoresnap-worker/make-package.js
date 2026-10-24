@@ -101,6 +101,10 @@ if (-not $claude) {
   $ext = Join-Path $env:USERPROFILE '.vscode\extensions'
   if (Test-Path $ext) { $claude = Get-ChildItem $ext -Directory -Filter 'anthropic.claude-code-*win32*' -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'resources\native-binary\claude.exe' } | Where-Object { Test-Path $_ } | Select-Object -Last 1 }
 }
+if (-not $claude) {
+  $cd = Join-Path $env:APPDATA 'Claude\claude-code'
+  if (Test-Path $cd) { $claude = Get-ChildItem $cd -Recurse -Filter claude.exe -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName }
+}
 if ($claude) { Write-Host ('Claude Code 확인: ' + $claude) -ForegroundColor Green }
 else { Write-Host 'Claude Code 를 찾지 못했어요. 설치하고 로그인한 뒤, app\tools\scoresnap-worker\config.json 의 claudePath 에 경로를 적어 주세요.' -ForegroundColor Yellow }
 

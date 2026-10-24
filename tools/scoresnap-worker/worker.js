@@ -51,6 +51,17 @@ function findClaude() {
       if (fs.existsSync(p)) return p;
     }
   } catch (_) {}
+  // Claude 데스크탑 앱에 들어 있는 Claude Code: %APPDATA%\Claude\claude-code\<버전>\<해시>\claude.exe (가장 최근 것)
+  try {
+    const base = path.join(process.env.APPDATA || '', 'Claude', 'claude-code');
+    const found = [];
+    for (const v of fs.readdirSync(base)) for (const h of fs.readdirSync(path.join(base, v))) {
+      const p = path.join(base, v, h, 'claude.exe');
+      if (fs.existsSync(p)) found.push({ p, t: fs.statSync(p).mtimeMs });
+    }
+    found.sort((a, b) => b.t - a.t);
+    if (found.length) return found[0].p;
+  } catch (_) {}
   // npm 으로 설치한 Claude Code (claude.cmd) — 설치 안내에 따라 PATH 에 없어도 찾는다
   const npmBin = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
   if (fs.existsSync(npmBin)) return npmBin;
