@@ -17672,7 +17672,8 @@ function _tpBuildPrintHtml(questions, meta) {
            user-select:none;"
     onerror="this.style.display='none'">`;
 
-  const endHtml = `<div style="text-align:center;margin-top:18px;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>`;
+  // 문제가 적어 한 장이 남을 때 '— 끝 —' 선이 문제 바로 밑에 붙지 않고 용지 맨 아래로 내려가도록 스페이서(flex:1)를 둔다
+  const endHtml = `<div style="flex:1 0 18px;"></div><div style="text-align:center;padding-top:6px;border-top:1px dashed #ccc;font-size:10px;color:#aaa;">— 끝 —</div>`;
 
   // 두 모드:
   // - 기본: 헤더 1번 + 단일 컬럼 (문제가 길면 자연스럽게 페이지 넘어감, 헤더는 1페이지에만)
@@ -17682,7 +17683,7 @@ function _tpBuildPrintHtml(questions, meta) {
   // 외곽(용지+경계선) 과 내부(내용) 를 분리: 페이지 맞춤 시 내부만 zoom → 빨간 선은 원래 위치 유지
   const pageBreakBg = `repeating-linear-gradient(to bottom,transparent 0,transparent calc(${pageMinH} - 2px),rgba(255,80,80,0.45) calc(${pageMinH} - 2px),rgba(255,80,80,0.45) ${pageMinH})`;
   const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;position:relative;overflow:hidden;`;
-  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;--p-font:${fontSize}px;--p-line:${lineHeight};--q-gap:${qGap}px;`;
+  const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;display:flex;flex-direction:column;min-height:${pageMinH};--p-font:${fontSize}px;--p-line:${lineHeight};--q-gap:${qGap}px;`;
 
   const innerContent = (twoPerSheet && sourceType !== 'vocab')
     ? `${headerHtml}<div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">${body}</div>${endHtml}`
