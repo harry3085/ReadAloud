@@ -226,17 +226,28 @@
     const rows = _workerRows.map(w => ({ w, ms: w.lastSeen && w.lastSeen.toMillis ? w.lastSeen.toMillis() : now })).sort((a, b) => b.ms - a.ms);
     const best = rows[0];
     if (!best) return window._ssSetWorkerStatus({ online: false, name: '', ago: '', queued: 0, none: true });
-    const online = now - best.ms < 120000;
+    const online = now - best.ms < 180000;     // 30초마다 신호가 오므로 3분 넘게 없으면 꺼짐
     const sec = Math.round((now - best.ms) / 1000);
     window._ssSetWorkerStatus({ online, name: best.w.workerName || 'PC', ago: sec < 60 ? '방금' : `${Math.round(sec / 60)}분 전`, queued: best.w.queued || 0, busy: !!best.w.busy });
     if (_state.phase === 'student-capture') _keepScroll(_renderStudentCapture);
   }
   function _startWorkerWatch() {
     if (_workerUnsub || !_store() || !_store().watchWorkers) return;
-    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; _computeWorker(); });
-    _workerTimer = setInterval(_computeWorker, 20000);
+    // 연결이 끊기면 '꺼짐'으로 단정하지 않고(알 수 없음) 몇 초 뒤 다시 연결한다 — 이전에는 한 번 끊기면 계속 '꺼짐'으로 보였다
+    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; _computeWorker(); }, () => {
+      window._ssWorker = null; window._ssSetWorkerStatus(null);
+      if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; }
+      setTimeout(() => { if (document.getElementById('scoreSnapOverlay')) _startWorkerWatch(); }, 5000);
+    });
+    if (!_workerTimer) _workerTimer = setInterval(_computeWorker, 20000);
   }
-  function _stopWorkerWatch() { if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; } clearInterval(_workerTimer); window._ssWorker = null; }
+  // 앱을 다시 보게 되면(탭 전환·절전 복귀) 상태를 새로 받는다
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !document.getElementById('scoreSnapOverlay')) return;
+    if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; }
+    _startWorkerWatch();
+  });
+  function _stopWorkerWatch() { if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; } clearInterval(_workerTimer); _workerTimer = 0; window._ssWorker = null; }
 
   // 기록 바로 열기 (/ss/?sid=xxx — QR)
   window._ssOpenBySid = function (sid) { return _ssOpenServerSession(sid, {}); };

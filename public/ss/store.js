@@ -78,9 +78,9 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
         (e) => { if (onErr) onErr(e); });
     },
     // PC 채점 프로그램 상태 구독 (worker.js 가 30초마다 기록). 해제 함수를 돌려준다
-    watchWorkers(cb) {
+    watchWorkers(cb, onErr) {
       return onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', _ssAid()), where('kind', '==', 'worker')),
-        (snap) => cb(snap.docs.map(d => d.data())), () => cb([]));
+        (snap) => cb(snap.docs.map(d => d.data())), (e) => { if (onErr) onErr(e); else cb([]); });
     },
     // 채점 질문: 학원 PC 의 Claude 가 답안지 사진을 다시 보고 답한다 (최대 5분 대기)
     async ask(imagePath, payload) {
