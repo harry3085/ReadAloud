@@ -1230,8 +1230,8 @@
   }
 
   // ─── 3-7. 마킹 사진 보기 (어두운 전체 화면, 확대·이동) ───
-  window._ssOpenMarked = async function (idx) {
-    const vw = { idx, mode: 'mark', scale: 1, fit: 1, tx: 0, ty: 0, iw: 0, ih: 0, token: 0 };
+  window._ssOpenMarked = async function (idx, startMode) {
+    const vw = { idx, mode: startMode || 'mark', scale: 1, fit: 1, tx: 0, ty: 0, iw: 0, ih: 0, token: 0 };
     const ov = document.createElement('div');
     ov.className = 'ss-vw'; ov.setAttribute('data-ss-sub', '1');
     ov.innerHTML = `
@@ -1344,7 +1344,7 @@
     }
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', () => { if (vw.iw) fitView(); });
-    await show(idx, 'mark');
+    await show(idx, startMode || 'mark');
   };
   // ───────────────────────────────────────────────────────────────────────────
   // 4단계 · PC 레이아웃 (폭 1024px 이상): 기록 | 학생 목록 | 학생 상세(사진 + 문항표) 3칸
@@ -1493,7 +1493,7 @@
             <div class="ss-tabs"><button class="ss-tab${mode === 'mark' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('mark')">채점 표시</button><button class="ss-tab${mode === 'orig' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('orig')">원본</button></div>
             <span class="ss-grow"></span>
             ${uiIconBtn('minus', '축소', { box: true, onclick: 'window._pcZoom(-25)' })}<span class="ss-sub" id="ssPcZoomLbl" style="min-width:44px;text-align:center;font-weight:700;">${zoom}%</span>${uiIconBtn('plus', '확대', { box: true, onclick: 'window._pcZoom(25)' })}
-            ${uiBtn({ size: 'sm', label: '맞춤', onclick: 'window._pcZoom(0)' })}${uiIconBtn('maximize', '전체 화면', { box: true, onclick: `window._ssOpenMarked(${idx})` })}
+            ${uiBtn({ size: 'sm', label: '맞춤', onclick: 'window._pcZoom(0)' })}${uiIconBtn('maximize', '전체 화면', { box: true, onclick: `window._ssOpenMarked(${idx}, _state.pcPhotoMode || 'orig')` })}
           </div>
           <div class="ss-pc__photobox" id="ssPcPhotoBox"></div>
         </div>
@@ -1510,6 +1510,11 @@
     if (!box || !x || !x.result) return;
     const tok = _state._pcTok = (_state._pcTok || 0) + 1;
     const mode = _state.pcPhotoMode || 'orig';
+    // 사진은 [사진 보기]를 눌렀을 때만 불러온다 (학생을 넘겨 볼 때마다 다운로드하지 않게)
+    if (_state.pcShowDoc !== x.docId) {
+      box.innerHTML = `<div class="ss-center"><div class="ss-sub" style="color:#e8eaed;">사진은 필요할 때만 불러와요.</div>${uiBtn({ kind: 'primary', icon: 'image', label: '사진 보기', onclick: 'window._pcShowPhoto()' })}</div>`;
+      return;
+    }
     // 채점 표시 사진은 필요할 때만: 위치(markPos)가 이미 있거나 저장본이 있으면 바로 보여주고, 없으면 [만들기] 버튼 (PC 채점 프로그램이 위치를 찾아야 해서 시간이 걸림)
     if (mode === 'mark') {
       const p = x.result.markPos;
@@ -1526,15 +1531,16 @@
       else url = (await _ssLoadImageEl(x)).src;
       if (tok !== _state._pcTok) return;
       box.innerHTML = `<img id="ssPcImg" alt="" style="width:${_state.pcZoom || 100}%" src="${url}">`;
-      document.getElementById('ssPcImg').onclick = () => window._ssOpenMarked(idx);
+      document.getElementById('ssPcImg').onclick = () => window._ssOpenMarked(idx, mode);
     } catch (e) {
       if (tok !== _state._pcTok) return;
       box.innerHTML = `<div class="ss-center"><div class="ss-sub">${esc(e && e.message || '사진을 만들지 못했어요')}</div>${uiBtn({ label: '다시 시도', onclick: 'window._pcRetryPhoto()' })}</div>`;
     }
   }
   window._pcRetryPhoto = function () { _pcPhoto(); };
+  window._pcShowPhoto = function () { const x = _state.students[_state.detailIdx]; if (x) { _state.pcShowDoc = x.docId; _pcPhoto(); } };
   window._pcMakeMark = function () { const x = _state.students[_state.detailIdx]; if (x) { _state._pcForce = x.docId; _pcPhoto(); } };
-  window._pcSetPhotoMode = function (m) { _state.pcPhotoMode = m; _pcRenderDetail(); };
+  window._pcSetPhotoMode = function (m) { _state.pcPhotoMode = m; const x = _state.students[_state.detailIdx]; if (x) _state.pcShowDoc = x.docId; _pcRenderDetail(); };
   window._pcZoom = function (d) {
     _state.pcZoom = d === 0 ? 100 : Math.min(400, Math.max(50, (_state.pcZoom || 100) + d));
     const img = document.getElementById('ssPcImg'); if (img) img.style.width = _state.pcZoom + '%';
@@ -1833,6 +1839,7 @@
   // ─── 마킹 사진: 학생 답안지 사진 위에 틀린 문항 V + 점수칸 점수 ───
   // 번호·점수칸 위치는 Vision OCR(학생당 1회, 결과에 markPos 로 저장). 이후 ✓/✗ 수정은 OCR 없이 즉시 반영.
   async function _ssLoadImageEl(x) {
+    if (x._imgEl) return x._imgEl;
     let url = x.image?.dataUrl || '';
     if (!url) {
       if (!x.imagePath) throw new Error('저장된 사진이 없어요');
@@ -1842,6 +1849,7 @@
     }
     const img = new Image();
     await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('사진을 읽을 수 없어요')); img.src = url; });
+    x._imgEl = img;
     return img;
   }
 
