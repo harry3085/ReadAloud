@@ -89,6 +89,7 @@ function runClaude(prompt, cwd) {
       ? spawn('cmd.exe', ['/d', '/s', '/c', '""' + CLAUDE + '" ' + args.join(' ') + '"'], { cwd, windowsHide: true, windowsVerbatimArguments: true })
       : spawn(CLAUDE, args, { cwd, windowsHide: true });
     let out = '', err = '';
+    const tc = Date.now();
     const timer = setTimeout(() => { child.kill(); reject(new Error('Claude 응답 시간 초과 (4분)')); }, 4 * 60 * 1000);
     child.stdout.on('data', d => { out += d; });
     child.stderr.on('data', d => { err += d; });
@@ -97,6 +98,7 @@ function runClaude(prompt, cwd) {
       clearTimeout(timer);
       try {
         const j = JSON.parse(out);
+        log(`    [시간] Claude 호출 ${((Date.now() - tc) / 1000).toFixed(1)}초 (모델 응답 ${((j.duration_api_ms || 0) / 1000).toFixed(1)}초, 턴 ${j.num_turns || '-'})`);
         if (j.is_error) return reject(new Error('Claude 오류: ' + String(j.result || '').slice(0, 200)));
         resolve(String(j.result || ''));
       } catch (_) { reject(new Error('Claude 응답을 읽지 못했어요: ' + (err || out).slice(0, 200))); }
@@ -115,12 +117,14 @@ function parseJson(text) {
 
 // 이미지 파일을 임시 폴더에 내려받고 Claude 를 그 폴더에서 실행
 async function withImage(storagePath, fn) {
+  const td = Date.now();
   const url = await getDownloadURL(ref(storage, storagePath));
   const res = await fetch(url);
   if (!res.ok) throw new Error('사진을 내려받지 못했어요 (' + res.status + ')');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
   try {
     fs.writeFileSync(path.join(dir, 'img.jpg'), Buffer.from(await res.arrayBuffer()));
+    log(`    [시간] 사진 내려받기 ${((Date.now() - td) / 1000).toFixed(1)}초`);
     return await fn(dir);
   } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} }
 }
