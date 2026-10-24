@@ -17767,10 +17767,10 @@ function _printRenderVocab(questions, { showAnswers, typeOpts, twoPerSheet }) {
 
     if (thisFmt === 'short') {
       return `
-        <div style="${wrap}display:flex;align-items:baseline;gap:8px;line-height:var(--p-line);">
-          <div style="font-size:var(--p-font);font-weight:700;min-width:22px;">${i+1}.</div>
-          <div style="font-size:var(--p-font);font-weight:600;min-width:140px;">${esc(question)}</div>
-          <div style="flex:1;border-bottom:1px solid #aaa;padding-bottom:2px;font-size:calc(var(--p-font) - 1px);color:#2e7d32;font-weight:700;">
+        <div style="${wrap}display:flex;align-items:baseline;gap:0.4em;line-height:var(--p-line);">
+          <div style="flex:0 0 1.9em;font-size:var(--p-font);font-weight:700;">${i+1}.</div>
+          <div style="flex:1.15 1 0;min-width:0;font-size:var(--p-font);font-weight:600;word-break:break-word;">${esc(question)}</div>
+          <div style="flex:1 1 0;min-width:0;border-bottom:1px solid #aaa;padding-bottom:2px;font-size:calc(var(--p-font) - 1px);color:#2e7d32;font-weight:700;word-break:break-word;">
             ${showAnswers ? esc(answer) : '&nbsp;'}
           </div>
         </div>`;
