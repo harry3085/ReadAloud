@@ -6,6 +6,8 @@
     { "source": "/admin/index.html", "destination": "/api/render-admin" },
     { "source": "/super", "destination": "/super/index.html" },
     { "source": "/super/", "destination": "/super/index.html" },
+    { "source": "/ss", "destination": "/ss/index.html" },
+    { "source": "/ss/", "destination": "/ss/index.html" },
     { "source": "/", "destination": "/api/render-index" },
     { "source": "/index.html", "destination": "/api/render-index" },
     { "source": "/(.*)", "destination": "/_app.html" }

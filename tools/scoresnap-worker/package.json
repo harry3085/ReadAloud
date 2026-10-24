@@ -1,0 +1,9 @@
+{
+  "name": "scoresnap-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ScoreSnap PC 채점 프로그램 — 서버의 채점 요청을 Claude Code 로 처리 (API 요금 없음)",
+  "main": "worker.js",
+  "scripts": { "start": "node worker.js" },
+  "dependencies": { "firebase": "^10.12.0" }
+}

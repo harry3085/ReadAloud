@@ -19023,7 +19023,7 @@ window._ssStore = {
     return snap.docs.map(d => {
       const v = d.data();
       return { id: d.id, ...v, createdAtMs: (v.createdAt && v.createdAt.toMillis) ? v.createdAt.toMillis() : 0 };
-    });
+    }).filter(s => !s.keyStatus || s.keyStatus === 'ready');   // 전용앱(/ss/)에서 정답지를 아직 읽는 중인 기록은 숨김
   },
 
   async loadSession(sid) {
@@ -19033,7 +19033,7 @@ window._ssStore = {
       getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', aid))),
     ]);
     if (!keySnap.exists()) throw new Error('채점 기록을 찾을 수 없어요 (보관 기간이 지났을 수 있어요)');
-    const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0));
+    const students = stSnap.docs.map(d => ({ docId: d.id, ...d.data() })).filter(x => x.result).sort((a, b) => (a.idx || 0) - (b.idx || 0));   // 채점 전(대기·오류) 학생은 전용앱에서만
     return { answerKey: keySnap.data().answerKey, precision: !!keySnap.data().precision, keyImagePath: keySnap.data().keyImagePath || '', students };
   },
 
