@@ -310,6 +310,7 @@
       result: old._dirty ? old.result : (x.result || null),
       error: x.error || '', gradeMs: x.gradeMs || 0,
       markPath: x.markPath || '', markKey: x.markKey || '', markMissing: x.markMissing || 0,
+      kakaoSentAt: x.kakaoSentAt ? (old.kakaoSentAt && !x.kakaoSentAt.toMillis ? old.kakaoSentAt : (x.kakaoSentAt.toMillis ? x.kakaoSentAt.toMillis() : Date.now())) : 0,
     };
   }
   function _mergeStudents(list) {
@@ -813,7 +814,7 @@
       if (s.status === 'error') return `<button class="ss-row ss-row--tap" data-retry="${esc(s.docId)}" style="background:var(--bad-bg);"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title ss-tone-bad">채점 실패</b><span class="ss-sub" style="display:block;">눌러서 다시 채점</span></span></button>`;
       if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span>${uiChip(s.status === 'grading' ? 'PC에서 처리' : '대기')}</div>`;
       const pct = _pctOf(r);
-      const badges = [_isUncertain(r) ? uiChip(`확인 ${(r.uncertainQuestions || []).length}문항`, 'warn') : '', _noName(r) ? uiChip('이름 미인식', 'warn') : ''].join('');
+      const badges = [_isUncertain(r) ? uiChip(`확인 ${(r.uncertainQuestions || []).length}문항`, 'warn') : '', _noName(r) ? uiChip('이름 미인식', 'warn') : '', s.kakaoSentAt ? uiChip('보냄', 'ok') : ''].join('');
       return `<button class="ss-row ss-row--tap" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름을 입력해 주세요' : esc(r.studentName)}</b><span>${badges}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     body.innerHTML = `
@@ -833,6 +834,7 @@
       ${uiActionBar(uiBtn({ kind: 'primary', size: 'lg', icon: 'plus', label: '답안지 더 추가', id: 'ssRsAdd' }))}`;
     document.getElementById('ssRsAdd').onclick = () => window._ssBackToStudentCapture();
     document.getElementById('ssRsMore').onclick = () => _ssSheet([
+      { label: '카톡 연속 전송', icon: 'share', fn: () => window._ssOpenKakao() },
       { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
       { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },
@@ -1360,7 +1362,7 @@
       if (s.status === 'error') return `<button class="ss-row ss-row--tap" data-retry="${esc(s.docId)}" style="background:var(--bad-bg);"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title ss-tone-bad">채점 실패</b><span class="ss-sub" style="display:block;">눌러서 다시 채점</span></span></button>`;
       if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span></div>`;
       const pct = _pctOf(r);
-      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
+      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     el.innerHTML = `
       <div class="ss-pc__h" style="display:flex;align-items:center;gap:6px;"><b class="ss-grow" style="font-size:17px;word-break:break-word;">${esc(_testNameOf(null))}</b>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div>
@@ -1370,7 +1372,7 @@
         <button class="ss-stat ss-stat--warn" style="text-align:left;border:1px solid var(--warn-bd);${_state.onlyCheck ? 'outline:2px solid var(--warn);' : ''}" onclick="window._ssToggleOnlyCheck()"><small>확인</small><b>${nCheck}<span style="font-size:14px;">명</span></b></button></div>
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">${[['order', '찍은 순서'], ['low', '낮은 점수'], ['name', '이름']].map(([v, l]) => `<button class="ss-pill${sort === v ? ' ss-pill--on' : ''}" onclick="window._ssSetSort('${v}')">${l}</button>`).join('')}</div></div>
       <div class="ss-pc__scroll" id="ssPcStuScroll"><div class="ss-list" style="border-radius:0;border-left:0;border-right:0;">${rowHtml || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">표시할 학생이 없어요.</div></div>'}</div></div>
-      <div class="ss-pc__h" style="border-top:1px solid var(--border);">${uiBtn({ block: true, icon: 'plus', label: '답안지 더 추가', id: 'ssPcAdd' })}</div>`;
+      <div class="ss-pc__h" style="border-top:1px solid var(--border);display:grid;gap:8px;">${uiBtn({ kind: 'primary', block: true, icon: 'share', label: `카톡 연속 전송 (${done.length}명)`, onclick: 'window._ssOpenKakao()', disabled: !done.length })}${uiBtn({ block: true, icon: 'plus', label: '답안지 더 추가', id: 'ssPcAdd' })}</div>`;
     const sc = document.getElementById('ssPcStuScroll'); if (sc) { sc.scrollTop = prevTop; }
     document.getElementById('ssPcAdd').onclick = () => window._ssBackToStudentCapture();
     document.getElementById('ssPcMore').onclick = () => _ssSheet([
@@ -1481,6 +1483,160 @@
       if (_state.sid) { if (now) _renderPc(); else _renderResultGrid(); } else _renderHome();
     }
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 5단계 · 카톡 연속 전송 — 학생마다 이미지를 클립보드에 복사 → 카톡 대화방에 붙여넣기 → [보냄 · 다음 학생]
+  // 클립보드 쓰기는 사용자 동작 안에서만 되므로, 버튼 핸들러에서 이미지 Promise 를 바로 넘긴다.
+  // ───────────────────────────────────────────────────────────────────────────
+  const _KK_DEFAULT = '[{학원}] {이름} {시험} {맞은수}/{문항수} ({점수}점).';
+  function _kkTpl() { try { return localStorage.getItem('ssKakaoTpl') || _KK_DEFAULT; } catch (_) { return _KK_DEFAULT; } }
+  function _kkMsg(i) {
+    const r = _state.students[i].result;
+    return _kkTpl().replace(/\{학원\}/g, window.MY_ACADEMY_NAME || '').replace(/\{이름\}/g, r.studentName || '').replace(/\{시험\}/g, _testNameOf(r))
+      .replace(/\{맞은수\}/g, r.correctCount).replace(/\{문항수\}/g, r.totalQuestions).replace(/\{점수\}/g, _pctOf(r));
+  }
+  function _kkBlob(i) {
+    const kk = _state.kk;
+    const key = kk.kind + ':' + i + ':' + (_state.students[i].result.correctCount);
+    if (kk.cache[key]) return kk.cache[key];
+    const p = (async () => {
+      const canvas = kk.kind === 'mark' ? (await _ssGetMarked(i)).canvas : await _ssCardCanvas(i);
+      const b = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      if (!b) throw new Error('이미지 생성 실패');
+      return b;
+    })();
+    p.catch(() => { delete kk.cache[key]; });
+    kk.cache[key] = p;
+    return p;
+  }
+  function _kkCopy(i) {
+    if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') { _ssToast('이 브라우저는 이미지 복사를 지원하지 않아요'); return Promise.resolve(false); }
+    return navigator.clipboard.write([new ClipboardItem({ 'image/png': _kkBlob(i) })]).then(() => true).catch(e => { _ssToast('복사하지 못했어요: ' + (e && e.message)); return false; });
+  }
+  const _kkList = () => (_state.students || []).map((s, i) => ({ s, i })).filter(o => o.s.status === 'done' && o.s.result);
+
+  window._ssOpenKakao = function () {
+    const list = _kkList();
+    if (!list.length) { _ssToast('채점이 끝난 학생이 없어요'); return; }
+    const first = list.find(o => !o.s.kakaoSentAt) || list[0];
+    _state.kk = { kind: 'mark', cur: first.i, skip: new Set(), cache: {}, copied: -1 };
+    const ov = document.createElement('div');
+    ov.className = 'ss-kk'; ov.id = 'ssKk'; ov.setAttribute('data-ss-sub', '1');
+    ov._ssCancel = () => { document.removeEventListener('keydown', onKey); ov.remove(); _state.kk = null; if (_state.phase === 'pc') _pcRenderStudents(); };
+    document.body.appendChild(ov);
+    _ssPushSub(ov);
+    const close = () => { document.removeEventListener('keydown', onKey); _state.kk = null; _ssSubRemove(ov); if (_state.phase === 'pc') _pcRenderStudents(); };
+    ov._close = close;
+    function onKey(e) {
+      if (!_state.kk) return;
+      if (e.key === 'Escape') { close(); return; }
+      const t = e.target;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (e.code === 'Space') { e.preventDefault(); window._kkNext(true); }
+    }
+    document.addEventListener('keydown', onKey);
+    _kkRender();
+    _kkCopy(first.i).then(ok => { if (ok && _state.kk) { _state.kk.copied = first.i; _kkRenderRight(); } });   // 열기 버튼 클릭 직후라 사용자 동작 인정
+  };
+
+  function _kkStatus(o) {
+    const kk = _state.kk;
+    if (o.s.kakaoSentAt) return ['보냄', 'ok'];
+    if (kk.skip.has(o.i)) return ['건너뜀', ''];
+    if (o.i === kk.cur) return ['지금', 'brand'];
+    return ['대기', ''];
+  }
+
+  function _kkRender() {
+    const ov = document.getElementById('ssKk'); const kk = _state.kk; if (!ov || !kk) return;
+    const list = _kkList();
+    const sent = list.filter(o => o.s.kakaoSentAt).length;
+    ov.innerHTML = `
+      <header class="ss-kk__head">${uiIconBtn('chevron-left', '결과로', { onclick: 'document.getElementById(\'ssKk\')._close()' })}
+        <div class="ss-grow"><b style="font-size:18px;">카톡 연속 전송</b><div class="ss-sub">${list.length}명 중 <b id="kkSent">${sent}</b>명 보냄</div></div>
+        <div class="ss-bar" style="width:160px;"><i id="kkBar" style="width:${list.length ? Math.round(sent / list.length * 100) : 0}%"></i></div>
+        <div class="ss-tabs" style="margin-left:12px;"><button class="ss-tab${kk.kind === 'mark' ? ' ss-tab--on' : ''}" onclick="window._kkKind('mark')">채점 표시 사진</button><button class="ss-tab${kk.kind === 'card' ? ' ss-tab--on' : ''}" onclick="window._kkKind('card')">성적표</button></div></header>
+      <div class="ss-kk__grid">
+        <aside class="ss-kk__list" id="kkList"></aside>
+        <section class="ss-kk__mid" id="kkMid"></section>
+        <section class="ss-kk__right" id="kkRight"></section></div>`;
+    _kkRenderList(); _kkRenderMid(); _kkRenderRight();
+  }
+  function _kkRenderList() {
+    const el = document.getElementById('kkList'); const kk = _state.kk; if (!el || !kk) return;
+    el.innerHTML = _kkList().map(o => {
+      const [t, tone] = _kkStatus(o); const r = o.s.result;
+      return `<div class="ss-row${o.i === kk.cur ? ' ss-row--on' : ''}" data-i="${o.i}"><input type="checkbox" class="kk-chk" data-i="${o.i}" ${kk.skip.has(o.i) ? '' : 'checked'} ${o.s.kakaoSentAt ? 'disabled' : ''} style="width:20px;height:20px;accent-color:var(--brand);">
+        <span class="ss-grow kk-pick" data-i="${o.i}" style="cursor:pointer;"><b class="ss-title" style="display:block;">${_noName(r) ? '이름 없음' : esc(r.studentName)}</b><span class="ss-sub">${_pctOf(r)}점</span></span>${uiChip(t, tone)}${o.s.kakaoSentAt ? `<button class="ss-link kk-undo" data-i="${o.i}">취소</button>` : ''}</div>`;
+    }).join('');
+    el.onclick = (e) => {
+      const u = e.target.closest('.kk-undo'); if (u) { return window._kkUnsend(+u.dataset.i); }
+      const c = e.target.closest('.kk-chk');
+      if (c) { const i = +c.dataset.i; if (c.checked) kk_skip().delete(i); else kk_skip().add(i); _kkRenderList(); return; }
+      const p = e.target.closest('.kk-pick'); if (p) { window._kkSelect(+p.dataset.i); }
+    };
+  }
+  const kk_skip = () => _state.kk.skip;
+  function _kkRenderMid() {
+    const el = document.getElementById('kkMid'); const kk = _state.kk; if (!el || !kk) return;
+    const s = _state.students[kk.cur]; if (!s) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="ss-sub" style="margin-bottom:8px;"><b style="color:var(--text);font-size:17px;">${esc((s.result.studentName || '').trim() || '이름 없음')}</b> · ${_pctOf(s.result)}점 · ${s.result.correctCount}/${s.result.totalQuestions}</div>
+      <div class="ss-kk__img" id="kkImg"><div class="ss-center"><div class="ss-spinner"></div></div></div>`;
+    const cur = kk.cur;
+    _kkBlob(cur).then(b => { if (!_state.kk || _state.kk.cur !== cur) return; const box = document.getElementById('kkImg'); if (box) box.innerHTML = `<img alt="" src="${URL.createObjectURL(b)}">`; })
+      .catch(e => { const box = document.getElementById('kkImg'); if (box && _state.kk && _state.kk.cur === cur) box.innerHTML = `<div class="ss-center"><div class="ss-sub">${esc(e.message || '이미지를 만들지 못했어요')}</div></div>`; });
+  }
+  function _kkRenderRight() {
+    const el = document.getElementById('kkRight'); const kk = _state.kk; if (!el || !kk) return;
+    const copied = kk.copied === kk.cur;
+    const keepMsg = document.getElementById('kkMsgTpl');
+    el.innerHTML = `
+      <div class="ss-kk__step"><b>1</b><div>${copied ? '<span class="ss-tone-ok">이미지가 클립보드에 복사됐어요</span>' : '이미지를 복사해 주세요'}<div class="ss-sub">${copied ? '' : `<button class="ss-btn ss-btn--sm" onclick="window._kkCopyNow()">${iconSvg('copy', 'ss-ic--sm')}<span>이미지 복사</span></button>`}</div></div></div>
+      <div class="ss-kk__step"><b>2</b><div>PC 카톡에서 그 학부모 대화방을 열고 <span class="ss-kbd">Ctrl+V</span></div></div>
+      <div class="ss-kk__step"><b>3</b><div>보낸 뒤 <b>[보냄 · 다음 학생]</b> 을 누르세요 <span class="ss-kbd">Space</span></div></div>
+      <div class="ss-sec" style="margin:14px 0 6px;"><b style="font-size:15px;">함께 보낼 메시지</b></div>
+      <textarea class="ss-input" id="kkMsgTpl" rows="4" style="height:auto;padding:10px;line-height:1.5;" oninput="window._kkTplChange(this.value)">${esc(_kkTpl())}</textarea>
+      <div class="ss-hint">{학원} {이름} {시험} {맞은수} {문항수} {점수} 를 쓸 수 있어요</div>
+      <div class="ss-kk__preview" id="kkPreview">${esc(_kkMsg(kk.cur))}</div>
+      ${uiBtn({ block: true, icon: 'copy', label: '메시지 복사', onclick: 'window._kkCopyMsg()' })}
+      <div class="ss-kk__btns">${uiBtn({ size: 'lg', label: '건너뛰기', onclick: 'window._kkNext(false)' })}${uiBtn({ kind: 'primary', size: 'lg', label: '보냄 · 다음 학생', onclick: 'window._kkNext(true)' })}</div>`;
+    if (keepMsg && document.activeElement === keepMsg) { /* 입력 중에는 다시 그리지 않음 */ }
+  }
+  window._kkTplChange = function (v) {
+    try { localStorage.setItem('ssKakaoTpl', v || _KK_DEFAULT); } catch (_) {}
+    const p = document.getElementById('kkPreview'); if (p && _state.kk) p.textContent = _kkMsg(_state.kk.cur);
+  };
+  window._kkCopyMsg = function () {
+    const t = _kkMsg(_state.kk.cur);
+    (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => _ssToast('메시지를 복사했어요'), () => _ssToast('복사하지 못했어요'));
+  };
+  window._kkCopyNow = function () { const i = _state.kk.cur; _kkCopy(i).then(ok => { if (ok && _state.kk) { _state.kk.copied = i; _kkRenderRight(); } }); };
+  window._kkKind = function (k) { if (!_state.kk) return; _state.kk.kind = k; _state.kk.copied = -1; _kkRender(); _kkCopy(_state.kk.cur).then(ok => { if (ok && _state.kk) { _state.kk.copied = _state.kk.cur; _kkRenderRight(); } }); };
+  window._kkSelect = function (i) { const kk = _state.kk; kk.cur = i; kk.copied = -1; _kkRenderList(); _kkRenderMid(); _kkRenderRight(); };
+  window._kkUnsend = async function (i) {
+    const s = _state.students[i]; if (!s) return;
+    s.kakaoSentAt = 0;
+    try { await _store().markSent(_state.sid, s.docId, false); } catch (_) {}
+    _kkRender();
+  };
+  // 보냄 처리(또는 건너뛰기) 후 다음 학생으로 — 같은 클릭 안에서 다음 학생 이미지를 클립보드에 복사
+  window._kkNext = function (sent) {
+    const kk = _state.kk; if (!kk) return;
+    const s = _state.students[kk.cur];
+    if (sent && s && !s.kakaoSentAt) {
+      s.kakaoSentAt = Date.now();
+      _store().markSent(_state.sid, s.docId, true).catch(e => console.warn('[scoresnap] 보냄 표시 저장 실패:', e && e.message));
+    }
+    if (!sent) kk.skip.add(kk.cur);
+    const list = _kkList();
+    const pos = list.findIndex(o => o.i === kk.cur);
+    const order = list.slice(pos + 1).concat(list.slice(0, pos + 1));
+    const nxt = order.find(o => !o.s.kakaoSentAt && !kk.skip.has(o.i));
+    if (!nxt) { _kkRender(); _ssToast('모두 처리했어요'); return; }
+    kk.cur = nxt.i; kk.copied = -1;
+    _kkRender();
+    _kkCopy(nxt.i).then(ok => { if (ok && _state.kk && _state.kk.cur === nxt.i) { _state.kk.copied = nxt.i; _kkRenderRight(); } });
+  };
 
   // 옛 이름 호환 (정답 목록·사진 보기 등에서 사용)
   window._ssShowMarkedPhoto = window._ssOpenMarked;

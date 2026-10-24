@@ -1,6 +1,6 @@
 // ScoreSnap 서버 저장소 — 전용앱(/ss/) 전용 — 학원앱과 코드는 분리돼 있고 같은 서버 데이터(scoresnapSessions)만 쓴다.
 // 사용: window._ssStore = createScoreSnapStore({ db, storage, getUid: () => uid, getAid: () => academyId });
-import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, query, where, orderBy, serverTimestamp, limit, increment, onSnapshot, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 
 export function createScoreSnapStore({ db, storage, getUid, getAid }) {
@@ -76,6 +76,10 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
       return onSnapshot(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', _ssAid())),
         (snap) => cb(snap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0))),
         (e) => { if (onErr) onErr(e); });
+    },
+    // 카톡 보냄 표시 (sent=false 면 해제)
+    async markSent(sid, docId, sent) {
+      await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { kakaoSentAt: sent ? serverTimestamp() : deleteField() });
     },
     async patchSession(sid, fields) { await updateDoc(doc(db, 'scoresnapSessions', sid), _ssClean(fields)); },
     async deleteStudent(sid, docId, imagePath, markPath) {
