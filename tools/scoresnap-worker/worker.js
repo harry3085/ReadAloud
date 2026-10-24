@@ -36,7 +36,7 @@ if (!fs.existsSync(CFG_PATH) && !process.env.SS_CUSTOM_TOKEN) {
 }
 const CFG = fs.existsSync(CFG_PATH) ? JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')) : {};
 const WORKER = CFG.workerName || os.hostname();
-const STALE_MS = 10 * 60 * 1000;     // 이 시간 넘게 '채점 중'이면 멈춘 것으로 보고 다시 대기로
+const STALE_MS = 3 * 60 * 1000;      // 이 시간 넘게 '채점 중'이면 멈춘 것으로 보고 다시 대기로
 
 const log = (...a) => console.log(new Date().toLocaleTimeString('ko-KR'), ...a);
 
