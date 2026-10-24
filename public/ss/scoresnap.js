@@ -1464,7 +1464,7 @@
       _state.detailTab = w ? 'wrong' : 'right';
     }
     const s = _state.students[idx], nb = _detailNeighbors(idx);
-    const mode = _state.pcPhotoMode || 'mark', zoom = _state.pcZoom || 100;
+    const mode = _state.pcPhotoMode || 'orig', zoom = _state.pcZoom || 100;
     el.innerHTML = `
       <div class="ss-pc__bar">
         ${uiIconBtn('chevron-up', '이전 학생 (↑)', { box: true, disabled: nb.prev < 0, onclick: `window._ssDetailGo(${nb.prev})` })}
@@ -1495,7 +1495,16 @@
     const x = _state.students && _state.students[idx];
     if (!box || !x || !x.result) return;
     const tok = _state._pcTok = (_state._pcTok || 0) + 1;
-    const mode = _state.pcPhotoMode || 'mark';
+    const mode = _state.pcPhotoMode || 'orig';
+    // 채점 표시 사진은 필요할 때만: 위치(markPos)가 이미 있거나 저장본이 있으면 바로 보여주고, 없으면 [만들기] 버튼 (PC 채점 프로그램이 위치를 찾아야 해서 시간이 걸림)
+    if (mode === 'mark') {
+      const p = x.result.markPos;
+      const cheap = (x._markCache) || (x.markPath && x.markKey) || (p && ((p.nums && p.v === 2) || p.cells));
+      if (!cheap && _state._pcForce !== x.docId) {
+        box.innerHTML = `<div class="ss-center"><div class="ss-sub">채점 표시 사진은 아직 만들지 않았어요.<br>처음 한 번은 학원 PC가 번호 위치를 찾느라 20초 정도 걸려요.</div>${uiBtn({ kind: 'primary', icon: 'pen', label: '채점 표시 사진 만들기', onclick: 'window._pcMakeMark()' })}</div>`;
+        return;
+      }
+    }
     box.innerHTML = `<div class="ss-center"><div class="ss-spinner"></div><div class="ss-sub">${mode === 'mark' ? '채점 표시 사진을 준비하는 중… (처음 한 번은 학원 PC가 위치를 찾느라 20초 정도 걸려요)' : '사진을 불러오는 중…'}</div></div>`;
     try {
       let url;
@@ -1510,6 +1519,7 @@
     }
   }
   window._pcRetryPhoto = function () { _pcPhoto(); };
+  window._pcMakeMark = function () { const x = _state.students[_state.detailIdx]; if (x) { _state._pcForce = x.docId; _pcPhoto(); } };
   window._pcSetPhotoMode = function (m) { _state.pcPhotoMode = m; _pcRenderDetail(); };
   window._pcZoom = function (d) {
     _state.pcZoom = d === 0 ? 100 : Math.min(400, Math.max(50, (_state.pcZoom || 100) + d));
