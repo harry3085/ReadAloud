@@ -244,7 +244,7 @@
   function _startWorkerWatch() {
     if (_workerUnsub || !_store() || !_store().watchWorkers) return;
     // 연결이 끊기면 '꺼짐'으로 단정하지 않고(알 수 없음) 몇 초 뒤 다시 연결한다 — 이전에는 한 번 끊기면 계속 '꺼짐'으로 보였다
-    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; console.log('[scoresnap] PC 상태 기록', rows.length, '건', rows.map(r => (r.workerName || '?') + ':' + (r.lastSeen && r.lastSeen.toMillis ? Math.round((Date.now() - r.lastSeen.toMillis()) / 1000) + '초전' : '대기'))); _computeWorker(); }, (e) => {
+    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; _computeWorker(); }, (e) => {
       console.warn('[scoresnap] PC 상태 구독 오류:', e && (e.code || e.message));
       window._ssSetWorkerStatus({ unknown: true, err: (e && (e.code || e.message)) || '' });
       if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; }
