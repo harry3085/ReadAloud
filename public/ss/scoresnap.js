@@ -1282,7 +1282,7 @@
   async function _ssGetMarked(idx) {
     const x = _state.students && _state.students[idx];
     if (!x || !x.result) throw new Error('학생 결과가 없어요');
-    const key = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no).join(',') + '|' + x.result.correctCount + '/' + x.result.totalQuestions + '|v2';   // v2: 번호 위치 계산 개선 — 이전에 저장된 마킹 사진은 재생성
+    const key = (x.result.answers || []).filter(a => !a.isCorrect).map(a => a.no).join(',') + '|' + x.result.correctCount + '/' + x.result.totalQuestions + '|v3';   // v2: 번호 위치 계산 개선 — 이전에 저장된 마킹 사진은 재생성
     if (x._markCache && x._markCache.key === key) return { canvas: x._markCache.canvas, missing: x._markCache.missing, x };
     let out;
     if (x.markPath && x.markKey === key && _store()) {
@@ -1330,6 +1330,7 @@
     ov.innerHTML = `
       <div class="ss-vw__head">${uiIconBtn('x', '닫기', { id: 'vwX' })}<div class="t"><b id="vwTitle"></b><small id="vwSub"></small></div>
         <div class="ss-tabs"><button class="ss-tab ss-tab--on" data-m="mark">표시</button><button class="ss-tab" data-m="orig">원본</button></div></div>
+      <div class="ss-vw__warn" id="vwWarn" hidden></div>
       <div class="ss-vw__main"><div class="ss-vw__stage" id="vwStage"><img id="vwImg" alt="" draggable="false"><div class="ss-vw__tip" id="vwTip">두 손가락으로 확대 · 두 번 탭하면 맞춤</div></div><aside class="ss-vw__side" id="vwSide"></aside></div>
       <div class="ss-vw__chips" id="vwChips"></div>
       <div class="ss-vw__bar">${uiBtn({ icon: 'chevron-left', id: 'vwPrev' })}${uiBtn({ kind: 'primary', size: 'lg', icon: 'share', label: '카톡으로 공유', id: 'vwShare' })}${uiBtn({ icon: 'download', id: 'vwSave' })}${uiBtn({ icon: 'chevron-right', id: 'vwNext' })}</div>`;
@@ -1356,7 +1357,15 @@
       vw.scale = ns; vw.tx = r.width / 2 - nx * vw.iw * ns; vw.ty = r.height / 2 - ny * vw.ih * ns; apply();
     };
 
+    function _vwMissing(n, i) {
+      const w = $v('vwWarn');
+      if (!n) { w.hidden = true; w.innerHTML = ''; return; }
+      w.hidden = false;
+      w.innerHTML = `<span>번호 위치를 못 찾은 문항 <b>${n}개</b>는 V가 빠졌어요</span><button class="ss-btn ss-btn--sm" id="vwRefind">위치 다시 찾기</button>`;
+      w.querySelector('#vwRefind').onclick = () => { const x = _state.students[i]; _ssResetMarks(x); show(i, 'mark'); };
+    }
     async function show(i, mode) {
+      $v('vwWarn').hidden = true;
       const my = ++vw.token;
       vw.idx = i; vw.mode = mode;
       const x = _state.students[i]; const r = x.result;
@@ -1377,7 +1386,7 @@
           if (my !== vw.token) return;
           vw.blob = await new Promise(res => out.canvas.toBlob(res, 'image/png'));
           url = out.canvas.toDataURL('image/png');
-          if (out.missing) _ssToast(`번호 위치를 못 찾은 문항 ${out.missing}개는 V가 빠졌어요`);
+          _vwMissing(out.missing, i);
         } else {
           const im = await _ssLoadImageEl(x);
           if (my !== vw.token) return;
@@ -1763,16 +1772,20 @@
     box.innerHTML = `<div class="ss-center"><div class="ss-spinner"></div><div class="ss-sub">${mode === 'mark' ? '채점 표시 사진을 준비하는 중… (처음 한 번은 학원 PC가 위치를 찾느라 20초 정도 걸려요)' : '사진을 불러오는 중…'}</div></div>`;
     try {
       let url;
-      if (mode === 'mark') { const out = await _ssGetMarked(idx); url = out.canvas.toDataURL('image/jpeg', 0.9); }
+      if (mode === 'mark') { const out = await _ssGetMarked(idx); url = out.canvas.toDataURL('image/jpeg', 0.9); _pcMissing = out.missing || 0; }
       else url = (await _ssLoadImageEl(x)).src;
       if (tok !== _state._pcTok) return;
-      box.innerHTML = `<img id="ssPcImg" alt="" style="width:${_state.pcZoom || 100}%" src="${url}">`;
+      box.innerHTML = (mode === 'mark' && _pcMissing ? `<div class="ss-miss"><span>번호 위치를 못 찾은 문항 <b>${_pcMissing}개</b>는 V가 빠졌어요</span><button class="ss-btn ss-btn--sm" onclick="window._pcRefindMarks()">위치 다시 찾기</button></div>` : '') + `<img id="ssPcImg" alt="" style="width:${_state.pcZoom || 100}%" src="${url}">`;
       document.getElementById('ssPcImg').onclick = () => window._ssOpenMarked(idx, mode);
     } catch (e) {
       if (tok !== _state._pcTok) return;
       box.innerHTML = `<div class="ss-center"><div class="ss-sub">${esc(e && e.message || '사진을 만들지 못했어요')}</div>${uiBtn({ label: '다시 시도', onclick: 'window._pcRetryPhoto()' })}</div>`;
     }
   }
+  let _pcMissing = 0;
+  // 저장된 번호 위치·마킹 사진을 버리고 PC 의 Claude 로 다시 찾는다
+  function _ssResetMarks(x) { if (!x || !x.result) return; x.result.markPos = null; x._markCache = null; x.markPath = ''; x.markKey = ''; _markDirty(_state.students.indexOf(x)); }
+  window._pcRefindMarks = function () { const x = _state.students[_state.detailIdx]; if (!x) return; _ssResetMarks(x); _state._pcForce = x.docId; _pcPhoto(); };
   window._pcRetryPhoto = function () { _pcPhoto(); };
   window._pcShowPhoto = function () { const x = _state.students[_state.detailIdx]; if (x) { _state.pcShowDoc = x.docId; _state.pcPhotoMode = _hasMark(x) ? 'mark' : 'orig'; _pcRenderDetail(); } };   // 마킹 사진이 있으면 그것부터, 없으면 원본
   window._pcMakeMark = function () { const x = _state.students[_state.detailIdx]; if (x) { _state._pcForce = x.docId; _pcPhoto(); } };
@@ -2204,7 +2217,8 @@
 
   async function _ssEnsureMarkPos(x, img) {
     if (x.result.layout === 'table') return _ssEnsureMarkPosTable(x, img);
-    if (x.result.markPos && x.result.markPos.nums && x.result.markPos.v === 2) return x.result.markPos;   // v2: 머리글(출제일 등)의 숫자 제외
+    const _mp = x.result.markPos;   // v2: 머리글(출제일 등)의 숫자 제외 · 위치가 전체의 90% 미만이면(예전 방식이 놓친 것) 다시 찾는다. engine:'pc' = PC 의 Claude 가 찾은 것
+    if (_mp && _mp.nums && _mp.v === 2 && (_mp.engine === 'pc' || Object.keys(_mp.nums).length >= (x.result.totalQuestions || 0) * 0.9)) return _mp;
     const c = document.createElement('canvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
     c.getContext('2d').drawImage(img, 0, 0);
@@ -2227,7 +2241,7 @@
       if (c1.length) { const w = c1.sort((a, b) => a.x1 - b.x1)[0]; nums[n] = { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 }; }
     }
     const lab = j.words.filter(w => /^점수:?$/.test(w.t) && w.y1 < 0.25).sort((a, b) => b.x1 - a.x1)[0];
-    x.result.markPos = { v: 2, nums, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
+    x.result.markPos = { v: 2, engine: 'pc', nums, label: lab ? { x1: lab.x1, y1: lab.y1, x2: lab.x2, y2: lab.y2 } : null };
     _markDirty(_state.students.indexOf(x));
     return x.result.markPos;
   }
