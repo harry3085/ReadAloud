@@ -556,9 +556,11 @@
     const kind = k.layout === 'table' ? '표 형식' : '번호형';
     const thumbStyle = _state.answerKeyImage && _state.answerKeyImage.dataUrl ? ` style="background-image:url('${_state.answerKeyImage.dataUrl}')"` : '';
     const re = !!_state._reKey;
+    const pc = _isPc();
     body.innerHTML = `
       ${uiHeader({ title: '정답지 검토', back: 'window._ssUiBack()', right: uiIconBtn('more', '메뉴', { id: 'ssAkMore' }) })}
       ${uiSteps(1)}
+      ${pc ? `<div class="ss-akpc"><div class="ss-akpc__photo">${_state.answerKeyImage && _state.answerKeyImage.dataUrl ? `<img alt="정답지 사진" src="${_state.answerKeyImage.dataUrl}">` : '<div class="ss-center"><div class="ss-sub" style="color:#e8eaed;">정답지 사진이 없어요</div></div>'}</div>` : ''}
       <div class="ss-scroll" id="ssScroll"><div class="ss-col ss-pad">
         <div class="ss-row" style="border-radius:var(--radius);border:1px solid var(--border);margin-bottom:12px;align-items:center;">
           <button class="ss-thumbbtn" id="ssAkThumb"${thumbStyle} aria-label="정답지 사진 보기">${thumbStyle ? '' : iconSvg('image')}</button>
@@ -574,6 +576,12 @@
         <div class="ss-list" id="ssAkList" style="margin-top:10px;">${rows.map(o => _akRowHtml(o.q, o.i)).join('') || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">문항이 인식되지 않았어요. 다시 촬영해 주세요.</div></div>'}</div>
         ${tab === 'check' ? `<div style="text-align:center;padding:14px;"><button class="ss-link ss-link--on" id="ssAkAll">전체 ${qs.length}문항 보기</button></div>` : ''}
       </div></div>
+      ${pc ? `<aside class="ss-akpc__guide"><b>검토 방법</b>
+        <p>왼쪽 사진과 가운데 정답표를 비교하면서 틀린 정답칸을 고치세요. <span class="ss-kbd">Tab</span> 으로 다음 칸으로 이동해요.</p>
+        <p>노란색 행은 AI가 흐리게 읽은 문항이에요. [확인 필요] 탭에서 모아 볼 수 있어요.</p>
+        <b style="margin-top:14px;display:block;">다음 단계</b>
+        <p>[정답지 확정]을 누르면 이 기록이 서버에 저장돼요. 이어서 폰으로 답안지를 찍거나, PC에서 파일을 끌어다 놓거나 <span class="ss-kbd">Ctrl+V</span> 로 올릴 수 있어요.</p>
+        <p>확정하면 폰 카메라로 QR을 찍어 이 기록을 바로 열 수 있어요.</p></aside></div>` : ''}
       ${uiActionBar(`<div style="flex:1;"><button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="ssAkOk"${qs.length ? '' : ' disabled'}><span>${re ? '정답지 확정하고 다시 채점' : '정답지 확정하고 답안지 찍기'}</span>${iconSvg('chevron-right', 'ss-ic--sm')}</button><div class="ss-sub" style="text-align:center;margin-top:8px;">확정하면 다른 기기에서도 이 정답지로 이어서 채점할 수 있어요</div></div>`)}`;
     document.getElementById('ssAkOk').onclick = () => window._ssAkConfirm();
     document.getElementById('ssAkThumb').onclick = () => window._ssViewKeyImage();
@@ -1237,7 +1245,7 @@
     ov.innerHTML = `
       <div class="ss-vw__head">${uiIconBtn('x', '닫기', { id: 'vwX' })}<div class="t"><b id="vwTitle"></b><small id="vwSub"></small></div>
         <div class="ss-tabs"><button class="ss-tab ss-tab--on" data-m="mark">표시</button><button class="ss-tab" data-m="orig">원본</button></div></div>
-      <div class="ss-vw__stage" id="vwStage"><img id="vwImg" alt="" draggable="false"><div class="ss-vw__tip" id="vwTip">두 손가락으로 확대 · 두 번 탭하면 맞춤</div></div>
+      <div class="ss-vw__main"><div class="ss-vw__stage" id="vwStage"><img id="vwImg" alt="" draggable="false"><div class="ss-vw__tip" id="vwTip">두 손가락으로 확대 · 두 번 탭하면 맞춤</div></div><aside class="ss-vw__side" id="vwSide"></aside></div>
       <div class="ss-vw__chips" id="vwChips"></div>
       <div class="ss-vw__bar">${uiBtn({ icon: 'chevron-left', id: 'vwPrev' })}${uiBtn({ kind: 'primary', size: 'lg', icon: 'share', label: '카톡으로 공유', id: 'vwShare' })}${uiBtn({ icon: 'download', id: 'vwSave' })}${uiBtn({ icon: 'chevron-right', id: 'vwNext' })}</div>`;
     ov._ssCancel = () => { document.removeEventListener('keydown', onKey); ov.remove(); };
@@ -1274,6 +1282,8 @@
       ov.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('ss-tab--on', b.dataset.m === mode));
       const nb = _detailNeighbors(i);
       $v('vwPrev').disabled = nb.prev < 0; $v('vwNext').disabled = nb.next < 0;
+      $v('vwSide').innerHTML = `<div class="ss-vw__sidehead">틀린 문항 ${wrongNos.length}개</div>` + ((r.answers || []).filter(a => !a.isCorrect).map(a => `<button class="ss-vw__wr" data-n="${a.no}"><b>${a.no}</b><span><span class="q">${esc(a.stem || '')}</span><br><span class="st">${esc(String(a.studentAnswer || '').trim() || '(빈칸)')}</span> → <span class="ok">${esc(a.correctAnswer || '?')}</span></span></button>`).join('') || '<div class="ss-sub" style="padding:14px;color:#c4c7c5;">틀린 문항이 없어요</div>');
+      $v('vwChips').innerHTML = wrongNos.length ? `<span>틀린 번호</span>${wrongNos.map(n => `<button class="ss-vw__chip" data-n="${n}">${n}</button>`).join('')}` : '<span>틀린 문항이 없어요</span>';
       let url = '';
       try {
         if (mode === 'mark') {
@@ -1292,12 +1302,12 @@
       img.onload = () => { vw.iw = img.naturalWidth; vw.ih = img.naturalHeight; fitView(); };
       img.src = url;
       // 틀린 번호 칩
-      $v('vwChips').innerHTML = wrongNos.length ? `<span>틀린 번호</span>${wrongNos.map(n => `<button class="ss-vw__chip" data-n="${n}">${n}</button>`).join('')}` : '<span>틀린 문항이 없어요</span>';
+
     }
 
     $v('vwX').onclick = close;
     ov.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => show(vw.idx, b.dataset.m); });
-    $v('vwChips').onclick = (e) => {
+    $v('vwChips').onclick = $v('vwSide').onclick = (e) => {
       const c = e.target.closest('[data-n]'); if (!c) return;
       const t = _ssMarkTarget(_state.students[vw.idx], +c.dataset.n);
       if (t) focusOn(t.nx, t.ny); else _ssToast('이 문항의 위치를 알 수 없어요');
