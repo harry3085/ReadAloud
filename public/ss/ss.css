@@ -294,3 +294,21 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pc__rs:hover::after, .ss-pc__rs.on::after { background:var(--brand); }
 
 .ss-pc__rs--in { right:auto; left:-4px; }
+
+/* PC 학생 목록: 12명까지 스크롤 없이 보이도록 촘촘하게 */
+.ss-pc__top { height:44px; }
+.ss-pc__c2 .ss-pc__h { padding:8px 12px; }
+.ss-pc__c2 .ss-stat { padding:6px 10px; } .ss-pc__c2 .ss-stat b { font-size:20px; } .ss-pc__c2 .ss-stat small { font-size:11px; }
+.ss-pc__c2 .ss-pill { height:30px; padding:0 12px; font-size:13px; }
+.ss-pc__c2 .ss-row { padding:5px 12px; gap:8px; min-height:0; }
+.ss-pc__c2 .ss-row .ss-grow { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow:hidden; white-space:nowrap; }
+.ss-pc__c2 .ss-rank { width:22px; font-size:13px; }
+.ss-pc__c2 .ss-pts { display:flex; align-items:baseline; gap:6px; }
+.ss-pc__c2 .ss-pts b { font-size:18px; display:inline; } .ss-pc__c2 .ss-pts small { font-size:12px; }
+.ss-pc__c2 .ss-chip { padding:1px 7px; font-size:11px; }
+.ss-pc__c2 .ss-pc__h .ss-btn { height:38px; }
+
+/* 왼쪽 열 제목 영역을 더 진한 배경으로 구분 */
+.ss-pc__c1 > .ss-pc__h, .ss-pc__c2 > .ss-pc__h { background:#dde1e6; border-bottom:1px solid #c6ccd3; }
+.ss-pc__c2 > .ss-pc__h:last-child { border-top:1px solid #c6ccd3; }
+.ss-pc__c2 .ss-pc__h .ss-stat { background:#f4f6f8; }

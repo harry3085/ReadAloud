@@ -1439,7 +1439,7 @@
       if (s.status === 'error') return `<button class="ss-row ss-row--tap" data-retry="${esc(s.docId)}" style="background:var(--bad-bg);"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title ss-tone-bad">채점 실패</b><span class="ss-sub" style="display:block;">눌러서 다시 채점</span></span></button>`;
       if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span></div>`;
       const pct = _pctOf(r);
-      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}${_hasMark(s) ? ' ' + uiChip('마킹', 'brand') : ''}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
+      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b> ${_hasMark(s) ? uiChip('마킹', 'brand') : ''}${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     el.innerHTML = `
       <div class="ss-pc__h" style="display:flex;align-items:center;gap:6px;"><b class="ss-grow" style="font-size:17px;word-break:break-word;">${esc(_testNameOf(null))}</b>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div>
@@ -1538,7 +1538,7 @@
     }
   }
   window._pcRetryPhoto = function () { _pcPhoto(); };
-  window._pcShowPhoto = function () { const x = _state.students[_state.detailIdx]; if (x) { _state.pcShowDoc = x.docId; _pcPhoto(); } };
+  window._pcShowPhoto = function () { const x = _state.students[_state.detailIdx]; if (x) { _state.pcShowDoc = x.docId; _state.pcPhotoMode = _hasMark(x) ? 'mark' : 'orig'; _pcRenderDetail(); } };   // 마킹 사진이 있으면 그것부터, 없으면 원본
   window._pcMakeMark = function () { const x = _state.students[_state.detailIdx]; if (x) { _state._pcForce = x.docId; _pcPhoto(); } };
   window._pcSetPhotoMode = function (m) { _state.pcPhotoMode = m; const x = _state.students[_state.detailIdx]; if (x) _state.pcShowDoc = x.docId; _pcRenderDetail(); };
   window._pcZoom = function (d) {
