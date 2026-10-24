@@ -377,3 +377,9 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-akpc2__main .ss-col { max-width:none; }
 .ss-akpc2 .ss-steps { max-width:none; margin:0; background:var(--surface); }
 .ss-akpc2 .ss-actionbar { justify-content:stretch; } .ss-akpc2 .ss-actionbar > div { max-width:none; }
+
+/* PC: ⋯ 메뉴는 버튼 옆의 작은 팝업 */
+.ss-scrim--pc { background:transparent; align-items:flex-start; justify-content:flex-start; }
+.ss-sheet--pop { position:fixed; max-width:none; border-radius:12px; padding:6px 0; box-shadow:0 6px 24px rgba(0,0,0,.22); border:1px solid var(--border); }
+.ss-sheet--pop .ss-sheet__item { min-height:42px; padding:0 16px; font-size:15px; gap:12px; }
+.ss-sheet--pop .ss-sheet__item .ss-ic { width:19px; height:19px; }

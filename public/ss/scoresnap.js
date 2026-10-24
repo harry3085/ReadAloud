@@ -178,12 +178,15 @@
     if (el2 && top) el2.scrollTop = top;
   }
 
-  // 아래에서 올라오는 메뉴(⋯)
+  // 메뉴(⋯): 폰은 아래에서 올라오는 시트, PC 는 누른 버튼 옆에 뜨는 작은 메뉴
+  let _ssLastBtn = null;
+  document.addEventListener('click', (e) => { _ssLastBtn = e.target.closest('button') || null; }, true);
   function _ssSheet(items, title) {
     const sc = document.createElement('div');
-    sc.className = 'ss-scrim';
+    const pcMenu = window.innerWidth >= 1024 && _ssLastBtn && document.body.contains(_ssLastBtn);
+    sc.className = 'ss-scrim' + (pcMenu ? ' ss-scrim--pc' : '');
     sc.setAttribute('data-ss-sub', '1');
-    sc.innerHTML = `<div class="ss-sheet">${title ? `<div class="ss-sheet__title">${esc(title)}</div>` : ''}${items.map((it, i) =>
+    sc.innerHTML = `<div class="ss-sheet${pcMenu ? ' ss-sheet--pop' : ''}">${title ? `<div class="ss-sheet__title">${esc(title)}</div>` : ''}${items.map((it, i) =>
       `<button class="ss-sheet__item${it.danger ? ' ss-sheet__item--danger' : ''}" data-i="${i}">${it.icon ? iconSvg(it.icon) : ''}<span>${esc(it.label)}</span></button>`).join('')}</div>`;
     sc._ssCancel = () => sc.remove();
     sc.onclick = (e) => {
@@ -194,6 +197,13 @@
       setTimeout(fn, 160);                       // 뒤로가기 기록 정리가 끝난 뒤 실행 (기록이 꼬이지 않게)
     };
     document.body.appendChild(sc);
+    if (pcMenu) {
+      const r = _ssLastBtn.getBoundingClientRect(), box = sc.firstElementChild, w = 270;
+      box.style.width = w + 'px';
+      const h = box.offsetHeight;
+      box.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+      box.style.top = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    }
     _ssPushSub(sc);
   }
 
