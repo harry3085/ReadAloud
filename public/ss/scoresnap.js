@@ -1345,13 +1345,48 @@
     if (_state.phase === 'pc') _pcRenderSessions();
   }
 
+  // ─── 열 너비 조절 (경계를 끌면 변경, 더블클릭 = 기본값) — 이 브라우저에 저장 ───
+  const _PC_COLS = { pc1: [260, 180, 420], pc2: [320, 240, 560], pcp: [0, 280, 1400] };   // [기본, 최소, 최대]  pcp(사진 폭) 기본 0 = 비율
+  function _pcColsLoad() { try { return JSON.parse(localStorage.getItem('ssPcCols') || '{}') || {}; } catch (_) { return {}; } }
+  function _pcColsApply() {
+    const g = document.getElementById('ssPcGrid'); if (!g) return;
+    const v = _pcColsLoad();
+    g.style.setProperty('--pc1', (v.pc1 || _PC_COLS.pc1[0]) + 'px');
+    g.style.setProperty('--pc2', (v.pc2 || _PC_COLS.pc2[0]) + 'px');
+    g.style.setProperty('--pcp', v.pcp ? v.pcp + 'px' : '1.3fr');
+  }
+  function _pcWireResize(handle, key) {
+    if (!handle) return;
+    handle.ondblclick = () => { const v = _pcColsLoad(); delete v[key]; try { localStorage.setItem('ssPcCols', JSON.stringify(v)); } catch (_) {} _pcColsApply(); };
+    handle.onpointerdown = (e) => {
+      e.preventDefault(); handle.setPointerCapture(e.pointerId);
+      const g = document.getElementById('ssPcGrid');
+      const cur = key === 'pcp' ? (document.querySelector('.ss-pc__photo') || {}).offsetWidth : parseFloat(getComputedStyle(g).getPropertyValue('--' + key));
+      const x0 = e.clientX, [, mn, mx0] = _PC_COLS[key];
+      const mx = key === 'pcp' ? Math.min(mx0, ((document.querySelector('.ss-pc__two') || {}).offsetWidth || 1000) - 240) : mx0;
+      handle.classList.add('on');
+      const move = (ev) => {
+        const w = Math.round(Math.min(mx, Math.max(mn, cur + ev.clientX - x0)));
+        g.style.setProperty('--' + key, w + 'px');
+      };
+      const up = () => {
+        handle.releasePointerCapture(e.pointerId); handle.classList.remove('on');
+        handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up);
+        const w = parseFloat(g.style.getPropertyValue('--' + key));
+        const v = _pcColsLoad(); v[key] = w; try { localStorage.setItem('ssPcCols', JSON.stringify(v)); } catch (_) {}
+      };
+      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+    };
+  }
+
   function _renderPc() {
     _state.phase = 'pc';
     const body = _body(); if (!body) return;
     if (!document.getElementById('ssPcGrid')) {
       body.innerHTML = `
         <header class="ss-pc__top"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>
-        <div class="ss-pc__grid" id="ssPcGrid"><aside class="ss-pc__c1" id="ssPcSess"></aside><section class="ss-pc__c2" id="ssPcStu"></section><section class="ss-pc__c3" id="ssPcDet"></section></div>`;
+        <div class="ss-pc__grid" id="ssPcGrid"><aside class="ss-pc__c1" id="ssPcSess"></aside><section class="ss-pc__c2" id="ssPcStu"></section><section class="ss-pc__c3" id="ssPcDet"></section><i class="ss-pc__rs" id="ssPcRs1" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i><i class="ss-pc__rs" id="ssPcRs2" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i></div>`;
+      _pcColsApply(); _pcWireResize(document.getElementById('ssPcRs1'), 'pc1'); _pcWireResize(document.getElementById('ssPcRs2'), 'pc2');
       document.getElementById('ssPcLogout').onclick = () => window.dispatchEvent(new Event('ss-logout'));
     }
     _pcRenderSessions(); _pcRenderStudents(); _pcRenderDetail();
@@ -1439,7 +1474,7 @@
         ${uiBtn({ kind: 'primary', icon: 'copy', label: '카톡용 복사 (Ctrl+C)', onclick: `window._ssCopyMarked(${idx})` })}
       </div>
       <div class="ss-pc__two">
-        <div class="ss-pc__photo">
+        <div class="ss-pc__photo"><i class="ss-pc__rs ss-pc__rs--in" id="ssPcRs3" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i>
           <div class="ss-pc__bar" style="border-bottom:1px solid var(--border);">
             <div class="ss-tabs"><button class="ss-tab${mode === 'mark' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('mark')">채점 표시</button><button class="ss-tab${mode === 'orig' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('orig')">원본</button></div>
             <span class="ss-grow"></span>
@@ -1451,6 +1486,7 @@
         <div class="ss-pc__rows"><div class="ss-scroll" id="ssScroll"><div id="ssDetailRoot"></div></div></div>
       </div>`;
     _renderDetailBody(idx);
+    _pcWireResize(document.getElementById('ssPcRs3'), 'pcp');
     _pcPhoto();
   }
 
