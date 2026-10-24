@@ -1217,6 +1217,7 @@
       }
     }
     x._markCache = { key, canvas: out.canvas, missing: out.missing };
+    if (_state.phase === 'pc') _pcRenderStudents();
     return { canvas: out.canvas, missing: out.missing, x };
   }
 
