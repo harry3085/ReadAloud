@@ -19,8 +19,9 @@
   .login-box h1 { margin:0 0 4px; font-size:26px; font-weight:800; color:var(--brand-dark); }
   .login-box .ss-input { margin-bottom:10px; min-height:50px; }
   .err { color:var(--bad); font-size:13px; min-height:18px; margin-bottom:8px; }
-  #pcBanner { position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:100050; background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn-bd);
-    padding:8px 14px; border-radius:20px; font-size:12px; font-weight:600; max-width:92vw; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  #pcBanner { position:fixed; left:50%; top:12px; transform:translateX(-50%); z-index:100050; background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn-bd);
+    padding:10px 18px; border-radius:12px; font-size:14px; font-weight:600; max-width:92vw; text-align:center; box-shadow:0 4px 14px rgba(0,0,0,.16); }
+  @media (min-width:1024px) { #pcBanner { top:56px; } }
 </style>
 </head>
 <body class="ss-app">
@@ -75,16 +76,20 @@ window._ssStore = createScoreSnapStore({ db, storage, getUid: () => currentUser 
 
 function modal(title, sub, withCancel) {
   return new Promise((resolve) => {
+    const danger = /삭제/.test(String(title || ''));          // 삭제 확인은 빨간 버튼
     const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100010;display:flex;align-items:center;justify-content:center;padding:20px;';
-    ov.innerHTML = `<div style="background:#fff;color:#222;border-radius:14px;padding:22px;max-width:360px;width:100%;">
-      <div style="font-size:16px;font-weight:700;line-height:1.5;white-space:pre-wrap;"></div>
-      <div style="font-size:13px;color:#888;margin:8px 0 18px;white-space:pre-wrap;"></div>
-      <div style="display:flex;gap:8px;">${withCancel ? '<button data-v="0" style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px;">취소</button>' : ''}<button data-v="1" style="flex:1;padding:12px;border:none;border-radius:10px;background:#E8714A;color:#fff;font-size:14px;font-weight:700;">확인</button></div></div>`;
+    ov.className = 'ss-scrim ss-scrim--modal'; ov.style.zIndex = '100010';
+    ov.innerHTML = `<div class="ss-dialog" role="dialog" aria-modal="true">
+      <b class="ss-dialog__t"></b><div class="ss-dialog__s"></div>
+      <div class="ss-dialog__b">${withCancel ? '<button class="ss-btn ss-btn--lg" data-v="0">취소</button>' : ''}<button class="ss-btn ss-btn--lg ${danger ? 'ss-btn--danger' : 'ss-btn--primary'}" data-v="1">${danger ? '삭제' : '확인'}</button></div></div>`;
     const card = ov.firstElementChild;
-    card.children[0].textContent = title || ''; card.children[1].textContent = sub || '';
-    ov.onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; ov.remove(); resolve(b.dataset.v === '1'); };
+    card.querySelector('.ss-dialog__t').textContent = title || ''; card.querySelector('.ss-dialog__s').textContent = sub || '';
+    const done = (v) => { document.removeEventListener('keydown', onKey, true); ov.remove(); resolve(v); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); done(true); } };
+    ov.onclick = (e) => { const bt = e.target.closest('button[data-v]'); if (bt) return done(bt.dataset.v === '1'); if (e.target === ov && withCancel) done(false); };
+    document.addEventListener('keydown', onKey, true);
     document.body.appendChild(ov);
+    const first = ov.querySelector('button[data-v="1"]'); if (first) first.focus();
   });
 }
 window.showConfirm = (title, sub) => modal(title, sub, true);

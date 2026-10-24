@@ -397,3 +397,9 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-kl__row .ans { color:var(--ok); font-weight:700; word-break:break-word; } .ss-kl__row i { color:var(--sub); font-weight:400; }
 
 @media (min-width:1024px) { .ss-header [data-ss-pcchip] { display:none; } }
+
+/* 확인/알림 대화상자 */
+.ss-dialog { width:min(400px,92vw); background:var(--surface); color:var(--text); border-radius:18px; padding:22px 22px 18px; box-shadow:0 12px 40px rgba(0,0,0,.3); font-family:var(--font); }
+.ss-dialog__t { display:block; font-size:19px; line-height:1.4; white-space:pre-wrap; }
+.ss-dialog__s { margin:8px 0 18px; font-size:15px; line-height:1.55; color:var(--sub); white-space:pre-wrap; }
+.ss-dialog__b { display:flex; gap:10px; } .ss-dialog__b .ss-btn { flex:1; }
