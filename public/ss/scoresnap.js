@@ -272,6 +272,7 @@
       case 'student-capture':
         if ((_state.students || []).some(x => x.status === 'done')) _renderResultGrid(); else _renderHome();
         break;
+      case 'pc': _ssPush(); break;
       case 'answerKey-ocr': _ssPush(); break;                              // 읽는 중에는 그대로 (취소 링크 사용)
       case 'answerKey-review': _renderAnswerKeyCapture(); break;
       case 'answerKey-capture':
@@ -321,6 +322,7 @@
   function _onStudentsChanged() {
     if (_state.phase === 'student-capture') _keepScroll(_renderStudentCapture);
     else if (_state.phase === 'result-grid') _keepScroll(_renderResultGrid);
+    else if (_state.phase === 'pc') { _pcRenderStudents(); const cur = _state.students && _state.students[_state.detailIdx]; if (!cur || cur.status !== 'done') _pcRenderDetail(); }
   }
 
   // 정답지 확정 직후 세션이 아직 만들어지는 중이면 기다린다
@@ -335,6 +337,7 @@
     _stopWatch();
     _state.phase = 'home'; _state.sid = null; _state.students = []; _state.answerKey = null;
     const body = _body(); if (!body) return;
+    if (_isPc()) { _state.detailIdx = -1; _renderPc(); _pcLoadSessions(true); return; }
     body.innerHTML = `
       <div class="ss-brandwrap"><div class="ss-col">
         <div class="ss-brandwrap__row">
@@ -390,7 +393,8 @@
       };
       _startWatch(sid);
       _ssPush();
-      if (!_state.students.length) _renderStudentCapture(); else _renderResultGrid();
+      if (_isPc() && _state.students.length) _renderPc();
+      else if (!_state.students.length) _renderStudentCapture(); else _renderResultGrid();
     } catch (e) {
       _ssToast('채점 기록을 열 수 없어요: ' + (e && e.message));
     }
@@ -786,10 +790,11 @@
   };
 
   // ─── 3-5. 결과 목록 ───
-  window._ssSetSort = function (v) { _state.sort = v; _keepScroll(_renderResultGrid); };
-  window._ssToggleOnlyCheck = function () { _state.onlyCheck = !_state.onlyCheck; _keepScroll(_renderResultGrid); };
+  window._ssSetSort = function (v) { _state.sort = v; if (_state.phase === 'pc') _pcRenderStudents(); else _keepScroll(_renderResultGrid); };
+  window._ssToggleOnlyCheck = function () { _state.onlyCheck = !_state.onlyCheck; if (_state.phase === 'pc') _pcRenderStudents(); else _keepScroll(_renderResultGrid); };
 
   function _renderResultGrid() {
+    if (_isPc()) return _renderPc();
     _state.phase = 'result-grid';
     const body = _body(); if (!body) return;
     const all = _state.students || [];
@@ -874,6 +879,7 @@
       await _store().deleteSession(_state.sid);
       _ssToast('삭제했어요');
       _stopWatch();
+      _pcSess = null;
       _renderHome();
     } catch (e) { _ssToast('삭제 실패: ' + (e && e.message)); }
   };
@@ -911,9 +917,10 @@
     const s = _state.students && _state.students[idx];
     if (!s || s.status !== 'done' || !s.result) return;
     _state.detailIdx = idx;
-    _state.phase = 'student-detail';
     const wrong = (s.result.answers || []).filter(a => !a.isCorrect).length;
     _state.detailTab = wrong ? 'wrong' : ((s.result.uncertainQuestions || []).length ? 'check' : 'right');
+    if (_isPc()) { _renderPc(); return; }
+    _state.phase = 'student-detail';
     _renderDetail(idx);
   };
 
@@ -939,7 +946,7 @@
     ]);
     _renderDetailBody(idx);
   }
-  window._ssDetailGo = function (i) { if (i >= 0) { _state.detailIdx = i; const s = _state.students[i]; const w = (s.result.answers || []).filter(a => !a.isCorrect).length; _state.detailTab = w ? 'wrong' : 'right'; _renderDetail(i); } };
+  window._ssDetailGo = function (i) { if (i >= 0) { _state.detailIdx = i; const s = _state.students[i]; const w = (s.result.answers || []).filter(a => !a.isCorrect).length; _state.detailTab = w ? 'wrong' : 'right'; if (_isPc()) _renderPc(); else _renderDetail(i); } };
 
   // ─── 시험 형식 판별: basic(단어→뜻) / ee(영영) / table(표) ───
   function _ssDetectViewMode(key) {
@@ -1083,6 +1090,7 @@
     s._markCache = null;
     _recalc(s.result); _markDirty(idx);
     _keepScroll(() => _renderDetailBody(idx));
+    _pcAfterEdit(true);
   };
   window._ssResetOverrides = function (idx) {
     const s = _state.students && _state.students[idx]; if (!s || !s.result) return;
@@ -1090,11 +1098,13 @@
     s._markCache = null;
     _recalc(s.result); _markDirty(idx);
     _keepScroll(() => _renderDetailBody(idx));
+    _pcAfterEdit(true);
   };
   window._ssEditStudentName = function (idx, val) {
     const s = _state.students && _state.students[idx]; if (!s || !s.result) return;
     s.result.studentName = String(val || '').trim();
     _markDirty(idx);
+    _pcAfterEdit(false);
   };
 
   // 성적표 PNG — 화면 밖에 카드를 그려 캡처 (화면 표시와는 별개)
@@ -1292,6 +1302,186 @@
     window.addEventListener('resize', () => { if (vw.iw) fitView(); });
     await show(idx, 'mark');
   };
+  // ───────────────────────────────────────────────────────────────────────────
+  // 4단계 · PC 레이아웃 (폭 1024px 이상): 기록 | 학생 목록 | 학생 상세(사진 + 문항표) 3칸
+  // 새 시험·정답지·답안지 추가 화면은 폰 화면을 가운데 정렬해 그대로 쓴다.
+  // ───────────────────────────────────────────────────────────────────────────
+  const _isPc = () => window.innerWidth >= 1024;
+  let _pcSess = null;                      // 기록 목록 캐시 (화면을 오가도 유지)
+
+  async function _pcLoadSessions(force) {
+    if (_pcSess && !force) return;
+    try { _pcSess = await _store().listSessions(); } catch (e) { console.warn('[scoresnap] 기록 목록 실패:', e && e.message); _pcSess = _pcSess || []; }
+    if (_state.phase === 'pc') _pcRenderSessions();
+  }
+
+  function _renderPc() {
+    _state.phase = 'pc';
+    const body = _body(); if (!body) return;
+    if (!document.getElementById('ssPcGrid')) {
+      body.innerHTML = `
+        <header class="ss-pc__top"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>
+        <div class="ss-pc__grid" id="ssPcGrid"><aside class="ss-pc__c1" id="ssPcSess"></aside><section class="ss-pc__c2" id="ssPcStu"></section><section class="ss-pc__c3" id="ssPcDet"></section></div>`;
+      document.getElementById('ssPcLogout').onclick = () => window.dispatchEvent(new Event('ss-logout'));
+    }
+    _pcRenderSessions(); _pcRenderStudents(); _pcRenderDetail();
+    _pcLoadSessions(!_pcSess);
+  }
+
+  function _pcRenderSessions() {
+    const el = document.getElementById('ssPcSess'); if (!el) return;
+    const rows = (_pcSess || []).map(x => {
+      const n = x.studentCount || 0;
+      const sub = [_fmtAgo(x.createdAtMs), x.questionCount ? `${x.questionCount}문항` : '', n ? `${n}명` : '', (n && typeof x.avgScore === 'number') ? `평균 ${x.avgScore}` : ''].filter(Boolean).join(' · ');
+      return `<button class="ss-row ss-row--tap${x.id === _state.sid ? ' ss-row--on' : ''}" data-sid="${esc(x.id)}" data-ms="${esc(x.createdAtMs || 0)}"><span class="ss-grow"><b class="ss-title" style="display:block;word-break:break-word;">${esc(x.testName || '시험')}</b><span class="ss-sub">${esc(sub)}</span></span>${x.needCheck > 0 ? uiChip(`확인 ${x.needCheck}`, 'warn') : ''}</button>`;
+    }).join('');
+    el.innerHTML = `<div class="ss-pc__h">${uiBtn({ kind: 'primary', block: true, icon: 'plus', label: '새 시험 채점', id: 'ssPcNew' })}</div>
+      <div class="ss-pc__scroll" id="ssPcSessScroll">${_pcSess ? (rows || '<div class="ss-center"><div class="ss-sub">채점 기록이 없어요</div></div>') : '<div class="ss-center"><div class="ss-spinner"></div></div>'}</div>`;
+    document.getElementById('ssPcNew').onclick = () => window._ssNewExam();
+    const sc = document.getElementById('ssPcSessScroll');
+    sc.onclick = (e) => { const b = e.target.closest('[data-sid]'); if (b && b.dataset.sid !== _state.sid) _ssOpenServerSession(b.dataset.sid, { createdAtMs: +b.dataset.ms || 0 }); };
+  }
+
+  function _pcRenderStudents() {
+    const el = document.getElementById('ssPcStu'); if (!el) return;
+    if (!_state.sid) { el.innerHTML = '<div class="ss-center"><div class="ss-sub">왼쪽에서 채점 기록을 고르거나<br>[새 시험 채점]으로 시작하세요.</div></div>'; return; }
+    const prevTop = (document.getElementById('ssPcStuScroll') || {}).scrollTop || 0;
+    const all = _state.students || [];
+    const done = all.filter(s => s.status === 'done' && s.result);
+    const avg = done.length ? Math.round(done.reduce((a, s) => a + _pctOf(s.result), 0) / done.length) : 0;
+    const nCheck = done.filter(_needsCheck).length;
+    const sort = _state.sort || 'order';
+    let rows = all.map((s, i) => ({ s, i }));
+    if (_state.onlyCheck) rows = rows.filter(o => _needsCheck(o.s));
+    if (sort === 'low') rows.sort((a, b) => (a.s.status === 'done' ? _pctOf(a.s.result) : 999) - (b.s.status === 'done' ? _pctOf(b.s.result) : 999));
+    else if (sort === 'name') rows.sort((a, b) => String((a.s.result && a.s.result.studentName) || '힣').localeCompare(String((b.s.result && b.s.result.studentName) || '힣'), 'ko'));
+    const rowHtml = rows.map(({ s, i }, n) => {
+      const r = s.result, on = i === _state.detailIdx ? ' ss-row--on' : '';
+      if (s.status === 'error') return `<button class="ss-row ss-row--tap" data-retry="${esc(s.docId)}" style="background:var(--bad-bg);"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title ss-tone-bad">채점 실패</b><span class="ss-sub" style="display:block;">눌러서 다시 채점</span></span></button>`;
+      if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span></div>`;
+      const pct = _pctOf(r);
+      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="ss-pc__h" style="display:flex;align-items:center;gap:6px;"><b class="ss-grow" style="font-size:17px;word-break:break-word;">${esc(_testNameOf(null))}</b>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div>
+      <div class="ss-pc__h" style="padding-top:0;"><div class="ss-stats">
+        <div class="ss-stat"><small>평균</small><b>${avg}<span style="font-size:14px;">점</span></b></div>
+        <div class="ss-stat"><small>채점</small><b>${done.length}<span style="font-size:14px;">명</span></b></div>
+        <button class="ss-stat ss-stat--warn" style="text-align:left;border:1px solid var(--warn-bd);${_state.onlyCheck ? 'outline:2px solid var(--warn);' : ''}" onclick="window._ssToggleOnlyCheck()"><small>확인</small><b>${nCheck}<span style="font-size:14px;">명</span></b></button></div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">${[['order', '찍은 순서'], ['low', '낮은 점수'], ['name', '이름']].map(([v, l]) => `<button class="ss-pill${sort === v ? ' ss-pill--on' : ''}" onclick="window._ssSetSort('${v}')">${l}</button>`).join('')}</div></div>
+      <div class="ss-pc__scroll" id="ssPcStuScroll"><div class="ss-list" style="border-radius:0;border-left:0;border-right:0;">${rowHtml || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">표시할 학생이 없어요.</div></div>'}</div></div>
+      <div class="ss-pc__h" style="border-top:1px solid var(--border);">${uiBtn({ block: true, icon: 'plus', label: '답안지 더 추가', id: 'ssPcAdd' })}</div>`;
+    const sc = document.getElementById('ssPcStuScroll'); if (sc) { sc.scrollTop = prevTop; }
+    document.getElementById('ssPcAdd').onclick = () => window._ssBackToStudentCapture();
+    document.getElementById('ssPcMore').onclick = () => _ssSheet([
+      { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
+      { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
+      { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },
+      { label: '이 기록 삭제', icon: 'trash', danger: true, fn: () => window._ssDeleteCurrentSession() },
+    ]);
+    sc.onclick = (e) => {
+      const rt = e.target.closest('[data-retry]'); if (rt) return window._ssRetryStudent(rt.dataset.retry);
+      const o = e.target.closest('[data-open]'); if (o) window._ssOpenStudentDetail(+o.dataset.open);
+    };
+  }
+
+  function _pcRenderDetail() {
+    const el = document.getElementById('ssPcDet'); if (!el) return;
+    if (!_state.sid) { el.innerHTML = ''; return; }
+    let idx = _state.detailIdx;
+    const ok = (i) => { const s = _state.students && _state.students[i]; return s && s.status === 'done' && s.result; };
+    if (!ok(idx)) {
+      idx = (_state.students || []).findIndex((s) => s.status === 'done' && s.result);
+      if (idx < 0) { el.innerHTML = '<div class="ss-center"><div class="ss-sub">채점이 끝난 학생이 아직 없어요.</div></div>'; return; }
+      _state.detailIdx = idx;
+      const w = (_state.students[idx].result.answers || []).filter(a => !a.isCorrect).length;
+      _state.detailTab = w ? 'wrong' : 'right';
+    }
+    const s = _state.students[idx], nb = _detailNeighbors(idx);
+    const mode = _state.pcPhotoMode || 'mark', zoom = _state.pcZoom || 100;
+    el.innerHTML = `
+      <div class="ss-pc__bar">
+        ${uiIconBtn('chevron-up', '이전 학생 (↑)', { box: true, disabled: nb.prev < 0, onclick: `window._ssDetailGo(${nb.prev})` })}
+        ${uiIconBtn('chevron-down', '다음 학생 (↓)', { box: true, disabled: nb.next < 0, onclick: `window._ssDetailGo(${nb.next})` })}
+        <span class="ss-sub" style="font-weight:700;">${nb.pos} / ${nb.total}</span><span class="ss-grow"></span>
+        ${uiBtn({ icon: 'download', label: '성적표 저장', onclick: `window._ssDownloadStudentPng(${idx})` })}
+        ${uiBtn({ kind: 'primary', icon: 'copy', label: '카톡용 복사 (Ctrl+C)', onclick: `window._ssCopyMarked(${idx})` })}
+      </div>
+      <div class="ss-pc__two">
+        <div class="ss-pc__photo">
+          <div class="ss-pc__bar" style="border-bottom:1px solid var(--border);">
+            <div class="ss-tabs"><button class="ss-tab${mode === 'mark' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('mark')">채점 표시</button><button class="ss-tab${mode === 'orig' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('orig')">원본</button></div>
+            <span class="ss-grow"></span>
+            ${uiIconBtn('minus', '축소', { box: true, onclick: 'window._pcZoom(-25)' })}<span class="ss-sub" id="ssPcZoomLbl" style="min-width:44px;text-align:center;font-weight:700;">${zoom}%</span>${uiIconBtn('plus', '확대', { box: true, onclick: 'window._pcZoom(25)' })}
+            ${uiBtn({ size: 'sm', label: '맞춤', onclick: 'window._pcZoom(0)' })}${uiIconBtn('maximize', '전체 화면', { box: true, onclick: `window._ssOpenMarked(${idx})` })}
+          </div>
+          <div class="ss-pc__photobox" id="ssPcPhotoBox"></div>
+        </div>
+        <div class="ss-pc__rows"><div class="ss-scroll" id="ssScroll"><div id="ssDetailRoot"></div></div></div>
+      </div>`;
+    _renderDetailBody(idx);
+    _pcPhoto();
+  }
+
+  async function _pcPhoto() {
+    const idx = _state.detailIdx, box = document.getElementById('ssPcPhotoBox');
+    const x = _state.students && _state.students[idx];
+    if (!box || !x || !x.result) return;
+    const tok = _state._pcTok = (_state._pcTok || 0) + 1;
+    const mode = _state.pcPhotoMode || 'mark';
+    box.innerHTML = `<div class="ss-center"><div class="ss-spinner"></div><div class="ss-sub">${mode === 'mark' ? '채점 표시 사진을 준비하는 중… (처음 한 번은 학원 PC가 위치를 찾느라 20초 정도 걸려요)' : '사진을 불러오는 중…'}</div></div>`;
+    try {
+      let url;
+      if (mode === 'mark') { const out = await _ssGetMarked(idx); url = out.canvas.toDataURL('image/jpeg', 0.9); }
+      else url = (await _ssLoadImageEl(x)).src;
+      if (tok !== _state._pcTok) return;
+      box.innerHTML = `<img id="ssPcImg" alt="" style="width:${_state.pcZoom || 100}%" src="${url}">`;
+      document.getElementById('ssPcImg').onclick = () => window._ssOpenMarked(idx);
+    } catch (e) {
+      if (tok !== _state._pcTok) return;
+      box.innerHTML = `<div class="ss-center"><div class="ss-sub">${esc(e && e.message || '사진을 만들지 못했어요')}</div>${uiBtn({ label: '다시 시도', onclick: 'window._pcRetryPhoto()' })}</div>`;
+    }
+  }
+  window._pcRetryPhoto = function () { _pcPhoto(); };
+  window._pcSetPhotoMode = function (m) { _state.pcPhotoMode = m; _pcRenderDetail(); };
+  window._pcZoom = function (d) {
+    _state.pcZoom = d === 0 ? 100 : Math.min(400, Math.max(50, (_state.pcZoom || 100) + d));
+    const img = document.getElementById('ssPcImg'); if (img) img.style.width = _state.pcZoom + '%';
+    const l = document.getElementById('ssPcZoomLbl'); if (l) l.textContent = _state.pcZoom + '%';
+  };
+  // ✓/✗·이름 수정 후: 학생 목록 점수 + 사진을 다시 반영
+  let _pcEditTimer = 0;
+  function _pcAfterEdit(photo) {
+    if (_state.phase !== 'pc') return;
+    _pcRenderStudents();
+    if (photo) { clearTimeout(_pcEditTimer); _pcEditTimer = setTimeout(_pcPhoto, 350); }
+  }
+
+  // 키보드: ↑↓ 학생 이동, Ctrl+C 카톡용 복사
+  document.addEventListener('keydown', (e) => {
+    if (_state.phase !== 'pc' || document.querySelector('[data-ss-sub]')) return;
+    const t = e.target, typing = t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+    if (typing) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const nb = _detailNeighbors(_state.detailIdx);
+      const to = e.key === 'ArrowDown' ? nb.next : nb.prev;
+      if (to >= 0) { e.preventDefault(); window._ssDetailGo(to); }
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+      const sel = window.getSelection && String(window.getSelection());
+      if (sel) return;                       // 글자를 선택해 둔 상태의 복사는 그대로
+      e.preventDefault(); window._ssCopyMarked(_state.detailIdx);
+    }
+  });
+  // 창 크기가 1024px 경계를 넘으면 레이아웃 전환
+  let _lastPc = _isPc();
+  window.addEventListener('resize', () => {
+    const now = _isPc(); if (now === _lastPc) return; _lastPc = now;
+    if (!document.getElementById('scoreSnapOverlay')) return;
+    if (['home', 'result-grid', 'student-detail', 'pc'].includes(_state.phase)) {
+      if (_state.sid) { if (now) _renderPc(); else _renderResultGrid(); } else _renderHome();
+    }
+  });
+
   // 옛 이름 호환 (정답 목록·사진 보기 등에서 사용)
   window._ssShowMarkedPhoto = window._ssOpenMarked;
 

@@ -214,6 +214,26 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-vw__bar .ss-btn { background:#3c4043; border-color:#3c4043; color:#fff; } .ss-vw__bar .ss-btn--primary { background:var(--brand); border-color:var(--brand); flex:1; }
 .ss-vw__bar .ss-btn:disabled { opacity:.35; }
 
+/* 4단계: PC 3칸 레이아웃 */
+.ss-pc__top { flex-shrink:0; height:56px; background:var(--brand); color:#fff; display:flex; align-items:center; gap:14px; padding:0 20px; font-size:15px; }
+.ss-pc__top b { font-size:20px; } .ss-pc__top .ss-btn { background:rgba(255,255,255,.2); color:#fff; border-color:transparent; }
+.ss-pc__top .ss-status { color:#fff !important; }
+.ss-pc__grid { flex:1; min-height:0; display:grid; grid-template-columns:260px 320px 1fr; }
+.ss-pc__c1, .ss-pc__c2 { display:flex; flex-direction:column; min-height:0; background:var(--surface); border-right:1px solid var(--border); }
+.ss-pc__c3 { display:flex; flex-direction:column; min-height:0; min-width:0; }
+.ss-pc__h { flex-shrink:0; padding:12px 14px; }
+.ss-pc__scroll { flex:1; min-height:0; overflow-y:auto; }
+.ss-pc__c1 .ss-row, .ss-pc__c2 .ss-row { border-radius:0; }
+.ss-pc__bar { flex-shrink:0; display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--surface); border-bottom:1px solid var(--border); }
+.ss-pc__two { flex:1; min-height:0; display:grid; grid-template-columns:1.3fr 1fr; }
+.ss-pc__photo { display:flex; flex-direction:column; min-height:0; min-width:0; border-right:1px solid var(--border); background:#202124; }
+.ss-pc__photo .ss-pc__bar { background:var(--surface); }
+.ss-pc__photobox { flex:1; min-height:0; overflow:auto; text-align:center; }
+.ss-pc__photobox img { display:block; margin:0 auto; max-width:none; cursor:zoom-in; }
+.ss-pc__photobox .ss-center, .ss-pc__photobox .ss-sub { color:#e8eaed; }
+.ss-pc__rows { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
+@media (min-width:1024px) { .ss-col { max-width:720px; } }
+
 /* ─────────────────────────────────────────────────────────────
    임시 변환 규칙 — 아직 새 디자인으로 다시 만들지 않은 옛 화면(어두운 색이 인라인으로 박혀 있음)을
    밝은 테마로 보이게 한다. 2~5단계에서 화면을 새로 만들 때마다 해당 화면은 이 규칙이 필요 없어지고,
@@ -236,3 +256,5 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-compat [style*="color:#ff8a80"] { color:var(--bad) !important; }
 .ss-compat [style*="color:#7ddc8a"], .ss-compat [style*="color:#6a9"] { color:var(--ok) !important; }
 .ss-compat [style*="border-top-color:var(--c-brand"] { border-color:#e0e0e0 !important; border-top-color:var(--brand) !important; }
+
+.ss-tab { white-space:nowrap; }
