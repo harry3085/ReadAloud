@@ -336,3 +336,13 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pc__rows .ss-tcard { padding:6px 10px; } .ss-pc__rows .ss-tcard__given { font-size:15px; margin-bottom:4px; }
 .ss-pc__rows .ss-tcells { gap:5px; } .ss-pc__rows .ss-tcell { padding:4px 8px; border-radius:8px; }
 .ss-pc__rows .ss-tcell b { font-size:14px; } .ss-pc__rows .ss-tcell small { margin-bottom:0; }
+
+/* 학생 목록: 15명이 한 화면에 (행 40px) + 글자 키움 */
+.ss-pc__c2 .ss-row { height:40px; padding:0 12px; }
+.ss-pc__c2 .ss-row .ss-title { font-size:17px; }
+.ss-pc__c2 .ss-rank { font-size:14px; width:24px; }
+.ss-pc__c2 .ss-pts b { font-size:20px; } .ss-pc__c2 .ss-pts small { font-size:13px; }
+.ss-pc__c2 .ss-chip { font-size:12px; padding:2px 8px; }
+/* 마킹 사진 있음 = 체크 표시 */
+.ss-mk { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--brand); color:#fff; flex-shrink:0; vertical-align:middle; margin-left:4px; }
+.ss-mk .ss-ic { width:13px; height:13px; stroke-width:3.2; }
