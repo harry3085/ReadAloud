@@ -18033,7 +18033,21 @@ window.tpCopyPreview = async (btn) => {
         document.head.appendChild(sc);
       });
     }
-    const canvas = await window.html2canvas(area, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const canvas = await window.html2canvas(area, {
+      scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+      // '페이지 맞춤'은 CSS zoom 으로 줄이는데 html2canvas 는 zoom 을 몰라 글자를 원래 크기로 그려 서로 겹친다 → 복사본에서만 zoom 을 transform 으로 바꿔서 같은 모양으로 그린다
+      onclone: (doc) => {
+        doc.querySelectorAll('.a4-content').forEach(inner => {
+          const z = parseFloat(inner.style.zoom);
+          if (!z || z === 1) return;
+          inner.style.zoom = '';
+          inner.style.transformOrigin = '0 0';
+          inner.style.transform = `scale(${z})`;
+          inner.style.width = (100 / z) + '%';
+          inner.style.marginBottom = `-${inner.offsetHeight * (1 - z)}px`;   // transform 은 차지하는 높이를 줄이지 않으므로 보정
+        });
+      },
+    });
     const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
     if (!blob) throw new Error('이미지 변환 실패');
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
