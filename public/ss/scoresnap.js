@@ -648,9 +648,8 @@
   // 정답지만 다시 올리기 (학생 사진은 그대로, 새 정답지로 전원 다시 채점)
   window._ssReplaceAnswerKey = async function () {
     const n = (_state.students || []).filter(x => x.imagePath).length;
-    if (!n) { _ssToast('다시 채점할 학생 사진이 없어요'); return; }
     const ok = typeof window.showConfirm === 'function'
-      ? await window.showConfirm('정답지 다시 올리기', `정답지를 새로 찍고, 이 기록의 학생 ${n}명을 새 정답지로 다시 채점해요.\n(이름 수정은 유지, ✓/✗ 직접 수정은 초기화돼요)`) : true;
+      ? await window.showConfirm('정답지 다시 올리기', !n ? '정답지를 새로 찍어 이 기록의 정답지를 교체해요.' : `정답지를 새로 찍고, 이 기록의 학생 ${n}명을 새 정답지로 다시 채점해요.\n(이름 수정은 유지, ✓/✗ 직접 수정은 초기화돼요)`) : true;
     if (!ok) return;
     _state._reKey = true;
     _state._prevKey = _state.answerKey; _state._prevPrecision = _state.precision;
@@ -821,10 +820,18 @@
       ? uiActionBar(uiBtn({ kind: 'primary', size: 'lg', label: `결과 보기 (${resultCount}명)`, id: 'ssStResult' }), uiBtn({ size: 'lg', icon: 'camera', label: '', id: 'ssStCam2' }) + sec)
       : uiActionBar(cam, sec);
     body.innerHTML = `
-      ${uiHeader({ title: '답안지 채점', sub: `${k.testName || '시험'} · ${(k.questions || []).length}문항`, back: 'window._ssUiBack()', right: `<span data-ss-pcchip>${_pcChipHtml()}</span>` })}
+      ${uiHeader({ title: '답안지 채점', sub: `${k.testName || '시험'} · ${(k.questions || []).length}문항`, back: 'window._ssUiBack()', right: `<span data-ss-pcchip>${_pcChipHtml()}</span>${uiIconBtn('more', '메뉴', { id: 'ssStMore' })}` })}
       ${uiSteps(total && allDone ? 3 : 2)}
       <div class="ss-scroll" id="ssScroll"><div class="ss-col ss-pad" style="display:flex;flex-direction:column;min-height:100%;">${progress}</div></div>
       ${bar}`;
+    document.getElementById('ssStMore').onclick = () => _ssSheet([
+      { label: '폰으로 열기 (QR)', icon: 'camera', fn: () => window._ssShowQr() },
+      { label: '정답지 확인·수정', icon: 'edit', fn: () => window._ssEditKey() },
+      { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
+      { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
+      { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },
+      { label: '이 기록 삭제', icon: 'trash', danger: true, fn: () => window._ssDeleteCurrentSession() },
+    ]);
     const gal = document.getElementById('ssStGal'); if (gal) gal.onclick = () => _pickFiles({ multiple: true }, _handleStudentFiles);
     const c1 = document.getElementById('ssStCam'); if (c1) c1.onclick = () => _pickFiles({ capture: true }, _handleStudentFiles);
     const c2 = document.getElementById('ssStCam2'); if (c2) c2.onclick = () => _pickFiles({ capture: true }, _handleStudentFiles);
@@ -2000,7 +2007,48 @@
   window._ssShowMarkedPhoto = window._ssOpenMarked;
 
 
-  // 답안지 사진 보기 (로컬 사진이 있으면 그것, 없으면 서버에서)
+  // ─── 사진 보기 창 (정답지·학생 원본 공용): 확대/축소/맞춤, 끌어서 이동, 휠·핀치 확대, Esc 닫기 ───
+  async function _ssOpenImageViewer(o) {
+    const vw = { scale: 1, fit: 1, tx: 0, ty: 0, iw: 0, ih: 0 };
+    const ov = document.createElement('div');
+    ov.className = 'ss-vw'; ov.setAttribute('data-ss-sub', '1');
+    ov.innerHTML = `
+      <div class="ss-vw__head">${uiIconBtn('x', '닫기', { id: 'ivX' })}<div class="t"><b>${esc(o.title)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</div></div>
+      <div class="ss-vw__main"><div class="ss-vw__stage" id="ivStage"><img id="ivImg" alt="" draggable="false"></div></div>
+      <div class="ss-vw__bar" style="justify-content:center;">${uiBtn({ icon: 'minus', id: 'ivMinus' })}<span id="ivLbl" style="min-width:64px;text-align:center;align-self:center;font-weight:700;">100%</span>${uiBtn({ icon: 'plus', id: 'ivPlus' })}${uiBtn({ label: '맞춤', id: 'ivFit' })}</div>`;
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const close = () => { document.removeEventListener('keydown', onKey); _ssSubRemove(ov); };
+    ov._ssCancel = () => { document.removeEventListener('keydown', onKey); ov.remove(); };
+    document.body.appendChild(ov);
+    _ssPushSub(ov);
+    document.addEventListener('keydown', onKey);
+    const $v = (id) => ov.querySelector('#' + id), stage = $v('ivStage'), img = $v('ivImg');
+    const apply = () => { img.style.transform = `translate(${vw.tx}px, ${vw.ty}px) scale(${vw.scale})`; $v('ivLbl').textContent = Math.round(vw.scale / vw.fit * 100) + '%'; };
+    const fitView = () => { const r = stage.getBoundingClientRect(); vw.fit = Math.min(r.width / vw.iw, r.height / vw.ih) || 1; vw.scale = vw.fit; vw.tx = (r.width - vw.iw * vw.scale) / 2; vw.ty = (r.height - vw.ih * vw.scale) / 2; apply(); };
+    const zoomAt = (cx, cy, ns) => { ns = Math.min(vw.fit * 8, Math.max(vw.fit * 0.5, ns)); vw.tx = cx - (cx - vw.tx) * (ns / vw.scale); vw.ty = cy - (cy - vw.ty) * (ns / vw.scale); vw.scale = ns; apply(); };
+    const rect = () => stage.getBoundingClientRect();
+    const zoomBy = (f) => { const r = rect(); zoomAt(r.width / 2, r.height / 2, vw.scale * f); };
+    img.onload = () => { vw.iw = img.naturalWidth; vw.ih = img.naturalHeight; fitView(); };
+    img.src = o.url;
+    $v('ivX').onclick = close;
+    $v('ivPlus').onclick = () => zoomBy(1.25); $v('ivMinus').onclick = () => zoomBy(0.8); $v('ivFit').onclick = fitView;
+    const pts = new Map(); let pinch = null, pan = null, lastTap = 0;
+    stage.addEventListener('pointerdown', (e) => {
+      stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: vw.scale, tx: vw.tx, ty: vw.ty, mx: (a.x + b.x) / 2 - rect().left, my: (a.y + b.y) / 2 - rect().top }; pan = null; }
+      else { pan = { x: e.clientX - vw.tx, y: e.clientY - vw.ty }; const now = Date.now(); if (now - lastTap < 320) { const r = rect(); if (vw.scale > vw.fit * 1.2) fitView(); else zoomAt(e.clientX - r.left, e.clientY - r.top, vw.fit * 2.5); } lastTap = now; }
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); const ns = Math.min(vw.fit * 8, Math.max(vw.fit * 0.5, pinch.s * d / pinch.d)); vw.tx = pinch.mx - (pinch.mx - pinch.tx) * (ns / pinch.s); vw.ty = pinch.my - (pinch.my - pinch.ty) * (ns / pinch.s); vw.scale = ns; apply(); }
+      else if (pan && pts.size === 1) { vw.tx = e.clientX - pan.x; vw.ty = e.clientY - pan.y; apply(); }
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (pts.size === 1) { const p = [...pts.values()][0]; pan = { x: p.x - vw.tx, y: p.y - vw.ty }; } else if (!pts.size) pan = null; };
+    stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+    stage.addEventListener('wheel', (e) => { e.preventDefault(); const r = rect(); zoomAt(e.clientX - r.left, e.clientY - r.top, vw.scale * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+    window.addEventListener('resize', () => { if (vw.iw && document.body.contains(ov)) fitView(); });
+  }
+
   // 정답지 사진 보기 — 방금 올린 건 메모리, 서버에서 연 기록은 저장된 사진
   window._ssViewKeyImage = async function () {
     let url = _state.answerKeyImage?.dataUrl || '';
@@ -2009,41 +2057,7 @@
       catch (e) { _ssToast('정답지 사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
     }
     if (!url) { _ssToast('저장된 정답지 사진이 없어요 (이전에 만든 기록은 사진이 저장되지 않았어요)'); return; }
-    const ov = document.createElement('div');
-    ov.setAttribute('data-ss-sub', '1');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
-    ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
-    ov.onclick = () => _ssSubRemove(ov);
-    document.body.appendChild(ov);
-    _ssPushSub(ov);
-  };
-
-  // 정답 목록 다시 보기 (읽기 전용) — 채점 중에도 인식된 문제·정답을 확인
-  window._ssViewKeyList = function () {
-    const k = _state.answerKey || {};
-    const qs = k.questions || [];
-    if (!qs.length) { _ssToast('정답 목록이 없어요'); return; }
-    const rows = qs.map(q => `
-      <div style="display:flex;gap:10px;align-items:baseline;padding:7px 4px;border-bottom:1px solid #2a2a2a;">
-        <span style="flex:0 0 34px;font-size:12px;color:#888;text-align:right;">${esc(String(q.no))}</span>
-        <span style="flex:1;font-size:13px;color:#ddd;word-break:break-word;">${esc(q.stem) || '<span style="color:#666;">(문제 없음)</span>'}${q.type === 'mcq' && Array.isArray(q.choices) && q.choices.length ? `<div style="font-size:11px;color:#999;margin-top:2px;">${q.choices.map((c, j) => `${['①','②','③','④','⑤'][j] || j + 1} ${esc(c)}`).join(' &nbsp; ')}</div>` : ''}</span>
-        <span style="flex:1;font-size:13px;color:#7ddc8a;font-weight:600;word-break:break-word;">${esc(q.answer || '')}</span>
-      </div>`).join('');
-    const ov = document.createElement('div');
-    ov.setAttribute('data-ss-sub', '1');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;padding:16px;';
-    ov.innerHTML = `
-      <div style="max-width:820px;margin:0 auto;background:#141414;border:1px solid #333;border-radius:10px;padding:14px 16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <div style="font-size:14px;font-weight:700;color:#fff;">${esc(k.testName || '시험')} · 정답 ${qs.length}문항</div>
-          <button data-close style="background:transparent;border:none;color:#fff;font-size:28px;cursor:pointer;line-height:1;">×</button>
-        </div>
-        <div style="display:flex;gap:10px;padding:0 4px 6px;border-bottom:1px solid #444;font-size:11px;color:#888;"><span style="flex:0 0 34px;text-align:right;">번호</span><span style="flex:1;">문제</span><span style="flex:1;">정답</span></div>
-        ${rows}
-      </div>`;
-    ov.onclick = (e) => { if (e.target === ov || e.target.hasAttribute('data-close')) _ssSubRemove(ov); };
-    document.body.appendChild(ov);
-    _ssPushSub(ov);
+    _ssOpenImageViewer({ url, title: '정답지 사진', sub: (_state.answerKey && _state.answerKey.testName) || '' });
   };
 
   window._ssViewStudentImage = async function (idx) {
@@ -2055,13 +2069,32 @@
       catch (e) { _ssToast('사진을 불러올 수 없어요 (보관 기간이 지났을 수 있어요)'); return; }
     }
     if (!url) { _ssToast('저장된 사진이 없어요'); return; }
-    const ov = document.createElement('div');
-    ov.setAttribute('data-ss-sub', '1');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100001;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;';
-    ov.innerHTML = `<img src="${esc(url)}" alt="" style="max-width:100%;height:auto;display:block;margin:auto;"><button style="position:fixed;top:12px;right:16px;background:transparent;border:none;color:#fff;font-size:32px;cursor:pointer;">×</button>`;
-    ov.onclick = () => _ssSubRemove(ov);
-    document.body.appendChild(ov);
-    _ssPushSub(ov);
+    const r = x.result || {};
+    _ssOpenImageViewer({ url, title: `${(r.studentName || '').trim() || '학생'} · 원본 사진`, sub: _testNameOf(r) });
+  };
+
+  // 정답 목록 보기 (읽기 전용) — 인식된 문제·정답을 확인, 검색 가능
+  window._ssViewKeyList = function () {
+    const k = _state.answerKey || {};
+    const qs = k.questions || [];
+    if (!qs.length) { _ssToast('정답 목록이 없어요'); return; }
+    const sc = document.createElement('div');
+    sc.className = 'ss-scrim ss-scrim--modal'; sc.setAttribute('data-ss-sub', '1');
+    const rowsHtml = (list) => list.map(q => `<div class="ss-kl__row"><span class="no">${esc(String(q.no))}</span><span class="stem">${esc(q.stem) || '<i>(문제 없음)</i>'}${q.type === 'mcq' && Array.isArray(q.choices) && q.choices.length ? `<small>${q.choices.map((c, j) => `${['①', '②', '③', '④', '⑤'][j] || j + 1} ${esc(c)}`).join(' &nbsp; ')}</small>` : ''}</span><span class="ans">${esc(q.answer || '')}</span></div>`).join('') || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">검색 결과가 없어요</div></div>';
+    sc.innerHTML = `<div class="ss-modal">
+      <div class="ss-modal__head"><div class="ss-grow"><b>정답 목록</b><div class="ss-sub">${esc(k.testName || '시험')} · ${qs.length}문항 · 읽기 전용</div></div>${uiIconBtn('x', '닫기', { id: 'klX' })}</div>
+      <div style="padding:0 16px 8px;"><input class="ss-input" id="klSearch" type="text" placeholder="문제·정답 검색" autocomplete="off"></div>
+      <div class="ss-kl__head"><span class="no">번호</span><span class="stem">문제</span><span class="ans">정답</span></div>
+      <div class="ss-modal__body" id="klBody">${rowsHtml(qs)}</div></div>`;
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const close = () => { document.removeEventListener('keydown', onKey); _ssSubRemove(sc); };
+    sc._ssCancel = () => { document.removeEventListener('keydown', onKey); sc.remove(); };
+    sc.onclick = (e) => { if (e.target === sc || e.target.closest('#klX')) close(); };
+    document.body.appendChild(sc);
+    _ssPushSub(sc);
+    document.addEventListener('keydown', onKey);
+    const inp = sc.querySelector('#klSearch');
+    inp.oninput = () => { const t = inp.value.trim().toLowerCase(); sc.querySelector('#klBody').innerHTML = rowsHtml(t ? qs.filter(q => (String(q.stem || '') + ' ' + String(q.answer || '')).toLowerCase().includes(t)) : qs); };
   };
 
 
