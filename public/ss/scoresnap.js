@@ -220,14 +220,23 @@
 
   // ─── 진입·바깥틀 ───
   // PC 채점 프로그램 상태 — worker 가 30초마다 갱신, 2분 넘게 없으면 꺼짐으로 본다
-  let _workerRows = [], _workerTimer = 0, _workerUnsub = null;
+  let _workerRows = [], _workerTimer = 0, _workerUnsub = null, _workerSeen = {};
   function _computeWorker() {
     const now = Date.now();
-    const rows = _workerRows.map(w => ({ w, ms: w.lastSeen && w.lastSeen.toMillis ? w.lastSeen.toMillis() : now })).sort((a, b) => b.ms - a.ms);
+    // 이 기기 시계가 어긋나 있어도 맞도록: 신호 값이 '바뀌는 것'을 이 기기 시계로 기록해 두고, 그것도 함께 본다
+    const rows = _workerRows.map(w => {
+      const ms = w.lastSeen && w.lastSeen.toMillis ? w.lastSeen.toMillis() : now;
+      const k = w.workerName || '';
+      const prev = _workerSeen[k];
+      if (!prev) _workerSeen[k] = { ms, at: 0 };            // 처음 본 값: 새것인지 모름
+      else if (prev.ms !== ms) _workerSeen[k] = { ms, at: now };   // 값이 바뀜 = 지금 살아 있음
+      const sn = _workerSeen[k];
+      return { w, ms, fresh: sn.at && now - sn.at < 180000, effMs: sn.at && now - sn.at < 180000 ? now : ms };
+    }).sort((a, b) => b.effMs - a.effMs);
     const best = rows[0];
     if (!best) return window._ssSetWorkerStatus({ online: false, name: '', ago: '', queued: 0, none: true });
-    const online = now - best.ms < 180000;     // 30초마다 신호가 오므로 3분 넘게 없으면 꺼짐
-    const sec = Math.round((now - best.ms) / 1000);
+    const online = best.fresh || now - best.ms < 180000;     // 30초마다 신호가 오므로 3분 넘게 없으면 꺼짐
+    const sec = best.fresh ? 5 : Math.max(0, Math.round((now - best.ms) / 1000));
     window._ssSetWorkerStatus({ online, name: best.w.workerName || 'PC', ago: sec < 60 ? '방금' : `${Math.round(sec / 60)}분 전`, queued: best.w.queued || 0, busy: !!best.w.busy });
     if (_state.phase === 'student-capture') _keepScroll(_renderStudentCapture);
   }
