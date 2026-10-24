@@ -466,7 +466,14 @@
     const idToken = await window._ssGetIdToken();
     const r = await fetch('/api/ocr', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true, allWords: true }),
+      body: JSON.stringify({
+        idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true, allWords: true,
+        tableMeta: {   // 전용앱: PC 의 Claude 가 찾을 글자 (열 이름 + 줄마다 인쇄된 기준 단어)
+          columns: [x.result.givenColumn].concat(x.result.answerColumns || []).filter(Boolean),
+          givenColumn: x.result.givenColumn || '',
+          givens: Array.from(new Set((x.result.answers || []).map(a => a.given).filter(Boolean))),
+        },
+      }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.words) throw new Error(j.error || '칸 위치를 읽지 못했어요');

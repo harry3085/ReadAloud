@@ -146,8 +146,8 @@ async function gradeViaPc(body) {
   return jsonRes({ error: out.error || '채점에 실패했어요' }, 502);
 }
 // /api/ocr 중 마킹용 "문항 번호·점수 글자 위치" — Google Vision 대신 PC 의 Claude 가 찾는다 (결과 형식은 Vision 과 같음)
-async function marksViaPc(body) {
-  const out = await runJob('ocr', body.imageBase64, body.mimeType, { total: body.expectCount || 0 });
+async function marksViaPc(body, payload) {
+  const out = await runJob('ocr', body.imageBase64, body.mimeType, payload);
   if (out.status === 'done' && out.result && Array.isArray(out.result.words)) return jsonRes({ success: true, words: out.result.words }, 200);
   return jsonRes({ error: out.error || '번호 위치를 읽지 못했어요' }, 502);
 }
@@ -159,7 +159,8 @@ window.fetch = (input, init) => {
     try {
       const body = JSON.parse(init.body);
       if (u === '/api/scoresnap-grade') return gradeViaPc(body);
-      if (body.wordBoxes === true && !body.allWords && body.expectCount > 0) return marksViaPc(body);   // 표 형식(allWords)은 아직 Google Vision 그대로
+      if (body.wordBoxes === true && !body.allWords && body.expectCount > 0) return marksViaPc(body, { total: body.expectCount });   // 번호형
+      if (body.wordBoxes === true && body.allWords && body.tableMeta) return marksViaPc(body, { table: body.tableMeta });             // 표 형식
     } catch (e) { /* 파싱 실패 시 원래 경로 */ }
   }
   return origFetch(input, init);

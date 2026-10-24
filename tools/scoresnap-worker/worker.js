@@ -18,6 +18,7 @@ const {
 const { getStorage, ref, getDownloadURL } = require('firebase/storage');
 
 const P = require('../../api/_lib/scoresnap-prompt.js');
+const M = require('./marks.js');
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8',
@@ -160,21 +161,17 @@ async function gradeStudent(imagePath, key) {
   });
 }
 
-// ─── 마킹용 위치 찾기 (Google Vision 대신): 인쇄된 문항 번호와 '점수:' 글자의 경계 상자 ───
-// 결과는 Vision 단어 목록과 같은 형식 [{ t, x1, y1, x2, y2 }] (0~1 비율 좌표)
-async function findMarkWords(imagePath, total) {
+// ─── 마킹용 위치 찾기 (Google Vision 대신 Claude) — 지시문·검증은 marks.js ───
+async function findMarkWords(imagePath, payload) {
   return withImage(imagePath, async (dir) => {
-    const prompt = IMG_HEAD + `시험지에 인쇄된 문항 번호(1. 2. ... ${total}.)의 위치를 찾아라.
-각 번호 글자("1." 처럼 숫자와 점)를 감싸는 경계 상자를 이미지 전체 크기 기준 0~1 비율 좌표(좌상단이 0,0, x는 가로, y는 세로)로 소수점 3자리까지 답하라.
-인쇄된 번호만 (학생이 손으로 쓴 글씨·머리글의 날짜 숫자는 제외). 또 머리글 오른쪽 위 "점수:" 글자의 경계 상자도 같은 방식으로 답하라. 점수 글자가 없으면 score 는 null.
-응답 JSON: {"numbers":[{"n":1,"x1":0,"y1":0,"x2":0,"y2":0}, ...], "score":{"x1":0,"y1":0,"x2":0,"y2":0}}`;
-    const j = await askJson(prompt, dir);
-    const ok = (b) => b && [b.x1, b.y1, b.x2, b.y2].every(v => typeof v === 'number' && v >= 0 && v <= 1) && b.x2 > b.x1 && b.y2 > b.y1;
-    const words = [];
-    (Array.isArray(j.numbers) ? j.numbers : []).forEach(b => { if (ok(b) && b.n >= 1) words.push({ t: b.n + '.', x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 }); });
-    if (ok(j.score)) words.push({ t: '점수:', x1: j.score.x1, y1: j.score.y1, x2: j.score.x2, y2: j.score.y2 });
-    if (words.length < Math.max(1, Math.floor(total * 0.5))) throw new Error('문항 번호 위치를 충분히 찾지 못했어요');
-    return { words };
+    if (payload && payload.table) {      // 표 형식: 열 이름 + 줄마다 인쇄된 기준 단어
+      const meta = payload.table;
+      const j = await askJson(IMG_HEAD + M.buildTablePrompt(meta), dir);
+      return { words: M.tableToWords(j, meta) };
+    }
+    const total = (payload && payload.total) || 0;
+    const j = await askJson(IMG_HEAD + M.buildNumbersPrompt(total), dir);
+    return { words: M.numbersToWords(j, total) };
   });
 }
 
@@ -232,7 +229,7 @@ async function handleJob(jd) {
   try {
     let result;
     if (j.jobType === 'ocr') {
-      result = await findMarkWords(j.imagePath, (j.payload && j.payload.total) || 0);
+      result = await findMarkWords(j.imagePath, j.payload);
       log(`  → 번호 위치 ${result.words.length}개 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
     } else if (j.jobType === 'key') {
       result = await readKey(j.imagePath, (j.payload && j.payload.layoutHint) || 'numbered');
