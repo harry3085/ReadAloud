@@ -234,29 +234,6 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pc__rows { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
 @media (min-width:1024px) { .ss-col { max-width:720px; } }
 
-/* ─────────────────────────────────────────────────────────────
-   임시 변환 규칙 — 아직 새 디자인으로 다시 만들지 않은 옛 화면(어두운 색이 인라인으로 박혀 있음)을
-   밝은 테마로 보이게 한다. 2~5단계에서 화면을 새로 만들 때마다 해당 화면은 이 규칙이 필요 없어지고,
-   마지막 단계에서 이 구역을 통째로 지운다. (.ss-compat 가 붙은 화면 바깥틀·기록 선택 창에만 적용 — 사진 보기 창은 어둡게 유지)
-   ───────────────────────────────────────────────────────────── */
-.ss-compat [style*="background:#1a1a1a"], .ss-compat [style*="background:#141414"], .ss-compat [style*="background:#2a2a2a"],
-.ss-compat [style*="background:#2a1a1a"], .ss-compat [style*="background:#191919"] { background:var(--surface) !important; }
-.ss-compat [style*="background:#0a0a0a"], .ss-compat [style*="background:#111"] { background:var(--bg) !important; }
-.ss-compat [style*="background:rgba(255,255,255,0.08)"], .ss-compat [style*="background:rgba(255,255,255,0.1)"],
-.ss-compat [style*="background:rgba(255,255,255,0.12)"] { background:var(--surface) !important; border-color:var(--border) !important; }
-.ss-compat [style*="color:#fff"]:not([style*="background:var(--c-brand"]):not([style*="background:#c62828"]):not([style*="background:#1976d2"]):not([style*="background:rgba(220,38,38"]):not([style*="background:#2e7d32"]) { color:var(--text) !important; }
-.ss-compat [style*="color:#bbb"], .ss-compat [style*="color:#aaa"], .ss-compat [style*="color:#999"], .ss-compat [style*="color:#888"],
-.ss-compat [style*="color:#777"], .ss-compat [style*="color:#666"], .ss-compat [style*="color:#555"], .ss-compat [style*="color:#ccc"],
-.ss-compat [style*="color:#ddd"] { color:var(--sub) !important; }
-.ss-compat [style*="solid #333"], .ss-compat [style*="solid #444"], .ss-compat [style*="solid #555"], .ss-compat [style*="solid #666"],
-.ss-compat [style*="solid #2a2a2a"], .ss-compat [style*="solid #553"], .ss-compat [style*="solid #5a3030"] { border-color:var(--border) !important; }
-.ss-compat [style*="color:#ffc107"], .ss-compat [style*="color:#ffcc80"] { color:var(--warn) !important; }
-.ss-compat [style*="background:#5a3a1a"] { background:var(--warn-bg) !important; }
-.ss-compat [style*="solid #ffc107"] { border-color:var(--warn-bd) !important; }
-.ss-compat [style*="color:#ff8a80"] { color:var(--bad) !important; }
-.ss-compat [style*="color:#7ddc8a"], .ss-compat [style*="color:#6a9"] { color:var(--ok) !important; }
-.ss-compat [style*="border-top-color:var(--c-brand"] { border-color:#e0e0e0 !important; border-top-color:var(--brand) !important; }
-
 .ss-tab { white-space:nowrap; }
 
 /* 5단계: 카톡 연속 전송 */
