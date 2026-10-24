@@ -1686,15 +1686,26 @@
     msgs.push({ role: 'user', text });
     const ai = { role: 'ai', text: '', pending: true }; msgs.push(ai);
     _pcRenderChat();
+    let temp = '';
     try {
       const r = x.result;
-      const out = await _store().ask(x.imagePath, {
-        question: text, history,
+      // 지금 사진 영역에서 채점 표시 사진을 보고 있으면 그 사진(V·점수가 그려진 것)을, 아니면 원본을 AI 에게 보낸다
+      let imgPath = x.imagePath, imageKind = 'original';
+      if (_state.pcShowDoc === x.docId && _state.pcPhotoMode === 'mark' && x._markCache && x._markCache.canvas) {
+        const cv = x._markCache.canvas, sc = Math.min(1, 1536 / Math.max(cv.width, cv.height));
+        const o = document.createElement('canvas'); o.width = Math.round(cv.width * sc); o.height = Math.round(cv.height * sc);
+        o.getContext('2d').drawImage(cv, 0, 0, o.width, o.height);
+        imgPath = temp = await _store().uploadTemp({ base64: o.toDataURL('image/jpeg', 0.85).split(',')[1], mimeType: 'image/jpeg' });
+        imageKind = 'marked';
+      }
+      const out = await _store().ask(imgPath, {
+        question: text, history, imageKind,
         context: { testName: _testNameOf(r), studentName: r.studentName || '', correct: r.correctCount, total: r.totalQuestions,
           answers: (r.answers || []).map(a => ({ no: a.no, stem: a.stem, studentAnswer: a.studentAnswer, correctAnswer: a.correctAnswer, isCorrect: a.isCorrect, confidence: a.confidence })) },
       });
       ai.pending = false; ai.text = out.answer || '(답변이 비어 있어요)'; ai.corrections = out.corrections || [];
     } catch (e) { ai.pending = false; ai.text = '답변을 받지 못했어요: ' + (e && e.message); }
+    if (temp) _store().deleteTemp(temp);
     if (_state.students && _state.students[_state.detailIdx] === x) _pcRenderChat();
   };
   // 정정 제안 적용 = 해당 문항의 정답/오답 표시를 바꿈 (직접 수정과 동일하게 저장·마킹 갱신)

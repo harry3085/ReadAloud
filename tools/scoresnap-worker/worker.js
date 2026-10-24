@@ -173,13 +173,16 @@ async function gradeStudent(imagePath, key) {
 async function answerQuestion(imagePath, payload) {
   const ctx = payload.context || {};
   const hist = (payload.history || []).slice(-6).map(h => (h.role === 'user' ? '학원장: ' : '답변: ') + String(h.text || '').slice(0, 600)).join('\n');
+  const imgDesc = payload.imageKind === 'marked'
+    ? '이 사진은 학생 답안지 위에 채점 결과를 표시한 "채점 표시 사진"이다. 틀린 문항 번호 옆에 빨간 V가 그려져 있고, 점수칸 옆에 맞은 수/전체 문항 수가 적혀 있다(학생이 원래 쓴 손글씨·취소선과 구분하라).'
+    : '이 사진은 학생이 찍어 올린 원본 답안지다(채점 표시 없음).';
   const prompt = IMG_HEAD.replace('아래 지시대로 처리하라.', '아래 질문에 답하라.') +
-    `이 사진은 학생 답안지다. 아래는 이 사진에 대한 채점 결과다(시험: ${ctx.testName || ''}, 학생: ${ctx.studentName || '이름 미상'}, ${ctx.correct}/${ctx.total}).\n` +
+    imgDesc + `\n아래는 이 사진에 대한 채점 결과다(시험: ${ctx.testName || ''}, 학생: ${ctx.studentName || '이름 미상'}, ${ctx.correct}/${ctx.total}).\n` +
     JSON.stringify(ctx.answers || []) + '\n\n' +
     (hist ? '지금까지의 대화:\n' + hist + '\n\n' : '') +
     '학원장의 질문: ' + String(payload.question || '').slice(0, 1000) + '\n\n' +
     '규칙: 사진을 다시 확인해서 근거를 한국어로 간결하게(5문장 이내) 답하라. 채점 규칙은 "뜻을 알면 정답, 철자는 영어 단답만 일치, 애매하면 오답"이다. ' +
-    '채점이 잘못됐다고 판단되는 문항이 있으면 corrections 에 넣어라(문항 번호 no, 정답이면 isCorrect true, 이유 reason). 확신이 없으면 넣지 마라.\n' +
+    'corrections 는 학원장이 채점의 정오를 묻거나 다시 확인해 달라고 요청한 경우에만 쓴다. 그때 잘못됐다고 판단되는 문항을 넣어라(문항 번호 no, 정답이면 isCorrect true, 이유 reason), 확신이 없으면 넣지 마라. 개수 세기·사진 설명·사용법 같은 단순 질문에는 질문에 대한 답만 하고 corrections 는 반드시 빈 배열로 둔다.\n' +
     '출력 JSON: {"answer": "답변 문장", "corrections": [{"no": 5, "isCorrect": true, "reason": "..."}]}';
   return withImage(imagePath, async (dir) => {
     const j = await askJson(prompt, dir, 2);
