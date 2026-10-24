@@ -72,6 +72,8 @@ function findClaude() {
   // npm 으로 설치한 Claude Code (claude.cmd) — 설치 안내에 따라 PATH 에 없어도 찾는다
   const npmBin = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
   if (fs.existsSync(npmBin)) return npmBin;
+  const nativeBin = path.join(os.homedir(), '.local', 'bin', 'claude.exe');
+  if (fs.existsSync(nativeBin)) return nativeBin;
   const shim = path.join(process.env.APPDATA || '', 'npm', 'claude.cmd');
   if (fs.existsSync(shim)) return shim;
   return 'claude';
@@ -400,7 +402,24 @@ async function pump() {
   finally { busy = false; }
 }
 
-(async () => {
+// 설치 점검: node worker.js --check  → 로그인·학원장 권한·상태 기록을 확인하고 결과 한 줄(CHECK_OK/CHECK_FAIL)만 출력
+if (process.argv.includes('--check')) {
+  (async () => {
+    try {
+      await login();
+      const tok = await auth.currentUser.getIdTokenResult();
+      if (!/^(admin|super_admin)$/.test(tok.claims.role || '')) { console.log('CHECK_FAIL 학원장 계정이 아니에요. 학생 계정이 아니라 학원장 아이디로 설치해 주세요.'); process.exit(0); }
+      await setDoc(doc(db, 'scoresnapSessions', HB_ID), { academyId: AID, kind: 'worker', keyStatus: 'worker', workerName: WORKER, lastSeen: serverTimestamp(), busy: false, queued: 0, version: 1 });
+      const back = await getDoc(doc(db, 'scoresnapSessions', HB_ID));
+      if (!back.exists()) { console.log('CHECK_FAIL 학원 서버에 기록하지 못했어요.'); process.exit(0); }
+      console.log('CHECK_OK 학원 ' + AID + ' · ' + (auth.currentUser.email || ''));
+    } catch (e) {
+      const m = String(e.message || e);
+      console.log('CHECK_FAIL ' + (/invalid-credential|wrong-password|invalid-login/.test(m) ? '아이디 또는 비밀번호가 맞지 않아요.' : /찾을 수 없/.test(m) ? m : /network|fetch|offline/i.test(m) ? '인터넷 연결을 확인해 주세요.' : m));
+    }
+    process.exit(0);
+  })();
+} else (async () => {
   log('ScoreSnap PC 채점 프로그램 시작 | Claude:', CLAUDE);
   await login();
   // 새 요청이 생기면 바로 깨어남 + 1분마다 점검(멈춘 작업 되살리기)
