@@ -156,11 +156,12 @@
   function _pcChipHtml() {
     const w = window._ssWorker;
     if (!w) return '';
+    if (w.unknown) return `<span class="ss-status" style="color:var(--sub)" title="${esc(w.err || '')}"><i class="ss-dot"></i>PC 상태 확인 안 됨</span>`;
     return `<span class="ss-status" style="color:${w.online ? 'var(--ok)' : 'var(--sub)'}"><i class="ss-dot${w.online ? ' ss-dot--ok' : ''}"></i>PC ${w.online ? '켜짐' : '꺼짐'}</span>`;
   }
   function _pcCardHtml() {
     const w = window._ssWorker;
-    if (!w) return '';
+    if (!w || w.unknown) return '';
     return `<div class="ss-pccard"><i class="ss-dot${w.online ? ' ss-dot--ok' : ''}"></i><div class="ss-grow"><b>PC 채점 프로그램 ${w.online ? '켜짐' : '꺼져 있어요'}</b><small>${w.online ? esc((w.name || 'PC') + ' · ' + (w.ago || '방금') + ' 확인 · ' + (w.queued ? `대기 ${w.queued}건` : '대기 작업 없음')) : '학원 PC에서 start.bat 을 실행해 주세요'}</small></div>${iconSvg('monitor')}</div>`;
   }
   window._ssSetWorkerStatus = function (st) {
@@ -243,8 +244,9 @@
   function _startWorkerWatch() {
     if (_workerUnsub || !_store() || !_store().watchWorkers) return;
     // 연결이 끊기면 '꺼짐'으로 단정하지 않고(알 수 없음) 몇 초 뒤 다시 연결한다 — 이전에는 한 번 끊기면 계속 '꺼짐'으로 보였다
-    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; _computeWorker(); }, () => {
-      window._ssWorker = null; window._ssSetWorkerStatus(null);
+    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; console.log('[scoresnap] PC 상태 기록', rows.length, '건', rows.map(r => (r.workerName || '?') + ':' + (r.lastSeen && r.lastSeen.toMillis ? Math.round((Date.now() - r.lastSeen.toMillis()) / 1000) + '초전' : '대기'))); _computeWorker(); }, (e) => {
+      console.warn('[scoresnap] PC 상태 구독 오류:', e && (e.code || e.message));
+      window._ssSetWorkerStatus({ unknown: true, err: (e && (e.code || e.message)) || '' });
       if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; }
       setTimeout(() => { if (document.getElementById('scoreSnapOverlay')) _startWorkerWatch(); }, 5000);
     });
@@ -820,7 +822,7 @@
     const allDone = total > 0 && !busy;
     const resultCount = (_state.students || []).filter(s => s.status === 'done').length;
     const w = window._ssWorker;
-    const offWarn = (busy && w && !w.online) ? `<div class="ss-banner" style="background:var(--warn-bg);color:var(--warn);margin-bottom:12px;"><span>PC 채점 프로그램이 꺼져 있어요. 학원 PC에서 start.bat 을 실행하면 채점이 시작돼요.</span></div>` : '';
+    const offWarn = (busy && w && !w.unknown && !w.online) ? `<div class="ss-banner" style="background:var(--warn-bg);color:var(--warn);margin-bottom:12px;"><span>PC 채점 프로그램이 꺼져 있어요. 학원 PC에서 start.bat 을 실행하면 채점이 시작돼요.</span></div>` : '';
     const progress = total ? `
       ${offWarn}<div class="ss-card ss-progress"><div class="ss-progress__head"><b>${total}장 중 ${doneN}장 채점 완료</b><span class="ss-sub">${busy ? (remain ? `약 ${remain}분 남음` : '시간 계산 중') : '모두 끝났어요'}</span></div>
         <div class="ss-bar"><i style="width:${total ? Math.round(doneN / total * 100) : 0}%"></i></div>
