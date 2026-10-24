@@ -1367,7 +1367,7 @@
     const v = _pcColsLoad();
     g.style.setProperty('--pc1', (v.pc1 || _PC_COLS.pc1[0]) + 'px');
     g.style.setProperty('--pc2', (v.pc2 || _PC_COLS.pc2[0]) + 'px');
-    g.style.setProperty('--pcp', v.pcp ? v.pcp + 'px' : '1.3fr');
+    g.style.setProperty('--pcp', v.pcp ? v.pcp + 'px' : '0.9fr');
   }
   function _pcWireResize(handle, key) {
     if (!handle) return;
@@ -1380,7 +1380,7 @@
       const mx = key === 'pcp' ? Math.min(mx0, ((document.querySelector('.ss-pc__two') || {}).offsetWidth || 1000) - 240) : mx0;
       handle.classList.add('on');
       const move = (ev) => {
-        const w = Math.round(Math.min(mx, Math.max(mn, cur + ev.clientX - x0)));
+        const w = Math.round(Math.min(mx, Math.max(mn, cur + (key === 'pcp' ? -1 : 1) * (ev.clientX - x0))));
         g.style.setProperty('--' + key, w + 'px');
       };
       const up = () => {
@@ -1488,6 +1488,7 @@
         ${uiBtn({ kind: 'primary', icon: 'copy', label: '카톡용 복사 (Ctrl+C)', onclick: `window._ssCopyMarked(${idx})` })}
       </div>
       <div class="ss-pc__two">
+        <div class="ss-pc__rows"><div class="ss-scroll" id="ssScroll"><div id="ssDetailRoot"></div></div></div>
         <div class="ss-pc__photo"><i class="ss-pc__rs ss-pc__rs--in" id="ssPcRs3" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i>
           <div class="ss-pc__bar" style="border-bottom:1px solid var(--border);">
             <div class="ss-tabs"><button class="ss-tab${mode === 'mark' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('mark')">채점 표시</button><button class="ss-tab${mode === 'orig' ? ' ss-tab--on' : ''}" onclick="window._pcSetPhotoMode('orig')">원본</button></div>
@@ -1497,7 +1498,6 @@
           </div>
           <div class="ss-pc__photobox" id="ssPcPhotoBox"></div>
         </div>
-        <div class="ss-pc__rows"><div class="ss-scroll" id="ssScroll"><div id="ssDetailRoot"></div></div></div>
       </div>`;
     _renderDetailBody(idx);
     _pcWireResize(document.getElementById('ssPcRs3'), 'pcp');
