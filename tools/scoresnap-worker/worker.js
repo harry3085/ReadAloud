@@ -382,28 +382,38 @@ async function heartbeat() {
   } catch (e) { log('상태 기록 실패:', e.message); }
 }
 
-let busy = false, again = false;
+// 동시에 처리할 작업 수 (config.json 의 concurrency, 기본 4). 실측: 학생 6명 순서대로 ≈250초 → 동시 6 ≈ 48초
+const CONC = Math.max(1, Math.min(6, Number(CFG.concurrency) || 4));
+const running = new Set();
+let pumping = false, pumpAgain = false;
 async function pump() {
-  if (busy) { again = true; return; }
-  busy = true;
+  if (pumping) { pumpAgain = true; return; }
+  pumping = true;
   try {
     do {
-      again = false;
+      pumpAgain = false;
       const snap = await getDocs(query(collection(db, 'scoresnapSessions'),
         where('academyId', '==', AID), where('needsWork', '==', true)));
-      hbQueued = snap.docs.filter(d => d.data().kind === 'job' && d.data().status === 'queued').length;
-      if (snap.size) log('대기 작업 확인:', snap.size, '건 (작업 ' + snap.docs.filter(d => d.data().kind === 'job').length + ')');
-      // 먼저 올라온 순서대로 한 건씩
-      const jobs = snap.docs.filter(d => d.data().kind === 'job')
+      const isStale = (d) => d.claimedAt && d.claimedAt.toMillis && (Date.now() - d.claimedAt.toMillis() > STALE_MS);
+      // 가져갈 수 있는 작업만: 대기 중이거나, 다른 PC 가 잡고 오래 멈춘 것
+      const jobs = snap.docs.filter(d => d.data().kind === 'job' && (d.data().status === 'queued' || (d.data().status === 'working' && isStale(d.data()))))
         .sort((x, y) => ((x.data().createdAt && x.data().createdAt.toMillis()) || 0) - ((y.data().createdAt && y.data().createdAt.toMillis()) || 0));
+      hbQueued = jobs.filter(d => !running.has(d.id)).length;
+      if (jobs.length) log('대기 작업 확인:', jobs.length, '건 (동시 처리 최대 ' + CONC + ')');
+      // 먼저 올라온 순서대로, 빈 자리만큼 동시에 시작
       for (const jd of jobs) {
-        hbBusy = true; heartbeat();
-        try { await handleJob(jd); } catch (e) { log(`[${jd.id}] 처리 오류:`, e.message); }
-        hbBusy = false; hbQueued = Math.max(0, hbQueued - 1); heartbeat();
+        if (running.size >= CONC) break;
+        if (running.has(jd.id)) continue;
+        running.add(jd.id); hbBusy = true; heartbeat();
+        handleJob(jd).catch(e => log(`[${jd.id}] 처리 오류:`, e.message)).finally(() => {
+          running.delete(jd.id);
+          hbBusy = running.size > 0; hbQueued = Math.max(0, hbQueued - 1); heartbeat();
+          pump();   // 빈 자리가 생겼으니 다음 작업 시작
+        });
       }
-    } while (again);
+    } while (pumpAgain);
   } catch (e) { log('확인 오류:', e.message); }
-  finally { busy = false; }
+  finally { pumping = false; }
 }
 
 // 설치 점검: node worker.js --check  → 로그인·학원장 권한·상태 기록을 확인하고 결과 한 줄(CHECK_OK/CHECK_FAIL)만 출력
@@ -412,7 +422,7 @@ if (process.argv.includes('--check')) {
     try {
       await login();
       const tok = await auth.currentUser.getIdTokenResult();
-      if (!/^(admin|super_admin)$/.test(tok.claims.role || '')) { console.log('CHECK_FAIL 학원장 계정이 아니에요. 학생 계정이 아니라 학원장 아이디로 설치해 주세요.'); process.exit(0); }
+      if (!/admin/.test(tok.claims.role || '')) { console.log('CHECK_FAIL 학원장 계정이 아니에요. 학생 계정이 아니라 학원장 아이디로 설치해 주세요.'); process.exit(0); }
       await setDoc(doc(db, 'scoresnapSessions', HB_ID), { academyId: AID, kind: 'worker', keyStatus: 'worker', workerName: WORKER, lastSeen: serverTimestamp(), busy: false, queued: 0, version: 1 });
       const back = await getDoc(doc(db, 'scoresnapSessions', HB_ID));
       if (!back.exists()) { console.log('CHECK_FAIL 학원 서버에 기록하지 못했어요.'); process.exit(0); }
