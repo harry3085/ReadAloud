@@ -941,6 +941,91 @@
   }
   window._ssDetailGo = function (i) { if (i >= 0) { _state.detailIdx = i; const s = _state.students[i]; const w = (s.result.answers || []).filter(a => !a.isCorrect).length; _state.detailTab = w ? 'wrong' : 'right'; _renderDetail(i); } };
 
+  // ─── 시험 형식 판별: basic(단어→뜻) / ee(영영) / table(표) ───
+  function _ssDetectViewMode(key) {
+    key = key || {};
+    if (key.layout === 'table') return 'table';
+    const qs = key.questions || [];
+    const isEnWord = t => /^[A-Za-z][A-Za-z' .\-]*$/.test(String(t || '').trim());
+    const enAnswers = qs.filter(q => isEnWord(q.answer)).length;
+    const longEnStems = qs.filter(q => /[A-Za-z]/.test(q.stem) && String(q.stem).trim().split(/\s+/).length >= 5).length;
+    if (qs.length && enAnswers / qs.length >= 0.7 && longEnStems / qs.length >= 0.6) return 'ee';
+    return 'basic';
+  }
+  function _viewMode(r) {
+    const pref = _state.viewPref || 'auto';
+    if (pref !== 'auto') return pref;
+    const k = _state.answerKey || {};
+    return _ssDetectViewMode(k.layout ? k : { layout: r && r.layout, questions: k.questions });
+  }
+  window._ssSetViewPref = function (v) { _state.viewPref = v; _keepScroll(() => _renderDetailBody(_state.detailIdx)); };
+
+  // 학생 답과 정답을 글자 단위로 비교(LCS) — 다른 글자만 표시
+  function _diffHtml(stu, cor) {
+    const a = String(stu || ''), b = String(cor || '').toLowerCase();
+    if (!a.trim()) return '<span class="ss-tone-warn" style="color:var(--sub)">(빈칸)</span>';
+    const al = a.toLowerCase(), n = al.length, m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Int16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = al[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    let i = 0, j = 0, out = '', bad = '';
+    const flush = () => { if (bad) { out += `<mark>${esc(bad)}</mark>`; bad = ''; } };
+    while (i < n) {
+      if (j < m && al[i] === b[j]) { flush(); out += esc(a[i]); i++; j++; }
+      else if (j < m && dp[i][j + 1] > dp[i + 1][j]) j++;
+      else { bad += a[i]; i++; }
+    }
+    flush();
+    return out;
+  }
+  function _editDist(x, y) {
+    x = String(x || '').toLowerCase(); y = String(y || '').toLowerCase();
+    const d = Array.from({ length: x.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= y.length; j++) d[0][j] = j;
+    for (let i = 1; i <= x.length; i++) for (let j = 1; j <= y.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    return d[x.length][y.length];
+  }
+
+  function _eeRowHtml(a, idx) {
+    const unc = new Set(_state.students[idx].result.uncertainQuestions || []);
+    const stu = String(a.studentAnswer || '').trim(), cor = String(a.correctAnswer || '').trim();
+    let badge = '';
+    if (!a.isCorrect && stu && cor) {
+      if (cor.length >= 4 && _editDist(stu, cor) <= 2) badge = uiChip('철자 비슷', 'warn');
+      else if (stu.length >= 5 && cor.length >= 5 && stu.slice(0, 5).toLowerCase() === cor.slice(0, 5).toLowerCase()) badge = uiChip('품사 다름', 'warn');
+    }
+    return `<div class="ss-ee"><span class="ss-ans__no">${esc(a.no)}</span><div class="ss-ans__main">
+      <div class="ss-ee__word">${esc(cor || '?')}${unc.has(a.no) ? ' ' + uiChip('애매', 'warn') : ''}${a._adminOverride ? ' ' + uiChip('수정', 'brand') : ''}</div>
+      <div class="ss-ee__stu">${a.isCorrect ? esc(stu) : _diffHtml(stu, cor)} ${badge}</div>
+      <div class="ss-ee__def">${esc(a.stem || '')}</div></div>
+      <button class="ss-toggle${a.isCorrect ? ' ss-toggle--ok' : ''}" aria-label="${a.isCorrect ? '정답' : '오답'} — 눌러서 바꾸기" onclick="window._ssToggleAnswer(${idx}, ${a.no})">${iconSvg(a.isCorrect ? 'check' : 'x')}</button></div>`;
+  }
+
+  // 표 형식: 주어진 단어(given)별 카드, 칸(answerColumns)별 토글
+  function _tableCards(ans, idx, tab) {
+    const r = _state.students[idx].result;
+    const unc = new Set(r.uncertainQuestions || []);
+    const groups = [];
+    const byKey = new Map();
+    ans.forEach(a => {
+      let given = a.given, col = a.col;
+      if (!given) { const m = String(a.stem || '').match(/^(.*)\s\[(.+)\]$/); if (m) { given = m[1]; col = col || m[2]; } }
+      const k = given || ('#' + a.no);
+      if (!byKey.has(k)) { const g = { given: given || a.stem || '', cells: [] }; byKey.set(k, g); groups.push(g); }
+      byKey.get(k).cells.push({ a, col: col || '' });
+    });
+    const shown = groups.filter(g => tab === 'right' || g.cells.some(c => !c.a.isCorrect || unc.has(c.a.no)));
+    const html = shown.map(g => `<div class="ss-tcard"><div class="ss-tcard__given">${esc(g.given)}</div><div class="ss-tcells">${g.cells.map(({ a, col }) => {
+      const u = unc.has(a.no);
+      const cls = !a.isCorrect ? ' ss-tcell--bad' : u ? ' ss-tcell--warn' : '';
+      const note = !a.isCorrect ? `정답 ${esc(a.correctAnswer || '?')}` : u ? '확인 필요' : '맞음';
+      const stu = String(a.studentAnswer || '').trim();
+      return `<button class="ss-tcell${cls}" onclick="window._ssToggleAnswer(${idx}, ${a.no})" aria-label="눌러서 정답/오답 바꾸기"><small>${esc(col)}</small><b>${stu ? esc(stu) : '(빈칸)'}</b><i>${note}${a._adminOverride ? ' · 수정' : ''}</i></button>`;
+    }).join('')}</div></div>`).join('');
+    return { html, lines: shown.length, total: groups.length, badLines: groups.filter(g => g.cells.some(c => !c.a.isCorrect || unc.has(c.a.no))).length };
+  }
+
   function _detailRowHtml(a, idx) {
     const unc = new Set((_state.students[idx].result.uncertainQuestions) || []);
     const blank = !String(a.studentAnswer || '').trim();
@@ -956,8 +1041,11 @@
     const ans = r.answers || [];
     const unc = new Set(r.uncertainQuestions || []);
     const wrong = ans.filter(a => !a.isCorrect), check = ans.filter(a => a.isCorrect && unc.has(a.no)), right = ans.filter(a => a.isCorrect && !unc.has(a.no));
+    const mode = _viewMode(r);
     const tab = _state.detailTab || 'wrong';
     const shown = tab === 'wrong' ? wrong : tab === 'check' ? check : right;
+    const rowFn = mode === 'ee' ? _eeRowHtml : _detailRowHtml;
+    const tbl = mode === 'table' ? _tableCards(ans, idx, tab === 'right' ? 'right' : 'wrong') : null;
     const pct = _pctOf(r);
     const nOverride = ans.filter(a => a._adminOverride).length;
     const keepName = document.getElementById('ssDetailNameIn');
@@ -967,15 +1055,18 @@
         <div class="ss-pts"><b class="${_tone(pct)}" style="font-size:40px;">${pct}<span style="font-size:20px;">점</span></b><small>${r.correctCount} / ${r.totalQuestions} 맞음</small></div>
       </div>
       <div class="ss-pad" style="padding-bottom:6px;">
-        <div class="ss-tabs">
+        ${mode === 'table' ? `<div class="ss-tabs">
+          <button class="ss-tab${tab !== 'right' ? ' ss-tab--on' : ''}" data-tone="bad" onclick="window._ssSetDetailTab('wrong')">틀림·확인 줄 ${tbl.badLines}</button>
+          <button class="ss-tab${tab === 'right' ? ' ss-tab--on' : ''}" onclick="window._ssSetDetailTab('right')">전체 ${tbl.total}줄</button></div>` : `<div class="ss-tabs">
           <button class="ss-tab${tab === 'wrong' ? ' ss-tab--on' : ''}" data-tone="bad" onclick="window._ssSetDetailTab('wrong')">틀림 ${wrong.length}</button>
           ${check.length ? `<button class="ss-tab${tab === 'check' ? ' ss-tab--on' : ''}" data-tone="warn" onclick="window._ssSetDetailTab('check')">확인 ${check.length}</button>` : ''}
           <button class="ss-tab${tab === 'right' ? ' ss-tab--on' : ''}" data-tone="ok" onclick="window._ssSetDetailTab('right')">맞음 ${right.length}</button>
-        </div>
+        </div>`}
+        <div class="ss-vmode"><span>보기 방식</span><select onchange="window._ssSetViewPref(this.value)">${[['auto', '자동'], ['basic', '기본'], ['ee', '영영'], ['table', '표']].map(([v, l]) => `<option value="${v}"${(_state.viewPref || 'auto') === v ? ' selected' : ''}>${l}${v === 'auto' ? ' (' + ({ basic: '기본', ee: '영영', table: '표' }[mode]) + ')' : ''}</option>`).join('')}</select></div>
         ${nOverride ? `<div class="ss-banner" style="margin-top:10px;"><span>직접 수정 ${nOverride}개</span><button class="ss-btn ss-btn--sm" onclick="window._ssResetOverrides(${idx})">${iconSvg('undo', 'ss-ic--sm')}<span>AI 채점으로 되돌리기</span></button></div>` : ''}
         ${tab === 'wrong' && wrong.length ? '<div class="ss-hint">채점이 틀렸으면 오른쪽 표시를 눌러 바꿔 주세요.</div>' : ''}
       </div>
-      <div class="ss-pad" style="padding-top:6px;"><div class="ss-list">${shown.map(a => _detailRowHtml(a, idx)).join('') || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">해당하는 문항이 없어요.</div></div>'}</div></div>`;
+      <div class="ss-pad" style="padding-top:6px;"><div class="ss-list">${(mode === 'table' ? tbl.html : shown.map(a => rowFn(a, idx)).join('')) || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">해당하는 문항이 없어요.</div></div>'}</div></div>`;
     if (keepName && document.activeElement === keepName) { const n2 = document.getElementById('ssDetailNameIn'); n2.focus(); n2.setSelectionRange(n2.value.length, n2.value.length); }
   }
 
