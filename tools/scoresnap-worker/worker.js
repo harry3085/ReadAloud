@@ -222,7 +222,7 @@ async function refreshSessionMeta(sid) {
   const done = all.docs.map(d => d.data()).filter(x => x.status === 'done' && x.result);
   const pct = (r) => r.totalQuestions > 0 ? Math.round((r.correctCount / r.totalQuestions) * 100) : 0;
   const avg = done.length ? Math.round(done.reduce((a, x) => a + pct(x.result), 0) / done.length) : 0;
-  const check = done.filter(x => (x.result.uncertainQuestions || []).length > 0 || !String(x.result.studentName || '').trim()).length;
+  const check = done.filter(x => ((x.result.uncertainQuestions || []).length > 0 && !x.result.checked) || !String(x.result.studentName || '').trim()).length;
   await updateDoc(sessRef(sid), { studentCount: done.length, avgScore: avg, needCheck: check, workerSeenAt: serverTimestamp() });
 }
 

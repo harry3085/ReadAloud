@@ -132,7 +132,8 @@
     return `${Math.round(m / 1440)}일 전`;
   };
   const _pctOf = (r) => (r && r.totalQuestions > 0) ? Math.round((r.correctCount / r.totalQuestions) * 100) : 0;
-  const _isUncertain = (r) => !!(r && (r.uncertainQuestions || []).length);
+  const _isUncertain = (r) => !!(r && !r.checked && (r.uncertainQuestions || []).length);   // 확인 완료한 학생은 제외
+  const _hasMark = (s) => !!(s && (s.markPath || s._markCache));
   const _noName = (r) => !String((r && r.studentName) || '').trim();
   const _needsCheck = (s) => !!(s && s.status === 'done' && s.result && (_isUncertain(s.result) || _noName(s.result)));
   const _tone = (pct) => 'ss-tone-' + _uiScoreTone(pct);
@@ -842,7 +843,7 @@
       if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span>${uiChip(s.status === 'grading' ? 'PC에서 처리' : '대기')}</div>`;
       const pct = _pctOf(r);
       const badges = [_isUncertain(r) ? uiChip(`확인 ${(r.uncertainQuestions || []).length}문항`, 'warn') : '', _noName(r) ? uiChip('이름 미인식', 'warn') : '', s.kakaoSentAt ? uiChip('보냄', 'ok') : ''].join('');
-      return `<button class="ss-row ss-row--tap" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름을 입력해 주세요' : esc(r.studentName)}</b><span>${badges}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
+      return `<button class="ss-row ss-row--tap" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름을 입력해 주세요' : esc(r.studentName)}${_hasMark(s) ? ' ' + uiChip('마킹', 'brand') : ''}</b><span>${badges}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     body.innerHTML = `
       ${uiHeader({ title, sub, back: 'window._ssUiBack()', right: uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' }) + uiIconBtn('more', '메뉴', { id: 'ssRsMore' }) })}
@@ -995,6 +996,15 @@
     const k = _state.answerKey || {};
     return _ssDetectViewMode(k.layout ? k : { layout: r && r.layout, questions: k.questions });
   }
+  // 애매한 문항 확인 끝 — 저장하면 '확인 필요' 숫자에서 빠진다
+  window._ssSetChecked = function (idx, v) {
+    const s = _state.students && _state.students[idx]; if (!s || !s.result) return;
+    s.result.checked = !!v;
+    _markDirty(idx); clearTimeout(_flushTimer); _flushDirty();
+    _keepScroll(() => _renderDetailBody(idx));
+    if (_state.phase === 'pc') _pcRenderStudents();
+    _ssToast(v ? '확인 완료로 저장했어요' : '확인 완료를 취소했어요');
+  };
   window._ssSetViewPref = function (v) { _state.viewPref = v; _keepScroll(() => _renderDetailBody(_state.detailIdx)); };
 
   // 학생 답과 정답을 글자 단위로 비교(LCS) — 다른 글자만 표시
@@ -1077,7 +1087,7 @@
     const s = _state.students[idx]; const r = s.result;
     const ans = r.answers || [];
     const unc = new Set(r.uncertainQuestions || []);
-    const wrong = ans.filter(a => !a.isCorrect), check = ans.filter(a => a.isCorrect && unc.has(a.no)), right = ans.filter(a => a.isCorrect && !unc.has(a.no));
+    const wrong = ans.filter(a => !a.isCorrect), check = ans.filter(a => unc.has(a.no)), right = ans.filter(a => a.isCorrect && !unc.has(a.no));
     const mode = _viewMode(r);
     const tab = _state.detailTab || 'wrong';
     const shown = tab === 'wrong' ? wrong : tab === 'check' ? check : right;
@@ -1096,10 +1106,13 @@
           <button class="ss-tab${tab !== 'right' ? ' ss-tab--on' : ''}" data-tone="bad" onclick="window._ssSetDetailTab('wrong')">틀림·확인 줄 ${tbl.badLines}</button>
           <button class="ss-tab${tab === 'right' ? ' ss-tab--on' : ''}" onclick="window._ssSetDetailTab('right')">전체 ${tbl.total}줄</button></div>` : `<div class="ss-tabs">
           <button class="ss-tab${tab === 'wrong' ? ' ss-tab--on' : ''}" data-tone="bad" onclick="window._ssSetDetailTab('wrong')">틀림 ${wrong.length}</button>
-          ${check.length ? `<button class="ss-tab${tab === 'check' ? ' ss-tab--on' : ''}" data-tone="warn" onclick="window._ssSetDetailTab('check')">확인 ${check.length}</button>` : ''}
+          ${check.length ? `<button class="ss-tab${tab === 'check' ? ' ss-tab--on' : ''}" data-tone="warn" onclick="window._ssSetDetailTab('check')">애매 ${check.length}</button>` : ''}
           <button class="ss-tab${tab === 'right' ? ' ss-tab--on' : ''}" data-tone="ok" onclick="window._ssSetDetailTab('right')">맞음 ${right.length}</button>
         </div>`}
         <div class="ss-vmode"><span>보기 방식</span><select onchange="window._ssSetViewPref(this.value)">${[['auto', '자동'], ['basic', '기본'], ['ee', '영영'], ['table', '표']].map(([v, l]) => `<option value="${v}"${(_state.viewPref || 'auto') === v ? ' selected' : ''}>${l}${v === 'auto' ? ' (' + ({ basic: '기본', ee: '영영', table: '표' }[mode]) + ')' : ''}</option>`).join('')}</select></div>
+        ${unc.size ? (r.checked
+          ? `<div class="ss-banner" style="margin-top:10px;background:var(--ok-bg);color:var(--ok);"><span>애매한 문항 ${unc.size}개 확인 완료</span><button class="ss-btn ss-btn--sm" onclick="window._ssSetChecked(${idx}, false)">${iconSvg('undo', 'ss-ic--sm')}<span>취소</span></button></div>`
+          : `<div class="ss-banner" style="margin-top:10px;background:var(--warn-bg);color:var(--warn);"><span>애매한 문항 ${unc.size}개 — 사진과 비교해 확인하세요</span><button class="ss-btn ss-btn--sm ss-btn--primary" onclick="window._ssSetChecked(${idx}, true)">${iconSvg('check', 'ss-ic--sm')}<span>확인 완료 저장</span></button></div>`) : ''}
         ${nOverride ? `<div class="ss-banner" style="margin-top:10px;"><span>직접 수정 ${nOverride}개</span><button class="ss-btn ss-btn--sm" onclick="window._ssResetOverrides(${idx})">${iconSvg('undo', 'ss-ic--sm')}<span>AI 채점으로 되돌리기</span></button></div>` : ''}
         ${tab === 'wrong' && wrong.length ? '<div class="ss-hint">채점이 틀렸으면 오른쪽 표시를 눌러 바꿔 주세요.</div>' : ''}
       </div>
@@ -1425,7 +1438,7 @@
       if (s.status === 'error') return `<button class="ss-row ss-row--tap" data-retry="${esc(s.docId)}" style="background:var(--bad-bg);"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title ss-tone-bad">채점 실패</b><span class="ss-sub" style="display:block;">눌러서 다시 채점</span></span></button>`;
       if (s.status !== 'done') return `<div class="ss-row"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="color:var(--sub);">${s.status === 'grading' ? '채점 중…' : '채점 대기'}</b></span></div>`;
       const pct = _pctOf(r);
-      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
+      return `<button class="ss-row ss-row--tap${on}" data-open="${i}"><span class="ss-rank">${n + 1}</span><span class="ss-grow"><b class="ss-title" style="display:block;${_noName(r) ? 'color:var(--sub);font-weight:600;' : ''}">${_noName(r) ? '이름 입력 필요' : esc(r.studentName)}${_hasMark(s) ? ' ' + uiChip('마킹', 'brand') : ''}</b><span>${_isUncertain(r) ? uiChip('확인', 'warn') : ''}${s.kakaoSentAt ? uiChip('보냄', 'ok') : ''}</span></span><span class="ss-pts"><b class="${_tone(pct)}">${pct}점</b><small>${r.correctCount}/${r.totalQuestions}</small></span></button>`;
     }).join('');
     el.innerHTML = `
       <div class="ss-pc__h" style="display:flex;align-items:center;gap:6px;"><b class="ss-grow" style="font-size:17px;word-break:break-word;">${esc(_testNameOf(null))}</b>${uiIconBtn('refresh', '새로고침', { onclick: 'window._ssRefreshFromServer()' })}${uiIconBtn('more', '메뉴', { id: 'ssPcMore' })}</div>
