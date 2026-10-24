@@ -104,6 +104,19 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
         }, (e) => { clearTimeout(timer); reject(e); });
       });
     },
+    // 질문용 임시 사진 (아직 저장되지 않은 정답지 등) — 답을 받은 뒤 지운다
+    async uploadTemp(image) {
+      const path = `scoresnap/${_ssAid()}/jobs/ask_${Date.now()}.jpg`;
+      await new Promise((res, rej) => { const t = uploadBytesResumable(ref(storage, path), _ssB64ToBlob(image.base64, image.mimeType), { contentType: 'image/jpeg' }); t.on('state_changed', null, rej, res); });
+      return path;
+    },
+    async deleteTemp(path) { try { await deleteObject(ref(storage, path)); } catch (_) {} },
+    // 개발자에게 의견 전달 — 대화 내용과 화면 상태를 저장 (목록에는 나오지 않음)
+    async saveFeedback(data) {
+      const jref = doc(collection(db, 'scoresnapSessions'));
+      await setDoc(jref, _ssClean({ ...data, academyId: _ssAid(), kind: 'feedback', keyStatus: 'feedback', createdBy: getUid(), savedAt: serverTimestamp() }));
+      return jref.id;
+    },
     // 카톡 보냄 표시 (sent=false 면 해제)
     async markSent(sid, docId, sent) {
       await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { kakaoSentAt: sent ? serverTimestamp() : deleteField() });

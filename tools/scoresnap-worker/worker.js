@@ -180,6 +180,35 @@ async function answerQuestion(imagePath, payload) {
   });
 }
 
+// ─── 전용앱 일반 질문 답변 (특정 학생이 아니라 정답지 인식·앱 사용·채점 규칙 전반) ───
+const APP_GUIDE = [
+  'ScoreSnap 전용앱(/ss/)은 학원장이 종이 시험지를 사진으로 찍어 채점하는 앱이다.',
+  '흐름: ① 정답지 1장 촬영(번호형 또는 표 형식 선택) → 문제·정답을 읽고 검토·확정 → ② 학생 답안지를 여러 장 올리면 학원 PC의 채점 프로그램(Claude Code)이 한 장씩 채점 → ③ 결과 목록·학생 상세·채점 표시 사진(틀린 문항에 V, 점수) → 카톡 전송.',
+  '채점 규칙: 학생지와 정답지의 문제 순서가 달라도 인쇄된 문제(영어)로 짝짓기. 빈칸·판독불가는 오답. 한글 뜻 답은 "뜻을 아는지" 기준(복수 정답 중 하나만 써도 정답, 띄어쓰기·부호 무시), 영어 단답은 철자 일치. 확신도 0.9 미만이면 애매하면 오답 처리하고 "확인" 표시.',
+  '시험지 형태: 번호형(번호 한 줄에 문제 하나, 단어|뜻 목록 포함) / 표 형식(한 줄에 칸 여러 개, 예: 불규칙동사표 — 칸 하나가 1문항).',
+  '정답지가 잘 안 읽힐 때 대처: 시험지 출력 시 [답지 보기]를 켠 인쇄본이 가장 정확, 그림자 없이 종이 전체가 나오게 촬영, 형태 선택이 맞는지 확인, [정밀하게 다시 읽기], 정답칸은 검토 화면에서 직접 수정 가능.',
+  '채점 기록은 서버에 5일 보관되고 폰·PC에서 같이 볼 수 있다. PC 채점 프로그램이 꺼져 있으면 채점이 대기 상태로 쌓인다. 마킹 사진은 눌렀을 때만 만들어지고 처음 한 번은 번호 위치를 찾느라 20초 정도 걸린다.',
+  '앱 코드를 고치거나 데이터를 바꾸는 것은 이 대화로 할 수 없다. 앱 자체의 문제·개선 요청은 [개발자에게 전달]로 남기도록 안내하라.',
+].join('\n');
+
+async function answerGeneral(imagePath, payload) {
+  const ctx = payload.context || {};
+  const hist = (payload.history || []).slice(-6).map(h => (h.role === 'user' ? '학원장: ' : '답변: ') + String(h.text || '').slice(0, 600)).join('\n');
+  const prompt = (imagePath ? '이미지 파일 img.jpg 는 사용자가 지금 화면에서 다루는 시험지 사진이다. Read 도구로 열어 확인하라.\n' : '') +
+    '너는 ScoreSnap 전용앱의 도우미다. 아래 앱 설명과 현재 화면 상태를 바탕으로 학원장의 질문에 한국어로 친절하고 간결하게(7문장 이내) 답하라. 모르면 모른다고 하고 추측하지 마라.\n\n' +
+    '[앱 설명]\n' + APP_GUIDE + '\n\n[현재 화면 상태]\n' + JSON.stringify(ctx).slice(0, 8000) + '\n\n' +
+    (hist ? '[지금까지의 대화]\n' + hist + '\n\n' : '') +
+    '[학원장의 질문]\n' + String(payload.question || '').slice(0, 1000) + '\n\n' +
+    '최종 응답은 JSON 객체 하나만 출력: {"answer": "답변 문장"}';
+  const run = async (dir) => {
+    const j = await askJson(prompt, dir, 2);
+    return { answer: String(j.answer || '').slice(0, 2500), corrections: [] };
+  };
+  if (imagePath) return withImage(imagePath, run);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
+  try { return await run(dir); } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} }
+}
+
 // ─── 마킹용 위치 찾기 (Google Vision 대신 Claude) — 지시문·검증은 marks.js ───
 async function findMarkWords(imagePath, payload) {
   return withImage(imagePath, async (dir) => {
@@ -283,7 +312,7 @@ async function handleJob(jd) {
   try {
     let result;
     if (j.jobType === 'ask') {
-      result = await answerQuestion(j.imagePath, j.payload || {});
+      result = (j.payload && j.payload.mode === 'general') ? await answerGeneral(j.imagePath, j.payload) : await answerQuestion(j.imagePath, j.payload || {});
       log(`  → 답변 완료 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
     } else if (j.jobType === 'ocr') {
       result = await findMarkWords(j.imagePath, j.payload);

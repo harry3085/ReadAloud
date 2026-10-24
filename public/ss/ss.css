@@ -357,3 +357,11 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-chat__hints { display:flex; gap:6px; flex-wrap:wrap; padding-top:6px; }
 .ss-chat__form { flex-shrink:0; display:flex; gap:8px; padding:8px 12px 10px; } .ss-chat__form .ss-input { flex:1; height:40px; }
 .ss-spinner--sm { width:14px; height:14px; display:inline-block; vertical-align:-2px; border-width:2px; }
+
+/* 일반 질문 도우미 */
+.ss-fab { position:absolute; right:14px; bottom:90px; z-index:5; display:inline-flex; align-items:center; gap:6px; height:44px; padding:0 16px; border:none; border-radius:22px; background:#303134; color:#fff; font-size:14px; font-weight:700; box-shadow:0 3px 10px rgba(0,0,0,.25); cursor:pointer; }
+.ss-fab .ss-ic { width:18px; height:18px; }
+@media (min-width:1024px) { .ss-fab { top:10px; bottom:auto; right:16px; } .ss-overlay:has(.ss-pc__top) .ss-fab { display:none; } }
+.ss-pc__top .ss-helpbtn { background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:10px; height:34px; padding:0 14px; font-weight:700; cursor:pointer; }
+.ss-drawer { position:fixed; top:0; right:0; bottom:0; width:min(440px,100vw); z-index:100002; background:var(--surface); box-shadow:-8px 0 30px rgba(0,0,0,.25); display:flex; flex-direction:column; font-family:var(--font); color:var(--text); }
+.ss-drawer__head { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:10px 8px 6px 14px; } .ss-drawer__head b { font-size:18px; }

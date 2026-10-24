@@ -243,7 +243,7 @@
     const ov = document.createElement('div');
     ov.id = 'scoreSnapOverlay';
     ov.className = 'ss-overlay';
-    ov.innerHTML = '<div id="ssBody" class="ss-body"></div>';
+    ov.innerHTML = '<div id="ssBody" class="ss-body"></div><button class="ss-fab" id="ssFab" aria-label="질문" onclick="window._ssOpenHelp()">' + iconSvg('alert') + '<span>질문</span></button>';
     document.body.appendChild(ov);
     _ssPush();
   }
@@ -1398,7 +1398,7 @@
     const body = _body(); if (!body) return;
     if (!document.getElementById('ssPcGrid')) {
       body.innerHTML = `
-        <header class="ss-pc__top"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>
+        <header class="ss-pc__top"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-helpbtn" onclick="window._ssOpenHelp()">질문 · 도움말</button><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>
         <div class="ss-pc__grid" id="ssPcGrid"><aside class="ss-pc__c1" id="ssPcSess"></aside><section class="ss-pc__c2" id="ssPcStu"></section><section class="ss-pc__c3" id="ssPcDet"></section><i class="ss-pc__rs" id="ssPcRs1" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i><i class="ss-pc__rs" id="ssPcRs2" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i></div>`;
       _pcColsApply(); _pcWireResize(document.getElementById('ssPcRs1'), 'pc1'); _pcWireResize(document.getElementById('ssPcRs2'), 'pc2');
       document.getElementById('ssPcLogout').onclick = () => window.dispatchEvent(new Event('ss-logout'));
@@ -1504,6 +1504,70 @@
     _pcPhoto();
     _pcRenderChat();
   }
+
+  // ─── 일반 질문 도우미 (모든 화면, 오른쪽 위 [질문] 버튼) — 정답지 인식·앱 사용·채점 규칙 + 개발자에게 전달 ───
+  let _gchat = [];
+  function _genCtx() {
+    const k = _state.answerKey || {};
+    const qs = (k.questions || []).slice(0, 40).map(q => ({ no: q.no, stem: String(q.stem || '').slice(0, 60), answer: String(q.answer || '').slice(0, 60), confidence: q.confidence }));
+    const done = (_state.students || []).filter(x => x.status === 'done').length;
+    return {
+      화면: _state.phase, 폭: window.innerWidth >= 1024 ? 'PC' : '폰', 시험이름: k.testName || '', 형태선택: _state.layoutHint || '',
+      정답지형태: k.layout || '', 정답지문항수: (k.questions || []).length, 정답지문항: qs, 열: k.layout === 'table' ? { 기준: k.givenColumn, 답: k.answerColumns } : undefined,
+      정밀모드: _state.precision === true, 학생수: (_state.students || []).length, 채점완료: done,
+      PC채점프로그램: window._ssWorker ? (window._ssWorker.online ? '켜짐' : '꺼짐') : '알 수 없음',
+    };
+  }
+  window._ssOpenHelp = function () {
+    if (document.getElementById('ssHelp')) return;
+    const dr = document.createElement('div');
+    dr.className = 'ss-drawer'; dr.id = 'ssHelp'; dr.setAttribute('data-ss-sub', '1');
+    dr._ssCancel = () => dr.remove();
+    document.body.appendChild(dr);
+    _ssPushSub(dr);
+    _helpRender();
+  };
+  function _helpRender() {
+    const dr = document.getElementById('ssHelp'); if (!dr) return;
+    const body = _gchat.map(m => m.role === 'user'
+      ? `<div class="ss-chat__m ss-chat__m--me">${esc(m.text)}</div>`
+      : `<div class="ss-chat__m">${m.pending ? '<span class="ss-spinner ss-spinner--sm"></span> 확인하는 중…' : esc(m.text).replace(/\n/g, '<br>')}</div>`).join('');
+    const hints = ['정답지 문항이 제대로 안 읽혀요. 어떻게 하면 좋아요?', '번호형과 표 형식은 뭐가 달라요?', '애매 표시는 어떤 기준이에요?'];
+    dr.innerHTML = `<div class="ss-drawer__head"><b>질문 · 도움말</b>${uiIconBtn('x', '닫기', { onclick: 'window._ssCloseHelp()' })}</div>
+      <div class="ss-sub" style="padding:0 14px 6px;">학원 PC의 Claude가 지금 화면 상태를 보고 답해요. 앱 자체의 문제나 요청은 [개발자에게 전달]로 남겨 주세요.</div>
+      <div class="ss-chat__list" id="ssHelpList" style="flex:1;padding:6px 14px;">${body || `<div class="ss-chat__hints">${hints.map(h => `<button class="ss-pill" data-hint="${esc(h)}">${esc(h)}</button>`).join('')}</div>`}</div>
+      <form class="ss-chat__form" id="ssHelpForm"><input class="ss-input" id="ssHelpIn" type="text" placeholder="질문을 입력하세요" autocomplete="off"><button class="ss-btn ss-btn--primary" type="submit">보내기</button></form>
+      <div style="padding:0 14px 12px;display:flex;gap:8px;">${uiBtn({ size: 'sm', icon: 'share', label: '개발자에게 전달', onclick: 'window._ssSendFeedback()' })}${_gchat.length ? uiBtn({ size: 'sm', label: '대화 지우기', onclick: 'window._ssClearHelp()' }) : ''}</div>`;
+    const lst = document.getElementById('ssHelpList'); lst.scrollTop = lst.scrollHeight;
+    document.getElementById('ssHelpForm').onsubmit = (e) => { e.preventDefault(); const i = document.getElementById('ssHelpIn'); const t = i.value.trim(); if (t) { i.value = ''; window._ssHelpSend(t); } };
+    dr.querySelectorAll('[data-hint]').forEach(b => { b.onclick = () => window._ssHelpSend(b.dataset.hint); });
+  }
+  window._ssCloseHelp = function () { const dr = document.getElementById('ssHelp'); if (dr) _ssSubRemove(dr); };
+  window._ssClearHelp = function () { _gchat = []; _helpRender(); };
+  window._ssHelpSend = async function (text) {
+    if (_gchat.some(m => m.pending)) { _ssToast('이전 답변을 기다리는 중이에요'); return; }
+    const history = _gchat.map(m => ({ role: m.role, text: m.text }));
+    _gchat.push({ role: 'user', text }); const ai = { role: 'ai', text: '', pending: true }; _gchat.push(ai); _helpRender();
+    let temp = '';
+    try {
+      // 사진이 필요한 상황(정답지 검토 등)이면 그 사진을 같이 보낸다
+      let imagePath = '';
+      if (_state.phase === 'answerKey-review' && _state.answerKeyImage) imagePath = temp = await _store().uploadTemp(_state.answerKeyImage);
+      else if (_state.keyImagePath) imagePath = _state.keyImagePath;
+      const out = await _store().ask(imagePath, { mode: 'general', question: text, history, context: _genCtx() });
+      ai.text = out.answer || '(답변이 비어 있어요)';
+    } catch (e) { ai.text = '답변을 받지 못했어요: ' + (e && e.message); }
+    ai.pending = false;
+    if (temp) _store().deleteTemp(temp);
+    _helpRender();
+  };
+  window._ssSendFeedback = async function () {
+    if (!_gchat.length) { _ssToast('남길 대화가 없어요. 먼저 질문이나 요청 내용을 적어 주세요'); return; }
+    try {
+      await _store().saveFeedback({ context: _genCtx(), sid: _state.sid || '', messages: _gchat.filter(m => !m.pending).map(m => ({ role: m.role, text: m.text })) });
+      _ssToast('개발자에게 전달했어요');
+    } catch (e) { _ssToast('전달하지 못했어요: ' + (e && e.message)); }
+  };
 
   // ─── 채점 질문 채팅 (PC 사진 아래) — 학원 PC 의 Claude 가 답안지 사진을 다시 보고 답한다 ───
   const _CHAT_HINTS = ['틀린 문항이 맞는지 다시 봐줘', '애매한 문항이 왜 애매해?', '이름이 맞게 읽혔어?'];
