@@ -277,3 +277,11 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
   .ss-kk__list { max-height:160px; border-right:0; border-bottom:1px solid var(--border); }
   .ss-kk__right { border-left:0; border-top:1px solid var(--border); }
 }
+
+/* PC: 폰 화면을 쓰는 단계는 가운데 폭을 제한 */
+@media (min-width:1024px) {
+  .ss-steps { width:100%; max-width:720px; margin:0 auto; background:transparent; }
+  .ss-actionbar { justify-content:center; }
+  .ss-actionbar > .ss-btn, .ss-actionbar > div { max-width:360px; }
+  .ss-actionbar .ss-btn--primary { flex:0 1 360px; }
+}

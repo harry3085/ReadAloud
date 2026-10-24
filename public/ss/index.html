@@ -207,7 +207,8 @@ async function openSS() {
   try { await loadScoreSnapScript(); } catch (e) { alert(e.message); return; }
   watchOverlay();
   view('boot'); $('boot').classList.add('hidden');
-  window.openScoreSnap();
+  await window.openScoreSnap();
+  try { const sid = new URLSearchParams(location.search).get('sid'); if (sid && window._ssOpenBySid) { history.replaceState(null, '', location.pathname); await window._ssOpenBySid(sid); } } catch (_) {}
 }
 
 onAuthStateChanged(auth, async (user) => {

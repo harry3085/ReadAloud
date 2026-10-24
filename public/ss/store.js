@@ -77,6 +77,11 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
         (snap) => cb(snap.docs.map(d => ({ docId: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0))),
         (e) => { if (onErr) onErr(e); });
     },
+    // PC 채점 프로그램 상태 구독 (worker.js 가 30초마다 기록). 해제 함수를 돌려준다
+    watchWorkers(cb) {
+      return onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', _ssAid()), where('kind', '==', 'worker')),
+        (snap) => cb(snap.docs.map(d => d.data())), () => cb([]));
+    },
     // 카톡 보냄 표시 (sent=false 면 해제)
     async markSent(sid, docId, sent) {
       await updateDoc(doc(db, 'scoresnapSessions', sid, 'students', docId), { kakaoSentAt: sent ? serverTimestamp() : deleteField() });

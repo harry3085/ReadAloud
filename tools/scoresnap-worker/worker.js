@@ -12,7 +12,7 @@ const { spawn } = require('child_process');
 const { initializeApp } = require('firebase/app');
 const { getAuth, signInWithEmailAndPassword, signInWithCustomToken } = require('firebase/auth');
 const {
-  getFirestore, collection, doc, query, where, getDocs, getDoc, updateDoc, deleteDoc, runTransaction,
+  getFirestore, collection, doc, query, where, getDocs, getDoc, setDoc, updateDoc, deleteDoc, runTransaction,
   onSnapshot, serverTimestamp,
 } = require('firebase/firestore');
 const { getStorage, ref, getDownloadURL } = require('firebase/storage');
@@ -282,6 +282,18 @@ async function handleJob(jd) {
   return true;
 }
 
+// 상태 알림: 전용앱이 'PC 켜짐/꺼짐'과 대기 건수를 보여주도록 30초마다 기록
+const HB_ID = 'worker_' + AID + '_' + WORKER.replace(/[^A-Za-z0-9_-]/g, '_');
+let hbBusy = false, hbQueued = 0;
+async function heartbeat() {
+  try {
+    await setDoc(doc(db, 'scoresnapSessions', HB_ID), {
+      academyId: AID, kind: 'worker', keyStatus: 'worker', workerName: WORKER,
+      lastSeen: serverTimestamp(), busy: hbBusy, queued: hbQueued, version: 1,
+    });
+  } catch (e) { log('상태 기록 실패:', e.message); }
+}
+
 let busy = false, again = false;
 async function pump() {
   if (busy) { again = true; return; }
@@ -291,12 +303,15 @@ async function pump() {
       again = false;
       const snap = await getDocs(query(collection(db, 'scoresnapSessions'),
         where('academyId', '==', AID), where('needsWork', '==', true)));
+      hbQueued = snap.docs.filter(d => d.data().kind === 'job' && d.data().status === 'queued').length;
       if (snap.size) log('대기 작업 확인:', snap.size, '건 (작업 ' + snap.docs.filter(d => d.data().kind === 'job').length + ')');
       // 먼저 올라온 순서대로 한 건씩
       const jobs = snap.docs.filter(d => d.data().kind === 'job')
         .sort((x, y) => ((x.data().createdAt && x.data().createdAt.toMillis()) || 0) - ((y.data().createdAt && y.data().createdAt.toMillis()) || 0));
       for (const jd of jobs) {
+        hbBusy = true; heartbeat();
         try { await handleJob(jd); } catch (e) { log(`[${jd.id}] 처리 오류:`, e.message); }
+        hbBusy = false; hbQueued = Math.max(0, hbQueued - 1); heartbeat();
       }
     } while (again);
   } catch (e) { log('확인 오류:', e.message); }
@@ -310,6 +325,7 @@ async function pump() {
   onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', AID), where('needsWork', '==', true)),
     () => { pump(); }, (e) => log('실시간 연결 오류:', e.message));
   setInterval(pump, 60 * 1000);
+  heartbeat(); setInterval(heartbeat, 30 * 1000);
   log('대기 중 — 전용앱에서 채점을 요청하면 처리합니다. (이 창을 닫으면 채점이 멈춥니다)');
   pump();
 })().catch(e => { console.error('시작 실패:', e.message); process.exit(1); });

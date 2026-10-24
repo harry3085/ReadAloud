@@ -208,7 +208,30 @@
   }
 
   // ─── 진입·바깥틀 ───
+  // PC 채점 프로그램 상태 — worker 가 30초마다 갱신, 2분 넘게 없으면 꺼짐으로 본다
+  let _workerRows = [], _workerTimer = 0, _workerUnsub = null;
+  function _computeWorker() {
+    const now = Date.now();
+    const rows = _workerRows.map(w => ({ w, ms: w.lastSeen && w.lastSeen.toMillis ? w.lastSeen.toMillis() : now })).sort((a, b) => b.ms - a.ms);
+    const best = rows[0];
+    if (!best) return window._ssSetWorkerStatus({ online: false, name: '', ago: '', queued: 0, none: true });
+    const online = now - best.ms < 120000;
+    const sec = Math.round((now - best.ms) / 1000);
+    window._ssSetWorkerStatus({ online, name: best.w.workerName || 'PC', ago: sec < 60 ? '방금' : `${Math.round(sec / 60)}분 전`, queued: best.w.queued || 0, busy: !!best.w.busy });
+    if (_state.phase === 'student-capture') _keepScroll(_renderStudentCapture);
+  }
+  function _startWorkerWatch() {
+    if (_workerUnsub || !_store() || !_store().watchWorkers) return;
+    _workerUnsub = _store().watchWorkers((rows) => { _workerRows = rows; _computeWorker(); });
+    _workerTimer = setInterval(_computeWorker, 20000);
+  }
+  function _stopWorkerWatch() { if (_workerUnsub) { try { _workerUnsub(); } catch (_) {} _workerUnsub = null; } clearInterval(_workerTimer); window._ssWorker = null; }
+
+  // 기록 바로 열기 (/ss/?sid=xxx — QR)
+  window._ssOpenBySid = function (sid) { return _ssOpenServerSession(sid, {}); };
+
   window.openScoreSnap = async function () {
+    _startWorkerWatch();
     _state = { phase: 'init', answerKey: null, students: [], layoutHint: 'numbered', precision: false, batchIds: new Set() };
     _renderOverlay();
     await _renderHome();
@@ -226,6 +249,7 @@
 
   function closeScoreSnap() {
     _stopWatch();
+    _stopWorkerWatch();
     _ssPopAll();
     _releaseCamera();
     document.querySelectorAll('[data-ss-sub]').forEach(n => n.remove());
@@ -690,8 +714,10 @@
     const cells = list.map((s, i) => _cellHtml(s, i + 1, s.status === 'queued' ? ++qpos : 0)).join('');
     const allDone = total > 0 && !busy;
     const resultCount = (_state.students || []).filter(s => s.status === 'done').length;
+    const w = window._ssWorker;
+    const offWarn = (busy && w && !w.online) ? `<div class="ss-banner" style="background:var(--warn-bg);color:var(--warn);margin-bottom:12px;"><span>PC 채점 프로그램이 꺼져 있어요. 학원 PC에서 start.bat 을 실행하면 채점이 시작돼요.</span></div>` : '';
     const progress = total ? `
-      <div class="ss-card ss-progress"><div class="ss-progress__head"><b>${total}장 중 ${doneN}장 채점 완료</b><span class="ss-sub">${busy ? (remain ? `약 ${remain}분 남음` : '시간 계산 중') : '모두 끝났어요'}</span></div>
+      ${offWarn}<div class="ss-card ss-progress"><div class="ss-progress__head"><b>${total}장 중 ${doneN}장 채점 완료</b><span class="ss-sub">${busy ? (remain ? `약 ${remain}분 남음` : '시간 계산 중') : '모두 끝났어요'}</span></div>
         <div class="ss-bar"><i style="width:${total ? Math.round(doneN / total * 100) : 0}%"></i></div>
         <div class="ss-sub" style="margin-top:10px;">학원 PC가 한 장씩 차례로 채점해요. 화면을 닫아도 계속되고, 끝나면 결과 목록에 들어가요.</div></div>
       <div class="ss-sec" style="margin-top:20px;"><b>추가한 답안지</b><span class="ss-sub">이름은 답안지에서 자동 인식</span></div>
@@ -701,6 +727,7 @@
         <h3>학생 답안지를 찍어 주세요</h3>
         <p>여러 장을 한 번에 골라도 돼요.<br>이름은 답안지의 손글씨에서 자동으로 읽어요.</p>
         <span class="ss-kbd">PC: 파일을 끌어다 놓거나 Ctrl+V</span>
+        ${_isPc() ? `<button class="ss-btn" onclick="window._ssShowQr()">${iconSvg('image', 'ss-ic--sm')}<span>폰으로 이어서 찍기 (QR)</span></button>` : ''}
       </div>`;
     const sec = uiBtn({ size: 'lg', icon: 'image', label: allDone ? '' : '앨범에서 여러 장', id: 'ssStGal' });
     const cam = uiBtn({ kind: 'primary', size: 'lg', icon: 'camera', label: total ? '한 장 더 찍기' : '답안지 촬영', id: 'ssStCam' });
@@ -834,6 +861,7 @@
       ${uiActionBar(uiBtn({ kind: 'primary', size: 'lg', icon: 'plus', label: '답안지 더 추가', id: 'ssRsAdd' }))}`;
     document.getElementById('ssRsAdd').onclick = () => window._ssBackToStudentCapture();
     document.getElementById('ssRsMore').onclick = () => _ssSheet([
+      { label: '폰으로 열기 (QR)', icon: 'camera', fn: () => window._ssShowQr() },
       { label: '카톡 연속 전송', icon: 'share', fn: () => window._ssOpenKakao() },
       { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
@@ -1376,6 +1404,7 @@
     const sc = document.getElementById('ssPcStuScroll'); if (sc) { sc.scrollTop = prevTop; }
     document.getElementById('ssPcAdd').onclick = () => window._ssBackToStudentCapture();
     document.getElementById('ssPcMore').onclick = () => _ssSheet([
+      { label: '폰으로 열기 (QR)', icon: 'camera', fn: () => window._ssShowQr() },
       { label: '정답 목록 보기', icon: 'list', fn: () => window._ssViewKeyList() },
       { label: '정답지 사진 보기', icon: 'image', fn: () => window._ssViewKeyImage() },
       { label: '정답지 다시 올리기', icon: 'refresh', fn: () => window._ssReplaceAnswerKey() },
@@ -1636,6 +1665,40 @@
     kk.cur = nxt.i; kk.copied = -1;
     _kkRender();
     _kkCopy(nxt.i).then(ok => { if (ok && _state.kk && _state.kk.cur === nxt.i) { _state.kk.copied = nxt.i; _kkRenderRight(); } });
+  };
+
+  // ─── QR: 폰으로 이 기록을 바로 열기 ───
+  let _qrLoading = null;
+  function _loadQr() {
+    if (typeof window.qrcode === 'function') return Promise.resolve();
+    if (_qrLoading) return _qrLoading;
+    _qrLoading = new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+      sc.onload = res; sc.onerror = () => { _qrLoading = null; rej(new Error('QR 라이브러리를 불러오지 못했어요')); };
+      document.head.appendChild(sc);
+    });
+    return _qrLoading;
+  }
+  window._ssShowQr = async function () {
+    if (!_state.sid) { _ssToast('먼저 정답지를 확정해 주세요'); return; }
+    const url = `${location.origin}/ss/?sid=${encodeURIComponent(_state.sid)}`;
+    let svg = '';
+    try { await _loadQr(); const q = window.qrcode(0, 'M'); q.addData(url); q.make(); svg = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); }
+    catch (e) { _ssToast(e.message); return; }
+    const sc = document.createElement('div');
+    sc.className = 'ss-scrim'; sc.setAttribute('data-ss-sub', '1');
+    sc.style.alignItems = 'center';
+    sc.innerHTML = `<div class="ss-card" style="padding:22px;max-width:360px;width:90%;text-align:center;background:#fff;">
+      <b style="font-size:18px;">폰으로 이어서 찍기</b>
+      <div class="ss-sub" style="margin:6px 0 14px;">폰 카메라로 QR을 찍으면 이 기록의 답안지 추가 화면이 바로 열려요.<br>(폰에서 이미 로그인되어 있어야 해요)</div>
+      <div id="ssQrBox" style="width:240px;height:240px;margin:0 auto;">${svg}</div>
+      <div class="ss-sub" style="margin-top:12px;word-break:break-all;font-size:12px;">${esc(url)}</div>
+      <div style="margin-top:14px;">${uiBtn({ block: true, label: '닫기', id: 'ssQrClose' })}</div></div>`;
+    sc._ssCancel = () => sc.remove();
+    sc.onclick = (e) => { if (e.target === sc || e.target.closest('#ssQrClose')) _ssSubRemove(sc); };
+    document.body.appendChild(sc);
+    _ssPushSub(sc);
   };
 
   // 옛 이름 호환 (정답 목록·사진 보기 등에서 사용)
