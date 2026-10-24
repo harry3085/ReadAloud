@@ -103,47 +103,64 @@ let waiting = 0;
 function banner(txt) { const b = $('pcBanner'); if (!txt) { b.classList.add('hidden'); return; } b.textContent = txt; b.classList.remove('hidden'); }
 function b64ToBlob(b64, mime) { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Blob([u8], { type: mime || 'image/jpeg' }); }
 
-async function gradeViaPc(body) {
+// 작업 한 건을 서버에 올리고 PC 채점 프로그램이 끝낼 때까지 기다린다 → 완료된 작업 문서를 돌려줌
+async function runJob(jobType, imageBase64, mime, payload) {
   const aid = window.MY_ACADEMY_ID;
   const jref = doc(collection(db, 'scoresnapSessions'));
   const path = `scoresnap/${aid}/jobs/${jref.id}.jpg`;
-  const isKey = body.mode === 'answerKey';
   try {
-    await uploadBytes(ref(storage, path), b64ToBlob(body.imageBase64, body.imageMimeType), { contentType: 'image/jpeg' });
-    const meta = body.answerKeyMeta || {};
+    await uploadBytes(ref(storage, path), b64ToBlob(imageBase64, mime), { contentType: 'image/jpeg' });
     await setDoc(jref, {
       academyId: aid, kind: 'job', keyStatus: 'job', needsWork: true, status: 'queued',
       createdBy: currentUser.uid, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + KEEP_MS),
-      jobType: isKey ? 'key' : 'student', imagePath: path,
-      payload: isKey ? { layoutHint: body.layoutHint || 'numbered' }
-        : { answerKey: JSON.parse(JSON.stringify({ questions: body.answerKeyQuestions, layout: meta.layout, givenColumn: meta.givenColumn, answerColumns: meta.answerColumns })) },
+      jobType, imagePath: path, payload,
     });
-  } catch (e) { return new Response(JSON.stringify({ error: '채점 요청을 올리지 못했어요: ' + e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }); }
+  } catch (e) { return { status: 'error', error: '요청을 올리지 못했어요: ' + e.message }; }
 
   waiting++;
   const out = await new Promise((resolve) => {
-    let t0 = Date.now(), unsub = null;
+    const t0 = Date.now(); let unsub = null;
     const tick = setInterval(() => {
-      const sec = (Date.now() - t0) / 1000;
-      if (sec > 40 * 60) { clearInterval(tick); unsub && unsub(); resolve({ status: 'error', error: 'PC 채점 프로그램 응답이 없어요 (40분)' }); }
+      if ((Date.now() - t0) / 1000 > 40 * 60) { clearInterval(tick); unsub && unsub(); resolve({ status: 'error', error: 'PC 채점 프로그램 응답이 없어요 (40분)' }); }
     }, 5000);
     unsub = onSnapshot(jref, (d) => {
       const j = d.data(); if (!j) return;
       if (j.status === 'queued' && Date.now() - t0 > 15000) banner('PC 채점 프로그램이 아직 가져가지 않았어요 — 학원 PC 에서 채점 프로그램(start.bat)이 켜져 있는지 확인하세요');
-      else if (j.status === 'working') banner('PC 에서 채점 중…');
+      else if (j.status === 'working') banner('PC 에서 처리 중…');
       if (j.status === 'done' || j.status === 'error') { clearInterval(tick); unsub(); resolve(j); }
     }, (e) => { clearInterval(tick); resolve({ status: 'error', error: e.message }); });
   });
   waiting--; if (!waiting) banner('');
   deleteObject(ref(storage, path)).catch(() => {}); deleteDoc(jref).catch(() => {});
-  if (out.status === 'done' && out.result) return new Response(JSON.stringify({ success: true, mode: body.mode, ...out.result }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  return new Response(JSON.stringify({ error: out.error || '채점에 실패했어요' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+  return out;
+}
+const jsonRes = (obj, status) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
+
+// /api/scoresnap-grade (정답지 읽기·학생 채점)
+async function gradeViaPc(body) {
+  const isKey = body.mode === 'answerKey', meta = body.answerKeyMeta || {};
+  const out = await runJob(isKey ? 'key' : 'student', body.imageBase64, body.imageMimeType,
+    isKey ? { layoutHint: body.layoutHint || 'numbered' }
+      : { answerKey: JSON.parse(JSON.stringify({ questions: body.answerKeyQuestions, layout: meta.layout, givenColumn: meta.givenColumn, answerColumns: meta.answerColumns })) });
+  if (out.status === 'done' && out.result) return jsonRes({ success: true, mode: body.mode, ...out.result }, 200);
+  return jsonRes({ error: out.error || '채점에 실패했어요' }, 502);
+}
+// /api/ocr 중 마킹용 "문항 번호·점수 글자 위치" — Google Vision 대신 PC 의 Claude 가 찾는다 (결과 형식은 Vision 과 같음)
+async function marksViaPc(body) {
+  const out = await runJob('ocr', body.imageBase64, body.mimeType, { total: body.expectCount || 0 });
+  if (out.status === 'done' && out.result && Array.isArray(out.result.words)) return jsonRes({ success: true, words: out.result.words }, 200);
+  return jsonRes({ error: out.error || '번호 위치를 읽지 못했어요' }, 502);
 }
 const origFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   const url = typeof input === 'string' ? input : (input && input.url) || '';
-  if (url.split('?')[0] === '/api/scoresnap-grade' && init && init.method === 'POST') {
-    try { return gradeViaPc(JSON.parse(init.body)); } catch (e) { /* 파싱 실패 시 원래 경로 */ }
+  const u = url.split('?')[0];
+  if (init && init.method === 'POST' && (u === '/api/scoresnap-grade' || u === '/api/ocr')) {
+    try {
+      const body = JSON.parse(init.body);
+      if (u === '/api/scoresnap-grade') return gradeViaPc(body);
+      if (body.wordBoxes === true && !body.allWords && body.expectCount > 0) return marksViaPc(body);   // 표 형식(allWords)은 아직 Google Vision 그대로
+    } catch (e) { /* 파싱 실패 시 원래 경로 */ }
   }
   return origFetch(input, init);
 };

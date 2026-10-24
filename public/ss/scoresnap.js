@@ -548,7 +548,7 @@
     const idToken = await window._ssGetIdToken();
     const r = await fetch('/api/ocr', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true }),
+      body: JSON.stringify({ idToken, imageBase64: base64, mimeType: 'image/jpeg', wordBoxes: true, expectCount: x.result.totalQuestions || 0 }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.words) throw new Error(j.error || '번호 위치를 읽지 못했어요');
