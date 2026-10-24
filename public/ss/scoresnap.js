@@ -243,8 +243,10 @@
     const ov = document.createElement('div');
     ov.id = 'scoreSnapOverlay';
     ov.className = 'ss-overlay';
-    ov.innerHTML = '<div id="ssBody" class="ss-body"></div><button class="ss-fab" id="ssFab" aria-label="질문" onclick="window._ssOpenHelp()">' + iconSvg('alert') + '<span>질문</span></button>';
+    ov.innerHTML = `<header class="ss-pc__top ss-pc__top--g" id="ssTop"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-helpbtn" onclick="window._ssOpenHelp()">질문 · 도움말</button><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>` +
+      '<div id="ssBody" class="ss-body"></div><button class="ss-fab" id="ssFab" aria-label="질문" onclick="window._ssOpenHelp()">' + iconSvg('alert') + '<span>질문</span></button>';
     document.body.appendChild(ov);
+    document.getElementById('ssPcLogout').onclick = () => window.dispatchEvent(new Event('ss-logout'));
     _ssPush();
   }
 
@@ -557,13 +559,11 @@
     const thumbStyle = _state.answerKeyImage && _state.answerKeyImage.dataUrl ? ` style="background-image:url('${_state.answerKeyImage.dataUrl}')"` : '';
     const re = !!_state._reKey;
     const pc = _isPc();
-    body.innerHTML = `
-      ${uiHeader({ title: '정답지 검토', back: 'window._ssUiBack()', right: uiIconBtn('more', '메뉴', { id: 'ssAkMore' }) })}
-      ${uiSteps(1)}
-      ${pc ? `<div class="ss-akpc"><div class="ss-akpc__photo">${_state.answerKeyImage && _state.answerKeyImage.dataUrl ? `<img alt="정답지 사진" src="${_state.answerKeyImage.dataUrl}">` : '<div class="ss-center"><div class="ss-sub" style="color:#e8eaed;">정답지 사진이 없어요</div></div>'}</div>` : ''}
-      <div class="ss-scroll" id="ssScroll"><div class="ss-col ss-pad">
+    const imgSrc = _state.answerKeyImage && _state.answerKeyImage.dataUrl;
+    const hdr = uiHeader({ title: _state._editKey ? '정답지 확인·수정' : '정답지 검토', back: 'window._ssUiBack()', right: uiIconBtn('more', '메뉴', { id: 'ssAkMore' }) });
+    const scrollHtml = `<div class="ss-scroll" id="ssScroll"><div class="ss-col ss-pad">
         <div class="ss-row" style="border-radius:var(--radius);border:1px solid var(--border);margin-bottom:12px;align-items:center;">
-          <button class="ss-thumbbtn" id="ssAkThumb"${thumbStyle} aria-label="정답지 사진 보기">${thumbStyle ? '' : iconSvg('image')}</button>
+          ${pc ? '' : `<button class="ss-thumbbtn" id="ssAkThumb"${thumbStyle} aria-label="정답지 사진 보기">${thumbStyle ? '' : iconSvg('image')}</button>`}
           <div class="ss-grow"><div class="ss-sub">시험 이름</div>
             <input class="ss-input ss-input--line" id="ssAkTitle" type="text" value="${esc(k.testName || '')}" placeholder="시험 이름을 입력하세요" style="font-size:19px;">
             <div class="ss-sub" style="margin-top:4px;">${esc(kind)} · ${qs.length}문항 인식${_state.precision === true ? ' · 정밀' : ''}${k.layout === 'table' ? ` · ${esc(k.givenColumn || '')} 보고 ${esc((k.answerColumns || []).join('·'))} 쓰기` : ''}</div></div>
@@ -572,19 +572,28 @@
           <button class="ss-pill${tab === 'all' ? ' ss-pill--on' : ''}" data-tab="all">전체 ${qs.length}</button>
           ${nCheck ? `<button class="ss-pill${tab === 'check' ? ' ss-pill--on' : ''}" data-tab="check" style="${tab === 'check' ? '' : 'color:var(--warn);border-color:var(--warn-bd);background:var(--warn-bg);'}" id="ssAkCheckPill">확인 필요 ${nCheck}</button>` : ''}
         </div>
-        ${tab === 'check' ? '<div class="ss-hint" style="padding-top:0;">AI가 흐리게 읽은 문항이에요. 정답칸을 눌러 바로 고칠 수 있어요.</div>' : '<div class="ss-hint" style="padding-top:0;">정답만 직접 고칠 수 있어요.</div>'}
+        ${tab === 'check' ? '<div class="ss-hint" style="padding-top:0;">AI가 흐리게 읽은 문항이에요. 정답칸을 눌러 바로 고칠 수 있어요.</div>' : `<div class="ss-hint" style="padding-top:0;">정답만 직접 고칠 수 있어요.${pc ? ' <span class="ss-kbd">Tab</span> 으로 다음 칸으로 이동해요.' : ''}</div>`}
         <div class="ss-list" id="ssAkList" style="margin-top:10px;">${rows.map(o => _akRowHtml(o.q, o.i)).join('') || '<div class="ss-center" style="padding:30px;"><div class="ss-sub">문항이 인식되지 않았어요. 다시 촬영해 주세요.</div></div>'}</div>
         ${tab === 'check' ? `<div style="text-align:center;padding:14px;"><button class="ss-link ss-link--on" id="ssAkAll">전체 ${qs.length}문항 보기</button></div>` : ''}
-      </div></div>
-      ${pc ? `<aside class="ss-akpc__guide"><b>검토 방법</b>
-        <p>왼쪽 사진과 가운데 정답표를 비교하면서 틀린 정답칸을 고치세요. <span class="ss-kbd">Tab</span> 으로 다음 칸으로 이동해요.</p>
-        <p>노란색 행은 AI가 흐리게 읽은 문항이에요. [확인 필요] 탭에서 모아 볼 수 있어요.</p>
-        <b style="margin-top:14px;display:block;">다음 단계</b>
-        <p>[정답지 확정]을 누르면 이 기록이 서버에 저장돼요. 이어서 폰으로 답안지를 찍거나, PC에서 파일을 끌어다 놓거나 <span class="ss-kbd">Ctrl+V</span> 로 올릴 수 있어요.</p>
-        <p>확정하면 폰 카메라로 QR을 찍어 이 기록을 바로 열 수 있어요.</p></aside></div>` : ''}
-      ${uiActionBar(`<div style="flex:1;"><button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="ssAkOk"${qs.length ? '' : ' disabled'}><span>${_state._editKey ? '정답 수정 저장 · 점수 다시 계산' : re ? '정답지 확정하고 다시 채점' : '정답지 확정하고 답안지 찍기'}</span>${iconSvg('chevron-right', 'ss-ic--sm')}</button><div class="ss-sub" style="text-align:center;margin-top:8px;">확정하면 다른 기기에서도 이 정답지로 이어서 채점할 수 있어요</div></div>`)}`;
+      </div></div>`;
+    const barHtml = uiActionBar(`<div style="flex:1;"><button class="ss-btn ss-btn--primary ss-btn--lg ss-btn--block" id="ssAkOk"${qs.length ? '' : ' disabled'}><span>${_state._editKey ? '정답 수정 저장 · 점수 다시 계산' : re ? '정답지 확정하고 다시 채점' : '정답지 확정하고 답안지 찍기'}</span>${iconSvg('chevron-right', 'ss-ic--sm')}</button><div class="ss-sub" style="text-align:center;margin-top:8px;">확정하면 다른 기기에서도 이 정답지로 이어서 채점할 수 있어요</div></div>`);
+    if (!pc) {
+      body.innerHTML = `${hdr}${uiSteps(1)}${scrollHtml}${barHtml}`;
+    } else {
+      const zoom = _state.pcZoom || 100;
+      body.innerHTML = `<div class="ss-pc__two ss-akpc2" id="ssPcGrid">
+        <div class="ss-akpc2__main">${hdr}${uiSteps(1)}${scrollHtml}${barHtml}</div>
+        <div class="ss-pc__photo"><i class="ss-pc__rs ss-pc__rs--in" id="ssPcRs3" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i>
+          <div class="ss-pc__bar" style="border-bottom:1px solid var(--border);"><b style="font-size:15px;">정답지 사진</b><span class="ss-grow"></span>
+            ${uiIconBtn('minus', '축소', { box: true, onclick: 'window._pcZoom(-25)' })}<span class="ss-sub" id="ssPcZoomLbl" style="min-width:44px;text-align:center;font-weight:700;">${zoom}%</span>${uiIconBtn('plus', '확대', { box: true, onclick: 'window._pcZoom(25)' })}
+            ${uiBtn({ size: 'sm', label: '맞춤', onclick: 'window._pcZoom(0)' })}${uiIconBtn('maximize', '전체 화면', { box: true, onclick: 'window._ssViewKeyImage()' })}</div>
+          <div class="ss-pc__photobox" id="ssPcPhotoBox">${imgSrc ? `<img id="ssPcImg" alt="정답지 사진" style="width:${zoom}%" src="${imgSrc}">` : '<div class="ss-center"><div class="ss-sub">정답지 사진이 없어요</div></div>'}</div>
+        </div></div>`;
+      _pcColsApply(); _pcWireResize(document.getElementById('ssPcRs3'), 'pcp');
+      const im = document.getElementById('ssPcImg'); if (im) im.onclick = () => window._ssViewKeyImage();
+    }
     document.getElementById('ssAkOk').onclick = () => window._ssAkConfirm();
-    document.getElementById('ssAkThumb').onclick = () => window._ssViewKeyImage();
+    const thumb = document.getElementById('ssAkThumb'); if (thumb) thumb.onclick = () => window._ssViewKeyImage();
     document.getElementById('ssAkTitle').oninput = (e) => { _state.answerKey.testName = e.target.value; };
     body.querySelectorAll('[data-tab]').forEach(b => { b.onclick = () => { _state.akTab = b.dataset.tab; _renderAnswerKeyReview(); }; });
     const all = document.getElementById('ssAkAll'); if (all) all.onclick = () => { _state.akTab = 'all'; _renderAnswerKeyReview(); };
@@ -1465,12 +1474,10 @@
   function _renderPc() {
     _state.phase = 'pc';
     const body = _body(); if (!body) return;
-    if (!document.getElementById('ssPcGrid')) {
+    if (!document.getElementById('ssPcSess')) {
       body.innerHTML = `
-        <header class="ss-pc__top"><b>ScoreSnap</b><span>${esc(window.MY_ACADEMY_NAME || '')}</span><span class="ss-grow"></span><span data-ss-pcchip>${_pcChipHtml()}</span><button class="ss-helpbtn" onclick="window._ssOpenHelp()">질문 · 도움말</button><button class="ss-btn ss-btn--sm" id="ssPcLogout">로그아웃</button></header>
         <div class="ss-pc__grid" id="ssPcGrid"><aside class="ss-pc__c1" id="ssPcSess"></aside><section class="ss-pc__c2" id="ssPcStu"></section><section class="ss-pc__c3" id="ssPcDet"></section><i class="ss-pc__rs" id="ssPcRs1" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i><i class="ss-pc__rs" id="ssPcRs2" title="끌어서 너비 조절 (더블클릭 = 기본값)"></i></div>`;
       _pcColsApply(); _pcWireResize(document.getElementById('ssPcRs1'), 'pc1'); _pcWireResize(document.getElementById('ssPcRs2'), 'pc2');
-      document.getElementById('ssPcLogout').onclick = () => window.dispatchEvent(new Event('ss-logout'));
     }
     _pcRenderSessions(); _pcRenderStudents(); _pcRenderDetail();
     _pcLoadSessions(!_pcSess);

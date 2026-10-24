@@ -368,3 +368,12 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pc__c1 .ss-row:hover .ss-del, .ss-pc__c1 .ss-row--on .ss-del, .ss-del:focus { opacity:1; }
 .ss-del:hover { background:rgba(0,0,0,.12); color:var(--bad); }
 .ss-pc__c1 .ss-row--on .ss-del { color:#fff; } .ss-pc__c1 .ss-row--on .ss-del:hover { background:rgba(255,255,255,.25); color:#fff; }
+
+/* 공통 PC 상단 바(모든 화면) + 정답지 검토 PC 레이아웃 */
+.ss-pc__top--g { display:none; }
+@media (min-width:1024px) { .ss-pc__top--g { display:flex; } .ss-fab { display:none !important; } }
+.ss-akpc2 { flex:1; min-height:0; grid-template-columns:minmax(380px,1fr) var(--pcp,0.9fr) !important; }
+.ss-akpc2__main { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
+.ss-akpc2__main .ss-col { max-width:none; }
+.ss-akpc2 .ss-steps { max-width:none; margin:0; background:var(--surface); }
+.ss-akpc2 .ss-actionbar { justify-content:stretch; } .ss-akpc2 .ss-actionbar > div { max-width:none; }
