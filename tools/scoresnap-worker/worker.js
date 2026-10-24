@@ -1,6 +1,6 @@
 // ScoreSnap PC 채점 프로그램
-// 전용앱(/ss/)에서 올린 정답지·학생 사진을 서버에서 가져와 Claude Code(구독, API 요금 없음)로 채점하고
-// 결과를 같은 서버에 저장한다.
+// 전용앱(/ss/)이 서버에 올린 채점 작업(정답지 읽기·학생 채점)을 가져와 Claude Code(구독, API 요금 없음)로
+// 처리하고 결과를 같은 서버에 돌려준다. 전용앱 화면이 그 결과를 받아 학원앱과 같은 방식으로 저장·표시한다.
 // 채점 규칙(짝짓기·빈칸 오답·애매하면 오답·표 형식 등)은 서버와 같은 api/_lib/scoresnap-prompt.js 를 그대로 사용.
 //
 // 실행: start.bat  (또는 node worker.js)   설정: config.json (config.example.json 참고)
@@ -201,75 +201,32 @@ async function claim(refDoc, fromStatuses, statusField, toStatus) {
   });
 }
 
-async function handleSession(sd) {
-  const sid = sd.id;
-  let m = sd.data();
-
-  // 1) 정답지
-  if (m.keyStatus === 'queued' || m.keyStatus === 'reading') {
-    const ok = await claim(sessRef(sid), ['queued'], 'keyStatus', 'reading');
-    if (ok) {
-      log(`[${sid}] 정답지 읽는 중...`);
-      const t0 = Date.now();
-      const keyRef = doc(db, 'scoresnapSessions', sid, 'key', 'answerKey');
-      try {
-        const kd = (await getDoc(keyRef)).data() || {};
-        if (!kd.keyImagePath) throw new Error('정답지 사진이 없어요');
-        const key = await readKey(kd.keyImagePath, m.layoutHint || 'numbered');
-        if (!key.questions || !key.questions.length) throw new Error(key.error || '문항을 읽지 못했어요');
-        await updateDoc(keyRef, { answerKey: clean(key) });
-        await updateDoc(sessRef(sid), {
-          keyStatus: 'ready', keyError: '', testName: String(key.testName || ''),
-          questionCount: key.questions.length, workerSeenAt: serverTimestamp(),
-        });
-        log(`[${sid}] 정답지 완료: ${key.questions.length}문항 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
-      } catch (e) {
-        log(`[${sid}] 정답지 실패:`, e.message);
-        await updateDoc(sessRef(sid), { keyStatus: 'error', keyError: String(e.message || e).slice(0, 300) });
-      }
+// 전용앱(/ss/)이 올린 작업 한 건 처리
+//   job = { kind:'job', jobType:'key'|'student', status:'queued', imagePath, payload, needsWork:true }
+//   key     : payload { layoutHint }                     → result = 정답지(questions…)
+//   student : payload { answerKey:{questions,layout,…} } → result = 채점 결과
+async function handleJob(jd) {
+  const ok = await claim(jd.ref, ['queued'], 'status', 'working');
+  if (!ok) return false;
+  const j = jd.data();
+  const t0 = Date.now();
+  log(`[${jd.id}] ${j.jobType === 'key' ? '정답지 읽는 중...' : '학생 채점 중...'}`);
+  try {
+    let result;
+    if (j.jobType === 'key') {
+      result = await readKey(j.imagePath, (j.payload && j.payload.layoutHint) || 'numbered');
+      if (!result.questions || !result.questions.length) throw new Error(result.error || '문항을 읽지 못했어요');
+      log(`  → 정답지 ${result.questions.length}문항 (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
+    } else {
+      result = await gradeStudent(j.imagePath, j.payload.answerKey);
+      log(`  → ${result.studentName || '(이름 없음)'} ${result.correctCount}/${result.totalQuestions} (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
     }
-    m = (await getDoc(sessRef(sid))).data();
+    await updateDoc(jd.ref, { status: 'done', result: clean(result), error: '', needsWork: false, finishedAt: serverTimestamp() });
+  } catch (e) {
+    log('  실패:', e.message);
+    await updateDoc(jd.ref, { status: 'error', error: String(e.message || e).slice(0, 300), needsWork: false, finishedAt: serverTimestamp() });
   }
-
-  // 2) 학생 채점 — 한 명씩
-  if (m.keyStatus === 'ready') {
-    const key = ((await getDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey'))).data() || {}).answerKey;
-    for (;;) {
-      const qs = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'),
-        where('academyId', '==', AID), where('status', 'in', ['queued', 'grading'])));
-      const cand = qs.docs.filter(d => d.data().status === 'queued'
-        || (d.data().claimedAt && Date.now() - d.data().claimedAt.toMillis() > STALE_MS));
-      if (!cand.length) break;
-      let did = false;
-      for (const sdoc of cand) {
-        if (!(await claim(sdoc.ref, ['queued'], 'status', 'grading'))) continue;
-        const st = sdoc.data();
-        log(`[${sid}] 학생 채점: ${sdoc.id}`);
-        const t0 = Date.now();
-        try {
-          const result = await gradeStudent(st.imagePath, key);
-          await updateDoc(sdoc.ref, { result: clean(result), status: 'done', error: '', updatedAt: serverTimestamp() });
-          log(`  → ${result.studentName || '(이름 없음)'} ${result.correctCount}/${result.totalQuestions} (${((Date.now() - t0) / 1000).toFixed(0)}초)`);
-        } catch (e) {
-          log('  채점 실패:', e.message);
-          await updateDoc(sdoc.ref, { status: 'error', error: String(e.message || e).slice(0, 300) });
-        }
-        await updateDoc(sessRef(sid), { workerSeenAt: serverTimestamp() });
-        did = true;
-        break;
-      }
-      if (!did) break;
-    }
-  }
-
-  // 3) 마무리 — 남은 일이 없으면 needsWork 해제, 완료 학생 수 반영
-  const all = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', AID)));
-  const stat = all.docs.map(d => d.data().status);
-  const pending = stat.filter(s => s === 'queued' || s === 'grading').length;
-  const done = stat.filter(s => s === 'done').length;
-  const cur = (await getDoc(sessRef(sid))).data() || {};
-  const keyBusy = cur.keyStatus === 'queued' || cur.keyStatus === 'reading';
-  await updateDoc(sessRef(sid), { studentCount: done, needsWork: pending > 0 || keyBusy });
+  return true;
 }
 
 let busy = false, again = false;
@@ -281,8 +238,12 @@ async function pump() {
       again = false;
       const snap = await getDocs(query(collection(db, 'scoresnapSessions'),
         where('academyId', '==', AID), where('needsWork', '==', true)));
-      for (const sd of snap.docs) {
-        try { await handleSession(sd); } catch (e) { log(`[${sd.id}] 처리 오류:`, e.message); }
+      if (snap.size) log('대기 작업 확인:', snap.size, '건 (작업 ' + snap.docs.filter(d => d.data().kind === 'job').length + ')');
+      // 먼저 올라온 순서대로 한 건씩
+      const jobs = snap.docs.filter(d => d.data().kind === 'job')
+        .sort((x, y) => ((x.data().createdAt && x.data().createdAt.toMillis()) || 0) - ((y.data().createdAt && y.data().createdAt.toMillis()) || 0));
+      for (const jd of jobs) {
+        try { await handleJob(jd); } catch (e) { log(`[${jd.id}] 처리 오류:`, e.message); }
       }
     } while (again);
   } catch (e) { log('확인 오류:', e.message); }
@@ -296,6 +257,6 @@ async function pump() {
   onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', AID), where('needsWork', '==', true)),
     () => { pump(); }, (e) => log('실시간 연결 오류:', e.message));
   setInterval(pump, 60 * 1000);
-  log('대기 중 — 전용앱에서 [채점 시작]을 누르면 처리합니다. (이 창을 닫으면 채점이 멈춥니다)');
+  log('대기 중 — 전용앱에서 채점을 요청하면 처리합니다. (이 창을 닫으면 채점이 멈춥니다)');
   pump();
 })().catch(e => { console.error('시작 실패:', e.message); process.exit(1); });

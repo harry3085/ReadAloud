@@ -4,122 +4,64 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>ScoreSnap 전용</title>
-<link rel="icon" href="data:,">
+<meta name="theme-color" content="#0e0e0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ScoreSnap">
+<link rel="manifest" href="/ss/manifest.json">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<title>ScoreSnap</title>
 <style>
-  :root { --bg:#0e0e0e; --card:#181818; --line:#2c2c2c; --txt:#eee; --sub:#999; --brand:#E8714A; --ok:#5fd38d; --warn:#ffc107; --bad:#ff8a80; }
+  :root { --c-brand:#E8714A; }
   * { box-sizing: border-box; }
-  html, body { margin:0; background:var(--bg); color:var(--txt); font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; font-size:15px; }
-  .wrap { max-width:860px; margin:0 auto; padding:14px 16px 80px; }
-  h1 { font-size:18px; margin:6px 0 14px; }
+  html, body { margin:0; height:100%; background:#0e0e0e; color:#eee; font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; font-size:15px; }
   button { font-family:inherit; cursor:pointer; }
-  .btn { background:rgba(255,255,255,0.08); color:#fff; border:1px solid #555; padding:8px 14px; border-radius:8px; font-size:13px; }
-  .btn:hover { background:rgba(255,255,255,0.14); }
-  .btn.primary { background:var(--brand); border-color:var(--brand); font-weight:700; }
-  .btn.danger { color:var(--bad); border-color:#6b3a3a; background:transparent; }
-  .btn:disabled { opacity:.4; cursor:default; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .grow { flex:1; min-width:0; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
-  .sub { color:var(--sub); font-size:12px; }
-  .chip { display:inline-block; font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid #555; color:#ccc; }
-  .chip.ok { color:var(--ok); border-color:#2f6b49; } .chip.warn { color:var(--warn); border-color:#7a6420; } .chip.bad { color:var(--bad); border-color:#6b3a3a; }
-  .banner { border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.5; margin-bottom:10px; background:#241f12; border:1px solid #6b5a1c; color:#ffd966; }
-  .banner.bad { background:#2a1616; border-color:#6b3a3a; color:var(--bad); }
-  .drop { border:2px dashed #444; border-radius:12px; padding:22px 14px; text-align:center; color:#aaa; font-size:13px; line-height:1.7; }
-  .drop.over { border-color:var(--brand); background:rgba(232,113,74,0.08); }
-  .seg { display:flex; gap:6px; }
-  .seg button { flex:1; padding:9px 6px; border-radius:8px; border:1px solid #444; background:rgba(255,255,255,0.05); color:#fff; font-size:13px; }
-  .seg button.on { background:var(--brand); border-color:var(--brand); font-weight:700; }
-  .thumb { width:56px; height:56px; border-radius:6px; object-fit:cover; background:#222; cursor:zoom-in; flex-shrink:0; }
-  input.name { background:#0a0a0a; border:1px solid #444; border-radius:6px; color:#fff; padding:5px 8px; font-size:14px; width:120px; font-family:inherit; }
-  table.ans { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
-  table.ans td, table.ans th { border-bottom:1px solid #2a2a2a; padding:4px 6px; text-align:left; vertical-align:top; word-break:break-word; }
-  table.ans tr.bad td { color:var(--bad); }
-  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:50; overflow:auto; padding:16px; cursor:zoom-out; }
-  .overlay img { max-width:100%; height:auto; display:block; margin:auto; }
+  .center { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .box { width:100%; max-width:360px; background:#181818; border:1px solid #2c2c2c; border-radius:14px; padding:26px 22px; }
+  .box h1 { margin:0 0 4px; font-size:22px; }
+  .box .sub { color:#999; font-size:13px; margin-bottom:18px; line-height:1.5; }
+  .box input { width:100%; padding:12px; margin-bottom:10px; background:#0a0a0a; border:1px solid #444; border-radius:8px; color:#fff; font-size:15px; font-family:inherit; }
+  .btn { width:100%; padding:13px; border:none; border-radius:10px; background:var(--c-brand); color:#fff; font-size:15px; font-weight:700; }
+  .btn.ghost { background:rgba(255,255,255,0.08); border:1px solid #555; font-weight:500; margin-top:10px; }
+  .err { color:#ff8a80; font-size:13px; min-height:18px; margin-bottom:8px; }
   .hidden { display:none !important; }
-  a { color:var(--brand); }
-  .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#333; color:#fff; padding:10px 16px; border-radius:20px; font-size:13px; z-index:99; max-width:90vw; }
+  #pcBanner { position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:100050; background:#2b2410; color:#ffd966; border:1px solid #6b5a1c; padding:8px 14px; border-radius:20px; font-size:12px; max-width:92vw; text-align:center; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div id="gate" class="card">로그인 확인 중…</div>
 
-  <!-- 세션 목록 -->
-  <div id="listView" class="hidden">
-    <div class="row" style="margin-bottom:8px;">
-      <h1 class="grow" style="margin:0;">ScoreSnap 전용</h1>
-      <button class="btn primary" id="btnNew">+ 새 채점</button>
-    </div>
-    <div class="sub" style="margin-bottom:12px;">정답지·학생 답안지를 올리면 PC 채점 프로그램이 Claude 로 채점해 이 서버에 저장합니다. (학원앱 ScoreSnap 의 [채점 기록]에서도 열립니다 · 5일 보관)</div>
-    <div id="sessList"></div>
-  </div>
-
-  <!-- 새 채점 -->
-  <div id="newView" class="hidden">
-    <div class="row" style="margin-bottom:10px;"><button class="btn" id="btnNewBack">← 목록</button><h1 style="margin:0;">새 채점 · 정답지 올리기</h1></div>
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px;">시험지 형태</div>
-      <div class="seg" id="hintSeg">
-        <button data-v="numbered" class="on">번호형</button><button data-v="table">표 형식</button><button data-v="auto">자동</button>
-      </div>
-      <div class="sub" style="margin-top:6px;line-height:1.5;">번호형: 번호 한 줄에 문제 하나 (여러 단·영한 혼합·단어|뜻 목록 포함)<br>표 형식: 한 줄에 칸이 여러 개 (불규칙동사표 등)</div>
-    </div>
-    <div id="keyDrop" class="drop">
-      정답이 표시된 시험지 1장<br>
-      <b style="color:#fff;">Ctrl+V 로 붙여넣기</b> · 끌어놓기 · 아래 버튼
-      <div class="row" style="justify-content:center;margin-top:10px;">
-        <button class="btn" id="btnKeyFile">🖼 파일 선택</button>
-        <button class="btn" id="btnKeyCam">📷 촬영</button>
-      </div>
-      <img id="keyPrev" class="hidden" style="max-width:100%;max-height:300px;margin-top:12px;border-radius:8px;">
-    </div>
-    <div class="row" style="margin-top:12px;"><button class="btn primary" id="btnKeyGo" disabled>정답지 올리고 시작</button><span class="sub" id="keyMsg"></span></div>
-  </div>
-
-  <!-- 세션 상세 -->
-  <div id="sessView" class="hidden">
-    <div class="row" style="margin-bottom:8px;">
-      <button class="btn" id="btnBack">← 목록</button>
-      <h1 id="sessTitle" class="grow" style="margin:0;font-size:16px;"></h1>
-    </div>
-    <div class="row" style="margin-bottom:10px;">
-      <button class="btn" id="btnKeyImg">🖼 정답지 보기</button>
-      <button class="btn" id="btnKeyList">📋 정답 목록</button>
-      <button class="btn danger" id="btnDelSess">🗑 삭제</button>
-    </div>
-    <div id="keyBanner"></div>
-    <div id="keyListBox" class="card hidden"></div>
-
-    <div id="stuDrop" class="drop">
-      학생 답안지 올리기 (여러 장 가능)<br>
-      <b style="color:#fff;">Ctrl+V</b> · 끌어놓기 · 아래 버튼
-      <div class="row" style="justify-content:center;margin-top:10px;">
-        <button class="btn" id="btnStuFile">🖼 파일 선택 (여러 장)</button>
-        <button class="btn" id="btnStuCam">📷 촬영</button>
-      </div>
-    </div>
-    <div class="row" style="margin:12px 0;">
-      <button class="btn primary" id="btnStart" disabled>▶ 채점 시작</button>
-      <span class="sub" id="startMsg"></span>
-    </div>
-    <div id="stuList"></div>
+<!-- 로그인 -->
+<div id="loginView" class="center hidden">
+  <div class="box">
+    <h1>ScoreSnap</h1>
+    <div class="sub">학원장 계정으로 로그인하세요.<br>한 번 로그인하면 이 기기에서는 계속 유지돼요.</div>
+    <input id="uid" type="text" placeholder="아이디" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password">
+    <div class="err" id="loginErr"></div>
+    <button class="btn" id="btnLogin">로그인</button>
   </div>
 </div>
 
-<input id="fileKey" type="file" accept="image/*" class="hidden">
-<input id="camKey" type="file" accept="image/*" capture="environment" class="hidden">
-<input id="fileStu" type="file" accept="image/*" multiple class="hidden">
-<input id="camStu" type="file" accept="image/*" capture="environment" class="hidden">
+<!-- 홈 (ScoreSnap 을 닫았을 때) -->
+<div id="homeView" class="center hidden">
+  <div class="box" style="text-align:center;">
+    <h1>ScoreSnap</h1>
+    <div class="sub" id="homeSub"></div>
+    <button class="btn" id="btnOpen">ScoreSnap 열기</button>
+    <button class="btn ghost" id="btnLogout">로그아웃</button>
+  </div>
+</div>
+
+<div id="boot" class="center"><div class="sub" style="color:#999;">불러오는 중…</div></div>
+<div id="pcBanner" class="hidden"></div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
-  onSnapshot, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getStorage, ref, uploadBytes, deleteObject } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { createScoreSnapStore } from '/ss/store.js';
 
 const app = initializeApp({
   apiKey: 'AIzaSyAb5d8w9mI5_hpcoBFcWnG5tE1TF_8guw8', authDomain: 'readaloud-51113.firebaseapp.com', projectId: 'readaloud-51113',
@@ -127,247 +69,142 @@ const app = initializeApp({
 });
 const auth = getAuth(app), db = getFirestore(app), storage = getStorage(app);
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const KEEP_MS = 5 * 24 * 60 * 60 * 1000;
-let AID = 'default', UID = '';
-let curSid = null, curSess = null, curStudents = [];
-let unsubList = null, unsubSess = null, unsubStu = null;
-let newKeyBlob = null, hint = 'numbered';
+const view = (v) => { for (const x of ['loginView', 'homeView', 'boot']) $(x).classList.toggle('hidden', x !== v); };
+let currentUser = null, scriptLoaded = false;
 
-function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
-function show(view) { for (const v of ['listView', 'newView', 'sessView']) $(v).classList.toggle('hidden', v !== view); $('gate').classList.add('hidden'); window.scrollTo(0, 0); }
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
-// 이미지 → 긴 변 1536px JPEG (학원앱 ScoreSnap 과 같은 처리)
-async function toJpeg(file) {
-  const url = URL.createObjectURL(file);
+// ─── 학원앱 ScoreSnap 화면(scoresnap.js)이 기대하는 전역 ───
+window.MY_ACADEMY_ID = 'default'; window.MY_ACADEMY_NAME = ''; window.MY_FEATURE_FLAGS = { scoreSnap: true };
+window._ssGetIdToken = async () => { if (!currentUser) throw new Error('로그인 정보 없음'); return await currentUser.getIdToken(); };
+window._ssStore = createScoreSnapStore({ db, storage, getUid: () => currentUser && currentUser.uid, getAid: () => window.MY_ACADEMY_ID });
+
+function modal(title, sub, withCancel) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100010;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = `<div style="background:#fff;color:#222;border-radius:14px;padding:22px;max-width:360px;width:100%;">
+      <div style="font-size:16px;font-weight:700;line-height:1.5;white-space:pre-wrap;"></div>
+      <div style="font-size:13px;color:#888;margin:8px 0 18px;white-space:pre-wrap;"></div>
+      <div style="display:flex;gap:8px;">${withCancel ? '<button data-v="0" style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px;">취소</button>' : ''}<button data-v="1" style="flex:1;padding:12px;border:none;border-radius:10px;background:#E8714A;color:#fff;font-size:14px;font-weight:700;">확인</button></div></div>`;
+    const card = ov.firstElementChild;
+    card.children[0].textContent = title || ''; card.children[1].textContent = sub || '';
+    ov.onclick = (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; ov.remove(); resolve(b.dataset.v === '1'); };
+    document.body.appendChild(ov);
+  });
+}
+window.showConfirm = (title, sub) => modal(title, sub, true);
+window.showAlert = (title, sub) => modal(title, sub, false);
+
+// ─── 채점은 서버(PC 채점 프로그램)가 한다: /api/scoresnap-grade 호출을 "작업 요청 → 결과 대기"로 바꿔치기 ───
+// 학원앱과 같은 화면 코드를 그대로 쓰되, Gemini 서버 대신 학원 PC 의 Claude 가 채점한다.
+const KEEP_MS = 5 * 24 * 3600 * 1000;
+let waiting = 0;
+function banner(txt) { const b = $('pcBanner'); if (!txt) { b.classList.add('hidden'); return; } b.textContent = txt; b.classList.remove('hidden'); }
+function b64ToBlob(b64, mime) { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Blob([u8], { type: mime || 'image/jpeg' }); }
+
+async function gradeViaPc(body) {
+  const aid = window.MY_ACADEMY_ID;
+  const jref = doc(collection(db, 'scoresnapSessions'));
+  const path = `scoresnap/${aid}/jobs/${jref.id}.jpg`;
+  const isKey = body.mode === 'answerKey';
   try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('이미지를 열 수 없어요')); i.src = url; });
-    const sc = Math.min(1, 1536 / Math.max(img.width, img.height));
-    const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return await new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('JPEG 변환 실패')), 'image/jpeg', 0.85));
-  } finally { URL.revokeObjectURL(url); }
-}
-function viewImage(url) {
-  const ov = document.createElement('div'); ov.className = 'overlay'; ov.innerHTML = `<img src="${esc(url)}" alt="">`; ov.onclick = () => ov.remove(); document.body.appendChild(ov);
-}
-const _urlCache = new Map();
-async function urlOf(path) { if (_urlCache.has(path)) return _urlCache.get(path); try { const u = await getDownloadURL(ref(storage, path)); _urlCache.set(path, u); return u; } catch (_) { return ''; } }
-function ago(ms) { if (!ms) return ''; const s = Math.floor((Date.now() - ms) / 1000); if (s < 60) return '방금'; if (s < 3600) return Math.floor(s / 60) + '분 전'; if (s < 86400) return Math.floor(s / 3600) + '시간 전'; return Math.floor(s / 86400) + '일 전'; }
+    await uploadBytes(ref(storage, path), b64ToBlob(body.imageBase64, body.imageMimeType), { contentType: 'image/jpeg' });
+    const meta = body.answerKeyMeta || {};
+    await setDoc(jref, {
+      academyId: aid, kind: 'job', keyStatus: 'job', needsWork: true, status: 'queued',
+      createdBy: currentUser.uid, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + KEEP_MS),
+      jobType: isKey ? 'key' : 'student', imagePath: path,
+      payload: isKey ? { layoutHint: body.layoutHint || 'numbered' }
+        : { answerKey: JSON.parse(JSON.stringify({ questions: body.answerKeyQuestions, layout: meta.layout, givenColumn: meta.givenColumn, answerColumns: meta.answerColumns })) },
+    });
+  } catch (e) { return new Response(JSON.stringify({ error: '채점 요청을 올리지 못했어요: ' + e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }); }
 
-// ─── 로그인 확인 ───
+  waiting++;
+  const out = await new Promise((resolve) => {
+    let t0 = Date.now(), unsub = null;
+    const tick = setInterval(() => {
+      const sec = (Date.now() - t0) / 1000;
+      if (sec > 40 * 60) { clearInterval(tick); unsub && unsub(); resolve({ status: 'error', error: 'PC 채점 프로그램 응답이 없어요 (40분)' }); }
+    }, 5000);
+    unsub = onSnapshot(jref, (d) => {
+      const j = d.data(); if (!j) return;
+      if (j.status === 'queued' && Date.now() - t0 > 15000) banner('PC 채점 프로그램이 아직 가져가지 않았어요 — 학원 PC 에서 채점 프로그램(start.bat)이 켜져 있는지 확인하세요');
+      else if (j.status === 'working') banner('PC 에서 채점 중…');
+      if (j.status === 'done' || j.status === 'error') { clearInterval(tick); unsub(); resolve(j); }
+    }, (e) => { clearInterval(tick); resolve({ status: 'error', error: e.message }); });
+  });
+  waiting--; if (!waiting) banner('');
+  deleteObject(ref(storage, path)).catch(() => {}); deleteDoc(jref).catch(() => {});
+  if (out.status === 'done' && out.result) return new Response(JSON.stringify({ success: true, mode: body.mode, ...out.result }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ error: out.error || '채점에 실패했어요' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+}
+const origFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (url.split('?')[0] === '/api/scoresnap-grade' && init && init.method === 'POST') {
+    try { return gradeViaPc(JSON.parse(init.body)); } catch (e) { /* 파싱 실패 시 원래 경로 */ }
+  }
+  return origFetch(input, init);
+};
+
+// ─── 로그인 ───
+const friendly = (e) => {
+  const c = e && e.code || '';
+  if (c === 'auth/too-many-requests') return '비밀번호를 여러 번 잘못 입력해서 잠시 차단됐어요. 잠시 후 다시 시도해 주세요.';
+  if (c === 'auth/invalid-credential' || c === 'auth/wrong-password') return '비밀번호가 틀렸어요.';
+  if (c === 'auth/network-request-failed') return '인터넷 연결을 확인해 주세요.';
+  return e && e.message ? e.message : '로그인에 실패했어요.';
+};
+async function doLogin() {
+  const u = $('uid').value.trim().toLowerCase(), p = $('pw').value;
+  $('loginErr').textContent = '';
+  if (!u || !p) { $('loginErr').textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+  $('btnLogin').disabled = true;
+  try {
+    const lk = await getDoc(doc(db, 'usernameLookup', u));
+    if (!lk.exists() || !lk.data().email) throw new Error('아이디를 찾을 수 없어요.');
+    await signInWithEmailAndPassword(auth, lk.data().email, p);
+    try { localStorage.setItem('ssUser', u); } catch (_) {}
+  } catch (e) { $('loginErr').textContent = friendly(e); }
+  $('btnLogin').disabled = false;
+}
+$('btnLogin').onclick = doLogin;
+$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+try { $('uid').value = localStorage.getItem('ssUser') || ''; } catch (_) {}
+$('btnLogout').onclick = async () => { await signOut(auth); };
+$('btnOpen').onclick = () => openSS();
+
+function loadScoreSnapScript() {
+  return new Promise((resolve, reject) => {
+    if (scriptLoaded) return resolve();
+    const s = document.createElement('script'); s.src = '/ss/scoresnap.js?v=' + Date.now();
+    s.onload = () => { scriptLoaded = true; resolve(); }; s.onerror = () => reject(new Error('ScoreSnap 화면을 불러오지 못했어요'));
+    document.head.appendChild(s);
+  });
+}
+let watching = false;
+function watchOverlay() {
+  if (watching) return; watching = true;
+  // ScoreSnap 을 닫으면(오버레이 제거) 홈 화면을 보여준다
+  new MutationObserver(() => { if (!document.getElementById('scoreSnapOverlay') && currentUser) { $('homeSub').textContent = (window.MY_ACADEMY_NAME || '') + ' 학원장'; view('homeView'); } })
+    .observe(document.body, { childList: true });
+}
+async function openSS() {
+  try { await loadScoreSnapScript(); } catch (e) { alert(e.message); return; }
+  watchOverlay();
+  view('boot'); $('boot').classList.add('hidden');
+  window.openScoreSnap();
+}
+
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { $('gate').innerHTML = '학원장 계정으로 로그인이 필요해요. <a href="/admin/">학원장 앱</a>에서 로그인한 뒤 이 주소를 다시 열어 주세요.'; return; }
-  try { const t = await user.getIdTokenResult(); AID = t.claims.academyId || 'default'; } catch (_) {}
-  UID = user.uid;
-  openList();
-});
-
-// ─── 목록 ───
-function openList() {
-  cleanupSess(); show('listView');
-  if (unsubList) unsubList();
-  const cutoff = new Date(Date.now() - KEEP_MS);
-  unsubList = onSnapshot(query(collection(db, 'scoresnapSessions'), where('academyId', '==', AID), where('createdAt', '>=', cutoff), orderBy('createdAt', 'desc'), limit(30)), (snap) => {
-    const box = $('sessList');
-    if (snap.empty) { box.innerHTML = '<div class="card sub">아직 채점 기록이 없어요. [+ 새 채점]을 눌러 시작하세요.</div>'; return; }
-    box.innerHTML = '';
-    snap.docs.forEach(d => {
-      const m = d.data();
-      const ks = m.keyStatus;
-      const kchip = ks === 'ready' ? '' : ks === 'error' ? '<span class="chip bad">정답지 오류</span>' : ks ? '<span class="chip warn">정답지 읽는 중</span>' : '';
-      const el = document.createElement('div'); el.className = 'card'; el.style.cursor = 'pointer';
-      el.innerHTML = `<div class="row"><div class="grow"><b>${esc(m.testName || (ks === 'ready' ? '(제목 없음)' : '정답지 읽는 중…'))}</b>
-        <div class="sub">${m.questionCount ? m.questionCount + '문항 · ' : ''}학생 ${m.studentCount || 0}명 완료 · ${ago(m.createdAt && m.createdAt.toMillis && m.createdAt.toMillis())}${m.source === 'ss-web' ? '' : ' · 학원앱'}</div></div>${kchip}${m.needsWork ? '<span class="chip warn">처리 중</span>' : ''}</div>`;
-      el.onclick = () => openSession(d.id);
-      box.appendChild(el);
-    });
-  }, (e) => { $('sessList').innerHTML = `<div class="banner bad">목록을 불러오지 못했어요: ${esc(e.message)}</div>`; });
-}
-$('btnNew').onclick = () => { newKeyBlob = null; $('keyPrev').classList.add('hidden'); $('btnKeyGo').disabled = true; $('keyMsg').textContent = ''; show('newView'); };
-$('btnNewBack').onclick = openList;
-
-// ─── 새 채점: 정답지 ───
-$('hintSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; hint = b.dataset.v; [...$('hintSeg').children].forEach(x => x.classList.toggle('on', x === b)); };
-async function setKeyFile(file) {
-  try { newKeyBlob = await toJpeg(file); const u = URL.createObjectURL(newKeyBlob); const im = $('keyPrev'); im.src = u; im.classList.remove('hidden'); $('btnKeyGo').disabled = false; $('keyMsg').textContent = ''; }
-  catch (e) { toast(e.message); }
-}
-$('btnKeyFile').onclick = () => $('fileKey').click(); $('btnKeyCam').onclick = () => $('camKey').click();
-$('fileKey').onchange = (e) => { if (e.target.files[0]) setKeyFile(e.target.files[0]); e.target.value = ''; };
-$('camKey').onchange = (e) => { if (e.target.files[0]) setKeyFile(e.target.files[0]); e.target.value = ''; };
-$('btnKeyGo').onclick = async () => {
-  if (!newKeyBlob) return;
-  $('btnKeyGo').disabled = true; $('keyMsg').textContent = '올리는 중…';
+  currentUser = user || null;
+  if (!user) { view('loginView'); return; }
   try {
-    const sref = doc(collection(db, 'scoresnapSessions'));
-    const path = `scoresnap/${AID}/${sref.id}/key.jpg`;
-    await uploadBytes(ref(storage, path), newKeyBlob, { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
-    await setDoc(doc(db, 'scoresnapSessions', sref.id, 'key', 'answerKey'), { academyId: AID, answerKey: null, precision: false, keyImagePath: path });
-    await setDoc(sref, {
-      academyId: AID, createdBy: UID, createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + KEEP_MS),
-      testName: '', questionCount: 0, studentCount: 0, precision: false, source: 'ss-web',
-      keyStatus: 'queued', keyError: '', layoutHint: hint, needsWork: true,
-    });
-    openSession(sref.id);
-  } catch (e) { $('keyMsg').textContent = '실패: ' + e.message; $('btnKeyGo').disabled = false; }
-};
-function dragify(el, onFiles) {
-  el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('over'); });
-  el.addEventListener('dragleave', () => el.classList.remove('over'));
-  el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('over'); const fs = [...(e.dataTransfer.files || [])].filter(f => /^image\//.test(f.type)); if (fs.length) onFiles(fs); });
-}
-dragify($('keyDrop'), (fs) => setKeyFile(fs[0]));
-
-// ─── Ctrl+V 붙여넣기 ───
-document.addEventListener('paste', (e) => {
-  const files = [...(e.clipboardData && e.clipboardData.items || [])].filter(i => i.kind === 'file' && /^image\//.test(i.type)).map(i => i.getAsFile()).filter(Boolean);
-  if (!files.length) return;
-  if (!$('newView').classList.contains('hidden')) { e.preventDefault(); setKeyFile(files[0]); }
-  else if (!$('sessView').classList.contains('hidden')) { e.preventDefault(); addStudents(files); }
-});
-
-// ─── 세션 상세 ───
-function cleanupSess() { [unsubSess, unsubStu].forEach(u => u && u()); unsubSess = unsubStu = null; curSid = null; curSess = null; curStudents = []; }
-function openSession(sid) {
-  cleanupSess(); if (unsubList) { unsubList(); unsubList = null; }
-  curSid = sid; show('sessView'); $('keyListBox').classList.add('hidden');
-  unsubSess = onSnapshot(doc(db, 'scoresnapSessions', sid), (d) => { if (!d.exists()) { toast('삭제된 기록이에요'); openList(); return; } curSess = d.data(); renderSess(); });
-  unsubStu = onSnapshot(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', AID)), (snap) => {
-    curStudents = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.idx || 0) - (b.idx || 0)); renderStudents();
-  }, (e) => { $('stuList').innerHTML = `<div class="banner bad">학생 목록을 불러오지 못했어요: ${esc(e.message)}</div>`; });
-}
-$('btnBack').onclick = openList;
-
-function renderSess() {
-  const m = curSess; if (!m) return;
-  $('sessTitle').textContent = m.testName || (m.keyStatus === 'ready' ? '(제목 없음)' : '정답지 읽는 중…');
-  const ks = m.keyStatus; let h = '';
-  if (ks === 'queued') h = '<div class="banner">정답지를 PC 채점 프로그램이 가져가기를 기다리는 중이에요. PC 에서 채점 프로그램(start.bat)이 켜져 있는지 확인하세요.</div>';
-  else if (ks === 'reading') h = '<div class="banner">PC 에서 정답지를 읽는 중…</div>';
-  else if (ks === 'error') h = `<div class="banner bad">정답지를 읽지 못했어요: ${esc(m.keyError || '')}<div class="row" style="margin-top:8px;"><div class="seg grow" id="rehint">
-      ${[['numbered', '번호형'], ['table', '표 형식'], ['auto', '자동']].map(([v, l]) => `<button data-v="${v}" class="${(m.layoutHint || 'numbered') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <button class="btn primary" id="btnReread">다시 읽기</button></div></div>`;
-  $('keyBanner').innerHTML = h;
-  if (ks === 'error') {
-    let v = m.layoutHint || 'numbered';
-    $('rehint').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; v = b.dataset.v; [...$('rehint').children].forEach(x => x.classList.toggle('on', x === b)); };
-    $('btnReread').onclick = async () => { await updateDoc(doc(db, 'scoresnapSessions', curSid), { keyStatus: 'queued', keyError: '', layoutHint: v, needsWork: true }); };
-  }
-  updateStart();
-}
-$('btnKeyImg').onclick = async () => {
-  const kd = (await getDoc(doc(db, 'scoresnapSessions', curSid, 'key', 'answerKey'))).data() || {};
-  const u = kd.keyImagePath ? await urlOf(kd.keyImagePath) : '';
-  if (u) viewImage(u); else toast('정답지 사진이 없어요');
-};
-$('btnKeyList').onclick = async () => {
-  const box = $('keyListBox');
-  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-  const kd = (await getDoc(doc(db, 'scoresnapSessions', curSid, 'key', 'answerKey'))).data() || {};
-  const qs = (kd.answerKey && kd.answerKey.questions) || [];
-  if (!qs.length) { toast('아직 정답 목록이 없어요'); return; }
-  box.innerHTML = `<b>정답 ${qs.length}문항</b><table class="ans"><tr><th>번호</th><th>문제</th><th>정답</th></tr>${qs.map(q => `<tr><td>${esc(q.no)}</td><td>${esc(q.stem)}</td><td style="color:var(--ok);font-weight:600;">${esc(q.answer)}</td></tr>`).join('')}</table>`;
-  box.classList.remove('hidden');
-};
-$('btnDelSess').onclick = async () => {
-  if (!confirm('이 채점 기록과 사진을 모두 삭제할까요?\n(학원앱에서도 사라져요)')) return;
-  const sid = curSid; cleanupSess();
-  try {
-    const sts = await getDocs(query(collection(db, 'scoresnapSessions', sid, 'students'), where('academyId', '==', AID)));
-    for (const s of sts.docs) {
-      const x = s.data();
-      for (const p of [x.imagePath, x.markPath, `scoresnap/${AID}/${sid}/${s.id}_mark.jpg`]) if (p) await deleteObject(ref(storage, p)).catch(() => {});
-      await deleteDoc(s.ref);
-    }
-    await deleteObject(ref(storage, `scoresnap/${AID}/${sid}/key.jpg`)).catch(() => {});
-    await deleteDoc(doc(db, 'scoresnapSessions', sid, 'key', 'answerKey')).catch(() => {});
-    await deleteDoc(doc(db, 'scoresnapSessions', sid));
-    toast('삭제했어요');
-  } catch (e) { toast('삭제 실패: ' + e.message); }
-  openList();
-};
-
-// ─── 학생 사진 올리기 ───
-async function addStudents(files) {
-  if (!curSid) return;
-  const sid = curSid; let nextIdx = curStudents.reduce((a, s) => Math.max(a, s.idx || 0), 0) + 1; let ok = 0;
-  for (const f of files) {
-    try {
-      $('startMsg').textContent = `올리는 중… (${ok + 1}/${files.length})`;
-      const blob = await toJpeg(f);
-      const dref = doc(collection(db, 'scoresnapSessions', sid, 'students'));
-      const path = `scoresnap/${AID}/${sid}/${dref.id}.jpg`;
-      await uploadBytes(ref(storage, path), blob, { contentType: 'image/jpeg', cacheControl: 'private, max-age=86400' });
-      await setDoc(dref, { academyId: AID, idx: nextIdx++, imagePath: path, status: 'uploaded', error: '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      ok++;
-    } catch (e) { toast('올리기 실패: ' + e.message); }
-  }
-  $('startMsg').textContent = ''; if (ok) toast(`${ok}장 올렸어요. [채점 시작]을 누르세요`);
-}
-$('btnStuFile').onclick = () => $('fileStu').click(); $('btnStuCam').onclick = () => $('camStu').click();
-$('fileStu').onchange = (e) => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) addStudents(fs); };
-$('camStu').onchange = (e) => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) addStudents(fs); };
-dragify($('stuDrop'), addStudents);
-
-// ─── 채점 시작 ───
-function updateStart() {
-  const n = curStudents.filter(s => s.status === 'uploaded' || s.status === 'error').length;
-  const busy = curStudents.some(s => s.status === 'queued' || s.status === 'grading');
-  $('btnStart').disabled = n === 0;
-  $('btnStart').textContent = n ? `▶ 채점 시작 (${n}명)` : '▶ 채점 시작';
-  if (!$('startMsg').textContent.startsWith('올리는')) $('startMsg').textContent = busy ? 'PC 에서 채점 중… (한 명씩 순서대로)' : '';
-}
-$('btnStart').onclick = async () => {
-  const targets = curStudents.filter(s => s.status === 'uploaded' || s.status === 'error'); if (!targets.length) return;
-  const b = writeBatch(db);
-  targets.forEach(s => b.update(doc(db, 'scoresnapSessions', curSid, 'students', s.id), { status: 'queued', error: '', updatedAt: serverTimestamp() }));
-  b.update(doc(db, 'scoresnapSessions', curSid), { needsWork: true });
-  await b.commit(); toast(`${targets.length}명 채점을 요청했어요`);
-};
-
-// ─── 학생 목록 ───
-const stat = { uploaded: ['업로드됨', ''], queued: ['대기', 'warn'], grading: ['채점 중', 'warn'], done: ['완료', 'ok'], error: ['오류', 'bad'] };
-async function renderStudents() {
-  updateStart();
-  const box = $('stuList');
-  if (!curStudents.length) { box.innerHTML = '<div class="sub">올린 학생 답안지가 없어요.</div>'; return; }
-  const open = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.id));
-  box.innerHTML = '';
-  for (const s of curStudents) {
-    const r = s.result, [lab, cls] = stat[s.status] || [s.status, ''];
-    const el = document.createElement('div'); el.className = 'card';
-    const wrong = r && r.answers ? r.answers.filter(a => !a.isCorrect) : [];
-    el.innerHTML = `<div class="row">
-        <img class="thumb" data-id="${s.id}" alt="">
-        <div class="grow">
-          <div class="row"><span class="chip ${cls}">${lab}</span>${r ? `<input class="name" data-id="${s.id}" value="${esc(r.studentName || '')}" placeholder="이름"><b style="margin-left:4px;">${r.correctCount}/${r.totalQuestions}</b>` : `<span class="sub">${s.status === 'error' ? esc(s.error || '') : '#' + (s.idx || '')}</span>`}</div>
-        </div>
-        <div class="row">${(s.status === 'done' || s.status === 'error') ? `<button class="btn" data-act="redo" data-id="${s.id}">다시 채점</button>` : ''}<button class="btn danger" data-act="del" data-id="${s.id}">삭제</button></div>
-      </div>
-      ${r ? `<details data-id="${s.id}" ${open.has(s.id) ? 'open' : ''}><summary class="sub" style="cursor:pointer;margin-top:8px;">틀린 문항 ${wrong.length}개 · 전체 보기</summary>
-        <table class="ans"><tr><th>번호</th><th>문제</th><th>학생 답</th><th>정답</th></tr>${[...wrong, ...r.answers.filter(a => a.isCorrect)].map(a => `<tr class="${a.isCorrect ? '' : 'bad'}"><td>${esc(a.no)}${a.isCorrect ? ' ✓' : ' ✗'}</td><td>${esc(a.stem || '')}</td><td>${esc(a.studentAnswer || '(빈칸)')}</td><td>${esc(a.correctAnswer || '')}</td></tr>`).join('')}</table></details>` : ''}`;
-    box.appendChild(el);
-    if (s.imagePath) urlOf(s.imagePath).then(u => { const im = el.querySelector('img.thumb'); if (im && u) { im.src = u; im.onclick = () => viewImage(u); } });
-  }
-}
-$('stuList').addEventListener('click', async (e) => {
-  const b = e.target.closest('button[data-act]'); if (!b) return;
-  const id = b.dataset.id, s = curStudents.find(x => x.id === id); if (!s) return;
-  if (b.dataset.act === 'del') {
-    if (!confirm('이 학생 기록과 사진을 삭제할까요?')) return;
-    for (const p of [s.imagePath, s.markPath]) if (p) await deleteObject(ref(storage, p)).catch(() => {});
-    await deleteDoc(doc(db, 'scoresnapSessions', curSid, 'students', id));
-    updateDoc(doc(db, 'scoresnapSessions', curSid), { studentCount: curStudents.filter(x => x.id !== id && x.status === 'done').length }).catch(() => {});
-  } else if (b.dataset.act === 'redo') {
-    await updateDoc(doc(db, 'scoresnapSessions', curSid, 'students', id), { status: 'queued', error: '', result: null, markPath: '', markKey: '', updatedAt: serverTimestamp() });
-    await updateDoc(doc(db, 'scoresnapSessions', curSid), { needsWork: true });
-  }
-});
-$('stuList').addEventListener('change', async (e) => {
-  const i = e.target.closest('input.name'); if (!i) return;
-  await updateDoc(doc(db, 'scoresnapSessions', curSid, 'students', i.dataset.id), { 'result.studentName': i.value.trim(), updatedAt: serverTimestamp() });
-  toast('이름을 저장했어요');
+    const t = await user.getIdTokenResult(); window.MY_ACADEMY_ID = t.claims.academyId || 'default';
+    try { const a = await getDoc(doc(db, 'academies', window.MY_ACADEMY_ID)); window.MY_ACADEMY_NAME = (a.exists() && a.data().name) || ''; } catch (_) {}
+  } catch (_) {}
+  openSS();
 });
 </script>
 </body>
