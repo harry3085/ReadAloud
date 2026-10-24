@@ -384,3 +384,10 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-vw__wr:hover { background:#3c4043; } .ss-vw__wr > b { flex:0 0 26px; color:#ffb599; font-size:15px; }
 .ss-vw__wr .q { font-weight:700; color:#fff; } .ss-vw__wr .st { color:#ff9c9c; text-decoration:line-through; } .ss-vw__wr .ok { color:#8fd694; font-weight:700; }
 @media (min-width:1024px) { .ss-vw__side { display:block; } .ss-vw__chips { display:none; } }
+
+/* PC 기록 목록 행의 삭제 아이콘 (마우스를 올리면 보임) */
+.ss-del { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; color:var(--sub); opacity:0; flex-shrink:0; cursor:pointer; }
+.ss-del .ss-ic { width:17px; height:17px; }
+.ss-pc__c1 .ss-row:hover .ss-del, .ss-pc__c1 .ss-row--on .ss-del, .ss-del:focus { opacity:1; }
+.ss-del:hover { background:rgba(0,0,0,.12); color:var(--bad); }
+.ss-pc__c1 .ss-row--on .ss-del { color:#fff; } .ss-pc__c1 .ss-row--on .ss-del:hover { background:rgba(255,255,255,.25); color:#fff; }

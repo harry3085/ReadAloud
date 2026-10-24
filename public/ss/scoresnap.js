@@ -1422,14 +1422,30 @@
     const rows = (_pcSess || []).map(x => {
       const n = x.studentCount || 0;
       const sub = [_fmtAgo(x.createdAtMs), x.questionCount ? `${x.questionCount}문항` : '', n ? `${n}명` : '', (n && typeof x.avgScore === 'number') ? `평균 ${x.avgScore}` : ''].filter(Boolean).join(' · ');
-      return `<button class="ss-row ss-row--tap${x.id === _state.sid ? ' ss-row--on' : ''}" data-sid="${esc(x.id)}" data-ms="${esc(x.createdAtMs || 0)}"><span class="ss-grow"><b class="ss-title" style="display:block;word-break:break-word;">${esc(x.testName || '시험')}</b><span class="ss-sub">${esc(sub)}</span></span>${x.needCheck > 0 ? uiChip(`확인 ${x.needCheck}`, 'warn') : ''}</button>`;
+      return `<button class="ss-row ss-row--tap${x.id === _state.sid ? ' ss-row--on' : ''}" data-sid="${esc(x.id)}" data-ms="${esc(x.createdAtMs || 0)}"><span class="ss-grow"><b class="ss-title" style="display:block;word-break:break-word;">${esc(x.testName || '시험')}</b><span class="ss-sub">${esc(sub)}</span></span>${x.needCheck > 0 ? uiChip(`확인 ${x.needCheck}`, 'warn') : ''}<span class="ss-del" role="button" tabindex="0" data-del="${esc(x.id)}" title="이 기록 삭제" aria-label="이 기록 삭제">${iconSvg('trash')}</span></button>`;
     }).join('');
     el.innerHTML = `<div class="ss-pc__h">${uiBtn({ kind: 'primary', block: true, icon: 'plus', label: '새 시험 채점', id: 'ssPcNew' })}</div>
       <div class="ss-pc__scroll" id="ssPcSessScroll">${_pcSess ? (rows || '<div class="ss-center"><div class="ss-sub">채점 기록이 없어요</div></div>') : '<div class="ss-center"><div class="ss-spinner"></div></div>'}</div>`;
     document.getElementById('ssPcNew').onclick = () => window._ssNewExam();
     const sc = document.getElementById('ssPcSessScroll');
-    sc.onclick = (e) => { const b = e.target.closest('[data-sid]'); if (b && b.dataset.sid !== _state.sid) _ssOpenServerSession(b.dataset.sid, { createdAtMs: +b.dataset.ms || 0 }); };
+    sc.onclick = (e) => { const d = e.target.closest('[data-del]'); if (d) { e.stopPropagation(); return window._pcDeleteSession(d.dataset.del); } const b = e.target.closest('[data-sid]'); if (b && b.dataset.sid !== _state.sid) _ssOpenServerSession(b.dataset.sid, { createdAtMs: +b.dataset.ms || 0 }); };
   }
+
+  // 왼쪽 목록에서 기록 삭제 — 지금 열려 있는 기록이면 화면도 비운다
+  window._pcDeleteSession = async function (sid) {
+    const row = (_pcSess || []).find(x => x.id === sid);
+    const ok = typeof window.showConfirm === 'function'
+      ? await window.showConfirm('채점 기록 삭제', `"${(row && row.testName) || '시험'}" 기록과 답안지 사진을 삭제할까요?
+(폰·PC 모두에서 사라져요)`) : true;
+    if (!ok) return;
+    try {
+      await _store().deleteSession(sid);
+      _pcSess = (_pcSess || []).filter(x => x.id !== sid);
+      if (_state.sid === sid) { _stopWatch(); _state.sid = null; _state.students = []; _state.answerKey = null; _state.detailIdx = -1; _pcRenderStudents(); _pcRenderDetail(); }
+      _pcRenderSessions();
+      _ssToast('삭제했어요');
+    } catch (e) { _ssToast('삭제 실패: ' + (e && e.message)); }
+  };
 
   function _pcRenderStudents() {
     const el = document.getElementById('ssPcStu'); if (!el) return;

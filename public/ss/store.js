@@ -114,7 +114,7 @@ export function createScoreSnapStore({ db, storage, getUid, getAid }) {
     // 개발자에게 의견 전달 — 대화 내용과 화면 상태를 저장 (목록에는 나오지 않음)
     async saveFeedback(data) {
       const jref = doc(collection(db, 'scoresnapSessions'));
-      await setDoc(jref, _ssClean({ ...data, academyId: _ssAid(), kind: 'feedback', keyStatus: 'feedback', createdBy: getUid(), savedAt: serverTimestamp() }));
+      await setDoc(jref, { ..._ssClean(data), academyId: _ssAid(), kind: 'feedback', keyStatus: 'feedback', createdBy: getUid(), savedAt: serverTimestamp() });
       return jref.id;
     },
     // 카톡 보냄 표시 (sent=false 면 해제)
