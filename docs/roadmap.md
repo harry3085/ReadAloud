@@ -19,8 +19,9 @@
 | **카톡 인앱 차단** (v821~823, 10/6) | 배포 완료 | 일일 리포트의 `인앱 차단·로그아웃` 기록. 대상 7명이 브라우저로 넘어갔는지 / 신규 인앱 로그인이 생기는지 |
 | **Firestore 전송량** | 1차로 **약 88% 절감** 확인 (월 환산 ~2GB) | 10월 말 전체 월 실적 1회. 월 5GB 초과 시에만 2차 |
 | 말하기 안정성 (iOS SR) | WebKit 버그라 근본 해결 불가 | iOS 27 학생 3명 추이 |
+| **ScoreSnap 전용앱(/ss) + PC 채점 프로그램** (10/24) | 6단계 디자인·질문·카톡·설치 패키지 완료 | 학원 PC 에 `설치.bat` 설치 후 실사용 · 조승빈 등 마킹 사진 V 개수 · `list-scoresnap-feedback.js` 로 의견 확인 |
 
-- memory: `project_kakao_inapp_login_block` · `project_firestore_egress_reduction`
+- memory: `project_kakao_inapp_login_block` · `project_firestore_egress_reduction` · `project_scoresnap_dedicated_app`
 
 ---
 
@@ -71,6 +72,7 @@
 | **AI OCR 정리 후속 보완** (괄호 짝 경고 · 마침표→쉼표 규칙 · Vision 대신 Gemini 이미지 OCR) | 학원장이 "필요하다"고 할 때. 괄호 경고(코드)·마침표 규칙(프롬프트)은 작음 / Gemini OCR 은 저해상도 이미지 한글 누락이 반복될 때 검토 | `project_ai_ocr_cleanup_pipeline` |
 | **Vercel `GEMINI_API_KEY` Sensitive 교체** (새 키 발급 → Sensitive 로 재등록 → 옛 키 삭제) | 학원장 요청, 팀원 추가, 키 유출 의심 시. 혼자 사용 중이라 보류 (2026-10-10) | `project_vercel_gemini_key_sensitive` |
 | **ScoreSnap 정답지 자동 찾기** (학생 답안지 먼저 → 머리글 제목을 Vision OCR 로 읽어 같은 제목의 문제세트(없으면 출제 시험)를 정답으로 사용) | 현재 방식(정답지 사진)을 써 보고 학원장이 검토하자고 할 때. 1단계 = 단어시험(영↔한)만, 후보 확인 목록 + 못 찾으면 정답지 사진 폴백, 인쇄 후 세트 수정 시 어긋남 안내 | `project_scoresnap_answerkey_from_set` |
+| **학원앱 ScoreSnap 에 전용앱 디자인 반영** (+ V 빠진 문항 경고 키우기) | 전용앱이 학원 PC 에서 안정된 뒤 (학원장 "학원 PC 에서 써 보고 안정화 후") | `project_scoresnap_dedicated_app` |
 | **ScoreSnap AI 사용량 카운터 분리** (현재 Generator 항목으로 합산) | **ScoreSnap 사용이 AI 사용량(Generator 한도)에 상당한 영향**을 줄 때. 학생 1명 채점 = 1회 / 정답지 1회. 분리 시 quota 종류 추가 + 플랜 byTier 한도 필드 + super 앱 한도 화면 + 학원장 사용량 5분류 → 6분류 | `project_scoresnap_quota_split` |
 | **Gemini 파라미터 폐기 대응** (thinkingBudget·temperature·topP → thinking_level) | **새 Gemini 모델을 폴백 체인에 넣을 때** (현 모델은 영향 없음). api 6파일 + 스크립트 일괄, 공용 헬퍼화 | `project_gemini_param_deprecation` |
 
@@ -95,6 +97,7 @@
 | 시기 | 내용 |
 |---|---|
 | 2026-10-23 | ScoreSnap 채점 개선 — 순서 다른 시험지는 영어 문제(stem) 일치로 짝짓기 · 빈칸/판독불가 오답 확정 · 한글 뜻 별도 판정 호출(뜻을 아는지 기준, 애매하면 오답) · 복수 정답/띄어쓰기/괄호 부연 · 전체 문항 틀린→맞은 그룹 · 이어서보기 확인창(showConfirm window 노출) · 학원장앱 로딩 7.4→2.3초(달력 REST select) |
+| 2026-10-24 | ScoreSnap 전용앱(/ss) 분리 + PC 채점 프로그램(Claude Code) + 새 디자인 6단계(폰·PC 3칸·질문 채팅·카톡 연속 전송·QR·열 너비) + 학원 PC 설치 패키지 · 학원앱 인쇄 수정(4단 53번·화면 복사 zoom 겹침·끝 선·폭 비율) |
 | 2026-10-23 | ScoreSnap 정답지 형태 선택(번호형 기본·표 형식·자동)·정답지 다시 올리기·정답지 보기·프리뷰 화면 복사→Ctrl+V · 번호형/표 판별 보강(머리글 줄·채울 칸 2개 미만) · 문제세트 수정 후 시험관리 캐시 갱신 · AI 사용량 Generator 에 ScoreSnap 합산 표시 |
 | 2026-10-07 | AI OCR·정리 단어장 정비 — Vision 언어 힌트 ko,en(한글 뜻 누락 해소) · Snapshot 프롬프트 v1~v7(원문 충실·유형 A/B·발음기호/품사 제거·뜻 칸 규칙·~ 유지) · 정리 결과 후처리(없는 단어/중복 제거·복원, 누락·뜻 없음 경고) · 손글씨 촬영 안내 |
 | 2026-10-06 | 카톡 인앱 전면 차단 + 자동 로그아웃 · 차단 화면 앱 양식 · 삼성 인터넷 경고 제거(완료율 95%로 근거 없음) |

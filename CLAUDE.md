@@ -5549,3 +5549,50 @@ SW v842 → v849. 폰에서 채점 → PC 에서 확인, 학생에게 틀린 문
 - **서버 호출 재현은 실제 파라미터(topP·이미지/텍스트 순서)와 반복 횟수로** — 단발 로컬 테스트는 8번 중 3번 나는 실패를 놓침
 - **`showConfirm` 등 앱 공용 모달은 전체화면 오버레이(z-index 99999) 안에서 가려질 수 있음** — 오버레이를 쓰는 화면은 모달 z-index 확인
 - **목록 캐시가 둘 이상(`_qs*`·`_tp*`)이면 수정 후 양쪽 모두 갱신**
+
+---
+
+## 2026-10-24: ScoreSnap 전용앱(/ss/) + PC 채점 프로그램 + 새 디자인 6단계
+
+학원앱 숨김 기능이던 ScoreSnap 을 **별도 앱(`raloud.vercel.app/ss`)**으로 분리. 채점은 서버 AI(Gemini)가 아니라 **학원 PC 의 Claude Code(구독, API 요금 0)**가 처리. 학원앱 쪽 ScoreSnap 은 그대로 유지(Gemini 경로) — **새 디자인은 전용앱에만 적용, 학원앱 반영은 전용앱이 학원 PC 에서 안정된 뒤**. 상세·함정은 메모리 `project_scoresnap_dedicated_app`.
+
+### 구조
+```
+[폰/PC 브라우저 /ss/]  ──사진·작업(job) 문서──▶  Firestore scoresnapSessions  ◀──가져가 처리──  [학원 PC worker.js → claude -p]
+        ▲ 결과(학생 기록·정답지·마킹 위치)는 같은 서버에 저장 → 폰·PC 동시 조회, 5일 보관
+```
+- **전용앱** `public/ss/` : `index.html`(자체 로그인·PWA·fetch 가로채기 `/api/scoresnap-grade`·`/api/ocr` → job), `scoresnap.js`(화면 전부, IIFE), `store.js`(Firestore/Storage), `ss.css`(디자인 기준 `.ss-*`), `manifest.json`. 학원앱 코드와 **완전 분리**(복사본).
+- **PC 채점 프로그램** `tools/scoresnap-worker/` : `worker.js`(작업 대기열 처리·30초 상태 신호·질문 답변), `marks.js`(마킹 번호 위치 찾기 프롬프트), `make-package.js`(설치 패키지 생성), `config.json`(아이디/비번, gitignore).
+- **작업 종류** (`jobType`): `key`(정답지 읽기) / `student`(학생 채점 — 결과를 `students/{docId}` 에 직접 기록, 화면을 닫아도 계속) / `ocr`(마킹 위치) / `ask`(질문 답변, `payload.mode='general'` 이면 앱 전반 질문).
+- **상태 기록** `scoresnapSessions/worker_{aid}_{name}` (`kind:'worker'`, `keyStatus:'worker'`) 30초마다. 목록/만료 정리에서 제외됨(createdAt 없음 + keyStatus 필터). 앱은 3분 넘게 신호 없으면 "꺼짐", 연결 오류는 "알 수 없음"(숨김)+재연결.
+- 개발자 의견: 앱의 [개발자에게 전달] → `scoresnapSessions` `kind:'feedback'`. 확인은 `scripts/diag/list-scoresnap-feedback.js`. **의견은 정리해 보여주고 승인 후에만 수정**.
+
+### 화면 (설계서 `docs/scoresnap-ss-redesign.md`)
+폰: 홈→정답지(번호형/표)→검토→답안지 추가+진행(자동 대기열)→결과 목록→학생 상세→마킹 사진 보기. PC(≥1024px): 공통 주황 상단 바 + 기록|학생 목록(15명 스크롤 없이)|상세(문항 평가 왼쪽·사진 오른쪽, 열 너비 드래그 조절·저장)+사진 아래 채점 질문 채팅, 정답지 검토 3칸, 카톡 연속 전송(`kakaoSentAt`), [질문·도움말] 패널, ⋯ 팝업 메뉴, 확인 대화상자. 형식 자동 판별(기본/영영/표)+[보기 방식]. 애매 탭·[확인 완료 저장](`result.checked`), 정답지 확인·수정(고친 문항만 점수 재계산, 뜻 다른 답은 '애매'), 기록 삭제 아이콘.
+- 사진은 [사진 보기]를 눌러야 불러오고(마킹 있으면 마킹 먼저), 마킹 사진은 눌렀을 때만 생성. 마킹 번호 위치가 전체 90% 미만이면 PC Claude 로 다시 찾음(`markPos.engine:'pc'`, 마킹 키 `|v3`).
+
+### 학원 PC 설치
+`node tools/scoresnap-worker/make-package.js` → `dist/ScoreSnap-PC채점프로그램(.zip)` (node.exe·firebase 포함, 비번 미포함). 학원 PC 에서 `설치.bat` → 아이디/비번 입력 → `%LOCALAPPDATA%\ScoreSnapWorker` 설치 + 로그온 자동 실행 + 바탕화면 바로가기. **worker.js 등을 고치면 패키지를 다시 만들고, 돌고 있는 PC 는 재시작**. Claude Code 는 학원 PC 에 설치·로그인돼 있어야 함.
+
+### 학원앱 인쇄(같은 날 수정)
+- 단어 시험지 '2단 레이아웃'×'단수 2단' 이 CSS columns 로 겹쳐 마지막 문제가 영역 밖으로 밀림 → 문제를 단 수로 **직접 균등 분할**(`_printRenderVocab`, 바깥 래퍼는 vocab 에서 columns 미사용).
+- [화면 복사] html2canvas 가 **CSS `zoom`(페이지 맞춤)을 몰라 글자가 겹침** → `onclone` 에서 zoom 을 transform 으로 대체.
+- '— 끝 —' 선을 용지 맨 아래로(flex 스페이서), 번호·영문·빈칸 폭을 글자 크기 비례 flex 로(고정 140px 제거).
+
+### 작업 규칙 추가 (2026-10-24)
+- **html2canvas 로 캡처할 DOM 에 CSS `zoom` 금지** — zoom 은 레이아웃만 줄이고 글자는 원래 크기로 그려 겹침. 복사본에서 transform 으로 바꾸거나 zoom 을 빼고 캡처.
+- **CSS columns 를 중첩하지 말 것** — 높이 없는 인쇄 영역에서 마지막 항목이 영역 밖 단으로 밀림. 항목을 직접 N등분해 flex 로 배치.
+- **AI 가 모르는 사진·상태는 질문 시 같이 보내기** — 채팅이 원본 사진만 보내서 '지금 보는 마킹 사진의 V 개수'를 못 맞힘. 화면의 모드(원본/마킹)와 같은 이미지를 전달.
+- **AI 에 "문제가 있으면 정정 제안" 을 항상 시키면 무관한 질문에도 제안이 붙음** — 정오 확인 질문에만 corrections 를 쓰도록 프롬프트에 조건 명시.
+- **실시간 구독 오류를 '없음/꺼짐' 으로 단정 금지** — 연결 오류 = 알 수 없음으로 숨기고 재연결. 판정 기준은 신호 주기(30초)의 6배 이상.
+- **PC 전용 UI 에 폰용 하단 시트 재사용 금지** — 폭 ≥1024px 는 누른 버튼 옆 팝업 메뉴로.
+- **headless 화면 검증 하네스** — 가짜 store 로 화면을 띄우고 Chrome `--headless=new --screenshot`(PowerShell 절대 경로). 폰 폭은 iframe 래퍼(headless 최소 폭 ~500px). 검증 없이 배포하면 CSS 누락 같은 사고(2단계 CSS 묶음 미적용)가 난다.
+- **의견·피드백으로 들어온 수정 요청은 임의로 처리 금지** — 정리 보고 → 승인 → 수정.
+
+### 진행 / 파일 / SW 캐시
+- 전용앱 1~6단계 + 질문·카톡·QR·열 너비·설치 패키지: ~100%. 학원앱 디자인 반영·학원 PC 실사용 확인: 대기
+- 주요 파일: `public/ss/*`, `tools/scoresnap-worker/*`, `api/_lib/scoresnap-prompt.js`(공용), `public/admin/js/app.js`(인쇄 수정), `scripts/diag/list-scoresnap-feedback.js`·`check-scoresnap-marks.js`
+- SW 캐시: `kunsori-v871` → `kunsori-v875` (전용앱 `/ss/` 는 SW 캐시 대상 아님)
+
+**다음 세션 후보**: 학원 PC 에 설치·실사용 확인 → 불편 사항 반영 → 학원앱 ScoreSnap 에 같은 디자인·마킹 경고 개선 반영 → 의견 목록 확인
+
