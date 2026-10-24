@@ -316,3 +316,23 @@ body.ss-app { background:var(--bg); color:var(--text); font-family:var(--font); 
 .ss-pill { white-space:nowrap; }
 .ss-pc__c2 .ss-pill { padding:0 10px; }
 .ss-pc__c2 .ss-pc__h .ss-iconbtn { width:34px; height:34px; min-width:0; }
+
+/* PC 문항 목록: 한 화면에 가능한 많이 보이도록 촘촘하게 */
+.ss-pc__rows .ss-pad { padding:8px 12px; }
+.ss-pc__rows #ssDetailRoot > .ss-pad:first-child { padding:6px 12px 8px; }
+.ss-pc__rows .ss-pts b { font-size:30px !important; }
+.ss-pc__rows .ss-input { font-size:20px !important; }
+.ss-pc__rows .ss-tab { padding:6px 10px; font-size:14px; min-height:0; }
+.ss-pc__rows .ss-vmode { margin-top:6px; } .ss-pc__rows .ss-vmode select { height:30px; }
+.ss-pc__rows .ss-hint { padding:4px 2px 0; }
+.ss-pc__rows .ss-banner { padding:6px 10px; font-size:13px; }
+.ss-pc__rows .ss-ans { padding:4px 10px; gap:8px; }
+.ss-pc__rows .ss-ans__no { width:22px; font-size:13px; }
+.ss-pc__rows .ss-ans__main { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 10px; }
+.ss-pc__rows .ss-ans__stem { font-size:15px; } .ss-pc__rows .ss-ans__line { font-size:14px; margin-top:0; }
+.ss-pc__rows .ss-toggle { width:34px; height:34px; border-radius:9px; } .ss-pc__rows .ss-toggle .ss-ic { width:18px; height:18px; }
+.ss-pc__rows .ss-ee { padding:5px 10px; gap:8px; }
+.ss-pc__rows .ss-ee__word { font-size:15px; } .ss-pc__rows .ss-ee__stu { font-size:14px; margin-top:0; } .ss-pc__rows .ss-ee__def { font-size:12px; margin-top:1px; line-height:1.35; }
+.ss-pc__rows .ss-tcard { padding:6px 10px; } .ss-pc__rows .ss-tcard__given { font-size:15px; margin-bottom:4px; }
+.ss-pc__rows .ss-tcells { gap:5px; } .ss-pc__rows .ss-tcell { padding:4px 8px; border-radius:8px; }
+.ss-pc__rows .ss-tcell b { font-size:14px; } .ss-pc__rows .ss-tcell small { margin-bottom:0; }
