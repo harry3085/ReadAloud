@@ -51,13 +51,20 @@ function findClaude() {
       if (fs.existsSync(p)) return p;
     }
   } catch (_) {}
-  // Claude 데스크탑 앱에 들어 있는 Claude Code: %APPDATA%\Claude\claude-code\<버전>\<해시>\claude.exe (가장 최근 것)
+  // Claude 데스크탑 앱에 들어 있는 Claude Code: ...\Claude\claude-code\<버전>\<해시>\claude.exe (가장 최근 것)
+  // 일반 설치는 %APPDATA%, 스토어(MSIX) 설치는 %LOCALAPPDATA%\Packages\<앱>\LocalCache\Roaming 아래에 있다
   try {
-    const base = path.join(process.env.APPDATA || '', 'Claude', 'claude-code');
+    const bases = [path.join(process.env.APPDATA || '', 'Claude', 'claude-code')];
+    const pk = path.join(process.env.LOCALAPPDATA || '', 'Packages');
+    try { for (const d of fs.readdirSync(pk)) if (/claude|anthropic/i.test(d)) bases.push(path.join(pk, d, 'LocalCache', 'Roaming', 'Claude', 'claude-code')); } catch (_) {}
     const found = [];
-    for (const v of fs.readdirSync(base)) for (const h of fs.readdirSync(path.join(base, v))) {
-      const p = path.join(base, v, h, 'claude.exe');
-      if (fs.existsSync(p)) found.push({ p, t: fs.statSync(p).mtimeMs });
+    for (const base of bases) {
+      try {
+        for (const v of fs.readdirSync(base)) for (const h of fs.readdirSync(path.join(base, v))) {
+          const p = path.join(base, v, h, 'claude.exe');
+          if (fs.existsSync(p)) found.push({ p, t: fs.statSync(p).mtimeMs });
+        }
+      } catch (_) {}
     }
     found.sort((a, b) => b.t - a.t);
     if (found.length) return found[0].p;
