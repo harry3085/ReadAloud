@@ -17632,7 +17632,7 @@ function _tpBuildPrintHtml(questions, meta) {
     mcq: _printRenderMcq,
   };
   const renderer = renderers[sourceType] || _printRenderSubj;
-  const body = renderer(qs, { showAnswers, typeOpts: typeOpts || {} });
+  const body = renderer(qs, { showAnswers, typeOpts: typeOpts || {}, twoPerSheet: !!twoPerSheet });
 
   // 절대 경로로 로고 — 학원 업로드 로고 우선, 없으면 LexiAI 기본
   // 학원 로고는 storage.googleapis.com (절대 URL) — 그대로 사용
@@ -17684,7 +17684,7 @@ function _tpBuildPrintHtml(questions, meta) {
   const outerStyle = `background:white;background-image:${pageBreakBg};width:${pageW};min-height:${pageMinH};margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;position:relative;overflow:hidden;`;
   const innerStyle = `padding:8mm 10mm;box-sizing:border-box;position:relative;z-index:1;--p-font:${fontSize}px;--p-line:${lineHeight};--q-gap:${qGap}px;`;
 
-  const innerContent = twoPerSheet
+  const innerContent = (twoPerSheet && sourceType !== 'vocab')
     ? `${headerHtml}<div style="column-count:2;column-gap:20px;column-rule:1px solid #ccc;">${body}</div>${endHtml}`
     : `${headerHtml}${body}${endHtml}`;
 
@@ -17718,7 +17718,7 @@ function _printRenderSubj(questions, { showAnswers }) {
   `;
 }
 
-function _printRenderVocab(questions, { showAnswers, typeOpts }) {
+function _printRenderVocab(questions, { showAnswers, typeOpts, twoPerSheet }) {
   const fmt = typeOpts?.format || 'mixed';
   // mixed = 혼합(랜덤), mixed_mcq_first = 혼합(객→주), mixed_short_first = 혼합(주→객), short, mcq
   const dir = typeOpts?.direction || 'mixed';      // mixed | en2ko | ko2en
@@ -17730,7 +17730,8 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
   const en2KoRatio = Math.max(0, Math.min(100, isFinite(rawDirRatio) ? rawDirRatio : 50));
 
   // 2단일 때 MCQ 선지 그리드는 세로 1열 (좁은 너비에서 2x2 불가), 1단은 2x2
-  const choiceGridStyle = cols === 2
+  const nCols = (cols === 2 ? 2 : 1) * (twoPerSheet ? 2 : 1);   // 단어 시험지의 총 단 수 (단수 × 2단 레이아웃)
+  const choiceGridStyle = nCols > 1
     ? 'display:flex;flex-direction:column;gap:2px;'
     : 'display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;';
 
@@ -17790,12 +17791,18 @@ function _printRenderVocab(questions, { showAnswers, typeOpts }) {
             </div>`).join('')}
         </div>
       </div>`;
-  }).join('');
+  });
 
-  if (cols === 2) {
-    return `<div style="column-count:2;column-gap:24px;column-fill:auto;">${items}</div>`;
+  // CSS columns 는 높이가 정해지지 않은 인쇄 영역에서 마지막 문제를 영역 밖 단으로 밀어내므로(53번 잘림),
+  // 문제를 단 수만큼 균등하게 나눠 직접 단을 만든다. (바깥 래퍼는 vocab 일 때 단 분할을 하지 않음)
+  if (nCols > 1) {
+    const per = Math.ceil(items.length / nCols);
+    const groups = [];
+    for (let g = 0; g < nCols; g++) groups.push(items.slice(g * per, (g + 1) * per).join(''));
+    return `<div style="display:flex;align-items:flex-start;gap:0;">${groups.map((g, k) =>
+      `<div style="flex:1 1 0;min-width:0;padding:0 ${k < nCols - 1 ? 12 : 0}px 0 ${k ? 12 : 0}px;${k ? 'border-left:1px solid #ccc;' : ''}">${g}</div>`).join('')}</div>`;
   }
-  return items;
+  return items.join('');
 }
 
 function _printRenderUnscramble(questions, { showAnswers }) {
